@@ -245,6 +245,33 @@ export function computeFaceUV(
   return [u, v];
 }
 
+// Resize a brush by remapping face defining points from old AABB to new AABB.
+// Preserves per-face texture settings unlike resizeBoxBrush.
+export function resizeBrushByAABB(
+  brush: Brush,
+  oldMins: Vec3, oldMaxs: Vec3,
+  newMins: Vec3, newMaxs: Vec3,
+  origPoints: [Vec3, Vec3, Vec3][]
+): void {
+  for (let fi = 0; fi < brush.faces.length; fi++) {
+    const face = brush.faces[fi];
+    for (let pi = 0; pi < 3; pi++) {
+      // Restore from original, then remap
+      for (let i = 0; i < 3; i++) {
+        const val = origPoints[fi][pi][i];
+        if (Math.abs(val - oldMins[i]) < 0.5) {
+          face.points[pi][i] = newMins[i];
+        } else if (Math.abs(val - oldMaxs[i]) < 0.5) {
+          face.points[pi][i] = newMaxs[i];
+        } else {
+          face.points[pi][i] = val;
+        }
+      }
+    }
+  }
+  computeBrushGeometry(brush);
+}
+
 // Resize a box brush by setting new AABB (reconstructs faces)
 export function resizeBoxBrush(brush: Brush, newMins: Vec3, newMaxs: Vec3): void {
   const texture = brush.faces[0]?.texture ?? 'common/caulk';

@@ -1,6 +1,6 @@
 import { Vec3, vec3, vec3Snap, vec3Copy } from './math';
 import { Editor, SelectionItem } from './editor';
-import { Brush, brushContainsPoint2D } from './brush';
+import { Brush, brushContainsPoint2D, resizeBrushByAABB } from './brush';
 import { Entity, entityOrigin } from './entity';
 
 export type ViewAxis = 'xy' | 'xz' | 'yz';
@@ -34,6 +34,15 @@ export class Viewport2D {
   private panCenterStart: [number, number] = [0, 0];
   private hasDragged = false;
   private moveSnapshotTaken = false;
+
+  // Resize state
+  private resizing = false;
+  private resizeEdges = { minH: false, maxH: false, minV: false, maxV: false };
+  private resizeBrush: Brush | null = null;
+  private resizeOrigMins: Vec3 = [0, 0, 0];
+  private resizeOrigMaxs: Vec3 = [0, 0, 0];
+  private resizeOrigPoints: [Vec3, Vec3, Vec3][] = [];
+  private resizeSnapshotTaken = false;
 
   constructor(canvas: HTMLCanvasElement, editor: Editor, axis: ViewAxis) {
     this.canvas = canvas;
@@ -194,6 +203,32 @@ export class Viewport2D {
       ctx.closePath();
       ctx.stroke();
     }
+
+    // Draw resize handles on selected brushes
+    if (selected) {
+      const hs = 3; // handle half-size in pixels
+      ctx.fillStyle = '#ffaa00';
+      const midH = (brush.mins[h] + brush.maxs[h]) / 2;
+      const midV = (brush.mins[v] + brush.maxs[v]) / 2;
+      // Edge midpoints
+      const handles: [number, number][] = [
+        [midH, brush.maxs[v]], // top
+        [midH, brush.mins[v]], // bottom
+        [brush.mins[h], midV], // left
+        [brush.maxs[h], midV], // right
+      ];
+      // Corners
+      handles.push(
+        [brush.mins[h], brush.maxs[v]], // top-left
+        [brush.maxs[h], brush.maxs[v]], // top-right
+        [brush.mins[h], brush.mins[v]], // bottom-left
+        [brush.maxs[h], brush.mins[v]], // bottom-right
+      );
+      for (const [wh, wv] of handles) {
+        const [shx, shy] = this.worldToScreen(wh, wv);
+        ctx.fillRect(shx - hs, shy - hs, hs * 2, hs * 2);
+      }
+    }
   }
 
   private drawEntity(entity: Entity, selected: boolean): void {
@@ -253,7 +288,7 @@ export class Viewport2D {
     // Use document for move/up so drag continues even when mouse leaves viewport
     document.addEventListener('mousemove', (e) => {
       // Only process if we're actively interacting with this viewport
-      if (this.panning || this.dragging) {
+      if (this.panning || this.dragging || this.resizing) {
         this.onMouseMove(e);
       } else {
         // Only update status if mouse is over this viewport
@@ -319,6 +354,24 @@ export class Viewport2D {
         return;
       }
 
+      // Check for resize edge on selected brush
+      if (this.editor.activeTool === 'select' && this.editor.selection.length > 0) {
+        const edge = this.detectResizeEdge(wx, wy);
+        if (edge) {
+          this.resizing = true;
+          this.resizeEdges = edge.edges;
+          this.resizeBrush = edge.brush;
+          this.resizeOrigMins = vec3Copy(edge.brush.mins);
+          this.resizeOrigMaxs = vec3Copy(edge.brush.maxs);
+          this.resizeOrigPoints = edge.brush.faces.map(f =>
+            [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
+          );
+          this.resizeSnapshotTaken = false;
+          this.dragWorldStart = [wx, wy];
+          return;
+        }
+      }
+
       // Select tool: try to pick a brush or entity
       const picked = this.pickAt(wx, wy);
       if (picked) {
@@ -363,11 +416,54 @@ export class Viewport2D {
     coords[this.axisV] = wy;
     this.editor.statusMessage = `${AXIS_MAP[this.axis].labels[0]}: ${wx.toFixed(0)}  ${AXIS_MAP[this.axis].labels[1]}: ${wy.toFixed(0)}  Grid: ${this.editor.gridSize}`;
 
+    // Cursor feedback for resize when hovering
+    if (!this.panning && !this.dragging && !this.resizing) {
+      const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0
+        ? this.detectResizeEdge(wx, wy) : null;
+      this.canvas.parentElement!.style.cursor = edge ? this.getResizeCursor(edge.edges) : '';
+    }
+
     if (this.panning) {
       const dx = (mx - this.panStart[0]) / this.zoom;
       const dy = (my - this.panStart[1]) / this.zoom;
       this.centerX = this.panCenterStart[0] - dx;
       this.centerY = this.panCenterStart[1] + dy;
+      this.editor.dirty = true;
+      return;
+    }
+
+    if (this.resizing && this.resizeBrush) {
+      const dx = wx - this.dragWorldStart[0];
+      const dy = wy - this.dragWorldStart[1];
+      const grid = this.editor.gridSize;
+      const snappedDx = Math.round(dx / grid) * grid;
+      const snappedDy = Math.round(dy / grid) * grid;
+
+      if (!this.resizeSnapshotTaken) {
+        this.editor.snapshot();
+        this.resizeSnapshotTaken = true;
+      }
+
+      const newMins = vec3Copy(this.resizeOrigMins);
+      const newMaxs = vec3Copy(this.resizeOrigMaxs);
+
+      if (this.resizeEdges.minH) newMins[this.axisH] += snappedDx;
+      if (this.resizeEdges.maxH) newMaxs[this.axisH] += snappedDx;
+      if (this.resizeEdges.minV) newMins[this.axisV] += snappedDy;
+      if (this.resizeEdges.maxV) newMaxs[this.axisV] += snappedDy;
+
+      // Enforce minimum size
+      const minSize = grid;
+      if (newMaxs[this.axisH] - newMins[this.axisH] < minSize) {
+        if (this.resizeEdges.minH) newMins[this.axisH] = newMaxs[this.axisH] - minSize;
+        else newMaxs[this.axisH] = newMins[this.axisH] + minSize;
+      }
+      if (newMaxs[this.axisV] - newMins[this.axisV] < minSize) {
+        if (this.resizeEdges.minV) newMins[this.axisV] = newMaxs[this.axisV] - minSize;
+        else newMaxs[this.axisV] = newMins[this.axisV] + minSize;
+      }
+
+      resizeBrushByAABB(this.resizeBrush, this.resizeOrigMins, this.resizeOrigMaxs, newMins, newMaxs, this.resizeOrigPoints);
       this.editor.dirty = true;
       return;
     }
@@ -410,6 +506,14 @@ export class Viewport2D {
   private onMouseUp(e: MouseEvent): void {
     if (this.panning) {
       this.panning = false;
+      return;
+    }
+
+    if (this.resizing) {
+      this.resizing = false;
+      this.resizeBrush = null;
+      this.canvas.parentElement!.style.cursor = '';
+      this.editor.statusMessage = 'Resized';
       return;
     }
 
@@ -464,6 +568,50 @@ export class Viewport2D {
     }
 
     this.editor.dirty = true;
+  }
+
+  // ── Resize edge detection ──
+
+  private detectResizeEdge(wx: number, wy: number): {
+    brush: Brush;
+    entity: Entity;
+    edges: { minH: boolean; maxH: boolean; minV: boolean; maxV: boolean };
+  } | null {
+    const threshold = 6 / this.zoom; // 6 pixels in world units
+
+    for (const item of this.editor.selection) {
+      if (item.type === 'entity') continue;
+      const brush = item.brush;
+      const entity = item.entity;
+
+      // Check if cursor is near the brush AABB
+      const inH = wx >= brush.mins[this.axisH] - threshold && wx <= brush.maxs[this.axisH] + threshold;
+      const inV = wy >= brush.mins[this.axisV] - threshold && wy <= brush.maxs[this.axisV] + threshold;
+      if (!inH || !inV) continue;
+
+      const nearMinH = Math.abs(wx - brush.mins[this.axisH]) < threshold;
+      const nearMaxH = Math.abs(wx - brush.maxs[this.axisH]) < threshold;
+      const nearMinV = Math.abs(wy - brush.mins[this.axisV]) < threshold;
+      const nearMaxV = Math.abs(wy - brush.maxs[this.axisV]) < threshold;
+
+      if (nearMinH || nearMaxH || nearMinV || nearMaxV) {
+        return { brush, entity, edges: { minH: nearMinH, maxH: nearMaxH, minV: nearMinV, maxV: nearMaxV } };
+      }
+    }
+    return null;
+  }
+
+  private getResizeCursor(edges: { minH: boolean; maxH: boolean; minV: boolean; maxV: boolean }): string {
+    const h = edges.minH || edges.maxH;
+    const v = edges.minV || edges.maxV;
+    if (h && v) {
+      // Corner: NW/SE diagonal vs NE/SW diagonal
+      if ((edges.minH && edges.maxV) || (edges.maxH && edges.minV)) return 'nwse-resize';
+      return 'nesw-resize';
+    }
+    if (h) return 'ew-resize';
+    if (v) return 'ns-resize';
+    return '';
   }
 
   private pickAt(wx: number, wy: number): { type: 'brush'; entity: Entity; brush: Brush } | { type: 'entity'; entity: Entity } | null {
