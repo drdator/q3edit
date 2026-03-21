@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Q3 Map Editor</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="menubar"></div>
+    <div id="toolbar"></div>
+    <div id="viewport-container">
+      <div id="vp-xy" class="viewport" data-label="XY Top">
+        <canvas></canvas>
+        <span class="vp-label">XY Top</span>
+      </div>
+      <div id="vp-3d" class="viewport" data-label="3D">
+        <canvas></canvas>
+        <span class="vp-label">3D Camera</span>
+      </div>
+      <div id="sidepanel">
+        <div id="entity-panel" class="panel">
+          <div class="panel-header">Entity</div>
+          <div class="panel-body" id="entity-body"></div>
+        </div>
+        <div id="texture-panel" class="panel">
+          <div class="panel-header">Texture</div>
+          <div class="panel-body" id="texture-body"></div>
+        </div>
+      </div>
+      <div id="vp-xz" class="viewport" data-label="XZ Front">
+        <canvas></canvas>
+        <span class="vp-label">XZ Front</span>
+      </div>
+      <div id="vp-yz" class="viewport" data-label="YZ Side">
+        <canvas></canvas>
+        <span class="vp-label">YZ Side</span>
+      </div>
+    </div>
+    <div id="statusbar"></div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
