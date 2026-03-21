@@ -1,4 +1,5 @@
 import { Editor, Tool } from './editor';
+import { BrushFace } from './brush';
 import { ENTITY_CLASSES } from './entity';
 import { TextureManager } from './textures';
 
@@ -349,7 +350,10 @@ export class UI {
     document.getElementById('status-msg')!.textContent = e.statusMessage;
     document.getElementById('status-tool')!.textContent = `Tool: ${e.activeTool}`;
     document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}`;
-    document.getElementById('status-sel')!.textContent = `Sel: ${e.selection.length}`;
+    const selLabel = e.selection.length === 1 && e.selection[0].type === 'face'
+      ? 'Sel: 1 face'
+      : `Sel: ${e.selection.length}`;
+    document.getElementById('status-sel')!.textContent = selLabel;
 
     let brushCount = 0;
     for (const entity of e.entities) brushCount += entity.brushes.length;
@@ -364,7 +368,19 @@ export class UI {
     const propsDiv = document.getElementById('entity-props')!;
     const sel = this.editor.selection;
 
-    if (sel.length === 1 && sel[0].type === 'entity') {
+    if (sel.length === 1 && sel[0].type === 'face') {
+      const face = sel[0].face;
+      const brush = sel[0].brush;
+      // Only rebuild if the panel doesn't already show face props for this face
+      if (propsDiv.dataset.mode !== 'face' || propsDiv.dataset.faceId !== String(face.plane.dist)) {
+        propsDiv.innerHTML = '';
+        propsDiv.dataset.mode = 'face';
+        propsDiv.dataset.faceId = String(face.plane.dist);
+        this.buildFacePropsUI(propsDiv, face, brush);
+      }
+    } else if (sel.length === 1 && sel[0].type === 'entity') {
+      propsDiv.dataset.mode = 'entity';
+      propsDiv.dataset.faceId = '';
       const entity = sel[0].entity;
       propsDiv.innerHTML = '';
 
@@ -410,6 +426,8 @@ export class UI {
       });
       propsDiv.appendChild(addBtn);
     } else if (sel.length === 1 && sel[0].type === 'brush') {
+      propsDiv.dataset.mode = 'brush';
+      propsDiv.dataset.faceId = '';
       propsDiv.innerHTML = '';
       const brush = sel[0].brush;
       const info = document.createElement('label');
@@ -429,8 +447,112 @@ export class UI {
       sizeInfo.textContent = `Size: ${size.join(' x ')}`;
       propsDiv.appendChild(sizeInfo);
     } else {
+      propsDiv.dataset.mode = '';
+      propsDiv.dataset.faceId = '';
       propsDiv.innerHTML = '<label style="color: #666">No selection</label>';
     }
+  }
+
+  private buildFacePropsUI(container: HTMLElement, face: BrushFace, brush: { faces: BrushFace[] }): void {
+    const title = document.createElement('label');
+    title.textContent = 'Face Properties';
+    title.style.fontWeight = 'bold';
+    container.appendChild(title);
+
+    const hint = document.createElement('label');
+    hint.textContent = `Face ${brush.faces.indexOf(face) + 1} of ${brush.faces.length}`;
+    hint.style.color = '#888';
+    hint.style.fontSize = '11px';
+    container.appendChild(hint);
+
+    // Texture name
+    this.addFaceField(container, 'Texture', face.texture, 'text', (val) => {
+      face.texture = val;
+      this.editor.dirty = true;
+    });
+
+    // Offset X/Y
+    this.addFaceNumberRow(container, 'Offset', face.offsetX, face.offsetY, 'X', 'Y', (x, y) => {
+      face.offsetX = x;
+      face.offsetY = y;
+      this.editor.dirty = true;
+    });
+
+    // Scale X/Y
+    this.addFaceNumberRow(container, 'Scale', face.scaleX, face.scaleY, 'X', 'Y', (x, y) => {
+      face.scaleX = x;
+      face.scaleY = y;
+      this.editor.dirty = true;
+    });
+
+    // Rotation
+    this.addFaceField(container, 'Rotation', String(face.rotation), 'number', (val) => {
+      face.rotation = parseFloat(val) || 0;
+      this.editor.dirty = true;
+    });
+
+    // Flags
+    this.addFaceNumberRow(container, 'Flags', face.surfaceFlags, face.contentFlags, 'Surf', 'Cont', (s, c) => {
+      face.surfaceFlags = s;
+      face.contentFlags = c;
+      this.editor.dirty = true;
+    });
+  }
+
+  private addFaceField(container: HTMLElement, label: string, value: string, type: string, onChange: (val: string) => void): void {
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    lbl.style.marginTop = '4px';
+    lbl.style.fontSize = '11px';
+    container.appendChild(lbl);
+
+    const input = document.createElement('input');
+    input.type = type;
+    input.value = value;
+    if (type === 'number') input.step = 'any';
+    input.addEventListener('change', () => onChange(input.value));
+    container.appendChild(input);
+  }
+
+  private addFaceNumberRow(
+    container: HTMLElement,
+    label: string,
+    valA: number, valB: number,
+    labelA: string, labelB: string,
+    onChange: (a: number, b: number) => void
+  ): void {
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    lbl.style.marginTop = '4px';
+    lbl.style.fontSize = '11px';
+    container.appendChild(lbl);
+
+    const row = document.createElement('div');
+    row.className = 'kv-row';
+
+    const inputA = document.createElement('input');
+    inputA.type = 'number';
+    inputA.step = 'any';
+    inputA.value = String(valA);
+    inputA.placeholder = labelA;
+    inputA.title = labelA;
+
+    const inputB = document.createElement('input');
+    inputB.type = 'number';
+    inputB.step = 'any';
+    inputB.value = String(valB);
+    inputB.placeholder = labelB;
+    inputB.title = labelB;
+
+    const update = () => {
+      onChange(parseFloat(inputA.value) || 0, parseFloat(inputB.value) || 0);
+    };
+    inputA.addEventListener('change', update);
+    inputB.addEventListener('change', update);
+
+    row.appendChild(inputA);
+    row.appendChild(inputB);
+    container.appendChild(row);
   }
 
   // ── Texture browser with pak textures ──

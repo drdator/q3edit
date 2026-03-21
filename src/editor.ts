@@ -1,5 +1,5 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale } from './math';
-import { Brush, createBoxBrush, translateBrush, cloneBrush, computeBrushGeometry } from './brush';
+import { Brush, BrushFace, createBoxBrush, translateBrush, cloneBrush, computeBrushGeometry } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
@@ -13,6 +13,11 @@ export type SelectionItem = {
 } | {
   type: 'entity';
   entity: Entity;
+} | {
+  type: 'face';
+  entity: Entity;
+  brush: Brush;
+  face: BrushFace;
 }
 
 export class Editor {
@@ -88,6 +93,21 @@ export class Editor {
     return this.selection.some(s => s.type === 'entity' && s.entity === entity);
   }
 
+  selectFace(entity: Entity, brush: Brush, face: BrushFace): void {
+    // Face selection is always single — replaces entire selection
+    this.selection = [{ type: 'face', entity, brush, face }];
+    this.dirty = true;
+  }
+
+  isFaceSelected(face: BrushFace): boolean {
+    return this.selection.some(s => s.type === 'face' && s.face === face);
+  }
+
+  get selectedFace(): BrushFace | null {
+    const s = this.selection[0];
+    return s?.type === 'face' ? s.face : null;
+  }
+
   // ── Brush operations ──
 
   addBrush(mins: Vec3, maxs: Vec3): Brush {
@@ -124,8 +144,9 @@ export class Editor {
     this.snapshot();
 
     for (const item of this.selection) {
-      if (item.type === 'brush') {
-        const idx = item.entity.brushes.indexOf(item.brush);
+      if (item.type === 'brush' || item.type === 'face') {
+        const brush = item.brush;
+        const idx = item.entity.brushes.indexOf(brush);
         if (idx >= 0) item.entity.brushes.splice(idx, 1);
       } else {
         const idx = this.entities.indexOf(item.entity);
@@ -144,7 +165,7 @@ export class Editor {
     if (snapped[0] === 0 && snapped[1] === 0 && snapped[2] === 0) return;
 
     for (const item of this.selection) {
-      if (item.type === 'brush') {
+      if (item.type === 'brush' || item.type === 'face') {
         translateBrush(item.brush, snapped);
       } else {
         translateEntity(item.entity, snapped);
@@ -161,7 +182,7 @@ export class Editor {
     const offset: Vec3 = [this.gridSize, this.gridSize, 0];
 
     for (const item of this.selection) {
-      if (item.type === 'brush') {
+      if (item.type === 'brush' || item.type === 'face') {
         const newBrush = cloneBrush(item.brush);
         translateBrush(newBrush, offset);
         item.entity.brushes.push(newBrush);
@@ -338,9 +359,11 @@ export class Editor {
 
   setTexture(texture: string): void {
     this.currentTexture = texture;
-    // Apply to selected brushes
+    // Apply to selected face or all faces of selected brushes
     for (const item of this.selection) {
-      if (item.type === 'brush') {
+      if (item.type === 'face') {
+        item.face.texture = texture;
+      } else if (item.type === 'brush') {
         for (const face of item.brush.faces) {
           face.texture = texture;
         }

@@ -35,6 +35,7 @@ in vec2 vUV;
 in vec3 vWorldPos;
 uniform sampler2D uTexture;
 uniform float uSelected;
+uniform float uFaceSelected;
 out vec4 fragColor;
 void main() {
   vec3 n = normalize(vNormal);
@@ -46,6 +47,8 @@ void main() {
 
   // Orange tint for selected brushes
   color = mix(color, vec3(1.0, 0.6, 0.2), uSelected * 0.25);
+  // Cyan tint for selected face
+  color = mix(color, vec3(0.2, 0.7, 1.0), uFaceSelected * 0.35);
 
   fragColor = vec4(color, 1.0);
 }
@@ -97,6 +100,7 @@ interface DrawGroup {
   start: number;
   count: number;
   selected: boolean;
+  faceSelected: boolean;
 }
 
 export class Viewport3D {
@@ -116,6 +120,7 @@ export class Viewport3D {
   private solidPVLoc!: WebGLUniformLocation;
   private solidTexLoc!: WebGLUniformLocation;
   private solidSelLoc!: WebGLUniformLocation;
+  private solidFaceSelLoc!: WebGLUniformLocation;
   private lineProg!: WebGLProgram;
   private linePVLoc!: WebGLUniformLocation;
   private lineColorLoc!: WebGLUniformLocation;
@@ -131,6 +136,10 @@ export class Viewport3D {
   private wireVAO!: WebGLVertexArrayObject;
   private wireVBO!: WebGLBuffer;
   private wireCount = 0;
+
+  private faceSelVAO!: WebGLVertexArrayObject;
+  private faceSelVBO!: WebGLBuffer;
+  private faceSelCount = 0;
 
   private gridVAO!: WebGLVertexArrayObject;
   private gridVBO!: WebGLBuffer;
@@ -162,6 +171,7 @@ export class Viewport3D {
     this.solidPVLoc = gl.getUniformLocation(this.solidProg, 'uPV')!;
     this.solidTexLoc = gl.getUniformLocation(this.solidProg, 'uTexture')!;
     this.solidSelLoc = gl.getUniformLocation(this.solidProg, 'uSelected')!;
+    this.solidFaceSelLoc = gl.getUniformLocation(this.solidProg, 'uFaceSelected')!;
 
     this.lineProg = createProgram(gl, LINE_VERT_SRC, LINE_FRAG_SRC);
     this.linePVLoc = gl.getUniformLocation(this.lineProg, 'uPV')!;
@@ -198,6 +208,15 @@ export class Viewport3D {
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
     gl.bindVertexArray(null);
 
+    // Face selection wireframe
+    this.faceSelVAO = gl.createVertexArray()!;
+    this.faceSelVBO = gl.createBuffer()!;
+    gl.bindVertexArray(this.faceSelVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.faceSelVBO);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+    gl.bindVertexArray(null);
+
     // Grid geometry
     this.gridVAO = gl.createVertexArray()!;
     this.gridVBO = gl.createBuffer()!;
@@ -229,11 +248,12 @@ export class Viewport3D {
     const tm = this.textureManager;
 
     // Collect faces grouped by texture, sorted so selected faces draw last
-    const facesByTex = new Map<string, { verts: number[]; selected: boolean }[]>();
+    const facesByTex = new Map<string, { verts: number[]; selected: boolean; faceSelected: boolean }[]>();
 
-    const addFace = (face: BrushFace, selected: boolean) => {
+    const addFace = (face: BrushFace, selected: boolean, faceSelected: boolean) => {
       if (face.polygon.length < 3) return;
-      const key = face.texture.toLowerCase() + (selected ? '|sel' : '');
+      const suffix = faceSelected ? '|fsel' : selected ? '|sel' : '';
+      const key = face.texture.toLowerCase() + suffix;
       let group = facesByTex.get(key);
       if (!group) {
         group = [];
@@ -254,13 +274,14 @@ export class Viewport3D {
           verts.push(v[0], v[1], v[2], n[0], n[1], n[2], u, uv);
         }
       }
-      group.push({ verts, selected });
+      group.push({ verts, selected, faceSelected });
     };
 
     for (const { entity, brush } of this.editor.allBrushes()) {
-      const selected = this.editor.isSelected(brush);
+      const brushSelected = this.editor.isSelected(brush);
       for (const face of brush.faces) {
-        addFace(face, selected);
+        const fsel = this.editor.isFaceSelected(face);
+        addFace(face, brushSelected, fsel);
       }
     }
 
@@ -299,15 +320,16 @@ export class Viewport3D {
     this.drawGroups = [];
 
     for (const [key, groups] of facesByTex) {
-      const texName = key.replace(/\|sel$/, '');
+      const texName = key.replace(/\|(sel|fsel)$/, '');
       const selected = key.endsWith('|sel');
+      const faceSelected = key.endsWith('|fsel');
       const start = allVerts.length / 8;
       for (const g of groups) {
         for (const v of g.verts) allVerts.push(v);
       }
       const count = allVerts.length / 8 - start;
       if (count > 0) {
-        this.drawGroups.push({ textureName: texName, start, count, selected });
+        this.drawGroups.push({ textureName: texName, start, count, selected, faceSelected });
       }
     }
 
@@ -316,7 +338,7 @@ export class Viewport3D {
       const start = allVerts.length / 8;
       for (const v of entityVerts) allVerts.push(v);
       const count = entityVerts.length / 8;
-      this.drawGroups.push({ textureName: '__entity', start, count, selected: false });
+      this.drawGroups.push({ textureName: '__entity', start, count, selected: false, faceSelected: false });
     }
 
     // Upload solid VBO
@@ -326,16 +348,23 @@ export class Viewport3D {
     // Build wireframe lines
     const selLineVerts: number[] = [];
     const wireVerts: number[] = [];
+    const faceSelLineVerts: number[] = [];
 
     for (const { entity, brush } of this.editor.allBrushes()) {
-      const selected = this.editor.isSelected(brush);
+      const brushSelected = this.editor.isSelected(brush);
       for (const face of brush.faces) {
         if (face.polygon.length < 3) continue;
+        const fsel = this.editor.isFaceSelected(face);
         for (let i = 0; i < face.polygon.length; i++) {
           const a = face.polygon[i];
           const b = face.polygon[(i + 1) % face.polygon.length];
-          const target = selected ? selLineVerts : wireVerts;
-          target.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+          if (fsel) {
+            faceSelLineVerts.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+          } else if (brushSelected) {
+            selLineVerts.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+          } else {
+            wireVerts.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+          }
         }
       }
     }
@@ -367,6 +396,10 @@ export class Viewport3D {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.wireVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(wireVerts), gl.DYNAMIC_DRAW);
     this.wireCount = wireVerts.length / 3;
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.faceSelVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(faceSelLineVerts), gl.DYNAMIC_DRAW);
+    this.faceSelCount = faceSelLineVerts.length / 3;
   }
 
   render(time: number): void {
@@ -422,6 +455,7 @@ export class Viewport3D {
         }
 
         gl.uniform1f(this.solidSelLoc, group.selected ? 1.0 : 0.0);
+        gl.uniform1f(this.solidFaceSelLoc, group.faceSelected ? 1.0 : 0.0);
         gl.drawArrays(gl.TRIANGLES, group.start, group.count);
       }
     }
@@ -443,6 +477,19 @@ export class Viewport3D {
       gl.disable(gl.DEPTH_TEST);
       gl.bindVertexArray(this.lineVAO);
       gl.drawArrays(gl.LINES, 0, this.lineCount);
+      gl.enable(gl.DEPTH_TEST);
+    }
+
+    // Draw face-selected wireframe overlay (cyan, no depth test)
+    if (this.faceSelCount > 0) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
+      gl.uniform3f(this.lineColorLoc, 0.2, 0.8, 1.0);
+      gl.disable(gl.DEPTH_TEST);
+      gl.lineWidth(2);
+      gl.bindVertexArray(this.faceSelVAO);
+      gl.drawArrays(gl.LINES, 0, this.faceSelCount);
+      gl.lineWidth(1);
       gl.enable(gl.DEPTH_TEST);
     }
 
@@ -484,7 +531,7 @@ export class Viewport3D {
 
   // ── Ray picking in 3D ──
 
-  pickBrushAt(screenX: number, screenY: number): { entity: Entity; brush: Brush } | null {
+  pickBrushAt(screenX: number, screenY: number): { entity: Entity; brush: Brush; face: BrushFace } | null {
     const rect = this.canvas.getBoundingClientRect();
     const x = (screenX - rect.left) / rect.width * 2 - 1;
     const y = 1 - (screenY - rect.top) / rect.height * 2;
@@ -503,7 +550,7 @@ export class Viewport3D {
     ));
 
     let bestDist = Infinity;
-    let bestHit: { entity: Entity; brush: Brush } | null = null;
+    let bestHit: { entity: Entity; brush: Brush; face: BrushFace } | null = null;
 
     for (const { entity, brush } of this.editor.allBrushes()) {
       for (const face of brush.faces) {
@@ -515,7 +562,7 @@ export class Viewport3D {
           );
           if (t !== null && t < bestDist) {
             bestDist = t;
-            bestHit = { entity, brush };
+            bestHit = { entity, brush, face };
           }
         }
       }
@@ -562,8 +609,13 @@ export class Viewport3D {
         if (!this.didDrag && e.button === 0) {
           const hit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
           if (hit) {
-            if (!e.ctrlKey && !e.metaKey) this.editor.clearSelection();
-            this.editor.selectBrush(hit.entity, hit.brush, e.ctrlKey || e.metaKey);
+            if (e.shiftKey) {
+              // Shift+click: select individual face
+              this.editor.selectFace(hit.entity, hit.brush, hit.face);
+            } else {
+              if (!e.ctrlKey && !e.metaKey) this.editor.clearSelection();
+              this.editor.selectBrush(hit.entity, hit.brush, e.ctrlKey || e.metaKey);
+            }
           } else {
             if (!e.ctrlKey && !e.metaKey) this.editor.clearSelection();
           }
