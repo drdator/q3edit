@@ -7,6 +7,7 @@ export default defineConfig({
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
+    hmr: false,
   },
   // Serve baseq3/ as static files at /baseq3/
   publicDir: false,

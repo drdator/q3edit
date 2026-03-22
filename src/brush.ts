@@ -78,11 +78,20 @@ function recomputePolygons(brush: Brush): void {
   let globalMins: Vec3 = [Infinity, Infinity, Infinity];
   let globalMaxs: Vec3 = [-Infinity, -Infinity, -Infinity];
 
+  // Compute base polygon size from actual brush extent
+  let maxCoord = 0;
+  for (const face of brush.faces) {
+    for (const p of face.points) {
+      for (let i = 0; i < 3; i++) maxCoord = Math.max(maxCoord, Math.abs(p[i]));
+    }
+  }
+  const baseSize = Math.max(65536, maxCoord * 4);
+
   for (let i = 0; i < brush.faces.length; i++) {
     const face = brush.faces[i];
 
     // Start with a large polygon on this face's plane
-    let polygon = createBasePolygon(face.plane, 65536);
+    let polygon = createBasePolygon(face.plane, baseSize);
 
     // Clip against all other faces
     for (let j = 0; j < brush.faces.length; j++) {
