@@ -223,12 +223,12 @@ export class UI {
     for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
       const toggle = document.createElement('span');
       toggle.className = 'panel-toggle';
-      toggle.textContent = '\u25BC';
+      toggle.textContent = '\u2212';
       header.appendChild(toggle);
       header.addEventListener('mousedown', () => {
         const panel = header.parentElement!;
         panel.classList.toggle('collapsed');
-        toggle.textContent = panel.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+        toggle.textContent = panel.classList.contains('collapsed') ? '+' : '\u2212';
       });
     }
 
