@@ -141,6 +141,51 @@ export class TextureManager {
     return this.uploadRGBA(pixels, size, size);
   }
 
+  // Get a thumbnail URL for displaying in the UI panel
+  private thumbnailCache = new Map<string, string>();
+
+  getThumbnailUrl(name: string): string | null {
+    const key = name.toLowerCase().replace(/\\/g, '/');
+    const cached = this.thumbnailCache.get(key);
+    if (cached) return cached;
+
+    const baseName = key.replace(/\.(tga|jpg|jpeg)$/i, '');
+    const candidates = [
+      baseName + '.tga',
+      baseName + '.jpg',
+      'textures/' + baseName + '.tga',
+      'textures/' + baseName + '.jpg',
+    ];
+
+    for (const path of candidates) {
+      const data = this.pak.get(path);
+      if (!data) continue;
+
+      if (path.endsWith('.tga')) {
+        const result = decodeTGA(data);
+        if (result) {
+          const canvas = document.createElement('canvas');
+          canvas.width = result.width;
+          canvas.height = result.height;
+          const ctx = canvas.getContext('2d')!;
+          const imageData = ctx.createImageData(result.width, result.height);
+          imageData.data.set(result.pixels);
+          ctx.putImageData(imageData, 0, 0);
+          const url = canvas.toDataURL();
+          this.thumbnailCache.set(key, url);
+          return url;
+        }
+      } else {
+        const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
+        const url = URL.createObjectURL(blob);
+        this.thumbnailCache.set(key, url);
+        return url;
+      }
+    }
+
+    return null;
+  }
+
   // List all texture paths available in the pak (for the texture browser)
   listTextures(): string[] {
     const textures: string[] = [];

@@ -385,6 +385,58 @@ html, body {
   border-color: var(--accent);
 }
 
+/* Texture view toggle button */
+.texture-view-toggle {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.texture-view-toggle:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+/* Texture thumbnail grid */
+.texture-list.texture-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 2px;
+}
+
+.texture-item.texture-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px;
+  overflow: hidden;
+}
+
+.texture-item.texture-thumb img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  image-rendering: pixelated;
+  display: block;
+}
+
+.texture-thumb-name {
+  font-size: 8px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  margin-top: 1px;
+}
+
 /* ── Status Bar ── */
 #statusbar {
   height: 20px;

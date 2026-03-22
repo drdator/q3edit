@@ -29,6 +29,8 @@ export class UI {
   editor: Editor;
   private openMenu: HTMLElement | null = null;
   private propertiesPanel: PropertiesPanel;
+  private texMgr: TextureManager | null = null;
+  private showTextureThumbnails = false;
 
   constructor(editor: Editor) {
     this.editor = editor;
@@ -556,6 +558,7 @@ export class UI {
   // ── Texture browser with pak textures ──
 
   updateTextureBrowser(texMgr: TextureManager): void {
+    this.texMgr = texMgr;
     const body = document.getElementById('texture-body')!;
     body.innerHTML = '';
 
@@ -572,14 +575,16 @@ export class UI {
     });
     body.appendChild(input);
 
-    // Directory selector
-    const dirLabel = document.createElement('label');
-    dirLabel.textContent = 'Texture Folder';
-    dirLabel.style.marginTop = '6px';
-    body.appendChild(dirLabel);
+    // Directory selector + view toggle row
+    const dirRow = document.createElement('div');
+    dirRow.style.display = 'flex';
+    dirRow.style.alignItems = 'center';
+    dirRow.style.marginTop = '6px';
+    dirRow.style.gap = '4px';
 
     const dirSelect = document.createElement('select');
     dirSelect.id = 'texture-dir-select';
+    dirSelect.style.flex = '1';
     const dirs = texMgr.listTextureDirectories();
     const defaultOpt = document.createElement('option');
     defaultOpt.value = '';
@@ -591,25 +596,37 @@ export class UI {
       opt.textContent = dir;
       dirSelect.appendChild(opt);
     }
-    body.appendChild(dirSelect);
+    dirRow.appendChild(dirSelect);
+
+    // View toggle button
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'texture-view-toggle';
+    toggleBtn.title = 'Toggle thumbnail view';
+    toggleBtn.textContent = this.showTextureThumbnails ? 'Aa' : '\u25A3';
+    toggleBtn.addEventListener('click', () => {
+      this.showTextureThumbnails = !this.showTextureThumbnails;
+      toggleBtn.textContent = this.showTextureThumbnails ? 'Aa' : '\u25A3';
+      repopulate();
+    });
+    dirRow.appendChild(toggleBtn);
+
+    body.appendChild(dirRow);
 
     const list = document.createElement('div');
     list.className = 'texture-list';
     list.id = 'texture-list';
     body.appendChild(list);
 
-    // Show common textures initially
-    this.populateTextureList(list, COMMON_TEXTURES, input);
-
-    dirSelect.addEventListener('change', () => {
+    const repopulate = () => {
       const dir = dirSelect.value;
-      if (!dir) {
-        this.populateTextureList(list, COMMON_TEXTURES, input);
-        return;
-      }
-      const textures = texMgr.listTexturesInDir(dir);
+      const textures = dir ? texMgr.listTexturesInDir(dir) : COMMON_TEXTURES;
       this.populateTextureList(list, textures, input);
-    });
+    };
+
+    // Show common textures initially
+    repopulate();
+
+    dirSelect.addEventListener('change', repopulate);
   }
 
   /** Exit vertex mode with geometry validation. Shows warning dialog if brushes are invalid. */
@@ -716,11 +733,33 @@ export class UI {
 
   private populateTextureList(list: HTMLElement, textures: string[], input: HTMLInputElement): void {
     list.innerHTML = '';
+
+    if (this.showTextureThumbnails && this.texMgr) {
+      list.classList.add('texture-grid');
+    } else {
+      list.classList.remove('texture-grid');
+    }
+
     for (const tex of textures) {
       const item = document.createElement('div');
       item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
-      // Strip 'textures/' prefix for display
-      item.textContent = tex.replace(/^textures\//, '');
+
+      if (this.showTextureThumbnails && this.texMgr) {
+        item.classList.add('texture-thumb');
+        const img = document.createElement('img');
+        const url = this.texMgr.getThumbnailUrl(tex);
+        if (url) {
+          img.src = url;
+        }
+        item.appendChild(img);
+        const name = document.createElement('span');
+        name.className = 'texture-thumb-name';
+        name.textContent = tex.replace(/^textures\//, '').split('/').pop() || tex;
+        item.appendChild(name);
+      } else {
+        item.textContent = tex.replace(/^textures\//, '');
+      }
+
       item.addEventListener('mousedown', () => {
         this.editor.setTexture(tex);
         input.value = tex;
