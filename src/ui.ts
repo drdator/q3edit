@@ -437,34 +437,19 @@ export class UI {
   }
 
   private updateEntityProps(): void {
+    if (!this.editor.dirty) return;
     const propsDiv = document.getElementById('entity-props')!;
     const sel = this.editor.selection;
 
+    propsDiv.innerHTML = '';
+
     const faceItems = sel.filter(s => s.type === 'face') as Array<{ type: 'face'; entity: Entity; brush: Brush; face: BrushFace }>;
     if (faceItems.length === 1) {
-      const face = faceItems[0].face;
-      const brush = faceItems[0].brush;
-      const key = `${face.plane.dist}:${face.texture}`;
-      if (propsDiv.dataset.mode !== 'face' || propsDiv.dataset.faceId !== key) {
-        propsDiv.innerHTML = '';
-        propsDiv.dataset.mode = 'face';
-        propsDiv.dataset.faceId = key;
-        this.buildFacePropsUI(propsDiv, face, brush);
-      }
+      this.buildFacePropsUI(propsDiv, faceItems[0].face, faceItems[0].brush);
     } else if (faceItems.length > 1) {
-      const faces = faceItems.map(f => f.face);
-      const faceKey = faces.map(f => `${f.plane.dist}:${f.texture}`).join(',');
-      if (propsDiv.dataset.mode !== 'multiface' || propsDiv.dataset.faceId !== faceKey) {
-        propsDiv.innerHTML = '';
-        propsDiv.dataset.mode = 'multiface';
-        propsDiv.dataset.faceId = faceKey;
-        this.buildMultiFacePropsUI(propsDiv, faces);
-      }
+      this.buildMultiFacePropsUI(propsDiv, faceItems.map(f => f.face));
     } else if (sel.length === 1 && sel[0].type === 'entity') {
-      propsDiv.dataset.mode = 'entity';
-      propsDiv.dataset.faceId = '';
       const entity = sel[0].entity;
-      propsDiv.innerHTML = '';
 
       const title = document.createElement('label');
       title.textContent = `Properties: ${entity.classname}`;
@@ -509,16 +494,8 @@ export class UI {
       propsDiv.appendChild(addBtn);
     } else if (sel.some(s => s.type === 'brush')) {
       const brushItems = sel.filter(s => s.type === 'brush') as Array<{ type: 'brush'; entity: Entity; brush: Brush }>;
-      const brushKey = `brush-${brushItems.length}-${brushItems.map(b => b.brush.faces[0]?.texture ?? '').join(',')}`;
-      if (propsDiv.dataset.mode !== 'brush' || propsDiv.dataset.faceId !== brushKey) {
-        propsDiv.dataset.mode = 'brush';
-        propsDiv.dataset.faceId = brushKey;
-        propsDiv.innerHTML = '';
-        this.buildBrushPropsUI(propsDiv, brushItems.map(b => b.brush));
-      }
+      this.buildBrushPropsUI(propsDiv, brushItems.map(b => b.brush));
     } else {
-      propsDiv.dataset.mode = '';
-      propsDiv.dataset.faceId = '';
       propsDiv.innerHTML = '<label style="color: #666">No selection</label>';
     }
   }
@@ -554,15 +531,8 @@ export class UI {
       container.appendChild(info);
     }
 
-    // Texture field — show common texture or "(mixed)"
     const allFaces = brushes.flatMap(b => b.faces);
-    const textures = new Set(allFaces.map(f => f.texture));
-    const commonTex = textures.size === 1 ? [...textures][0] : '';
-    this.addFaceField(container, 'Texture', commonTex, 'text', (val) => {
-      for (const f of allFaces) f.texture = val;
-      this.editor.currentTexture = val;
-      this.editor.dirty = true;
-    }, textures.size > 1 ? `(${textures.size} textures)` : undefined);
+    this.buildMultiFaceFields(container, allFaces);
   }
 
   private buildFacePropsUI(container: HTMLElement, face: BrushFace, brush: { faces: BrushFace[] }): void {
@@ -623,19 +593,25 @@ export class UI {
     hint.style.fontSize = '11px';
     container.appendChild(hint);
 
-    // Texture: show common value or "(mixed)"
+    this.buildMultiFaceFields(container, faces);
+  }
+
+  /** Shared texture/offset/scale/rotation/flags fields for multiple faces */
+  private buildMultiFaceFields(container: HTMLElement, faces: BrushFace[]): void {
+    // Texture
     const textures = new Set(faces.map(f => f.texture));
     const commonTex = textures.size === 1 ? [...textures][0] : '';
     this.addFaceField(container, 'Texture', commonTex, 'text', (val) => {
       for (const f of faces) f.texture = val;
+      this.editor.currentTexture = val;
       this.editor.dirty = true;
-    }, textures.size > 1 ? '(mixed)' : undefined);
+    }, textures.size > 1 ? `(${textures.size} textures)` : undefined);
 
     // Offset
     const sameOx = faces.every(f => f.offsetX === faces[0].offsetX);
     const sameOy = faces.every(f => f.offsetY === faces[0].offsetY);
     this.addFaceNumberRow(container, 'Offset',
-      sameOx ? faces[0].offsetX : 0, sameOy ? faces[0].offsetY : 0, 'X', 'Y', (x, y) => {
+      sameOx ? faces[0].offsetX : null, sameOy ? faces[0].offsetY : null, 'X', 'Y', (x, y) => {
       for (const f of faces) { f.offsetX = x; f.offsetY = y; }
       this.editor.dirty = true;
     });
@@ -644,7 +620,7 @@ export class UI {
     const sameSx = faces.every(f => f.scaleX === faces[0].scaleX);
     const sameSy = faces.every(f => f.scaleY === faces[0].scaleY);
     this.addFaceNumberRow(container, 'Scale',
-      sameSx ? faces[0].scaleX : 0.5, sameSy ? faces[0].scaleY : 0.5, 'X', 'Y', (x, y) => {
+      sameSx ? faces[0].scaleX : null, sameSy ? faces[0].scaleY : null, 'X', 'Y', (x, y) => {
       for (const f of faces) { f.scaleX = x; f.scaleY = y; }
       this.editor.dirty = true;
     });
@@ -661,7 +637,7 @@ export class UI {
     const sameSurf = faces.every(f => f.surfaceFlags === faces[0].surfaceFlags);
     const sameCont = faces.every(f => f.contentFlags === faces[0].contentFlags);
     this.addFaceNumberRow(container, 'Flags',
-      sameSurf ? faces[0].surfaceFlags : 0, sameCont ? faces[0].contentFlags : 0, 'Surf', 'Cont', (s, c) => {
+      sameSurf ? faces[0].surfaceFlags : null, sameCont ? faces[0].contentFlags : null, 'Surf', 'Cont', (s, c) => {
       for (const f of faces) { f.surfaceFlags = s; f.contentFlags = c; }
       this.editor.dirty = true;
     });
@@ -686,7 +662,7 @@ export class UI {
   private addFaceNumberRow(
     container: HTMLElement,
     label: string,
-    valA: number, valB: number,
+    valA: number | null, valB: number | null,
     labelA: string, labelB: string,
     onChange: (a: number, b: number) => void
   ): void {
@@ -702,15 +678,15 @@ export class UI {
     const inputA = document.createElement('input');
     inputA.type = 'number';
     inputA.step = 'any';
-    inputA.value = String(valA);
-    inputA.placeholder = labelA;
+    inputA.value = valA !== null ? String(valA) : '';
+    inputA.placeholder = valA === null ? '(mixed)' : labelA;
     inputA.title = labelA;
 
     const inputB = document.createElement('input');
     inputB.type = 'number';
     inputB.step = 'any';
-    inputB.value = String(valB);
-    inputB.placeholder = labelB;
+    inputB.value = valB !== null ? String(valB) : '';
+    inputB.placeholder = valB === null ? '(mixed)' : labelB;
     inputB.title = labelB;
 
     const update = () => {
