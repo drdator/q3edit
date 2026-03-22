@@ -229,6 +229,14 @@ html, body {
   min-height: 0;
 }
 
+.panel.collapsed {
+  flex: 0 0 auto;
+}
+
+.panel.collapsed .panel-body {
+  display: none;
+}
+
 .panel-header {
   height: 20px;
   line-height: 20px;
@@ -241,6 +249,15 @@ html, body {
   letter-spacing: 1px;
   color: var(--text-dim);
   user-select: none;
+  cursor: default;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-toggle {
+  font-size: 8px;
+  color: var(--text-dim);
 }
 
 .panel-body {

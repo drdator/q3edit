@@ -219,6 +219,19 @@ export class UI {
   // ── Side Panel ──
 
   private buildSidePanel(): void {
+    // Add collapse toggles to all panel headers
+    for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
+      const toggle = document.createElement('span');
+      toggle.className = 'panel-toggle';
+      toggle.textContent = '\u25BC';
+      header.appendChild(toggle);
+      header.addEventListener('mousedown', () => {
+        const panel = header.parentElement!;
+        panel.classList.toggle('collapsed');
+        toggle.textContent = panel.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+      });
+    }
+
     this.buildBrushPanel();
     this.buildEntityPanel();
     this.buildTexturePanel();
