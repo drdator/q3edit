@@ -779,7 +779,13 @@ export class Viewport3D {
       const totalDy = e.clientY - this.gizmoDragLast[1];
       const totalProjected = (totalDx * screenDirX + totalDy * screenDirY) / screenDirLen;
       const totalWorld = totalProjected * this.gizmoWorldPerPixel;
-      const scaleFactor = (origExtent + totalWorld) / origExtent;
+
+      // Snap the new extent to grid
+      const grid = this.editor.effectiveGrid(e.ctrlKey);
+      let newExtent = origExtent + totalWorld;
+      newExtent = Math.round(newExtent / grid) * grid;
+      if (Math.abs(newExtent) < grid) newExtent = newExtent >= 0 ? grid : -grid;
+      const scaleFactor = newExtent / origExtent;
       if (scaleFactor < 0.1) return;
 
       const scale: Vec3 = [1, 1, 1];
