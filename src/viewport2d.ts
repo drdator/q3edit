@@ -560,21 +560,20 @@ export class Viewport2D {
         scale[V] = Math.abs(oldExtent) > 0.01 ? newExtent / oldExtent : 1;
       }
 
-      // Shift held during drag: uniform scale from brush center
+      // Shift: uniform scale (keep proportions), anchored from opposite edge
+      // Alt/Option: scale from center
+      // Shift+Alt: uniform scale from center
       if (e.shiftKey) {
-        // Pick the scale factor from the dragged axis
         let uniformScale = scale[H] !== 1 ? scale[H] : scale[V];
         if (scale[H] !== 1 && scale[V] !== 1) {
-          // Corner drag: use the axis with the larger change
           uniformScale = Math.abs(scale[H] - 1) > Math.abs(scale[V] - 1) ? scale[H] : scale[V];
         }
-        const center: Vec3 = [0, 0, 0];
-        center[H] = (origMins[H] + origMaxs[H]) / 2;
-        center[V] = (origMins[V] + origMaxs[V]) / 2;
         scale[H] = uniformScale;
         scale[V] = uniformScale;
-        scaleOrigin[H] = center[H];
-        scaleOrigin[V] = center[V];
+      }
+      if (e.altKey) {
+        scaleOrigin[H] = (origMins[H] + origMaxs[H]) / 2;
+        scaleOrigin[V] = (origMins[V] + origMaxs[V]) / 2;
       }
 
       scaleBrushFaces(this.resizeBrush, this.resizeOrigPoints, scaleOrigin, scale);
