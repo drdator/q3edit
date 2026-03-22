@@ -42,8 +42,10 @@ export class Editor {
   createAxisV = 1;
   createDepth = 64;
 
-  // Active viewport rotation axis (depth axis of last-interacted 2D viewport)
+  // Active viewport axes (from last-interacted 2D viewport)
   rotationAxis = 2; // default Z
+  nudgeAxisH = 0;   // horizontal axis for arrow key nudge
+  nudgeAxisV = 1;   // vertical axis for arrow key nudge
 
   // 3D gizmo mode
   gizmoMode: GizmoMode = 'move';

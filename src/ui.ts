@@ -2,6 +2,7 @@ import { Editor, Tool } from './editor';
 import { BrushFace } from './brush';
 import { ENTITY_CLASSES } from './entity';
 import { TextureManager } from './textures';
+import { Vec3 } from './math';
 
 const COMMON_TEXTURES = [
   'common/caulk',
@@ -349,6 +350,22 @@ export class UI {
       // Rotation: R = 90°, Shift+R = 15°
       if (e.key === 'r' && !ctrl) { this.editor.rotateSelection(90); return; }
       if (e.key === 'R' && !ctrl) { this.editor.rotateSelection(15); return; }
+
+      // Arrow keys: nudge selection by grid size
+      if (e.key.startsWith('Arrow') && this.editor.selection.length > 0) {
+        e.preventDefault();
+        const grid = e.ctrlKey ? 1 : e.shiftKey ? this.editor.gridSize * 4 : this.editor.gridSize;
+        const delta: Vec3 = [0, 0, 0];
+        const h = this.editor.nudgeAxisH;
+        const v = this.editor.nudgeAxisV;
+        if (e.key === 'ArrowRight') delta[h] = grid;
+        else if (e.key === 'ArrowLeft') delta[h] = -grid;
+        else if (e.key === 'ArrowUp') delta[v] = grid;
+        else if (e.key === 'ArrowDown') delta[v] = -grid;
+        this.editor.snapshot();
+        this.editor.moveSelection(delta);
+        return;
+      }
     });
   }
 

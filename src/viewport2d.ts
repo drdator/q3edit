@@ -427,8 +427,10 @@ export class Viewport2D {
   }
 
   private onMouseDown(e: MouseEvent): void {
-    // Track active viewport for rotation axis
+    // Track active viewport axes
     this.editor.rotationAxis = this.axisDepth;
+    this.editor.nudgeAxisH = this.axisH;
+    this.editor.nudgeAxisV = this.axisV;
     const [mx, my] = this.getLocalPos(e);
 
     // Right mouse, middle mouse, or space+left: pan
