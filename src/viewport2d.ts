@@ -26,6 +26,7 @@ export class Viewport2D {
   zoom = 1; // pixels per world unit
 
   // Interaction state
+  private spaceDown = false;
   private dragging = false;
   private panning = false;
   private dragStart: [number, number] = [0, 0];
@@ -406,6 +407,18 @@ export class Viewport2D {
     document.addEventListener('mouseup', (e) => this.onMouseUp(e));
     el.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !e.repeat) {
+        this.spaceDown = true;
+        el.style.cursor = 'grab';
+      }
+    });
+    document.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        this.spaceDown = false;
+        if (!this.panning) el.style.cursor = '';
+      }
+    });
   }
 
   private getLocalPos(e: MouseEvent): [number, number] {
@@ -418,11 +431,12 @@ export class Viewport2D {
     this.editor.rotationAxis = this.axisDepth;
     const [mx, my] = this.getLocalPos(e);
 
-    // Right mouse or middle mouse: pan
-    if (e.button === 2 || e.button === 1) {
+    // Right mouse, middle mouse, or space+left: pan
+    if (e.button === 2 || e.button === 1 || (e.button === 0 && this.spaceDown)) {
       this.panning = true;
       this.panStart = [mx, my];
       this.panCenterStart = [this.centerX, this.centerY];
+      this.canvas.parentElement!.style.cursor = 'grabbing';
       return;
     }
 
@@ -544,9 +558,13 @@ export class Viewport2D {
 
     // Cursor feedback for resize when hovering
     if (!this.panning && !this.dragging && !this.resizing) {
-      const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0
-        ? this.detectResizeEdge(wx, wy) : null;
-      this.canvas.parentElement!.style.cursor = edge ? this.getResizeCursor(edge.edges) : '';
+      if (this.spaceDown) {
+        this.canvas.parentElement!.style.cursor = 'grab';
+      } else {
+        const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0
+          ? this.detectResizeEdge(wx, wy) : null;
+        this.canvas.parentElement!.style.cursor = edge ? this.getResizeCursor(edge.edges) : '';
+      }
     }
 
     if (this.panning) {
@@ -711,6 +729,7 @@ export class Viewport2D {
 
     if (this.panning) {
       this.panning = false;
+      this.canvas.parentElement!.style.cursor = this.spaceDown ? 'grab' : '';
       return;
     }
 
