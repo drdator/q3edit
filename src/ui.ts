@@ -506,32 +506,62 @@ export class UI {
         }
       });
       propsDiv.appendChild(addBtn);
-    } else if (sel.length === 1 && sel[0].type === 'brush') {
-      propsDiv.dataset.mode = 'brush';
-      propsDiv.dataset.faceId = '';
-      propsDiv.innerHTML = '';
-      const brush = sel[0].brush;
-      const info = document.createElement('label');
-      info.textContent = `Brush: ${brush.faces.length} faces`;
-      propsDiv.appendChild(info);
-
-      const texInfo = document.createElement('label');
-      texInfo.textContent = `Texture: ${brush.faces[0]?.texture ?? 'none'}`;
-      propsDiv.appendChild(texInfo);
-
-      const sizeInfo = document.createElement('label');
-      const size = [
-        (brush.maxs[0] - brush.mins[0]).toFixed(0),
-        (brush.maxs[1] - brush.mins[1]).toFixed(0),
-        (brush.maxs[2] - brush.mins[2]).toFixed(0),
-      ];
-      sizeInfo.textContent = `Size: ${size.join(' x ')}`;
-      propsDiv.appendChild(sizeInfo);
+    } else if (sel.some(s => s.type === 'brush')) {
+      const brushItems = sel.filter(s => s.type === 'brush') as Array<{ type: 'brush'; entity: Entity; brush: Brush }>;
+      const brushKey = `brush-${brushItems.length}-${brushItems.map(b => b.brush.faces.length).join(',')}`;
+      if (propsDiv.dataset.mode !== 'brush' || propsDiv.dataset.faceId !== brushKey) {
+        propsDiv.dataset.mode = 'brush';
+        propsDiv.dataset.faceId = brushKey;
+        propsDiv.innerHTML = '';
+        this.buildBrushPropsUI(propsDiv, brushItems.map(b => b.brush));
+      }
     } else {
       propsDiv.dataset.mode = '';
       propsDiv.dataset.faceId = '';
       propsDiv.innerHTML = '<label style="color: #666">No selection</label>';
     }
+  }
+
+  private buildBrushPropsUI(container: HTMLElement, brushes: Brush[]): void {
+    const title = document.createElement('label');
+    title.textContent = brushes.length === 1 ? 'Brush Properties' : `${brushes.length} Brushes Selected`;
+    title.style.fontWeight = 'bold';
+    container.appendChild(title);
+
+    if (brushes.length === 1) {
+      const brush = brushes[0];
+      const info = document.createElement('label');
+      info.textContent = `${brush.faces.length} faces`;
+      info.style.color = '#888';
+      info.style.fontSize = '11px';
+      container.appendChild(info);
+
+      const size = [
+        (brush.maxs[0] - brush.mins[0]).toFixed(0),
+        (brush.maxs[1] - brush.mins[1]).toFixed(0),
+        (brush.maxs[2] - brush.mins[2]).toFixed(0),
+      ];
+      const sizeInfo = document.createElement('label');
+      sizeInfo.textContent = `Size: ${size.join(' x ')}`;
+      container.appendChild(sizeInfo);
+    } else {
+      const totalFaces = brushes.reduce((sum, b) => sum + b.faces.length, 0);
+      const info = document.createElement('label');
+      info.textContent = `${totalFaces} faces total`;
+      info.style.color = '#888';
+      info.style.fontSize = '11px';
+      container.appendChild(info);
+    }
+
+    // Texture field — show common texture or "(mixed)"
+    const allFaces = brushes.flatMap(b => b.faces);
+    const textures = new Set(allFaces.map(f => f.texture));
+    const commonTex = textures.size === 1 ? [...textures][0] : '';
+    this.addFaceField(container, 'Texture', commonTex, 'text', (val) => {
+      for (const f of allFaces) f.texture = val;
+      this.editor.currentTexture = val;
+      this.editor.dirty = true;
+    }, textures.size > 1 ? `(${textures.size} textures)` : undefined);
   }
 
   private buildFacePropsUI(container: HTMLElement, face: BrushFace, brush: { faces: BrushFace[] }): void {
