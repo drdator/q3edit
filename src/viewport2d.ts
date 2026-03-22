@@ -66,6 +66,14 @@ export class Viewport2D {
     this.axisDepth = info.depth;
 
     this.setupEvents();
+    this.editor.onCenterOnSelection(() => this.centerOnSelection());
+  }
+
+  centerOnSelection(): void {
+    const bounds = this.editor.selectionBounds();
+    if (!bounds) return;
+    this.centerX = (bounds.mins[this.axisH] + bounds.maxs[this.axisH]) / 2;
+    this.centerY = (bounds.mins[this.axisV] + bounds.maxs[this.axisV]) / 2;
   }
 
   // ── Coordinate conversion ──
@@ -109,6 +117,7 @@ export class Viewport2D {
 
     // Brushes
     for (const { entity, brush } of this.editor.allBrushes()) {
+      if (!this.editor.isBrushVisible(brush)) continue;
       this.drawBrush(brush, this.editor.isSelected(brush));
     }
 

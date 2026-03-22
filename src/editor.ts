@@ -63,8 +63,14 @@ export class Editor {
   vertexData: { brush: Brush; entity: Entity; vertices: BrushVertex[] }[] = [];
   vertexSelection: { dataIndex: number; vertexIndex: number }[] = [];
 
+  // Render filter
+  renderSelectedOnly = false;
+
   // Status message
   statusMessage = 'Ready';
+
+  // Center-on-selection callbacks (registered by viewports)
+  private centerOnSelectionCallbacks: (() => void)[] = [];
 
   get worldspawn(): Entity {
     if (this.entities.length === 0) {
@@ -108,6 +114,11 @@ export class Editor {
     }
     this.selection.push({ type: 'entity', entity });
     this.dirty = true;
+  }
+
+  isBrushVisible(brush: Brush): boolean {
+    if (!this.renderSelectedOnly || this.selection.length === 0) return true;
+    return this.isSelected(brush);
   }
 
   isSelected(brush: Brush): boolean {
@@ -592,6 +603,16 @@ export class Editor {
     const bounds = this.selectionBounds();
     if (!bounds) return null;
     return vec3Scale(vec3Add(bounds.mins, bounds.maxs), 0.5);
+  }
+
+  onCenterOnSelection(callback: () => void): void {
+    this.centerOnSelectionCallbacks.push(callback);
+  }
+
+  centerOnSelection(): void {
+    if (this.selection.length === 0) return;
+    for (const cb of this.centerOnSelectionCallbacks) cb();
+    this.dirty = true;
   }
 
   setTexture(texture: string): void {

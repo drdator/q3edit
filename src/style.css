@@ -217,6 +217,7 @@ html, body {
   flex-direction: column;
   gap: 3px;
   overflow: hidden;
+  user-select: none;
 }
 
 .panel {
@@ -307,6 +308,39 @@ html, body {
 .kv-row input {
   flex: 1;
   min-width: 0;
+}
+
+.brush-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.brush-item {
+  padding: 2px 4px;
+  cursor: default;
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--text);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brush-item:hover {
+  background: var(--bg-light);
+}
+
+.brush-item.selected {
+  background: var(--accent-dim);
+  color: var(--text-bright);
+  border-color: var(--accent);
+}
+
+.brush-item .brush-entity {
+  color: var(--text-dim);
+  font-size: 9px;
 }
 
 .texture-list {

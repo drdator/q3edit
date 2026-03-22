@@ -20,7 +20,7 @@ export function serializeMap(entities: Entity[]): string {
     // Brushes
     for (let b = 0; b < entity.brushes.length; b++) {
       const brush = entity.brushes[b];
-      lines.push(`// brush ${b}`);
+      lines.push(brush.name ? `// ${brush.name}` : `// brush ${b}`);
       lines.push('{');
 
       for (const face of brush.faces) {
@@ -100,10 +100,24 @@ export function parseMap(text: string): Entity[] {
       }
 
       if (line === '{') {
-        // Brush
+        // Brush — check if the previous non-blank line was a comment (brush name)
+        let brushName: string | undefined;
+        for (let j = i - 1; j >= 0; j--) {
+          const prev = lines[j].trim();
+          if (prev === '') continue;
+          if (prev.startsWith('//')) {
+            const label = prev.replace(/^\/\/\s*/, '');
+            // Skip auto-generated comments like "brush 0", "entity 0"
+            if (!/^brush \d+$/.test(label) && !/^entity \d+$/.test(label)) {
+              brushName = label;
+            }
+          }
+          break;
+        }
         i++;
         const brush = parseBrush(lines, () => i, (v) => { i = v; });
         if (brush) {
+          if (brushName) brush.name = brushName;
           entity.brushes.push(brush);
         }
       } else if (line.startsWith('"')) {

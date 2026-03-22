@@ -93,6 +93,21 @@ export class Viewport3D {
     this.gizmo = new Gizmo(this.gl, editor);
     this.buildGrid();
     this.setupEvents();
+    this.editor.onCenterOnSelection(() => this.centerOnSelection());
+  }
+
+  centerOnSelection(): void {
+    const bounds = this.editor.selectionBounds();
+    if (!bounds) return;
+    const center: Vec3 = [
+      (bounds.mins[0] + bounds.maxs[0]) / 2,
+      (bounds.mins[1] + bounds.maxs[1]) / 2,
+      (bounds.mins[2] + bounds.maxs[2]) / 2,
+    ];
+    const size = vec3Length(vec3Sub(bounds.maxs, bounds.mins));
+    const dist = Math.max(size * 1.5, 128);
+    const forward = this.getForward();
+    this.position = vec3Sub(center, vec3Scale(forward, dist));
   }
 
   private initGL(): void {
@@ -178,6 +193,7 @@ export class Viewport3D {
     };
 
     for (const { entity, brush } of this.editor.allBrushes()) {
+      if (!this.editor.isBrushVisible(brush)) continue;
       const brushSelected = this.editor.isSelected(brush);
       for (const face of brush.faces) {
         const fsel = this.editor.isFaceSelected(face);
@@ -251,6 +267,7 @@ export class Viewport3D {
     const faceSelLineVerts: number[] = [];
 
     for (const { entity, brush } of this.editor.allBrushes()) {
+      if (!this.editor.isBrushVisible(brush)) continue;
       const brushSelected = this.editor.isSelected(brush);
       for (const face of brush.faces) {
         if (face.polygon.length < 3) continue;
@@ -476,7 +493,7 @@ export class Viewport3D {
   private updateCamera(dt: number): void {
     if (!this.looking && this.keys.size === 0) return;
 
-    const speed = this.moveSpeed * dt;
+    const speed = this.moveSpeed * dt * (this.keys.has('control') || this.keys.has('meta') ? 3 : 1);
     const forward = this.getForward();
     const right = this.getRight();
 
@@ -519,6 +536,7 @@ export class Viewport3D {
     let bestHit: { entity: Entity; brush: Brush; face: BrushFace } | null = null;
 
     for (const { entity, brush } of this.editor.allBrushes()) {
+      if (!this.editor.isBrushVisible(brush)) continue;
       for (const face of brush.faces) {
         if (face.polygon.length < 3) continue;
         for (let i = 1; i < face.polygon.length - 1; i++) {

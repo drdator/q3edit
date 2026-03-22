@@ -22,6 +22,7 @@ export interface BrushFace {
 
 export interface Brush {
   faces: BrushFace[];
+  name?: string;
   // Computed AABB
   mins: Vec3;
   maxs: Vec3;
@@ -208,6 +209,7 @@ export function cloneBrush(brush: Brush): Brush {
   }));
   return {
     faces,
+    name: brush.name,
     mins: vec3Copy(brush.mins),
     maxs: vec3Copy(brush.maxs),
   };

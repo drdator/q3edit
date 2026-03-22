@@ -219,8 +219,77 @@ export class UI {
   // ── Side Panel ──
 
   private buildSidePanel(): void {
+    this.buildBrushPanel();
     this.buildEntityPanel();
     this.buildTexturePanel();
+  }
+
+  private buildBrushPanel(): void {
+    const body = document.getElementById('brush-body')!;
+
+    const filterBtn = document.createElement('div');
+    filterBtn.className = 'btn';
+    filterBtn.id = 'brush-filter-btn';
+    filterBtn.textContent = 'Render: All';
+    filterBtn.addEventListener('mousedown', () => {
+      this.editor.renderSelectedOnly = !this.editor.renderSelectedOnly;
+      filterBtn.textContent = this.editor.renderSelectedOnly ? 'Render: Selected' : 'Render: All';
+      this.editor.dirty = true;
+    });
+    body.appendChild(filterBtn);
+
+    const list = document.createElement('div');
+    list.className = 'brush-list';
+    list.id = 'brush-list';
+    body.appendChild(list);
+
+    body.addEventListener('mousedown', (ev) => {
+      if (ev.target === body) this.editor.clearSelection();
+    });
+  }
+
+  private updateBrushPanel(): void {
+    const list = document.getElementById('brush-list');
+    if (!list) return;
+
+    const e = this.editor;
+
+    // Build flat list of entity+brush pairs
+    const items: { entity: Entity; brush: Brush; index: number; entityIdx: number }[] = [];
+    for (let ei = 0; ei < e.entities.length; ei++) {
+      const entity = e.entities[ei];
+      for (let bi = 0; bi < entity.brushes.length; bi++) {
+        items.push({ entity, brush: entity.brushes[bi], index: bi, entityIdx: ei });
+      }
+    }
+
+    // Rebuild DOM when item count changes
+    if (list.childElementCount !== items.length) {
+      list.innerHTML = '';
+      for (const item of items) {
+        const el = document.createElement('div');
+        el.className = 'brush-item';
+        el.addEventListener('mousedown', (ev) => {
+          e.selectBrush(item.entity, item.brush, ev.ctrlKey || ev.metaKey || ev.shiftKey);
+          e.centerOnSelection();
+        });
+        list.appendChild(el);
+      }
+    }
+
+    // Update labels and selection state
+    const children = list.children;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const el = children[i] as HTMLElement;
+      const selected = e.isSelected(item.brush);
+      const isWorldspawn = item.entityIdx === 0;
+      const label = item.brush.name || `brush ${item.index}`;
+      const entityLabel = isWorldspawn ? '' : ` <span class="brush-entity">[${item.entity.classname}]</span>`;
+      const html = label + entityLabel;
+      if (el.innerHTML !== html) el.innerHTML = html;
+      el.classList.toggle('selected', selected);
+    }
   }
 
   private buildEntityPanel(): void {
@@ -359,6 +428,9 @@ export class UI {
       if (e.key === 'Enter' && this.editor.activeTool === 'clip') { this.editor.executeClip(); return; }
       if (e.key === 'Tab' && this.editor.activeTool === 'clip') { e.preventDefault(); this.editor.cycleClipMode(); return; }
 
+      // Focus on selection
+      if (e.key === 'f' && !ctrl) { this.editor.centerOnSelection(); return; }
+
       // Gizmo mode: W = move, E = scale
       if (e.key === 'w' && !ctrl) { this.editor.gizmoMode = 'move'; this.editor.dirty = true; return; }
       if (e.key === 'e' && !ctrl) { this.editor.gizmoMode = 'scale'; this.editor.dirty = true; return; }
@@ -463,7 +535,8 @@ export class UI {
       gizmoEl.textContent = e.selection.length > 0 ? `3D: ${e.gizmoMode} (W/E)` : '';
     }
 
-    // Update entity properties panel
+    // Update panels
+    this.updateBrushPanel();
     this.propertiesPanel.update();
   }
 
