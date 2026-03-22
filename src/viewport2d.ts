@@ -651,6 +651,13 @@ export class Viewport2D {
         if (scale[H] !== 1 && scale[V] !== 1) {
           uniformScale = Math.abs(scale[H] - 1) > Math.abs(scale[V] - 1) ? scale[H] : scale[V];
         }
+        // Set center anchor for axes that weren't being resized
+        if (!this.resizeEdges.minH && !this.resizeEdges.maxH) {
+          scaleOrigin[H] = (origMins[H] + origMaxs[H]) / 2;
+        }
+        if (!this.resizeEdges.minV && !this.resizeEdges.maxV) {
+          scaleOrigin[V] = (origMins[V] + origMaxs[V]) / 2;
+        }
         scale[H] = uniformScale;
         scale[V] = uniformScale;
       }
