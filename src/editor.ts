@@ -1,5 +1,5 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
-import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, BrushValidationResult } from './brush';
+import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, splitBrushConvex, BrushValidationResult } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
@@ -661,6 +661,23 @@ export class Editor {
     for (const brush of brushes) {
       rebuildBrush(brush);
     }
+    this.dirty = true;
+  }
+
+  /** Split non-convex brushes into multiple convex brushes. */
+  splitBrushesConvex(invalidBrushes: { brush: Brush; entity: Entity }[]): void {
+    for (const { brush, entity } of invalidBrushes) {
+      const pieces = splitBrushConvex(brush);
+      if (pieces.length <= 1) continue; // No split occurred
+
+      // Replace original brush with the convex pieces
+      const idx = entity.brushes.indexOf(brush);
+      if (idx >= 0) entity.brushes.splice(idx, 1);
+      for (const piece of pieces) {
+        entity.brushes.push(piece);
+      }
+    }
+    this.selection = [];
     this.dirty = true;
   }
 

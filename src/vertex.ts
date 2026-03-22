@@ -1,6 +1,6 @@
-import { Vec3, vec3Add, vec3Copy, vec3Sub, vec3Dot, vec3DistSq, vec3Cross, vec3Length,
+import { Vec3, vec3Add, vec3Copy, vec3Sub, vec3Dot, vec3DistSq,
          vec3Min, vec3Max, planeFromPoints } from './math';
-import { Brush, BrushFace, computeBrushGeometry } from './brush';
+import { Brush, BrushFace, updateFacePointsFromPolygon } from './brush';
 
 export interface BrushVertex {
   position: Vec3;
@@ -68,7 +68,7 @@ export function moveVertices(
 
     // Update face.points and plane from the modified polygon for map-file compatibility
     if (face.polygon.length >= 3) {
-      setFacePoints(face);
+      updateFacePointsFromPolygon(face);
       face.plane = planeFromPoints(face.points[0], face.points[1], face.points[2]);
     }
   }
@@ -91,26 +91,6 @@ export function moveVertices(
   }
 }
 
-/** Set face.points to 3 non-collinear vertices from the face polygon. */
-function setFacePoints(face: BrushFace): void {
-  const polygon = face.polygon;
-  for (let i = 0; i < polygon.length; i++) {
-    const p0 = polygon[i];
-    const p1 = polygon[(i + 1) % polygon.length];
-    const p2 = polygon[(i + 2) % polygon.length];
-    const cross = vec3Cross(vec3Sub(p1, p0), vec3Sub(p2, p0));
-    if (vec3Length(cross) > 1e-6) {
-      face.points[0] = vec3Copy(p0);
-      face.points[1] = vec3Copy(p1);
-      face.points[2] = vec3Copy(p2);
-      return;
-    }
-  }
-  // Fallback
-  face.points[0] = vec3Copy(polygon[0]);
-  face.points[1] = vec3Copy(polygon[1]);
-  face.points[2] = vec3Copy(polygon[2]);
-}
 
 /** Pick the closest vertex within a 2D threshold. When vertices overlap, prefers higher depth (closer to camera). */
 export function pickVertex2D(

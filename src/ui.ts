@@ -1,9 +1,9 @@
 import { Editor, Tool } from './editor';
-import { ENTITY_CLASSES } from './entity';
+import { Entity, ENTITY_CLASSES } from './entity';
 import { TextureManager } from './textures';
 import { Vec3 } from './math';
 import { PropertiesPanel } from './properties-panel';
-import { Brush, BrushValidationResult } from './brush';
+import { Brush } from './brush';
 
 const COMMON_TEXTURES = [
   'common/caulk',
@@ -535,13 +535,14 @@ export class UI {
     const issueLines = invalidBrushes.flatMap(({ result: r }, i) =>
       r.issues.map(issue => `  Brush ${i + 1}: ${issue}`)
     );
-    const brushes = invalidBrushes.map(b => b.brush);
 
-    this.showGeometryWarning(issueLines, brushes);
+    this.showGeometryWarning(issueLines, invalidBrushes);
   }
 
-  /** Show a warning dialog for invalid brush geometry with Rebuild / Revert options. */
-  private showGeometryWarning(issues: string[], brushes: Brush[]): void {
+  /** Show a warning dialog for invalid brush geometry with Rebuild / Split / Revert options. */
+  private showGeometryWarning(issues: string[], invalidBrushes: { brush: Brush; entity: Entity }[]): void {
+    const brushes = invalidBrushes.map(b => b.brush);
+
     // Remove existing dialog if any
     document.getElementById('geom-warning')?.remove();
 
@@ -550,7 +551,7 @@ export class UI {
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
 
     const dialog = document.createElement('div');
-    dialog.style.cssText = 'background:#2a2a2a;border:1px solid #f80;border-radius:6px;padding:16px 20px;max-width:480px;color:#eee;font:13px/1.5 monospace';
+    dialog.style.cssText = 'background:#2a2a2a;border:1px solid #f80;border-radius:6px;padding:16px 20px;max-width:520px;color:#eee;font:13px/1.5 monospace';
 
     const title = document.createElement('div');
     title.style.cssText = 'font-size:14px;font-weight:bold;color:#f80;margin-bottom:8px';
@@ -568,7 +569,7 @@ export class UI {
     dialog.appendChild(list);
 
     const buttons = document.createElement('div');
-    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap';
 
     const rebuildBtn = document.createElement('button');
     rebuildBtn.textContent = 'Rebuild from planes';
@@ -577,6 +578,16 @@ export class UI {
     rebuildBtn.onclick = () => {
       this.editor.rebuildBrushes(brushes);
       this.editor.statusMessage = 'Rebuilt brush geometry from planes';
+      overlay.remove();
+    };
+
+    const splitBtn = document.createElement('button');
+    splitBtn.textContent = 'Split into convex';
+    splitBtn.title = 'Split the brush into multiple convex brushes — preserves vertex positions but creates extra brushes';
+    splitBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold';
+    splitBtn.onclick = () => {
+      this.editor.splitBrushesConvex(invalidBrushes);
+      this.editor.statusMessage = 'Split into convex brushes';
       overlay.remove();
     };
 
@@ -600,6 +611,7 @@ export class UI {
     };
 
     buttons.appendChild(rebuildBtn);
+    buttons.appendChild(splitBtn);
     buttons.appendChild(revertBtn);
     buttons.appendChild(keepBtn);
     dialog.appendChild(buttons);
