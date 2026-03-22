@@ -7,6 +7,7 @@ import {
 import { Editor } from './editor';
 import { Brush, BrushFace, computeFaceUV } from './brush';
 import { Entity, entityOrigin } from './entity';
+import { pickVertex3D } from './vertex';
 import { TextureManager, TextureInfo } from './textures';
 import {
   VERT_SRC, FRAG_SRC, LINE_VERT_SRC, LINE_FRAG_SRC,
@@ -61,6 +62,13 @@ export class Viewport3D {
   private faceSelVBO!: WebGLBuffer;
   private faceSelCount = 0;
 
+  private vtxHandleVAO!: WebGLVertexArrayObject;
+  private vtxHandleVBO!: WebGLBuffer;
+  private vtxHandleCount = 0;
+  private vtxHandleSelVAO!: WebGLVertexArrayObject;
+  private vtxHandleSelVBO!: WebGLBuffer;
+  private vtxHandleSelCount = 0;
+
   private gridVAO!: WebGLVertexArrayObject;
   private gridVBO!: WebGLBuffer;
   private gridCount = 0;
@@ -111,6 +119,10 @@ export class Viewport3D {
     this.wireVAO = wire.vao; this.wireVBO = wire.vbo;
     const faceSel = createLineBuffer(gl);
     this.faceSelVAO = faceSel.vao; this.faceSelVBO = faceSel.vbo;
+    const vtxH = createLineBuffer(gl);
+    this.vtxHandleVAO = vtxH.vao; this.vtxHandleVBO = vtxH.vbo;
+    const vtxHS = createLineBuffer(gl);
+    this.vtxHandleSelVAO = vtxHS.vao; this.vtxHandleSelVBO = vtxHS.vbo;
     const grid = createLineBuffer(gl);
     this.gridVAO = grid.vao; this.gridVBO = grid.vbo;
   }
@@ -288,6 +300,30 @@ export class Viewport3D {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.faceSelVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(faceSelLineVerts), gl.DYNAMIC_DRAW);
     this.faceSelCount = faceSelLineVerts.length / 3;
+
+    // Build vertex handle geometry (small 3D crosses)
+    const vtxVerts: number[] = [];
+    const vtxSelVerts: number[] = [];
+    if (this.editor.vertexMode) {
+      const s = 4; // cross half-size in world units
+      for (let di = 0; di < this.editor.vertexData.length; di++) {
+        const data = this.editor.vertexData[di];
+        for (let vi = 0; vi < data.vertices.length; vi++) {
+          const p = data.vertices[vi].position;
+          const arr = this.editor.isVertexSelected(di, vi) ? vtxSelVerts : vtxVerts;
+          // 3 axis-aligned line segments forming a cross
+          arr.push(p[0]-s, p[1], p[2], p[0]+s, p[1], p[2]);
+          arr.push(p[0], p[1]-s, p[2], p[0], p[1]+s, p[2]);
+          arr.push(p[0], p[1], p[2]-s, p[0], p[1], p[2]+s);
+        }
+      }
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vtxHandleVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxVerts), gl.DYNAMIC_DRAW);
+    this.vtxHandleCount = vtxVerts.length / 3;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vtxHandleSelVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxSelVerts), gl.DYNAMIC_DRAW);
+    this.vtxHandleSelCount = vtxSelVerts.length / 3;
   }
 
   render(time: number): void {
@@ -385,6 +421,24 @@ export class Viewport3D {
       gl.enable(gl.DEPTH_TEST);
     }
 
+    // Draw vertex handles (no depth test, on top)
+    if (this.vtxHandleCount > 0 || this.vtxHandleSelCount > 0) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
+      gl.disable(gl.DEPTH_TEST);
+      if (this.vtxHandleCount > 0) {
+        gl.uniform3f(this.lineColorLoc, 0.2, 0.9, 0.2);
+        gl.bindVertexArray(this.vtxHandleVAO);
+        gl.drawArrays(gl.LINES, 0, this.vtxHandleCount);
+      }
+      if (this.vtxHandleSelCount > 0) {
+        gl.uniform3f(this.lineColorLoc, 1.0, 1.0, 1.0);
+        gl.bindVertexArray(this.vtxHandleSelVAO);
+        gl.drawArrays(gl.LINES, 0, this.vtxHandleSelCount);
+      }
+      gl.enable(gl.DEPTH_TEST);
+    }
+
     // Draw gizmo (on top of everything)
     if (this.gizmo.segments.length > 0) {
       gl.useProgram(this.lineProg);
@@ -438,7 +492,7 @@ export class Viewport3D {
 
   // ── Ray picking in 3D ──
 
-  pickBrushAt(screenX: number, screenY: number): { entity: Entity; brush: Brush; face: BrushFace } | null {
+  private getRay(screenX: number, screenY: number): { rayOrigin: Vec3; rayDir: Vec3 } {
     const rect = this.canvas.getBoundingClientRect();
     const x = (screenX - rect.left) / rect.width * 2 - 1;
     const y = 1 - (screenY - rect.top) / rect.height * 2;
@@ -455,6 +509,11 @@ export class Viewport3D {
       vec3Add(forward, vec3Scale(right, x * tanHalf * aspect)),
       vec3Scale(up, y * tanHalf)
     ));
+    return { rayOrigin: this.position, rayDir: dir };
+  }
+
+  pickBrushAt(screenX: number, screenY: number): { entity: Entity; brush: Brush; face: BrushFace } | null {
+    const { rayOrigin, rayDir: dir } = this.getRay(screenX, screenY);
 
     let bestDist = Infinity;
     let bestHit: { entity: Entity; brush: Brush; face: BrushFace } | null = null;
@@ -464,7 +523,7 @@ export class Viewport3D {
         if (face.polygon.length < 3) continue;
         for (let i = 1; i < face.polygon.length - 1; i++) {
           const t = rayTriangleIntersect(
-            this.position, dir,
+            rayOrigin, dir,
             face.polygon[0], face.polygon[i], face.polygon[i + 1]
           );
           if (t !== null && t < bestDist) {
@@ -532,19 +591,35 @@ export class Viewport3D {
         this.keys.clear();
         document.exitPointerLock();
         if (!this.didDrag && e.button === 0) {
-          const hit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
-          if (hit) {
-            if (e.altKey) {
-              // Alt+click: select individual face, Shift+Alt: additive face select
-              const additive = e.shiftKey;
-              this.editor.selectFace(hit.entity, hit.brush, hit.face, additive);
+          if (this.editor.vertexMode) {
+            // Vertex picking in 3D
+            const { rayOrigin, rayDir } = this.getRay(this.dragStart[0], this.dragStart[1]);
+            const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+            let hitDi = -1, hitVi = -1;
+            for (let di = 0; di < this.editor.vertexData.length; di++) {
+              const vi = pickVertex3D(this.editor.vertexData[di].vertices, rayOrigin, rayDir, 8);
+              if (vi >= 0) { hitDi = di; hitVi = vi; break; }
+            }
+            if (hitDi >= 0) {
+              this.editor.selectVertex(hitDi, hitVi, additive);
             } else {
-              const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-              if (!additive) this.editor.clearSelection();
-              this.editor.selectBrush(hit.entity, hit.brush, additive);
+              if (!additive) this.editor.clearVertexSelection();
             }
           } else {
-            if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();
+            const hit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
+            if (hit) {
+              if (e.altKey) {
+                // Alt+click: select individual face, Shift+Alt: additive face select
+                const additive = e.shiftKey;
+                this.editor.selectFace(hit.entity, hit.brush, hit.face, additive);
+              } else {
+                const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+                if (!additive) this.editor.clearSelection();
+                this.editor.selectBrush(hit.entity, hit.brush, additive);
+              }
+            } else {
+              if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();
+            }
           }
         }
       }

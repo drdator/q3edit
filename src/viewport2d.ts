@@ -2,6 +2,7 @@ import { Vec3, vec3, vec3Snap, vec3Copy } from './math';
 import { Editor, SelectionItem } from './editor';
 import { Brush, brushContainsPoint2D, scaleBrushFaces } from './brush';
 import { Entity, entityOrigin } from './entity';
+import { pickVertex2D } from './vertex';
 
 export type ViewAxis = 'xy' | 'xz' | 'yz';
 
@@ -49,6 +50,10 @@ export class Viewport2D {
   private rubberBandStart: [number, number] = [0, 0];
   private rubberBandEnd: [number, number] = [0, 0];
   private rubberBandAdditive = false;
+
+  // Vertex drag state
+  private vertexDragging = false;
+  private vertexDragSnapshotTaken = false;
 
   constructor(canvas: HTMLCanvasElement, editor: Editor, axis: ViewAxis) {
     this.canvas = canvas;
@@ -112,9 +117,14 @@ export class Viewport2D {
       this.drawEntity(entity, this.editor.isEntitySelected(entity));
     }
 
-    // Selection resize box
-    if (this.editor.activeTool === 'select' && this.editor.selection.length > 0) {
+    // Selection resize box (not in vertex mode)
+    if (this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode) {
       this.drawSelectionBox();
+    }
+
+    // Vertex handles
+    if (this.editor.vertexMode) {
+      this.drawVertexHandles();
     }
 
     // Creation preview
@@ -249,6 +259,44 @@ export class Viewport2D {
     ];
     for (const [hx, hy] of handles) {
       ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
+    }
+  }
+
+  private drawVertexHandles(): void {
+    const { ctx } = this;
+    const h = this.axisH, v = this.axisV, d = this.axisDepth;
+    const r = 4;
+
+    // Collect all vertices with their screen positions and state
+    const handles: { sx: number; sy: number; selected: boolean; depth: number }[] = [];
+    for (let di = 0; di < this.editor.vertexData.length; di++) {
+      const data = this.editor.vertexData[di];
+      for (let vi = 0; vi < data.vertices.length; vi++) {
+        const pos = data.vertices[vi].position;
+        const [sx, sy] = this.worldToScreen(pos[h], pos[v]);
+        handles.push({
+          sx, sy,
+          selected: this.editor.isVertexSelected(di, vi),
+          depth: pos[d],
+        });
+      }
+    }
+
+    // Sort: unselected first, then selected; within each group, lowest depth first
+    // so highest depth (closest to camera) and selected draws on top
+    handles.sort((a, b) => {
+      if (a.selected !== b.selected) return a.selected ? 1 : -1;
+      return a.depth - b.depth;
+    });
+
+    for (const handle of handles) {
+      ctx.fillStyle = handle.selected ? '#ffffff' : '#44dd44';
+      ctx.strokeStyle = handle.selected ? '#ffcc00' : '#228822';
+      ctx.lineWidth = handle.selected ? 2 : 1;
+      ctx.beginPath();
+      ctx.arc(handle.sx, handle.sy, handle.selected ? r + 1 : r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
   }
 
@@ -488,6 +536,32 @@ export class Viewport2D {
         return;
       }
 
+      // Vertex mode: pick/drag vertices
+      if (this.editor.vertexMode) {
+        const threshold = 8 / this.zoom; // 8px in world coords
+        let hitDi = -1, hitVi = -1;
+        for (let di = 0; di < this.editor.vertexData.length; di++) {
+          const vi = pickVertex2D(this.editor.vertexData[di].vertices, wx, wy, this.axisH, this.axisV, this.axisDepth, threshold);
+          if (vi >= 0) { hitDi = di; hitVi = vi; break; }
+        }
+        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+        if (hitDi >= 0) {
+          const wasSelected = this.editor.isVertexSelected(hitDi, hitVi);
+          this.editor.selectVertex(hitDi, hitVi, additive);
+          // Start vertex drag
+          if (wasSelected || !additive) {
+            this.vertexDragging = true;
+            this.vertexDragSnapshotTaken = false;
+            this.dragging = true;
+            this.hasDragged = false;
+            this.dragWorldStart = [wx, wy];
+          }
+        } else {
+          if (!additive) this.editor.clearVertexSelection();
+        }
+        return;
+      }
+
       // Check for resize edge on combined selection AABB
       if (this.editor.activeTool === 'select' && this.editor.selection.length > 0) {
         const edge = this.detectResizeEdge(wx, wy);
@@ -566,7 +640,7 @@ export class Viewport2D {
       if (this.spaceDown) {
         this.canvas.parentElement!.style.cursor = 'grab';
       } else {
-        const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0
+        const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode
           ? this.detectResizeEdge(wx, wy) : null;
         this.canvas.parentElement!.style.cursor = edge ? this.getResizeCursor(edge.edges) : '';
       }
@@ -682,6 +756,29 @@ export class Viewport2D {
         snapped[this.axisV] = Math.round(wy / grid) * grid;
         this.editor.createEnd = snapped;
         this.editor.dirty = true;
+      } else if (this.vertexDragging) {
+        // Move selected vertices
+        const dx = wx - this.dragWorldStart[0];
+        const dy = wy - this.dragWorldStart[1];
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
+        const snappedDx = Math.round(dx / grid) * grid;
+        const snappedDy = Math.round(dy / grid) * grid;
+
+        if (snappedDx !== 0 || snappedDy !== 0) {
+          if (!this.vertexDragSnapshotTaken) {
+            this.editor.snapshot();
+            this.vertexDragSnapshotTaken = true;
+          }
+          this.hasDragged = true;
+          const delta: Vec3 = [0, 0, 0];
+          delta[this.axisH] = snappedDx;
+          delta[this.axisV] = snappedDy;
+          this.editor.moveSelectedVertices(delta);
+          this.dragWorldStart = [
+            this.dragWorldStart[0] + snappedDx,
+            this.dragWorldStart[1] + snappedDy,
+          ];
+        }
       } else if (this.editor.selection.length > 0) {
         // Move selection
         const dx = wx - this.dragWorldStart[0];
@@ -758,6 +855,12 @@ export class Viewport2D {
     }
 
     if (this.dragging) {
+      if (this.vertexDragging) {
+        this.vertexDragging = false;
+        this.dragging = false;
+        if (this.hasDragged) this.editor.statusMessage = 'Vertex moved';
+        return;
+      }
       if (this.editor.creating) {
         // Finish creating brush
         this.editor.creating = false;

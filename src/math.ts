@@ -34,6 +34,10 @@ export const vec3Max = (a: Vec3, b: Vec3): Vec3 => [
 export const vec3AddMut = (out: Vec3, b: Vec3): Vec3 => {
   out[0] += b[0]; out[1] += b[1]; out[2] += b[2]; return out;
 };
+export const vec3DistSq = (a: Vec3, b: Vec3): number => {
+  const dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
+  return dx*dx + dy*dy + dz*dz;
+};
 
 // Rotate point around center on a cardinal axis (0=X, 1=Y, 2=Z)
 export function vec3RotateAxis(p: Vec3, center: Vec3, axis: number, angle: number): Vec3 {

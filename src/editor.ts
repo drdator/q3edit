@@ -4,6 +4,7 @@ import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEn
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
 import { TextureManager } from './textures';
+import { BrushVertex, collectBrushVertices, moveVertices } from './vertex';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -57,6 +58,11 @@ export class Editor {
   clipMode: ClipMode = 'front';
   clipDepthAxis = 2; // depth axis of viewport where clip points were placed
 
+  // Vertex editing mode
+  vertexMode = false;
+  vertexData: { brush: Brush; entity: Entity; vertices: BrushVertex[] }[] = [];
+  vertexSelection: { dataIndex: number; vertexIndex: number }[] = [];
+
   // Status message
   statusMessage = 'Ready';
 
@@ -73,6 +79,7 @@ export class Editor {
 
   clearSelection(): void {
     this.selection = [];
+    this.exitVertexMode();
     this.dirty = true;
   }
 
@@ -426,6 +433,7 @@ export class Editor {
     if (prev) {
       this.entities = prev;
       this.selection = [];
+      this.exitVertexMode();
       this.dirty = true;
       this.statusMessage = 'Undo';
     }
@@ -436,6 +444,7 @@ export class Editor {
     if (next) {
       this.entities = next;
       this.selection = [];
+      this.exitVertexMode();
       this.dirty = true;
       this.statusMessage = 'Redo';
     }
@@ -598,5 +607,103 @@ export class Editor {
       }
     }
     this.dirty = true;
+  }
+
+  // ── Vertex editing ──
+
+  enterVertexMode(): void {
+    const brushItems = this.selection.filter(s => s.type === 'brush' || s.type === 'face');
+    if (brushItems.length === 0) return;
+
+    this.vertexData = [];
+    const seen = new Set<Brush>();
+    for (const item of brushItems) {
+      if (seen.has(item.brush)) continue;
+      seen.add(item.brush);
+      this.vertexData.push({
+        brush: item.brush,
+        entity: item.entity,
+        vertices: collectBrushVertices(item.brush),
+      });
+    }
+
+    this.vertexMode = true;
+    this.vertexSelection = [];
+    this.dirty = true;
+    this.statusMessage = 'Vertex mode';
+  }
+
+  exitVertexMode(): void {
+    if (!this.vertexMode) return;
+    this.vertexMode = false;
+    this.vertexData = [];
+    this.vertexSelection = [];
+    this.dirty = true;
+  }
+
+  selectVertex(dataIndex: number, vertexIndex: number, additive = false): void {
+    if (!additive) this.vertexSelection = [];
+    const idx = this.vertexSelection.findIndex(
+      v => v.dataIndex === dataIndex && v.vertexIndex === vertexIndex
+    );
+    if (idx >= 0) {
+      if (additive) this.vertexSelection.splice(idx, 1);
+      return;
+    }
+    this.vertexSelection.push({ dataIndex, vertexIndex });
+    this.dirty = true;
+  }
+
+  clearVertexSelection(): void {
+    this.vertexSelection = [];
+    this.dirty = true;
+  }
+
+  isVertexSelected(dataIndex: number, vertexIndex: number): boolean {
+    return this.vertexSelection.some(
+      v => v.dataIndex === dataIndex && v.vertexIndex === vertexIndex
+    );
+  }
+
+  moveSelectedVertices(delta: Vec3): void {
+    if (this.vertexSelection.length === 0) return;
+
+    // Group selected vertex indices by dataIndex (brush)
+    const byBrush = new Map<number, number[]>();
+    for (const vs of this.vertexSelection) {
+      let arr = byBrush.get(vs.dataIndex);
+      if (!arr) { arr = []; byBrush.set(vs.dataIndex, arr); }
+      arr.push(vs.vertexIndex);
+    }
+
+    for (const [di, indices] of byBrush) {
+      const data = this.vertexData[di];
+      moveVertices(data.brush, data.vertices, indices, delta);
+    }
+
+    // Refresh vertex data (polygon topology may have changed)
+    this.refreshVertexData();
+    this.dirty = true;
+  }
+
+  refreshVertexData(): void {
+    // Polygons are edited directly — vertex indices are stable, no remapping needed.
+    // Just filter out any that went out of range as a safety measure.
+    this.vertexSelection = this.vertexSelection.filter(vs =>
+      vs.dataIndex < this.vertexData.length &&
+      vs.vertexIndex < this.vertexData[vs.dataIndex].vertices.length
+    );
+  }
+
+  vertexSelectionCenter(): Vec3 | null {
+    if (this.vertexSelection.length === 0) return null;
+    let sum: Vec3 = [0, 0, 0];
+    for (const vs of this.vertexSelection) {
+      const pos = this.vertexData[vs.dataIndex]?.vertices[vs.vertexIndex]?.position;
+      if (!pos) continue;
+      sum[0] += pos[0]; sum[1] += pos[1]; sum[2] += pos[2];
+    }
+    const n = this.vertexSelection.length;
+    return [sum[0] / n, sum[1] / n, sum[2] / n];
   }
 }

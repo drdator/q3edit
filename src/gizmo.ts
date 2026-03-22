@@ -42,7 +42,9 @@ export class Gizmo {
 
   build(cameraPos: Vec3): void {
     const gl = this.gl;
-    const center = this.editor.selectionCenter();
+    const center = this.editor.vertexMode
+      ? this.editor.vertexSelectionCenter()
+      : this.editor.selectionCenter();
     this.segments = [];
 
     if (!center) {
@@ -197,7 +199,17 @@ export class Gizmo {
 
     const worldDelta = projected * this.worldPerPixel;
 
-    if (this.editor.gizmoMode === 'move') {
+    if (this.editor.vertexMode) {
+      // Vertex mode: only move, no scale
+      const grid = this.editor.effectiveGrid(e.ctrlKey);
+      const snapped = Math.round(worldDelta / grid) * grid;
+      if (snapped !== 0) {
+        const delta: Vec3 = vec3Scale(axis, snapped);
+        this.editor.moveSelectedVertices(delta);
+        this.center = vec3Add(this.center, delta);
+        this.dragLast = [e.clientX, e.clientY];
+      }
+    } else if (this.editor.gizmoMode === 'move') {
       const grid = this.editor.effectiveGrid(e.ctrlKey);
       const snapped = Math.round(worldDelta / grid) * grid;
       if (snapped !== 0) {

@@ -325,7 +325,9 @@ export class UI {
       if (ctrl && e.key === 'g') { e.preventDefault(); this.editor.snapSelectionToGrid(); return; }
 
       if (e.key === 'Escape') {
-        if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
+        if (this.editor.vertexMode) {
+          this.editor.exitVertexMode();
+        } else if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
           this.editor.cancelClip();
         } else {
           this.editor.clearSelection();
@@ -338,6 +340,16 @@ export class UI {
       if (e.key === '2') { this.setTool('create'); return; }
       if (e.key === '3') { this.setTool('entity'); return; }
       if (e.key === '4') { this.setTool('clip'); return; }
+
+      // Toggle vertex editing mode
+      if (e.key === 'v' && !ctrl) {
+        if (this.editor.vertexMode) {
+          this.editor.exitVertexMode();
+        } else if (this.editor.selection.length > 0) {
+          this.editor.enterVertexMode();
+        }
+        return;
+      }
 
       if (e.key === '[') { this.decreaseGrid(); return; }
       if (e.key === ']') { this.increaseGrid(); return; }
@@ -354,7 +366,7 @@ export class UI {
       if (e.key === 'r' && !ctrl) { this.editor.rotateSelection(90); return; }
       if (e.key === 'R' && !ctrl) { this.editor.rotateSelection(15); return; }
 
-      // Arrow keys: nudge selection by grid size
+      // Arrow keys: nudge selection (or vertices in vertex mode)
       if (e.key.startsWith('Arrow') && this.editor.selection.length > 0) {
         e.preventDefault();
         const grid = e.ctrlKey ? 1 : e.shiftKey ? this.editor.gridSize * 4 : this.editor.gridSize;
@@ -366,7 +378,11 @@ export class UI {
         else if (e.key === 'ArrowUp') delta[v] = grid;
         else if (e.key === 'ArrowDown') delta[v] = -grid;
         this.editor.snapshot();
-        this.editor.moveSelection(delta);
+        if (this.editor.vertexMode && this.editor.vertexSelection.length > 0) {
+          this.editor.moveSelectedVertices(delta);
+        } else {
+          this.editor.moveSelection(delta);
+        }
         return;
       }
     });
@@ -412,15 +428,26 @@ export class UI {
     const e = this.editor;
 
     document.getElementById('status-msg')!.textContent = e.statusMessage;
-    const toolLabel = e.activeTool === 'clip'
-      ? `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`
-      : `Tool: ${e.activeTool}`;
+    let toolLabel: string;
+    if (e.vertexMode) {
+      toolLabel = 'Tool: vertex';
+    } else if (e.activeTool === 'clip') {
+      toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`;
+    } else {
+      toolLabel = `Tool: ${e.activeTool}`;
+    }
     document.getElementById('status-tool')!.textContent = toolLabel;
     document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}${e.snapToGrid ? '' : ' (free)'}`;
-    const faceCount = e.selection.filter(s => s.type === 'face').length;
-    const selLabel = faceCount > 0
-      ? `Sel: ${faceCount} face${faceCount > 1 ? 's' : ''}`
-      : `Sel: ${e.selection.length}`;
+    let selLabel: string;
+    if (e.vertexMode) {
+      const vc = e.vertexSelection.length;
+      selLabel = `Sel: ${vc} vtx (V to exit)`;
+    } else {
+      const faceCount = e.selection.filter(s => s.type === 'face').length;
+      selLabel = faceCount > 0
+        ? `Sel: ${faceCount} face${faceCount > 1 ? 's' : ''}`
+        : `Sel: ${e.selection.length}`;
+    }
     document.getElementById('status-sel')!.textContent = selLabel;
 
     let brushCount = 0;
