@@ -35,6 +35,21 @@ export const vec3AddMut = (out: Vec3, b: Vec3): Vec3 => {
   out[0] += b[0]; out[1] += b[1]; out[2] += b[2]; return out;
 };
 
+// Rotate point around center on a cardinal axis (0=X, 1=Y, 2=Z)
+export function vec3RotateAxis(p: Vec3, center: Vec3, axis: number, angle: number): Vec3 {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const out: Vec3 = [p[0], p[1], p[2]];
+  // Axes perpendicular to the rotation axis
+  const a1 = (axis + 1) % 3;
+  const a2 = (axis + 2) % 3;
+  const d1 = p[a1] - center[a1];
+  const d2 = p[a2] - center[a2];
+  out[a1] = center[a1] + d1 * c - d2 * s;
+  out[a2] = center[a2] + d1 * s + d2 * c;
+  return out;
+}
+
 // ── Plane ──
 
 export interface Plane {

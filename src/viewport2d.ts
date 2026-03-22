@@ -1,6 +1,6 @@
 import { Vec3, vec3, vec3Snap, vec3Copy } from './math';
 import { Editor, SelectionItem } from './editor';
-import { Brush, brushContainsPoint2D, resizeBrushByAABB } from './brush';
+import { Brush, brushContainsPoint2D, scaleBrushFaces } from './brush';
 import { Entity, entityOrigin } from './entity';
 
 export type ViewAxis = 'xy' | 'xz' | 'yz';
@@ -111,6 +111,11 @@ export class Viewport2D {
       this.drawCreationPreview();
     }
 
+    // Clip line preview
+    if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0 && this.editor.clipDepthAxis === this.axisDepth) {
+      this.drawClipPreview(w, h);
+    }
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
@@ -177,17 +182,8 @@ export class Viewport2D {
     const h = this.axisH;
     const v = this.axisV;
 
-    // Draw filled AABB
-    const [sx0, sy0] = this.worldToScreen(brush.mins[h], brush.maxs[v]);
-    const [sx1, sy1] = this.worldToScreen(brush.maxs[h], brush.mins[v]);
-    const bw = sx1 - sx0;
-    const bh = sy1 - sy0;
-
-    // Fill
+    // Fill and stroke each face polygon
     ctx.fillStyle = selected ? 'rgba(255, 102, 0, 0.15)' : 'rgba(60, 80, 100, 0.2)';
-    ctx.fillRect(sx0, sy0, bw, bh);
-
-    // Draw face edges (not just AABB)
     ctx.strokeStyle = selected ? '#ff6600' : '#4488bb';
     ctx.lineWidth = selected ? 1.5 : 1;
 
@@ -201,6 +197,7 @@ export class Viewport2D {
         ctx.lineTo(px, py);
       }
       ctx.closePath();
+      ctx.fill();
       ctx.stroke();
     }
 
@@ -279,6 +276,70 @@ export class Viewport2D {
     ctx.setLineDash([]);
   }
 
+  private drawClipPreview(viewW: number, viewH: number): void {
+    const { ctx, editor } = this;
+    const pts = editor.clipPoints;
+    const aH = this.axisH;
+    const aV = this.axisV;
+
+    // Draw clip points
+    ctx.fillStyle = '#ff3333';
+    for (const p of pts) {
+      const [sx, sy] = this.worldToScreen(p[aH], p[aV]);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw clip line extending across the viewport
+    if (pts.length === 2) {
+      const [sx1, sy1] = this.worldToScreen(pts[0][aH], pts[0][aV]);
+      const [sx2, sy2] = this.worldToScreen(pts[1][aH], pts[1][aV]);
+
+      // Extend the line far beyond the viewport
+      const dx = sx2 - sx1;
+      const dy = sy2 - sy1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0.1) {
+        const ext = Math.max(viewW, viewH) * 2;
+        const nx = dx / len;
+        const ny = dy / len;
+
+        ctx.strokeStyle = '#ff3333';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(sx1 - nx * ext, sy1 - ny * ext);
+        ctx.lineTo(sx2 + nx * ext, sy2 + ny * ext);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw "keep" indicator — small arrow on the kept side
+        const midX = (sx1 + sx2) / 2;
+        const midY = (sy1 + sy2) / 2;
+        // Perpendicular direction (left side of line direction = "front")
+        const perpX = -ny;
+        const perpY = nx;
+        const arrowDist = 12;
+        const isFront = editor.clipMode === 'front' || editor.clipMode === 'both';
+        const isBack = editor.clipMode === 'back' || editor.clipMode === 'both';
+
+        if (isFront) {
+          ctx.fillStyle = 'rgba(100, 255, 100, 0.8)';
+          ctx.beginPath();
+          ctx.arc(midX + perpX * arrowDist, midY + perpY * arrowDist, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (isBack) {
+          ctx.fillStyle = 'rgba(100, 255, 100, 0.8)';
+          ctx.beginPath();
+          ctx.arc(midX - perpX * arrowDist, midY - perpY * arrowDist, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
   // ── Input handling ──
 
   private setupEvents(): void {
@@ -310,6 +371,8 @@ export class Viewport2D {
   }
 
   private onMouseDown(e: MouseEvent): void {
+    // Track active viewport for rotation axis
+    this.editor.rotationAxis = this.axisDepth;
     const [mx, my] = this.getLocalPos(e);
 
     // Right mouse, middle mouse, or shift+left: pan
@@ -351,6 +414,15 @@ export class Viewport2D {
         this.editor.clearSelection();
         this.editor.selectEntity(entity);
         this.editor.statusMessage = `Placed ${this.editor.currentEntityClass}`;
+        return;
+      }
+
+      if (this.editor.activeTool === 'clip') {
+        // Place clip point
+        const point: Vec3 = [0, 0, 0];
+        point[this.axisH] = Math.round(wx / this.editor.gridSize) * this.editor.gridSize;
+        point[this.axisV] = Math.round(wy / this.editor.gridSize) * this.editor.gridSize;
+        this.editor.addClipPoint(point, this.axisDepth);
         return;
       }
 
@@ -444,26 +516,68 @@ export class Viewport2D {
         this.resizeSnapshotTaken = true;
       }
 
-      const newMins = vec3Copy(this.resizeOrigMins);
-      const newMaxs = vec3Copy(this.resizeOrigMaxs);
+      // Compute new edge positions
+      const origMins = this.resizeOrigMins;
+      const origMaxs = this.resizeOrigMaxs;
+      const H = this.axisH;
+      const V = this.axisV;
 
-      if (this.resizeEdges.minH) newMins[this.axisH] += snappedDx;
-      if (this.resizeEdges.maxH) newMaxs[this.axisH] += snappedDx;
-      if (this.resizeEdges.minV) newMins[this.axisV] += snappedDy;
-      if (this.resizeEdges.maxV) newMaxs[this.axisV] += snappedDy;
+      let newMinH = origMins[H], newMaxH = origMaxs[H];
+      let newMinV = origMins[V], newMaxV = origMaxs[V];
+      if (this.resizeEdges.minH) newMinH += snappedDx;
+      if (this.resizeEdges.maxH) newMaxH += snappedDx;
+      if (this.resizeEdges.minV) newMinV += snappedDy;
+      if (this.resizeEdges.maxV) newMaxV += snappedDy;
 
       // Enforce minimum size
       const minSize = grid;
-      if (newMaxs[this.axisH] - newMins[this.axisH] < minSize) {
-        if (this.resizeEdges.minH) newMins[this.axisH] = newMaxs[this.axisH] - minSize;
-        else newMaxs[this.axisH] = newMins[this.axisH] + minSize;
+      if (newMaxH - newMinH < minSize) {
+        if (this.resizeEdges.minH) newMinH = newMaxH - minSize;
+        else newMaxH = newMinH + minSize;
       }
-      if (newMaxs[this.axisV] - newMins[this.axisV] < minSize) {
-        if (this.resizeEdges.minV) newMins[this.axisV] = newMaxs[this.axisV] - minSize;
-        else newMaxs[this.axisV] = newMins[this.axisV] + minSize;
+      if (newMaxV - newMinV < minSize) {
+        if (this.resizeEdges.minV) newMinV = newMaxV - minSize;
+        else newMaxV = newMinV + minSize;
       }
 
-      resizeBrushByAABB(this.resizeBrush, this.resizeOrigMins, this.resizeOrigMaxs, newMins, newMaxs, this.resizeOrigPoints);
+      // Scale from opposite edge as anchor
+      const scaleOrigin: Vec3 = [0, 0, 0];
+      const scale: Vec3 = [1, 1, 1];
+
+      if (this.resizeEdges.minH || this.resizeEdges.maxH) {
+        const anchor = this.resizeEdges.minH ? origMaxs[H] : origMins[H];
+        const oldExtent = (this.resizeEdges.minH ? origMins[H] : origMaxs[H]) - anchor;
+        const newExtent = (this.resizeEdges.minH ? newMinH : newMaxH) - anchor;
+        scaleOrigin[H] = anchor;
+        scale[H] = Math.abs(oldExtent) > 0.01 ? newExtent / oldExtent : 1;
+      }
+
+      if (this.resizeEdges.minV || this.resizeEdges.maxV) {
+        const anchor = this.resizeEdges.minV ? origMaxs[V] : origMins[V];
+        const oldExtent = (this.resizeEdges.minV ? origMins[V] : origMaxs[V]) - anchor;
+        const newExtent = (this.resizeEdges.minV ? newMinV : newMaxV) - anchor;
+        scaleOrigin[V] = anchor;
+        scale[V] = Math.abs(oldExtent) > 0.01 ? newExtent / oldExtent : 1;
+      }
+
+      // Shift held during drag: uniform scale from brush center
+      if (e.shiftKey) {
+        // Pick the scale factor from the dragged axis
+        let uniformScale = scale[H] !== 1 ? scale[H] : scale[V];
+        if (scale[H] !== 1 && scale[V] !== 1) {
+          // Corner drag: use the axis with the larger change
+          uniformScale = Math.abs(scale[H] - 1) > Math.abs(scale[V] - 1) ? scale[H] : scale[V];
+        }
+        const center: Vec3 = [0, 0, 0];
+        center[H] = (origMins[H] + origMaxs[H]) / 2;
+        center[V] = (origMins[V] + origMaxs[V]) / 2;
+        scale[H] = uniformScale;
+        scale[V] = uniformScale;
+        scaleOrigin[H] = center[H];
+        scaleOrigin[V] = center[V];
+      }
+
+      scaleBrushFaces(this.resizeBrush, this.resizeOrigPoints, scaleOrigin, scale);
       this.editor.dirty = true;
       return;
     }
@@ -614,6 +728,31 @@ export class Viewport2D {
     return '';
   }
 
+  // Point-in-polygon test (ray casting) projected onto the 2D viewport axes
+  private pointInBrush2D(brush: Brush, wx: number, wy: number): boolean {
+    const h = this.axisH;
+    const v = this.axisV;
+    // Quick AABB reject
+    if (wx < brush.mins[h] || wx > brush.maxs[h] ||
+        wy < brush.mins[v] || wy > brush.maxs[v]) return false;
+    // Test each face polygon — if point is inside any face's 2D projection, it's a hit
+    for (const face of brush.faces) {
+      const poly = face.polygon;
+      if (poly.length < 3) continue;
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const yi = poly[i][v], yj = poly[j][v];
+        const xi = poly[i][h], xj = poly[j][h];
+        if ((yi > wy) !== (yj > wy) &&
+            wx < (xj - xi) * (wy - yi) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+      if (inside) return true;
+    }
+    return false;
+  }
+
   private pickAt(wx: number, wy: number): { type: 'brush'; entity: Entity; brush: Brush } | { type: 'entity'; entity: Entity } | null {
     // Check point entities first (smaller targets)
     for (const entity of this.editor.pointEntities()) {
@@ -631,7 +770,7 @@ export class Viewport2D {
     let bestArea = Infinity;
 
     for (const { entity, brush } of this.editor.allBrushes()) {
-      if (brushContainsPoint2D(brush, wx, wy, this.axisH, this.axisV)) {
+      if (this.pointInBrush2D(brush, wx, wy)) {
         const area = (brush.maxs[this.axisH] - brush.mins[this.axisH]) *
                      (brush.maxs[this.axisV] - brush.mins[this.axisV]);
         if (area < bestArea) {

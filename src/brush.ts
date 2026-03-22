@@ -1,7 +1,7 @@
 import {
   Vec3, Plane, vec3, vec3Add, vec3Sub, vec3Scale, vec3Cross, vec3Dot,
   vec3Normalize, vec3Copy, vec3Lerp, vec3Min, vec3Max, vec3Snap,
-  planeFromPoints, planePointDistance
+  vec3RotateAxis, planeFromPoints, planePointDistance
 } from './math';
 
 export interface BrushFace {
@@ -164,6 +164,15 @@ export function translateBrush(brush: Brush, delta: Vec3): void {
   recomputePolygons(brush);
 }
 
+export function rotateBrush(brush: Brush, center: Vec3, axis: number, angle: number): void {
+  for (const face of brush.faces) {
+    for (let i = 0; i < 3; i++) {
+      face.points[i] = vec3RotateAxis(face.points[i], center, axis, angle);
+    }
+  }
+  computeBrushGeometry(brush);
+}
+
 export function brushContainsPoint2D(brush: Brush, x: number, y: number, axisH: number, axisV: number): boolean {
   return x >= brush.mins[axisH] && x <= brush.maxs[axisH] &&
          y >= brush.mins[axisV] && y <= brush.maxs[axisV];
@@ -245,27 +254,46 @@ export function computeFaceUV(
   return [u, v];
 }
 
-// Resize a brush by remapping face defining points from old AABB to new AABB.
-// Preserves per-face texture settings unlike resizeBoxBrush.
-export function resizeBrushByAABB(
+// Clip a brush by a plane. Returns the portion on the back side of the plane
+// (behind the plane, where planePointDistance <= 0), or null if nothing remains.
+// planePoints are the 3 defining points for the new cap face.
+export function clipBrush(brush: Brush, planePoints: [Vec3, Vec3, Vec3], texture = 'common/caulk'): Brush | null {
+  // Clone all original faces
+  const faces: BrushFace[] = brush.faces.map(f => ({
+    ...f,
+    points: [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3],
+    plane: { normal: vec3Copy(f.plane.normal), dist: f.plane.dist },
+    polygon: [],
+  }));
+
+  // Add the clip face
+  faces.push(createFace(planePoints[0], planePoints[1], planePoints[2], texture));
+
+  const newBrush: Brush = { faces, mins: [0, 0, 0], maxs: [0, 0, 0] };
+  computeBrushGeometry(newBrush);
+
+  // Remove faces with degenerate polygons
+  newBrush.faces = newBrush.faces.filter(f => f.polygon.length >= 3);
+
+  // Need at least 4 faces for a valid convex brush
+  if (newBrush.faces.length < 4) return null;
+
+  return newBrush;
+}
+
+// Scale brush faces along given axes from an origin point.
+// scaleOrigin is the fixed anchor, scale is per-axis multiplier.
+// origPoints are the saved original face defining points.
+export function scaleBrushFaces(
   brush: Brush,
-  oldMins: Vec3, oldMaxs: Vec3,
-  newMins: Vec3, newMaxs: Vec3,
-  origPoints: [Vec3, Vec3, Vec3][]
+  origPoints: [Vec3, Vec3, Vec3][],
+  scaleOrigin: Vec3,
+  scale: Vec3
 ): void {
   for (let fi = 0; fi < brush.faces.length; fi++) {
-    const face = brush.faces[fi];
     for (let pi = 0; pi < 3; pi++) {
-      // Restore from original, then remap
       for (let i = 0; i < 3; i++) {
-        const val = origPoints[fi][pi][i];
-        if (Math.abs(val - oldMins[i]) < 0.5) {
-          face.points[pi][i] = newMins[i];
-        } else if (Math.abs(val - oldMaxs[i]) < 0.5) {
-          face.points[pi][i] = newMaxs[i];
-        } else {
-          face.points[pi][i] = val;
-        }
+        brush.faces[fi].points[pi][i] = scaleOrigin[i] + (origPoints[fi][pi][i] - scaleOrigin[i]) * scale[i];
       }
     }
   }

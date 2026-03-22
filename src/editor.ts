@@ -1,10 +1,11 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale } from './math';
-import { Brush, BrushFace, createBoxBrush, translateBrush, cloneBrush, computeBrushGeometry } from './brush';
+import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
 
-export type Tool = 'select' | 'create' | 'entity';
+export type Tool = 'select' | 'create' | 'entity' | 'clip';
+export type ClipMode = 'front' | 'back' | 'both';
 
 export type SelectionItem = {
   type: 'brush';
@@ -38,6 +39,14 @@ export class Editor {
   createAxisH = 0;
   createAxisV = 1;
   createDepth = 64;
+
+  // Active viewport rotation axis (depth axis of last-interacted 2D viewport)
+  rotationAxis = 2; // default Z
+
+  // Clip tool state
+  clipPoints: Vec3[] = [];
+  clipMode: ClipMode = 'front';
+  clipDepthAxis = 2; // depth axis of viewport where clip points were placed
 
   // Status message
   statusMessage = 'Ready';
@@ -172,6 +181,115 @@ export class Editor {
       }
     }
     this.dirty = true;
+  }
+
+  rotateSelection(angleDeg: number): void {
+    if (this.selection.length === 0) return;
+    this.snapshot();
+
+    const angle = (angleDeg / 180) * Math.PI;
+    const axis = this.rotationAxis;
+
+    // Compute selection center
+    let mins: Vec3 = [Infinity, Infinity, Infinity];
+    let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+    for (const item of this.selection) {
+      if (item.type === 'entity') continue;
+      const b = item.brush;
+      for (let i = 0; i < 3; i++) {
+        if (b.mins[i] < mins[i]) mins[i] = b.mins[i];
+        if (b.maxs[i] > maxs[i]) maxs[i] = b.maxs[i];
+      }
+    }
+    const center: Vec3 = [
+      (mins[0] + maxs[0]) / 2,
+      (mins[1] + maxs[1]) / 2,
+      (mins[2] + maxs[2]) / 2,
+    ];
+
+    for (const item of this.selection) {
+      if (item.type === 'brush' || item.type === 'face') {
+        rotateBrush(item.brush, center, axis, angle);
+      }
+    }
+
+    this.dirty = true;
+    const axisName = ['X', 'Y', 'Z'][axis];
+    this.statusMessage = `Rotated ${angleDeg}° around ${axisName}`;
+  }
+
+  // ── Clip tool ──
+
+  addClipPoint(point: Vec3, depthAxis: number): void {
+    if (this.clipPoints.length >= 2) this.clipPoints = [];
+    this.clipPoints.push(point);
+    this.clipDepthAxis = depthAxis;
+    this.dirty = true;
+  }
+
+  cycleClipMode(): void {
+    const modes: ClipMode[] = ['front', 'back', 'both'];
+    this.clipMode = modes[(modes.indexOf(this.clipMode) + 1) % 3];
+    this.dirty = true;
+    this.statusMessage = `Clip: ${this.clipMode}`;
+  }
+
+  cancelClip(): void {
+    this.clipPoints = [];
+    this.dirty = true;
+    this.statusMessage = 'Clip cancelled';
+  }
+
+  executeClip(): void {
+    if (this.clipPoints.length < 2 || this.selection.length === 0) return;
+
+    const p1 = this.clipPoints[0];
+    const p2 = this.clipPoints[1];
+    const depthAxis = this.clipDepthAxis;
+
+    // Third point offset along depth axis to define the plane
+    const p3: Vec3 = [p1[0], p1[1], p1[2]];
+    p3[depthAxis] += 1;
+
+    // Front clip points: p1, p2, p3 → normal points to the "front"
+    // Back clip points: reversed winding → p2, p1, p3
+    const frontPoints: [Vec3, Vec3, Vec3] = [p1, p2, p3];
+    const backPoints: [Vec3, Vec3, Vec3] = [p2, p1, p3];
+
+    this.snapshot();
+    const newSelection: SelectionItem[] = [];
+
+    for (const item of this.selection) {
+      if (item.type === 'entity') continue;
+      const brush = item.brush;
+      const entity = item.entity;
+      const idx = entity.brushes.indexOf(brush);
+      if (idx < 0) continue;
+
+      const front = clipBrush(brush, frontPoints);
+      const back = clipBrush(brush, backPoints);
+
+      // Remove the original brush
+      entity.brushes.splice(idx, 1);
+
+      if (this.clipMode === 'front' || this.clipMode === 'both') {
+        if (front) {
+          entity.brushes.push(front);
+          newSelection.push({ type: 'brush', entity, brush: front });
+        }
+      }
+      if (this.clipMode === 'back' || this.clipMode === 'both') {
+        if (back) {
+          entity.brushes.push(back);
+          newSelection.push({ type: 'brush', entity, brush: back });
+        }
+      }
+    }
+
+    this.selection = newSelection;
+    this.clipPoints = [];
+    this.dirty = true;
+    this.statusMessage = `Clipped (${this.clipMode})`;
   }
 
   duplicateSelection(): void {

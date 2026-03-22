@@ -60,11 +60,15 @@ export class UI {
         { separator: true },
         { label: 'Duplicate', shortcut: 'Ctrl+D', action: () => this.editor.duplicateSelection() },
         { label: 'Delete', shortcut: 'Del', action: () => this.editor.deleteSelection() },
+        { separator: true },
+        { label: 'Rotate 90°', shortcut: 'R', action: () => this.editor.rotateSelection(90) },
+        { label: 'Rotate 15°', shortcut: 'Shift+R', action: () => this.editor.rotateSelection(15) },
       ],
       'Tools': [
         { label: 'Select', shortcut: '1', action: () => this.setTool('select') },
         { label: 'Create Brush', shortcut: '2', action: () => this.setTool('create') },
         { label: 'Place Entity', shortcut: '3', action: () => this.setTool('entity') },
+        { label: 'Clip', shortcut: '4', action: () => this.setTool('clip') },
       ],
       'Grid': [
         { label: 'Grid 1', action: () => this.setGrid(1) },
@@ -152,6 +156,7 @@ export class UI {
       { id: 'select', label: 'SEL' },
       { id: 'create', label: 'BOX' },
       { id: 'entity', label: 'ENT' },
+      { id: 'clip', label: 'CLIP' },
     ];
 
     for (const tool of tools) {
@@ -305,21 +310,40 @@ export class UI {
       if (ctrl && e.key === 'a') { e.preventDefault(); this.editor.selectAll(); return; }
       if (ctrl && e.key === 'd') { e.preventDefault(); this.editor.duplicateSelection(); return; }
 
-      if (e.key === 'Escape') { this.editor.clearSelection(); return; }
+      if (e.key === 'Escape') {
+        if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
+          this.editor.cancelClip();
+        } else {
+          this.editor.clearSelection();
+        }
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') { this.editor.deleteSelection(); return; }
 
       if (e.key === '1') { this.setTool('select'); return; }
       if (e.key === '2') { this.setTool('create'); return; }
       if (e.key === '3') { this.setTool('entity'); return; }
+      if (e.key === '4') { this.setTool('clip'); return; }
 
       if (e.key === '[') { this.decreaseGrid(); return; }
       if (e.key === ']') { this.increaseGrid(); return; }
+
+      // Clip tool: Enter to execute, Tab to cycle mode
+      if (e.key === 'Enter' && this.editor.activeTool === 'clip') { this.editor.executeClip(); return; }
+      if (e.key === 'Tab' && this.editor.activeTool === 'clip') { e.preventDefault(); this.editor.cycleClipMode(); return; }
+
+      // Rotation: R = 90°, Shift+R = 15°
+      if (e.key === 'r' && !ctrl) { this.editor.rotateSelection(90); return; }
+      if (e.key === 'R' && !ctrl) { this.editor.rotateSelection(15); return; }
     });
   }
 
   // ── Tool/Grid helpers ──
 
   private setTool(tool: Tool): void {
+    if (this.editor.activeTool === 'clip' && tool !== 'clip') {
+      this.editor.clipPoints = [];
+    }
     this.editor.activeTool = tool;
     this.editor.dirty = true;
     document.querySelectorAll('.tool-btn[data-tool]').forEach(el => {
@@ -348,7 +372,10 @@ export class UI {
     const e = this.editor;
 
     document.getElementById('status-msg')!.textContent = e.statusMessage;
-    document.getElementById('status-tool')!.textContent = `Tool: ${e.activeTool}`;
+    const toolLabel = e.activeTool === 'clip'
+      ? `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`
+      : `Tool: ${e.activeTool}`;
+    document.getElementById('status-tool')!.textContent = toolLabel;
     document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}`;
     const selLabel = e.selection.length === 1 && e.selection[0].type === 'face'
       ? 'Sel: 1 face'
