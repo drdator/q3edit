@@ -893,15 +893,16 @@ export class Viewport3D {
         if (!this.didDrag && e.button === 0) {
           const hit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
           if (hit) {
-            if (e.shiftKey) {
-              // Shift+click: select individual face
+            if (e.altKey) {
+              // Alt+click: select individual face
               this.editor.selectFace(hit.entity, hit.brush, hit.face);
             } else {
-              if (!e.ctrlKey && !e.metaKey) this.editor.clearSelection();
-              this.editor.selectBrush(hit.entity, hit.brush, e.ctrlKey || e.metaKey);
+              const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+              if (!additive) this.editor.clearSelection();
+              this.editor.selectBrush(hit.entity, hit.brush, additive);
             }
           } else {
-            if (!e.ctrlKey && !e.metaKey) this.editor.clearSelection();
+            if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();
           }
         }
       }

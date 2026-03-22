@@ -1,4 +1,4 @@
-import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale } from './math';
+import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
 import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
 import { History } from './history';
@@ -6,6 +6,7 @@ import { serializeMap, parseMap } from './mapfile';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip';
 export type ClipMode = 'front' | 'back' | 'both';
+export type GizmoMode = 'move' | 'scale';
 
 export type SelectionItem = {
   type: 'brush';
@@ -42,6 +43,9 @@ export class Editor {
 
   // Active viewport rotation axis (depth axis of last-interacted 2D viewport)
   rotationAxis = 2; // default Z
+
+  // 3D gizmo mode
+  gizmoMode: GizmoMode = 'move';
 
   // Clip tool state
   clipPoints: Vec3[] = [];
@@ -100,6 +104,18 @@ export class Editor {
 
   isEntitySelected(entity: Entity): boolean {
     return this.selection.some(s => s.type === 'entity' && s.entity === entity);
+  }
+
+  addBrushToSelection(entity: Entity, brush: Brush): void {
+    if (this.isSelected(brush)) return;
+    this.selection.push({ type: 'brush', entity, brush });
+    this.dirty = true;
+  }
+
+  addEntityToSelection(entity: Entity): void {
+    if (this.isEntitySelected(entity)) return;
+    this.selection.push({ type: 'entity', entity });
+    this.dirty = true;
   }
 
   selectFace(entity: Entity, brush: Brush, face: BrushFace): void {
@@ -473,6 +489,29 @@ export class Editor {
       this.selection.push({ type: 'entity', entity });
     }
     this.dirty = true;
+  }
+
+  selectionBounds(): { mins: Vec3; maxs: Vec3 } | null {
+    if (this.selection.length === 0) return null;
+    let mins: Vec3 = [Infinity, Infinity, Infinity];
+    let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+    for (const item of this.selection) {
+      if (item.type === 'entity') {
+        const o = entityOrigin(item.entity);
+        if (o) { mins = vec3Min(mins, o); maxs = vec3Max(maxs, o); }
+      } else {
+        const b = item.brush;
+        mins = vec3Min(mins, b.mins);
+        maxs = vec3Max(maxs, b.maxs);
+      }
+    }
+    return { mins, maxs };
+  }
+
+  selectionCenter(): Vec3 | null {
+    const bounds = this.selectionBounds();
+    if (!bounds) return null;
+    return vec3Scale(vec3Add(bounds.mins, bounds.maxs), 0.5);
   }
 
   setTexture(texture: string): void {

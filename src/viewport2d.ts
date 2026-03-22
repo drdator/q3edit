@@ -38,11 +38,16 @@ export class Viewport2D {
   // Resize state
   private resizing = false;
   private resizeEdges = { minH: false, maxH: false, minV: false, maxV: false };
-  private resizeBrush: Brush | null = null;
+  private resizeBrushes: { brush: Brush; origPoints: [Vec3, Vec3, Vec3][] }[] = [];
   private resizeOrigMins: Vec3 = [0, 0, 0];
   private resizeOrigMaxs: Vec3 = [0, 0, 0];
-  private resizeOrigPoints: [Vec3, Vec3, Vec3][] = [];
   private resizeSnapshotTaken = false;
+
+  // Rubber band selection state
+  private rubberBanding = false;
+  private rubberBandStart: [number, number] = [0, 0];
+  private rubberBandEnd: [number, number] = [0, 0];
+  private rubberBandAdditive = false;
 
   constructor(canvas: HTMLCanvasElement, editor: Editor, axis: ViewAxis) {
     this.canvas = canvas;
@@ -106,6 +111,11 @@ export class Viewport2D {
       this.drawEntity(entity, this.editor.isEntitySelected(entity));
     }
 
+    // Selection resize box
+    if (this.editor.activeTool === 'select' && this.editor.selection.length > 0) {
+      this.drawSelectionBox();
+    }
+
     // Creation preview
     if (this.editor.creating && this.editor.createAxisH === this.axisH && this.editor.createAxisV === this.axisV) {
       this.drawCreationPreview();
@@ -114,6 +124,11 @@ export class Viewport2D {
     // Clip line preview
     if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0 && this.editor.clipDepthAxis === this.axisDepth) {
       this.drawClipPreview(w, h);
+    }
+
+    // Rubber band selection rectangle
+    if (this.rubberBanding) {
+      this.drawRubberBand();
     }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -201,30 +216,38 @@ export class Viewport2D {
       ctx.stroke();
     }
 
-    // Draw resize handles on selected brushes
-    if (selected) {
-      const hs = 3; // handle half-size in pixels
-      ctx.fillStyle = '#ffaa00';
-      const midH = (brush.mins[h] + brush.maxs[h]) / 2;
-      const midV = (brush.mins[v] + brush.maxs[v]) / 2;
-      // Edge midpoints
-      const handles: [number, number][] = [
-        [midH, brush.maxs[v]], // top
-        [midH, brush.mins[v]], // bottom
-        [brush.mins[h], midV], // left
-        [brush.maxs[h], midV], // right
-      ];
-      // Corners
-      handles.push(
-        [brush.mins[h], brush.maxs[v]], // top-left
-        [brush.maxs[h], brush.maxs[v]], // top-right
-        [brush.mins[h], brush.mins[v]], // bottom-left
-        [brush.maxs[h], brush.mins[v]], // bottom-right
-      );
-      for (const [wh, wv] of handles) {
-        const [shx, shy] = this.worldToScreen(wh, wv);
-        ctx.fillRect(shx - hs, shy - hs, hs * 2, hs * 2);
-      }
+  }
+
+  private drawSelectionBox(): void {
+    const bounds = this.editor.selectionBounds();
+    if (!bounds) return;
+    const { ctx } = this;
+    const h = this.axisH, v = this.axisV;
+    const [x0, y0] = this.worldToScreen(bounds.mins[h], bounds.maxs[v]);
+    const [x1, y1] = this.worldToScreen(bounds.maxs[h], bounds.mins[v]);
+    const bw = x1 - x0, bh = y1 - y0;
+
+    // Dashed outline only for multi-selection
+    if (this.editor.selection.length > 1) {
+      ctx.strokeStyle = 'rgba(255, 170, 0, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x0, y0, bw, bh);
+      ctx.setLineDash([]);
+    }
+
+    // Resize handles
+    const hs = 3;
+    ctx.fillStyle = '#ffaa00';
+    const midX = (x0 + x1) / 2, midY = (y0 + y1) / 2;
+    const handles = [
+      [midX, y0], [midX, y1],   // top, bottom
+      [x0, midY], [x1, midY],   // left, right
+      [x0, y0], [x1, y0],       // top-left, top-right
+      [x0, y1], [x1, y1],       // bottom-left, bottom-right
+    ];
+    for (const [hx, hy] of handles) {
+      ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
     }
   }
 
@@ -340,6 +363,26 @@ export class Viewport2D {
     }
   }
 
+  private drawRubberBand(): void {
+    const { ctx } = this;
+    const x = Math.min(this.rubberBandStart[0], this.rubberBandEnd[0]);
+    const y = Math.min(this.rubberBandStart[1], this.rubberBandEnd[1]);
+    const w = Math.abs(this.rubberBandEnd[0] - this.rubberBandStart[0]);
+    const h = Math.abs(this.rubberBandEnd[1] - this.rubberBandStart[1]);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const dpr = window.devicePixelRatio || 1;
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = 'rgba(0, 120, 255, 0.1)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(0, 120, 255, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   // ── Input handling ──
 
   private setupEvents(): void {
@@ -349,7 +392,7 @@ export class Viewport2D {
     // Use document for move/up so drag continues even when mouse leaves viewport
     document.addEventListener('mousemove', (e) => {
       // Only process if we're actively interacting with this viewport
-      if (this.panning || this.dragging || this.resizing) {
+      if (this.panning || this.dragging || this.resizing || this.rubberBanding) {
         this.onMouseMove(e);
       } else {
         // Only update status if mouse is over this viewport
@@ -375,8 +418,8 @@ export class Viewport2D {
     this.editor.rotationAxis = this.axisDepth;
     const [mx, my] = this.getLocalPos(e);
 
-    // Right mouse, middle mouse, or shift+left: pan
-    if (e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey)) {
+    // Right mouse or middle mouse: pan
+    if (e.button === 2 || e.button === 1) {
       this.panning = true;
       this.panStart = [mx, my];
       this.panCenterStart = [this.centerX, this.centerY];
@@ -426,18 +469,23 @@ export class Viewport2D {
         return;
       }
 
-      // Check for resize edge on selected brush
+      // Check for resize edge on combined selection AABB
       if (this.editor.activeTool === 'select' && this.editor.selection.length > 0) {
         const edge = this.detectResizeEdge(wx, wy);
         if (edge) {
+          const bounds = this.editor.selectionBounds()!;
           this.resizing = true;
           this.resizeEdges = edge.edges;
-          this.resizeBrush = edge.brush;
-          this.resizeOrigMins = vec3Copy(edge.brush.mins);
-          this.resizeOrigMaxs = vec3Copy(edge.brush.maxs);
-          this.resizeOrigPoints = edge.brush.faces.map(f =>
-            [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
-          );
+          this.resizeBrushes = this.editor.selection
+            .filter(s => s.type === 'brush')
+            .map(s => ({
+              brush: s.brush,
+              origPoints: s.brush.faces.map(f =>
+                [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
+              ),
+            }));
+          this.resizeOrigMins = vec3Copy(bounds.mins);
+          this.resizeOrigMaxs = vec3Copy(bounds.maxs);
           this.resizeSnapshotTaken = false;
           this.dragWorldStart = [wx, wy];
           return;
@@ -446,22 +494,23 @@ export class Viewport2D {
 
       // Select tool: try to pick a brush or entity
       const picked = this.pickAt(wx, wy);
+      const additive = e.ctrlKey || e.metaKey || e.shiftKey;
       if (picked) {
-        if (!e.ctrlKey && !e.metaKey) {
-          // Check if already selected — if so, start dragging
-          const alreadySelected = picked.type === 'brush'
-            ? this.editor.isSelected(picked.brush)
-            : this.editor.isEntitySelected(picked.entity);
+        const alreadySelected = picked.type === 'brush'
+          ? this.editor.isSelected(picked.brush)
+          : this.editor.isEntitySelected(picked.entity);
 
-          if (!alreadySelected) {
-            this.editor.clearSelection();
-          }
+        if (!additive && !alreadySelected) {
+          this.editor.clearSelection();
         }
 
-        if (picked.type === 'brush') {
-          this.editor.selectBrush(picked.entity, picked.brush, e.ctrlKey || e.metaKey);
-        } else {
-          this.editor.selectEntity(picked.entity, e.ctrlKey || e.metaKey);
+        // If already selected without modifier, just start dragging (preserve multi-selection)
+        if (additive || !alreadySelected) {
+          if (picked.type === 'brush') {
+            this.editor.selectBrush(picked.entity, picked.brush, additive);
+          } else {
+            this.editor.selectEntity(picked.entity, additive);
+          }
         }
 
         // Start drag-move
@@ -471,7 +520,12 @@ export class Viewport2D {
         this.dragStart = [mx, my];
         this.dragWorldStart = [wx, wy];
       } else {
-        if (!e.ctrlKey && !e.metaKey) {
+        // Nothing picked — start rubber band selection
+        this.rubberBanding = true;
+        this.rubberBandStart = [mx, my];
+        this.rubberBandEnd = [mx, my];
+        this.rubberBandAdditive = additive;
+        if (!additive) {
           this.editor.clearSelection();
         }
       }
@@ -504,7 +558,13 @@ export class Viewport2D {
       return;
     }
 
-    if (this.resizing && this.resizeBrush) {
+    if (this.rubberBanding) {
+      this.rubberBandEnd = [mx, my];
+      this.editor.dirty = true;
+      return;
+    }
+
+    if (this.resizing && this.resizeBrushes.length > 0) {
       const dx = wx - this.dragWorldStart[0];
       const dy = wy - this.dragWorldStart[1];
       const grid = this.editor.gridSize;
@@ -576,7 +636,9 @@ export class Viewport2D {
         scaleOrigin[V] = (origMins[V] + origMaxs[V]) / 2;
       }
 
-      scaleBrushFaces(this.resizeBrush, this.resizeOrigPoints, scaleOrigin, scale);
+      for (const { brush, origPoints } of this.resizeBrushes) {
+        scaleBrushFaces(brush, origPoints, scaleOrigin, scale);
+      }
       this.editor.dirty = true;
       return;
     }
@@ -617,6 +679,36 @@ export class Viewport2D {
   }
 
   private onMouseUp(e: MouseEvent): void {
+    if (this.rubberBanding) {
+      this.rubberBanding = false;
+      const [w0x, w0y] = this.screenToWorld(this.rubberBandStart[0], this.rubberBandStart[1]);
+      const [w1x, w1y] = this.screenToWorld(this.rubberBandEnd[0], this.rubberBandEnd[1]);
+      const minH = Math.min(w0x, w1x), maxH = Math.max(w0x, w1x);
+      const minV = Math.min(w0y, w1y), maxV = Math.max(w0y, w1y);
+
+      // Only select if drag was substantial (>4px)
+      const dx = this.rubberBandEnd[0] - this.rubberBandStart[0];
+      const dy = this.rubberBandEnd[1] - this.rubberBandStart[1];
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        for (const { entity, brush } of this.editor.allBrushes()) {
+          if (brush.maxs[this.axisH] >= minH && brush.mins[this.axisH] <= maxH &&
+              brush.maxs[this.axisV] >= minV && brush.mins[this.axisV] <= maxV) {
+            this.editor.addBrushToSelection(entity, brush);
+          }
+        }
+        for (const entity of this.editor.pointEntities()) {
+          const origin = entityOrigin(entity);
+          if (!origin) continue;
+          if (origin[this.axisH] >= minH && origin[this.axisH] <= maxH &&
+              origin[this.axisV] >= minV && origin[this.axisV] <= maxV) {
+            this.editor.addEntityToSelection(entity);
+          }
+        }
+      }
+      this.editor.dirty = true;
+      return;
+    }
+
     if (this.panning) {
       this.panning = false;
       return;
@@ -624,7 +716,7 @@ export class Viewport2D {
 
     if (this.resizing) {
       this.resizing = false;
-      this.resizeBrush = null;
+      this.resizeBrushes = [];
       this.canvas.parentElement!.style.cursor = '';
       this.editor.statusMessage = 'Resized';
       return;
@@ -686,30 +778,23 @@ export class Viewport2D {
   // ── Resize edge detection ──
 
   private detectResizeEdge(wx: number, wy: number): {
-    brush: Brush;
-    entity: Entity;
     edges: { minH: boolean; maxH: boolean; minV: boolean; maxV: boolean };
   } | null {
-    const threshold = 6 / this.zoom; // 6 pixels in world units
+    const bounds = this.editor.selectionBounds();
+    if (!bounds) return null;
+    const threshold = 6 / this.zoom;
 
-    for (const item of this.editor.selection) {
-      if (item.type === 'entity') continue;
-      const brush = item.brush;
-      const entity = item.entity;
+    const inH = wx >= bounds.mins[this.axisH] - threshold && wx <= bounds.maxs[this.axisH] + threshold;
+    const inV = wy >= bounds.mins[this.axisV] - threshold && wy <= bounds.maxs[this.axisV] + threshold;
+    if (!inH || !inV) return null;
 
-      // Check if cursor is near the brush AABB
-      const inH = wx >= brush.mins[this.axisH] - threshold && wx <= brush.maxs[this.axisH] + threshold;
-      const inV = wy >= brush.mins[this.axisV] - threshold && wy <= brush.maxs[this.axisV] + threshold;
-      if (!inH || !inV) continue;
+    const nearMinH = Math.abs(wx - bounds.mins[this.axisH]) < threshold;
+    const nearMaxH = Math.abs(wx - bounds.maxs[this.axisH]) < threshold;
+    const nearMinV = Math.abs(wy - bounds.mins[this.axisV]) < threshold;
+    const nearMaxV = Math.abs(wy - bounds.maxs[this.axisV]) < threshold;
 
-      const nearMinH = Math.abs(wx - brush.mins[this.axisH]) < threshold;
-      const nearMaxH = Math.abs(wx - brush.maxs[this.axisH]) < threshold;
-      const nearMinV = Math.abs(wy - brush.mins[this.axisV]) < threshold;
-      const nearMaxV = Math.abs(wy - brush.maxs[this.axisV]) < threshold;
-
-      if (nearMinH || nearMaxH || nearMinV || nearMaxV) {
-        return { brush, entity, edges: { minH: nearMinH, maxH: nearMaxH, minV: nearMinV, maxV: nearMaxV } };
-      }
+    if (nearMinH || nearMaxH || nearMinV || nearMaxV) {
+      return { edges: { minH: nearMinH, maxH: nearMaxH, minV: nearMinV, maxV: nearMaxV } };
     }
     return null;
   }
