@@ -1,6 +1,6 @@
 import { Editor, Tool } from './editor';
-import { BrushFace } from './brush';
-import { ENTITY_CLASSES } from './entity';
+import { Brush, BrushFace } from './brush';
+import { Entity, ENTITY_CLASSES } from './entity';
 import { TextureManager } from './textures';
 import { Vec3 } from './math';
 
@@ -414,8 +414,9 @@ export class UI {
       : `Tool: ${e.activeTool}`;
     document.getElementById('status-tool')!.textContent = toolLabel;
     document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}${e.snapToGrid ? '' : ' (free)'}`;
-    const selLabel = e.selection.length === 1 && e.selection[0].type === 'face'
-      ? 'Sel: 1 face'
+    const faceCount = e.selection.filter(s => s.type === 'face').length;
+    const selLabel = faceCount > 0
+      ? `Sel: ${faceCount} face${faceCount > 1 ? 's' : ''}`
       : `Sel: ${e.selection.length}`;
     document.getElementById('status-sel')!.textContent = selLabel;
 
@@ -439,15 +440,24 @@ export class UI {
     const propsDiv = document.getElementById('entity-props')!;
     const sel = this.editor.selection;
 
-    if (sel.length === 1 && sel[0].type === 'face') {
-      const face = sel[0].face;
-      const brush = sel[0].brush;
-      // Only rebuild if the panel doesn't already show face props for this face
+    const faceItems = sel.filter(s => s.type === 'face') as Array<{ type: 'face'; entity: Entity; brush: Brush; face: BrushFace }>;
+    if (faceItems.length === 1) {
+      const face = faceItems[0].face;
+      const brush = faceItems[0].brush;
       if (propsDiv.dataset.mode !== 'face' || propsDiv.dataset.faceId !== String(face.plane.dist)) {
         propsDiv.innerHTML = '';
         propsDiv.dataset.mode = 'face';
         propsDiv.dataset.faceId = String(face.plane.dist);
         this.buildFacePropsUI(propsDiv, face, brush);
+      }
+    } else if (faceItems.length > 1) {
+      const faces = faceItems.map(f => f.face);
+      const faceKey = faces.map(f => String(f.plane.dist)).join(',');
+      if (propsDiv.dataset.mode !== 'multiface' || propsDiv.dataset.faceId !== faceKey) {
+        propsDiv.innerHTML = '';
+        propsDiv.dataset.mode = 'multiface';
+        propsDiv.dataset.faceId = faceKey;
+        this.buildMultiFacePropsUI(propsDiv, faces);
       }
     } else if (sel.length === 1 && sel[0].type === 'entity') {
       propsDiv.dataset.mode = 'entity';
@@ -570,7 +580,63 @@ export class UI {
     });
   }
 
-  private addFaceField(container: HTMLElement, label: string, value: string, type: string, onChange: (val: string) => void): void {
+  private buildMultiFacePropsUI(container: HTMLElement, faces: BrushFace[]): void {
+    const title = document.createElement('label');
+    title.textContent = 'Face Properties';
+    title.style.fontWeight = 'bold';
+    container.appendChild(title);
+
+    const hint = document.createElement('label');
+    hint.textContent = `${faces.length} faces selected`;
+    hint.style.color = '#888';
+    hint.style.fontSize = '11px';
+    container.appendChild(hint);
+
+    // Texture: show common value or "(mixed)"
+    const textures = new Set(faces.map(f => f.texture));
+    const commonTex = textures.size === 1 ? [...textures][0] : '';
+    this.addFaceField(container, 'Texture', commonTex, 'text', (val) => {
+      for (const f of faces) f.texture = val;
+      this.editor.dirty = true;
+    }, textures.size > 1 ? '(mixed)' : undefined);
+
+    // Offset
+    const sameOx = faces.every(f => f.offsetX === faces[0].offsetX);
+    const sameOy = faces.every(f => f.offsetY === faces[0].offsetY);
+    this.addFaceNumberRow(container, 'Offset',
+      sameOx ? faces[0].offsetX : 0, sameOy ? faces[0].offsetY : 0, 'X', 'Y', (x, y) => {
+      for (const f of faces) { f.offsetX = x; f.offsetY = y; }
+      this.editor.dirty = true;
+    });
+
+    // Scale
+    const sameSx = faces.every(f => f.scaleX === faces[0].scaleX);
+    const sameSy = faces.every(f => f.scaleY === faces[0].scaleY);
+    this.addFaceNumberRow(container, 'Scale',
+      sameSx ? faces[0].scaleX : 0.5, sameSy ? faces[0].scaleY : 0.5, 'X', 'Y', (x, y) => {
+      for (const f of faces) { f.scaleX = x; f.scaleY = y; }
+      this.editor.dirty = true;
+    });
+
+    // Rotation
+    const sameRot = faces.every(f => f.rotation === faces[0].rotation);
+    this.addFaceField(container, 'Rotation', sameRot ? String(faces[0].rotation) : '', 'number', (val) => {
+      const r = parseFloat(val) || 0;
+      for (const f of faces) f.rotation = r;
+      this.editor.dirty = true;
+    }, sameRot ? undefined : '(mixed)');
+
+    // Flags
+    const sameSurf = faces.every(f => f.surfaceFlags === faces[0].surfaceFlags);
+    const sameCont = faces.every(f => f.contentFlags === faces[0].contentFlags);
+    this.addFaceNumberRow(container, 'Flags',
+      sameSurf ? faces[0].surfaceFlags : 0, sameCont ? faces[0].contentFlags : 0, 'Surf', 'Cont', (s, c) => {
+      for (const f of faces) { f.surfaceFlags = s; f.contentFlags = c; }
+      this.editor.dirty = true;
+    });
+  }
+
+  private addFaceField(container: HTMLElement, label: string, value: string, type: string, onChange: (val: string) => void, placeholder?: string): void {
     const lbl = document.createElement('label');
     lbl.textContent = label;
     lbl.style.marginTop = '4px';
@@ -580,6 +646,7 @@ export class UI {
     const input = document.createElement('input');
     input.type = type;
     input.value = value;
+    if (placeholder) input.placeholder = placeholder;
     if (type === 'number') input.step = 'any';
     input.addEventListener('change', () => onChange(input.value));
     container.appendChild(input);

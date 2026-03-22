@@ -900,8 +900,9 @@ export class Viewport3D {
           const hit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
           if (hit) {
             if (e.altKey) {
-              // Alt+click: select individual face
-              this.editor.selectFace(hit.entity, hit.brush, hit.face);
+              // Alt+click: select individual face, Shift+Alt: additive face select
+              const additive = e.shiftKey;
+              this.editor.selectFace(hit.entity, hit.brush, hit.face, additive);
             } else {
               const additive = e.ctrlKey || e.metaKey || e.shiftKey;
               if (!additive) this.editor.clearSelection();

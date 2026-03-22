@@ -121,14 +121,34 @@ export class Editor {
     this.dirty = true;
   }
 
-  selectFace(entity: Entity, brush: Brush, face: BrushFace): void {
-    // Face selection is always single — replaces entire selection
-    this.selection = [{ type: 'face', entity, brush, face }];
+  selectFace(entity: Entity, brush: Brush, face: BrushFace, additive = false): void {
+    if (additive) {
+      // Only allow additive if existing selection is all faces
+      const allFaces = this.selection.every(s => s.type === 'face');
+      if (allFaces && this.selection.length > 0) {
+        // Toggle: deselect if already selected, otherwise add
+        const idx = this.selection.findIndex(s => s.type === 'face' && s.face === face);
+        if (idx >= 0) {
+          this.selection.splice(idx, 1);
+        } else {
+          this.selection.push({ type: 'face', entity, brush, face });
+        }
+      } else {
+        // Switch from brush/entity selection to face selection
+        this.selection = [{ type: 'face', entity, brush, face }];
+      }
+    } else {
+      this.selection = [{ type: 'face', entity, brush, face }];
+    }
     this.dirty = true;
   }
 
   isFaceSelected(face: BrushFace): boolean {
     return this.selection.some(s => s.type === 'face' && s.face === face);
+  }
+
+  get selectedFaces(): BrushFace[] {
+    return this.selection.filter(s => s.type === 'face').map(s => (s as any).face as BrushFace);
   }
 
   get selectedFace(): BrushFace | null {
