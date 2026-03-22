@@ -364,6 +364,28 @@ export class Editor {
     this.statusMessage = 'Duplicated';
   }
 
+  snapSelectionToGrid(): void {
+    if (this.selection.length === 0) return;
+    this.snapshot();
+    for (const item of this.selection) {
+      if (item.type === 'brush' || item.type === 'face') {
+        const snapped = vec3Snap(item.brush.mins, this.gridSize);
+        const delta: Vec3 = [snapped[0] - item.brush.mins[0], snapped[1] - item.brush.mins[1], snapped[2] - item.brush.mins[2]];
+        if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
+          translateBrush(item.brush, delta);
+        }
+      } else {
+        const origin = entityOrigin(item.entity);
+        if (origin) {
+          const snapped = vec3Snap(origin, this.gridSize);
+          setEntityOrigin(item.entity, snapped);
+        }
+      }
+    }
+    this.dirty = true;
+    this.statusMessage = 'Snapped to grid';
+  }
+
   /** Clone the current selection in-place (no offset). Used for Option-drag duplication. */
   duplicateSelectionInPlace(): void {
     if (this.selection.length === 0) return;

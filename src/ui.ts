@@ -322,6 +322,7 @@ export class UI {
       if (ctrl && e.key === 'o') { e.preventDefault(); this.editor.openMapFromFile(); return; }
       if (ctrl && e.key === 'a') { e.preventDefault(); this.editor.selectAll(); return; }
       if (ctrl && e.key === 'd') { e.preventDefault(); this.editor.duplicateSelection(); return; }
+      if (ctrl && e.key === 'g') { e.preventDefault(); this.editor.snapSelectionToGrid(); return; }
 
       if (e.key === 'Escape') {
         if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
