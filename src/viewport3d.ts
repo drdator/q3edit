@@ -1,11 +1,11 @@
 import {
   Vec3, vec3, vec3Add, vec3Sub, vec3Scale, vec3Cross, vec3Dot,
-  vec3Normalize, vec3Length, vec3Copy,
+  vec3Normalize, vec3Length, vec3Copy, vec3Snap,
   Mat4, mat4Perspective, mat4LookAt, mat4Multiply, mat4Identity,
   rayTriangleIntersect,
 } from './math';
 import { Editor } from './editor';
-import { Brush, BrushFace, computeFaceUV } from './brush';
+import { Brush, BrushFace, computeFaceUV, scaleBrushFaces, computeBrushGeometry } from './brush';
 import { Entity, entityOrigin } from './entity';
 import { TextureManager, TextureInfo } from './textures';
 
@@ -145,6 +145,10 @@ export class Viewport3D {
   private gridVBO!: WebGLBuffer;
   private gridCount = 0;
 
+  private gizmoVAO!: WebGLVertexArrayObject;
+  private gizmoVBO!: WebGLBuffer;
+  private gizmoSegments: { start: number; count: number; color: Vec3 }[] = [];
+
   // Interaction
   private looking = false;
   private dragStart: [number, number] = [0, 0];
@@ -152,6 +156,21 @@ export class Viewport3D {
   private lastMouse: [number, number] = [0, 0];
   private keys = new Set<string>();
   private lastTime = 0;
+
+  // Gizmo drag state
+  private gizmoDragging = false;
+  private gizmoAxis = -1; // 0=X, 1=Y, 2=Z
+  private gizmoCenter: Vec3 = [0, 0, 0];
+  private gizmoDragLast: [number, number] = [0, 0];
+  private gizmoSnapshotTaken = false;
+  private gizmoOrigMins: Vec3 = [0, 0, 0];
+  private gizmoOrigMaxs: Vec3 = [0, 0, 0];
+  private gizmoOrigPoints: [Vec3, Vec3, Vec3][][] = []; // per brush, per face
+  // Cached screen-space axis direction and world-per-pixel at drag start
+  private gizmoScreenDir: [number, number] = [0, 0];
+  private gizmoScreenDirLen = 0;
+  private gizmoWorldPerPixel = 1;
+  private lastPV: Mat4 = mat4Identity();
 
   constructor(canvas: HTMLCanvasElement, editor: Editor) {
     this.canvas = canvas;
@@ -204,6 +223,15 @@ export class Viewport3D {
     this.wireVBO = gl.createBuffer()!;
     gl.bindVertexArray(this.wireVAO);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.wireVBO);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+    gl.bindVertexArray(null);
+
+    // Gizmo geometry
+    this.gizmoVAO = gl.createVertexArray()!;
+    this.gizmoVBO = gl.createBuffer()!;
+    gl.bindVertexArray(this.gizmoVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.gizmoVBO);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
     gl.bindVertexArray(null);
@@ -402,12 +430,77 @@ export class Viewport3D {
     this.faceSelCount = faceSelLineVerts.length / 3;
   }
 
+  private buildGizmo(): void {
+    const gl = this.gl;
+    const center = this.editor.selectionCenter();
+    this.gizmoSegments = [];
+
+    if (!center) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.gizmoVBO);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(0), gl.DYNAMIC_DRAW);
+      return;
+    }
+
+    // Don't update center during an active drag — it must stay fixed
+    if (!this.gizmoDragging) {
+      this.gizmoCenter = center;
+    }
+
+    // Gizmo length scales with distance from camera for consistent screen size
+    const dist = vec3Length(vec3Sub(center, this.position));
+    const len = dist * 0.12;
+    const tipSize = len * 0.15;
+
+    const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    const colors: Vec3[] = [[1, 0.2, 0.2], [0.2, 1, 0.2], [0.4, 0.4, 1]];
+    const isScale = this.editor.gizmoMode === 'scale';
+    const verts: number[] = [];
+
+    for (let a = 0; a < 3; a++) {
+      const dir = axes[a];
+      const tip: Vec3 = vec3Add(center, vec3Scale(dir, len));
+      const start = verts.length / 3;
+
+      // Main axis line
+      verts.push(center[0], center[1], center[2]);
+      verts.push(tip[0], tip[1], tip[2]);
+
+      if (isScale) {
+        // Small cube at tip (3 line pairs for a box outline)
+        const s = tipSize;
+        for (let i = 0; i < 3; i++) {
+          const d: Vec3 = [0, 0, 0];
+          d[i] = s;
+          verts.push(tip[0] - d[0], tip[1] - d[1], tip[2] - d[2]);
+          verts.push(tip[0] + d[0], tip[1] + d[1], tip[2] + d[2]);
+        }
+      } else {
+        // Arrowhead: two short lines from tip angled back
+        const perp1 = axes[(a + 1) % 3];
+        const perp2 = axes[(a + 2) % 3];
+        const back = vec3Add(tip, vec3Scale(dir, -tipSize * 2));
+        for (const p of [perp1, vec3Scale(perp1, -1) as Vec3, perp2, vec3Scale(perp2, -1) as Vec3]) {
+          const wing = vec3Add(back, vec3Scale(p, tipSize));
+          verts.push(tip[0], tip[1], tip[2]);
+          verts.push(wing[0], wing[1], wing[2]);
+        }
+      }
+
+      const count = verts.length / 3 - start;
+      this.gizmoSegments.push({ start, count, color: colors[a] });
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.gizmoVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
+  }
+
   render(time: number): void {
     const dt = this.lastTime ? (time - this.lastTime) / 1000 : 0;
     this.lastTime = time;
 
     this.updateCamera(dt);
     this.buildGeometry();
+    this.buildGizmo();
 
     const { gl, canvas } = this;
     const dpr = window.devicePixelRatio || 1;
@@ -423,6 +516,7 @@ export class Viewport3D {
     const target = vec3Add(this.position, forward);
     const view = mat4LookAt(this.position, target, [0, 0, 1]);
     const pv = mat4Multiply(proj, view);
+    this.lastPV = pv;
 
     // Draw grid
     gl.useProgram(this.lineProg);
@@ -490,6 +584,22 @@ export class Viewport3D {
       gl.bindVertexArray(this.faceSelVAO);
       gl.drawArrays(gl.LINES, 0, this.faceSelCount);
       gl.lineWidth(1);
+      gl.enable(gl.DEPTH_TEST);
+    }
+
+    // Draw gizmo (on top of everything)
+    if (this.gizmoSegments.length > 0) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
+      gl.disable(gl.DEPTH_TEST);
+      gl.bindVertexArray(this.gizmoVAO);
+      for (const seg of this.gizmoSegments) {
+        const c = seg.color;
+        // Highlight the active drag axis
+        const bright = this.gizmoDragging && this.gizmoAxis === this.gizmoSegments.indexOf(seg) ? 1.5 : 1.0;
+        gl.uniform3f(this.lineColorLoc, c[0] * bright, c[1] * bright, c[2] * bright);
+        gl.drawArrays(gl.LINES, seg.start, seg.count);
+      }
       gl.enable(gl.DEPTH_TEST);
     }
 
@@ -571,12 +681,176 @@ export class Viewport3D {
     return bestHit;
   }
 
+  // ── Gizmo hit testing ──
+
+  private worldToScreen(p: Vec3): [number, number] | null {
+    const pv = this.lastPV;
+    // Transform by PV matrix
+    const x = pv[0]*p[0] + pv[4]*p[1] + pv[8]*p[2] + pv[12];
+    const y = pv[1]*p[0] + pv[5]*p[1] + pv[9]*p[2] + pv[13];
+    const w = pv[3]*p[0] + pv[7]*p[1] + pv[11]*p[2] + pv[15];
+    if (w < 0.01) return null; // behind camera
+    const rect = this.canvas.getBoundingClientRect();
+    return [
+      (x / w * 0.5 + 0.5) * rect.width + rect.left,
+      (-y / w * 0.5 + 0.5) * rect.height + rect.top,
+    ];
+  }
+
+  private pickGizmoAxis(screenX: number, screenY: number): number {
+    const center = this.gizmoCenter;
+    const dist = vec3Length(vec3Sub(center, this.position));
+    const len = dist * 0.12;
+    const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    const threshold = 10; // pixels
+
+    const cScreen = this.worldToScreen(center);
+    if (!cScreen) return -1;
+
+    let bestAxis = -1;
+    let bestDist = threshold;
+
+    for (let a = 0; a < 3; a++) {
+      const tip = vec3Add(center, vec3Scale(axes[a], len));
+      const tScreen = this.worldToScreen(tip);
+      if (!tScreen) continue;
+
+      // Distance from point to line segment (center → tip) in screen space
+      const d = this.pointToSegmentDist(screenX, screenY, cScreen[0], cScreen[1], tScreen[0], tScreen[1]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestAxis = a;
+      }
+    }
+    return bestAxis;
+  }
+
+  private pointToSegmentDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 0.01) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2);
+    let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx, cy = ay + t * dy;
+    return Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+  }
+
   // ── Input ──
+
+  private handleGizmoDrag(e: MouseEvent): void {
+    if (!this.gizmoSnapshotTaken) {
+      this.editor.snapshot();
+      this.gizmoSnapshotTaken = true;
+    }
+
+    const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    const axis = axes[this.gizmoAxis];
+
+    // Use cached screen direction and worldPerPixel from drag start
+    const screenDirX = this.gizmoScreenDir[0];
+    const screenDirY = this.gizmoScreenDir[1];
+    const screenDirLen = this.gizmoScreenDirLen;
+    if (screenDirLen < 0.1) return;
+
+    // Mouse delta projected onto axis screen direction
+    const mdx = e.clientX - this.gizmoDragLast[0];
+    const mdy = e.clientY - this.gizmoDragLast[1];
+    const projected = (mdx * screenDirX + mdy * screenDirY) / screenDirLen;
+
+    const worldDelta = projected * this.gizmoWorldPerPixel;
+
+    if (this.editor.gizmoMode === 'move') {
+      // Move selection along axis
+      const grid = this.editor.gridSize;
+      const snapped = Math.round(worldDelta / grid) * grid;
+      if (snapped !== 0) {
+        const delta: Vec3 = vec3Scale(axis, snapped);
+        this.editor.moveSelection(delta);
+        this.gizmoCenter = vec3Add(this.gizmoCenter, delta);
+        this.gizmoDragLast = [e.clientX, e.clientY];
+      }
+    } else {
+      // Scale along axis from selection center
+      const a = this.gizmoAxis;
+      const origExtent = (this.gizmoOrigMaxs[a] - this.gizmoOrigMins[a]) / 2;
+      if (Math.abs(origExtent) < 0.01) return;
+
+      const totalDx = e.clientX - this.gizmoDragLast[0];
+      const totalDy = e.clientY - this.gizmoDragLast[1];
+      const totalProjected = (totalDx * screenDirX + totalDy * screenDirY) / screenDirLen;
+      const totalWorld = totalProjected * this.gizmoWorldPerPixel;
+      const scaleFactor = (origExtent + totalWorld) / origExtent;
+      if (scaleFactor < 0.1) return;
+
+      const scale: Vec3 = [1, 1, 1];
+      scale[a] = scaleFactor;
+      const origin: Vec3 = vec3Copy(this.gizmoCenter);
+
+      let idx = 0;
+      for (const item of this.editor.selection) {
+        if (item.type === 'entity') { idx++; continue; }
+        const origPts = this.gizmoOrigPoints[idx];
+        if (origPts.length > 0) {
+          scaleBrushFaces(item.brush, origPts, origin, scale);
+        }
+        idx++;
+      }
+      this.editor.dirty = true;
+    }
+  }
 
   private setupEvents(): void {
     const el = this.canvas.parentElement!;
 
     el.addEventListener('mousedown', (e) => {
+      // Left click: check gizmo first
+      if (e.button === 0 && this.editor.selection.length > 0) {
+        const axis = this.pickGizmoAxis(e.clientX, e.clientY);
+        if (axis >= 0) {
+          this.gizmoDragging = true;
+          this.gizmoAxis = axis;
+          this.gizmoDragLast = [e.clientX, e.clientY];
+          this.gizmoSnapshotTaken = false;
+          // Cache screen direction and worldPerPixel at drag start
+          {
+            const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+            const cScreen = this.worldToScreen(this.gizmoCenter);
+            const tipWorld = vec3Add(this.gizmoCenter, vec3Scale(axes[axis], 100));
+            const tScreen = this.worldToScreen(tipWorld);
+            if (cScreen && tScreen) {
+              this.gizmoScreenDir = [tScreen[0] - cScreen[0], tScreen[1] - cScreen[1]];
+              this.gizmoScreenDirLen = Math.sqrt(this.gizmoScreenDir[0] ** 2 + this.gizmoScreenDir[1] ** 2);
+            }
+            const dist = vec3Length(vec3Sub(this.gizmoCenter, this.position));
+            const rect = this.canvas.getBoundingClientRect();
+            this.gizmoWorldPerPixel = (2 * dist * Math.tan(Math.PI / 6)) / rect.height;
+          }
+          // Store original state for scale mode
+          if (this.editor.gizmoMode === 'scale') {
+            const center = this.editor.selectionCenter();
+            if (center) this.gizmoCenter = center;
+            this.gizmoOrigPoints = [];
+            let mins: Vec3 = [Infinity, Infinity, Infinity];
+            let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+            for (const item of this.editor.selection) {
+              if (item.type === 'entity') { this.gizmoOrigPoints.push([]); continue; }
+              this.gizmoOrigPoints.push(
+                item.brush.faces.map(f =>
+                  [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
+                )
+              );
+              for (let i = 0; i < 3; i++) {
+                if (item.brush.mins[i] < mins[i]) mins[i] = item.brush.mins[i];
+                if (item.brush.maxs[i] > maxs[i]) maxs[i] = item.brush.maxs[i];
+              }
+            }
+            this.gizmoOrigMins = mins;
+            this.gizmoOrigMaxs = maxs;
+          }
+          e.preventDefault();
+          return;
+        }
+      }
       if (e.button === 0 || e.button === 2) {
         this.looking = true;
         this.didDrag = false;
@@ -587,6 +861,10 @@ export class Viewport3D {
     });
 
     document.addEventListener('mousemove', (e) => {
+      if (this.gizmoDragging) {
+        this.handleGizmoDrag(e);
+        return;
+      }
       if (!this.looking) return;
       const dx = e.movementX;
       const dy = e.movementY;
@@ -602,6 +880,12 @@ export class Viewport3D {
     });
 
     document.addEventListener('mouseup', (e) => {
+      if (this.gizmoDragging && e.button === 0) {
+        this.gizmoDragging = false;
+        this.gizmoAxis = -1;
+        this.editor.dirty = true;
+        return;
+      }
       if ((e.button === 0 || e.button === 2) && this.looking) {
         this.looking = false;
         this.keys.clear();
