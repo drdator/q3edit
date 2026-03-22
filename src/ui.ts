@@ -3,6 +3,7 @@ import { ENTITY_CLASSES } from './entity';
 import { TextureManager } from './textures';
 import { Vec3 } from './math';
 import { PropertiesPanel } from './properties-panel';
+import { Brush, BrushValidationResult } from './brush';
 
 const COMMON_TEXTURES = [
   'common/caulk',
@@ -326,7 +327,7 @@ export class UI {
 
       if (e.key === 'Escape') {
         if (this.editor.vertexMode) {
-          this.editor.exitVertexMode();
+          this.handleExitVertexMode();
         } else if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
           this.editor.cancelClip();
         } else {
@@ -344,7 +345,7 @@ export class UI {
       // Toggle vertex editing mode
       if (e.key === 'v' && !ctrl) {
         if (this.editor.vertexMode) {
-          this.editor.exitVertexMode();
+          this.handleExitVertexMode();
         } else if (this.editor.selection.length > 0) {
           this.editor.enterVertexMode();
         }
@@ -522,6 +523,96 @@ export class UI {
       }
       const textures = texMgr.listTexturesInDir(dir);
       this.populateTextureList(list, textures, input);
+    });
+  }
+
+  /** Exit vertex mode with geometry validation. Shows warning dialog if brushes are invalid. */
+  handleExitVertexMode(): void {
+    const result = this.editor.exitVertexMode();
+    if (!result) return;
+
+    const { invalidBrushes } = result;
+    const issueLines = invalidBrushes.flatMap(({ result: r }, i) =>
+      r.issues.map(issue => `  Brush ${i + 1}: ${issue}`)
+    );
+    const brushes = invalidBrushes.map(b => b.brush);
+
+    this.showGeometryWarning(issueLines, brushes);
+  }
+
+  /** Show a warning dialog for invalid brush geometry with Rebuild / Revert options. */
+  private showGeometryWarning(issues: string[], brushes: Brush[]): void {
+    // Remove existing dialog if any
+    document.getElementById('geom-warning')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'geom-warning';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#2a2a2a;border:1px solid #f80;border-radius:6px;padding:16px 20px;max-width:480px;color:#eee;font:13px/1.5 monospace';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:14px;font-weight:bold;color:#f80;margin-bottom:8px';
+    title.textContent = 'Invalid Brush Geometry';
+    dialog.appendChild(title);
+
+    const desc = document.createElement('div');
+    desc.style.cssText = 'margin-bottom:12px;color:#ccc';
+    desc.textContent = 'This geometry may not compile to a valid BSP:';
+    dialog.appendChild(desc);
+
+    const list = document.createElement('pre');
+    list.style.cssText = 'background:#1a1a1a;padding:8px;border-radius:4px;margin-bottom:12px;max-height:150px;overflow-y:auto;font-size:12px;color:#fa0;white-space:pre-wrap';
+    list.textContent = issues.join('\n');
+    dialog.appendChild(list);
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+    const rebuildBtn = document.createElement('button');
+    rebuildBtn.textContent = 'Rebuild from planes';
+    rebuildBtn.title = 'Recompute the convex brush from face planes — fixes non-convex shapes but may change vertex positions';
+    rebuildBtn.style.cssText = 'padding:6px 14px;background:#e80;color:#000;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold';
+    rebuildBtn.onclick = () => {
+      this.editor.rebuildBrushes(brushes);
+      this.editor.statusMessage = 'Rebuilt brush geometry from planes';
+      overlay.remove();
+    };
+
+    const revertBtn = document.createElement('button');
+    revertBtn.textContent = 'Revert (undo)';
+    revertBtn.title = 'Undo all vertex edits and restore the previous brush state';
+    revertBtn.style.cssText = 'padding:6px 14px;background:#555;color:#eee;border:none;border-radius:4px;cursor:pointer;font:13px monospace';
+    revertBtn.onclick = () => {
+      this.editor.undo();
+      this.editor.statusMessage = 'Reverted vertex edits';
+      overlay.remove();
+    };
+
+    const keepBtn = document.createElement('button');
+    keepBtn.textContent = 'Keep as-is';
+    keepBtn.title = 'Leave the brush unchanged — may produce BSP compile errors';
+    keepBtn.style.cssText = 'padding:6px 14px;background:#333;color:#999;border:1px solid #555;border-radius:4px;cursor:pointer;font:13px monospace';
+    keepBtn.onclick = () => {
+      this.editor.statusMessage = 'Warning: brush has invalid geometry';
+      overlay.remove();
+    };
+
+    buttons.appendChild(rebuildBtn);
+    buttons.appendChild(revertBtn);
+    buttons.appendChild(keepBtn);
+    dialog.appendChild(buttons);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    // Focus rebuild button and allow Escape to dismiss
+    rebuildBtn.focus();
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        keepBtn.click();
+        e.stopPropagation();
+      }
     });
   }
 

@@ -309,6 +309,81 @@ export function scaleBrushFaces(
   computeBrushGeometry(brush);
 }
 
+// ── Brush geometry validation ──
+
+export interface BrushValidationResult {
+  valid: boolean;
+  issues: string[];
+}
+
+/** Validate brush geometry for BSP compatibility. */
+export function validateBrush(brush: Brush): BrushValidationResult {
+  const issues: string[] = [];
+
+  // Minimum face count
+  if (brush.faces.length < 4) {
+    issues.push(`Too few faces (${brush.faces.length}, need at least 4)`);
+  }
+
+  // Check for degenerate planes (zero-length normals)
+  for (let i = 0; i < brush.faces.length; i++) {
+    const n = brush.faces[i].plane.normal;
+    const len = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (len < 0.5) {
+      issues.push(`Face ${i}: degenerate plane (zero normal)`);
+    }
+  }
+
+  // Check for faces with too few polygon vertices
+  for (let i = 0; i < brush.faces.length; i++) {
+    if (brush.faces[i].polygon.length < 3) {
+      issues.push(`Face ${i}: degenerate polygon (${brush.faces[i].polygon.length} vertices)`);
+    }
+  }
+
+  // Check convexity: every vertex should be on or behind every face plane
+  const CONVEX_EPSILON = 0.5;
+  let nonConvex = false;
+  for (let fi = 0; fi < brush.faces.length && !nonConvex; fi++) {
+    const plane = brush.faces[fi].plane;
+    for (let fj = 0; fj < brush.faces.length; fj++) {
+      if (fi === fj) continue;
+      for (const v of brush.faces[fj].polygon) {
+        const dist = planePointDistance(plane, v);
+        if (dist > CONVEX_EPSILON) {
+          issues.push(`Non-convex: vertex ${dist.toFixed(1)} units in front of face ${fi}`);
+          nonConvex = true;
+          break;
+        }
+      }
+      if (nonConvex) break;
+    }
+  }
+
+  // Check for coplanar faces (same normal direction, same distance)
+  for (let i = 0; i < brush.faces.length; i++) {
+    for (let j = i + 1; j < brush.faces.length; j++) {
+      const dot = vec3Dot(brush.faces[i].plane.normal, brush.faces[j].plane.normal);
+      if (dot > 0.999) {
+        const d1 = brush.faces[i].plane.dist;
+        const d2 = brush.faces[j].plane.dist;
+        if (Math.abs(d1 - d2) < 0.1) {
+          issues.push(`Faces ${i} and ${j} are coplanar (duplicate)`);
+        }
+      }
+    }
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+
+/** Rebuild brush from its face planes — reconvexifies and removes degenerate faces. */
+export function rebuildBrush(brush: Brush): void {
+  computeBrushGeometry(brush);
+  // Remove faces whose polygons were clipped away entirely
+  brush.faces = brush.faces.filter(f => f.polygon.length >= 3);
+}
+
 // Resize a box brush by setting new AABB (reconstructs faces)
 export function resizeBoxBrush(brush: Brush, newMins: Vec3, newMaxs: Vec3): void {
   const texture = brush.faces[0]?.texture ?? 'common/caulk';

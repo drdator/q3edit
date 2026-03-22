@@ -1,5 +1,5 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
-import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter } from './brush';
+import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, BrushValidationResult } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
@@ -633,11 +633,34 @@ export class Editor {
     this.statusMessage = 'Vertex mode';
   }
 
-  exitVertexMode(): void {
-    if (!this.vertexMode) return;
+  exitVertexMode(): { invalidBrushes: { brush: Brush; entity: Entity; result: BrushValidationResult }[] } | null {
+    if (!this.vertexMode) return null;
+
+    // Validate all edited brushes before leaving vertex mode
+    const invalidBrushes: { brush: Brush; entity: Entity; result: BrushValidationResult }[] = [];
+    for (const data of this.vertexData) {
+      const result = validateBrush(data.brush);
+      if (!result.valid) {
+        invalidBrushes.push({ brush: data.brush, entity: data.entity, result });
+      }
+    }
+
     this.vertexMode = false;
     this.vertexData = [];
     this.vertexSelection = [];
+    this.dirty = true;
+
+    if (invalidBrushes.length > 0) {
+      return { invalidBrushes };
+    }
+    return null;
+  }
+
+  /** Rebuild invalid brushes from their face planes (reconvexifies). */
+  rebuildBrushes(brushes: Brush[]): void {
+    for (const brush of brushes) {
+      rebuildBrush(brush);
+    }
     this.dirty = true;
   }
 
