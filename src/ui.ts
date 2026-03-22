@@ -444,15 +444,16 @@ export class UI {
     if (faceItems.length === 1) {
       const face = faceItems[0].face;
       const brush = faceItems[0].brush;
-      if (propsDiv.dataset.mode !== 'face' || propsDiv.dataset.faceId !== String(face.plane.dist)) {
+      const key = `${face.plane.dist}:${face.texture}`;
+      if (propsDiv.dataset.mode !== 'face' || propsDiv.dataset.faceId !== key) {
         propsDiv.innerHTML = '';
         propsDiv.dataset.mode = 'face';
-        propsDiv.dataset.faceId = String(face.plane.dist);
+        propsDiv.dataset.faceId = key;
         this.buildFacePropsUI(propsDiv, face, brush);
       }
     } else if (faceItems.length > 1) {
       const faces = faceItems.map(f => f.face);
-      const faceKey = faces.map(f => String(f.plane.dist)).join(',');
+      const faceKey = faces.map(f => `${f.plane.dist}:${f.texture}`).join(',');
       if (propsDiv.dataset.mode !== 'multiface' || propsDiv.dataset.faceId !== faceKey) {
         propsDiv.innerHTML = '';
         propsDiv.dataset.mode = 'multiface';
@@ -508,7 +509,7 @@ export class UI {
       propsDiv.appendChild(addBtn);
     } else if (sel.some(s => s.type === 'brush')) {
       const brushItems = sel.filter(s => s.type === 'brush') as Array<{ type: 'brush'; entity: Entity; brush: Brush }>;
-      const brushKey = `brush-${brushItems.length}-${brushItems.map(b => b.brush.faces.length).join(',')}`;
+      const brushKey = `brush-${brushItems.length}-${brushItems.map(b => b.brush.faces[0]?.texture ?? '').join(',')}`;
       if (propsDiv.dataset.mode !== 'brush' || propsDiv.dataset.faceId !== brushKey) {
         propsDiv.dataset.mode = 'brush';
         propsDiv.dataset.faceId = brushKey;
