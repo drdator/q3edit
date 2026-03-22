@@ -265,7 +265,7 @@ export class Viewport2D {
   private drawVertexHandles(): void {
     const { ctx } = this;
     const h = this.axisH, v = this.axisV, d = this.axisDepth;
-    const r = 4;
+    const r = 3;
 
     // Collect all vertices with their screen positions and state
     const handles: { sx: number; sy: number; selected: boolean; depth: number }[] = [];
@@ -291,12 +291,7 @@ export class Viewport2D {
 
     for (const handle of handles) {
       ctx.fillStyle = handle.selected ? '#ffffff' : '#44dd44';
-      ctx.strokeStyle = handle.selected ? '#ffcc00' : '#228822';
-      ctx.lineWidth = handle.selected ? 2 : 1;
-      ctx.beginPath();
-      ctx.arc(handle.sx, handle.sy, handle.selected ? r + 1 : r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      ctx.fillRect(handle.sx - r, handle.sy - r, r * 2, r * 2);
     }
   }
 
