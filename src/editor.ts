@@ -27,6 +27,7 @@ export class Editor {
   selection: SelectionItem[] = [];
   activeTool: Tool = 'select';
   gridSize = 16;
+  snapToGrid = true;
   currentTexture = 'common/caulk';
   currentEntityClass = 'info_player_deathmatch';
   dirty = true;
@@ -133,11 +134,17 @@ export class Editor {
     return s?.type === 'face' ? s.face : null;
   }
 
+  /** Returns effective grid size: 1 when snapping is off (toggle or Ctrl held), gridSize otherwise */
+  effectiveGrid(ctrlKey = false): number {
+    return (!this.snapToGrid || ctrlKey) ? 1 : this.gridSize;
+  }
+
   // ── Brush operations ──
 
-  addBrush(mins: Vec3, maxs: Vec3): Brush {
-    const snapped_mins = vec3Snap(mins, this.gridSize);
-    const snapped_maxs = vec3Snap(maxs, this.gridSize);
+  addBrush(mins: Vec3, maxs: Vec3, ctrlKey = false): Brush {
+    const grid = this.effectiveGrid(ctrlKey);
+    const snapped_mins = vec3Snap(mins, grid);
+    const snapped_maxs = vec3Snap(maxs, grid);
 
     // Ensure mins < maxs
     const realMins: Vec3 = [
@@ -153,8 +160,8 @@ export class Editor {
 
     // Minimum brush size
     for (let i = 0; i < 3; i++) {
-      if (realMaxs[i] - realMins[i] < this.gridSize) {
-        realMaxs[i] = realMins[i] + this.gridSize;
+      if (realMaxs[i] - realMins[i] < grid) {
+        realMaxs[i] = realMins[i] + grid;
       }
     }
 
@@ -186,14 +193,13 @@ export class Editor {
   }
 
   moveSelection(delta: Vec3): void {
-    const snapped = vec3Snap(delta, this.gridSize);
-    if (snapped[0] === 0 && snapped[1] === 0 && snapped[2] === 0) return;
+    if (delta[0] === 0 && delta[1] === 0 && delta[2] === 0) return;
 
     for (const item of this.selection) {
       if (item.type === 'brush' || item.type === 'face') {
-        translateBrush(item.brush, snapped);
+        translateBrush(item.brush, delta);
       } else {
-        translateEntity(item.entity, snapped);
+        translateEntity(item.entity, delta);
       }
     }
     this.dirty = true;
@@ -336,8 +342,8 @@ export class Editor {
 
   // ── Entity operations ──
 
-  addEntity(classname: string, origin: Vec3): Entity {
-    const snapped = vec3Snap(origin, this.gridSize);
+  addEntity(classname: string, origin: Vec3, ctrlKey = false): Entity {
+    const snapped = vec3Snap(origin, this.effectiveGrid(ctrlKey));
     const entity = createEntity(classname, snapped);
     this.entities.push(entity);
     this.dirty = true;

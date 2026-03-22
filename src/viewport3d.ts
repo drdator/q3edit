@@ -761,7 +761,7 @@ export class Viewport3D {
 
     if (this.editor.gizmoMode === 'move') {
       // Move selection along axis
-      const grid = this.editor.gridSize;
+      const grid = this.editor.effectiveGrid(e.ctrlKey);
       const snapped = Math.round(worldDelta / grid) * grid;
       if (snapped !== 0) {
         const delta: Vec3 = vec3Scale(axis, snapped);

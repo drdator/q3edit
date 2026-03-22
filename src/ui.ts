@@ -178,6 +178,15 @@ export class UI {
     gridLabel.addEventListener('mousedown', () => this.increaseGrid());
     bar.appendChild(gridLabel);
 
+    // Snap toggle
+    const snapBtn = document.createElement('div');
+    snapBtn.className = 'tool-btn active';
+    snapBtn.id = 'snap-toggle';
+    snapBtn.textContent = 'SNAP';
+    snapBtn.title = 'Toggle grid snapping (hold Ctrl to temporarily disable)';
+    snapBtn.addEventListener('mousedown', () => this.toggleSnap());
+    bar.appendChild(snapBtn);
+
     bar.appendChild(this.createSeparator());
 
     // Action buttons
@@ -290,6 +299,7 @@ export class UI {
       <span class="status-item" id="status-grid">Grid: 16</span>
       <span class="status-item" id="status-sel">Sel: 0</span>
       <span class="status-item" id="status-brushes">Brushes: 0</span>
+      <span class="status-item" id="status-gizmo"></span>
     `;
   }
 
@@ -332,6 +342,10 @@ export class UI {
       if (e.key === 'Enter' && this.editor.activeTool === 'clip') { this.editor.executeClip(); return; }
       if (e.key === 'Tab' && this.editor.activeTool === 'clip') { e.preventDefault(); this.editor.cycleClipMode(); return; }
 
+      // Gizmo mode: W = move, E = scale
+      if (e.key === 'w' && !ctrl) { this.editor.gizmoMode = 'move'; this.editor.dirty = true; return; }
+      if (e.key === 'e' && !ctrl) { this.editor.gizmoMode = 'scale'; this.editor.dirty = true; return; }
+
       // Rotation: R = 90°, Shift+R = 15°
       if (e.key === 'r' && !ctrl) { this.editor.rotateSelection(90); return; }
       if (e.key === 'R' && !ctrl) { this.editor.rotateSelection(15); return; }
@@ -366,6 +380,12 @@ export class UI {
     this.setGrid(Math.max(1, this.editor.gridSize / 2));
   }
 
+  private toggleSnap(): void {
+    this.editor.snapToGrid = !this.editor.snapToGrid;
+    this.editor.dirty = true;
+    this.closeMenus();
+  }
+
   // ── Update UI state ──
 
   update(): void {
@@ -376,7 +396,7 @@ export class UI {
       ? `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`
       : `Tool: ${e.activeTool}`;
     document.getElementById('status-tool')!.textContent = toolLabel;
-    document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}`;
+    document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}${e.snapToGrid ? '' : ' (free)'}`;
     const selLabel = e.selection.length === 1 && e.selection[0].type === 'face'
       ? 'Sel: 1 face'
       : `Sel: ${e.selection.length}`;
@@ -386,6 +406,13 @@ export class UI {
     for (const entity of e.entities) brushCount += entity.brushes.length;
     document.getElementById('status-brushes')!.textContent = `Brushes: ${brushCount}`;
     document.getElementById('grid-label')!.textContent = `G:${e.gridSize}`;
+    document.getElementById('snap-toggle')!.classList.toggle('active', e.snapToGrid);
+
+    // Gizmo mode indicator (only when selection exists)
+    const gizmoEl = document.getElementById('status-gizmo');
+    if (gizmoEl) {
+      gizmoEl.textContent = e.selection.length > 0 ? `3D: ${e.gizmoMode} (W/E)` : '';
+    }
 
     // Update entity properties panel
     this.updateEntityProps();

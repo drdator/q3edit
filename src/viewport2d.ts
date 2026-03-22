@@ -445,9 +445,10 @@ export class Viewport2D {
 
       if (this.editor.activeTool === 'create') {
         // Start creating brush
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
         const snapped: Vec3 = [0, 0, 0];
-        snapped[this.axisH] = Math.round(wx / this.editor.gridSize) * this.editor.gridSize;
-        snapped[this.axisV] = Math.round(wy / this.editor.gridSize) * this.editor.gridSize;
+        snapped[this.axisH] = Math.round(wx / grid) * grid;
+        snapped[this.axisV] = Math.round(wy / grid) * grid;
         snapped[this.axisDepth] = 0; // Will be set based on view center
 
         this.editor.creating = true;
@@ -463,11 +464,12 @@ export class Viewport2D {
       if (this.editor.activeTool === 'entity') {
         // Place entity
         this.editor.snapshot();
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
         const origin: Vec3 = [0, 0, 0];
-        origin[this.axisH] = Math.round(wx / this.editor.gridSize) * this.editor.gridSize;
-        origin[this.axisV] = Math.round(wy / this.editor.gridSize) * this.editor.gridSize;
+        origin[this.axisH] = Math.round(wx / grid) * grid;
+        origin[this.axisV] = Math.round(wy / grid) * grid;
         origin[this.axisDepth] = 0;
-        const entity = this.editor.addEntity(this.editor.currentEntityClass, origin);
+        const entity = this.editor.addEntity(this.editor.currentEntityClass, origin, e.ctrlKey);
         this.editor.clearSelection();
         this.editor.selectEntity(entity);
         this.editor.statusMessage = `Placed ${this.editor.currentEntityClass}`;
@@ -476,9 +478,10 @@ export class Viewport2D {
 
       if (this.editor.activeTool === 'clip') {
         // Place clip point
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
         const point: Vec3 = [0, 0, 0];
-        point[this.axisH] = Math.round(wx / this.editor.gridSize) * this.editor.gridSize;
-        point[this.axisV] = Math.round(wy / this.editor.gridSize) * this.editor.gridSize;
+        point[this.axisH] = Math.round(wx / grid) * grid;
+        point[this.axisV] = Math.round(wy / grid) * grid;
         this.editor.addClipPoint(point, this.axisDepth);
         return;
       }
@@ -585,7 +588,7 @@ export class Viewport2D {
     if (this.resizing && this.resizeBrushes.length > 0) {
       const dx = wx - this.dragWorldStart[0];
       const dy = wy - this.dragWorldStart[1];
-      const grid = this.editor.gridSize;
+      const grid = this.editor.effectiveGrid(e.ctrlKey);
       const snappedDx = Math.round(dx / grid) * grid;
       const snappedDy = Math.round(dy / grid) * grid;
 
@@ -607,8 +610,8 @@ export class Viewport2D {
       if (this.resizeEdges.minV) newMinV += snappedDy;
       if (this.resizeEdges.maxV) newMaxV += snappedDy;
 
-      // Enforce minimum size
-      const minSize = grid;
+      // Enforce minimum size (at least 1 unit)
+      const minSize = Math.max(1, grid);
       if (newMaxH - newMinH < minSize) {
         if (this.resizeEdges.minH) newMinH = newMaxH - minSize;
         else newMaxH = newMinH + minSize;
@@ -664,16 +667,17 @@ export class Viewport2D {
     if (this.dragging) {
       if (this.editor.creating) {
         // Update creation preview
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
         const snapped: Vec3 = vec3Copy(this.editor.createEnd);
-        snapped[this.axisH] = Math.round(wx / this.editor.gridSize) * this.editor.gridSize;
-        snapped[this.axisV] = Math.round(wy / this.editor.gridSize) * this.editor.gridSize;
+        snapped[this.axisH] = Math.round(wx / grid) * grid;
+        snapped[this.axisV] = Math.round(wy / grid) * grid;
         this.editor.createEnd = snapped;
         this.editor.dirty = true;
       } else if (this.editor.selection.length > 0) {
         // Move selection
         const dx = wx - this.dragWorldStart[0];
         const dy = wy - this.dragWorldStart[1];
-        const grid = this.editor.gridSize;
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
         const snappedDx = Math.round(dx / grid) * grid;
         const snappedDy = Math.round(dy / grid) * grid;
 
@@ -757,9 +761,10 @@ export class Viewport2D {
         mins[this.axisDepth] = 0;
         maxs[this.axisDepth] = this.editor.createDepth;
 
-        if (maxs[this.axisH] - mins[this.axisH] >= this.editor.gridSize &&
-            maxs[this.axisV] - mins[this.axisV] >= this.editor.gridSize) {
-          const brush = this.editor.addBrush(mins, maxs);
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
+        if (maxs[this.axisH] - mins[this.axisH] >= grid &&
+            maxs[this.axisV] - mins[this.axisV] >= grid) {
+          const brush = this.editor.addBrush(mins, maxs, e.ctrlKey);
           this.editor.clearSelection();
           this.editor.selectBrush(this.editor.worldspawn, brush);
           this.editor.statusMessage = 'Brush created';
