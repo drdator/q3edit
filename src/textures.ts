@@ -45,6 +45,10 @@ export class TextureManager {
     return this.cache.get(name.toLowerCase().replace(/\\/g, '/')) ?? null;
   }
 
+  registerTexture(name: string, glTexture: WebGLTexture, width: number, height: number): void {
+    this.cache.set(name, { glTexture, width, height });
+  }
+
   private async loadTexture(name: string): Promise<void> {
     // Strip extension if present
     const baseName = name.replace(/\.(tga|jpg|jpeg)$/i, '');

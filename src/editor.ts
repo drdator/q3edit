@@ -3,6 +3,7 @@ import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBru
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
+import { TextureManager } from './textures';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -31,6 +32,7 @@ export class Editor {
   currentTexture = 'common/caulk';
   currentEntityClass = 'info_player_deathmatch';
   dirty = true;
+  textureManager: TextureManager | null = null;
   history = new History();
   fileName = 'untitled.map';
 

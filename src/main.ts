@@ -72,12 +72,9 @@ async function init() {
     vp3D.gl.bindTexture(vp3D.gl.TEXTURE_2D, greenTex);
     vp3D.gl.texImage2D(vp3D.gl.TEXTURE_2D, 0, vp3D.gl.RGBA, 1, 1, 0,
       vp3D.gl.RGBA, vp3D.gl.UNSIGNED_BYTE, greenPixels);
-    (texMgr as any).cache.set('__entity_green', { glTexture: greenTex, width: 1, height: 1 });
+    texMgr.registerTexture('__entity_green', greenTex, 1, 1);
 
-    vp3D.textureManager = texMgr;
-
-    // Wire up texture manager to editor for the texture browser
-    (editor as any)._textureManager = texMgr;
+    editor.textureManager = texMgr;
 
     // Trigger redraw when textures load
     texMgr.onTextureLoaded = () => { editor.dirty = true; };
