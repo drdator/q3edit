@@ -176,6 +176,9 @@ export class Gizmo {
   handleDrag(e: MouseEvent): void {
     if (!this.snapshotTaken) {
       this.editor.snapshot();
+      if (e.altKey && this.editor.gizmoMode === 'move') {
+        this.editor.duplicateSelectionInPlace();
+      }
       this.snapshotTaken = true;
     }
 

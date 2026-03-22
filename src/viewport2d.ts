@@ -693,6 +693,9 @@ export class Viewport2D {
         if (snappedDx !== 0 || snappedDy !== 0) {
           if (!this.moveSnapshotTaken) {
             this.editor.snapshot();
+            if (e.altKey) {
+              this.editor.duplicateSelectionInPlace();
+            }
             this.moveSnapshotTaken = true;
           }
           this.hasDragged = true;

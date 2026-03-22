@@ -364,6 +364,25 @@ export class Editor {
     this.statusMessage = 'Duplicated';
   }
 
+  /** Clone the current selection in-place (no offset). Used for Option-drag duplication. */
+  duplicateSelectionInPlace(): void {
+    if (this.selection.length === 0) return;
+    const newSelection: SelectionItem[] = [];
+    for (const item of this.selection) {
+      if (item.type === 'brush' || item.type === 'face') {
+        const newBrush = cloneBrush(item.brush);
+        item.entity.brushes.push(newBrush);
+        newSelection.push({ type: 'brush', entity: item.entity, brush: newBrush });
+      } else {
+        const newEntity = cloneEntity(item.entity);
+        this.entities.push(newEntity);
+        newSelection.push({ type: 'entity', entity: newEntity });
+      }
+    }
+    this.selection = newSelection;
+    this.dirty = true;
+  }
+
   // ── Entity operations ──
 
   addEntity(classname: string, origin: Vec3, ctrlKey = false): Entity {
