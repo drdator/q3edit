@@ -612,6 +612,7 @@ export class Viewport2D {
     const el = this.canvas.parentElement!;
 
     el.addEventListener('mousedown', (e) => this.onMouseDown(e));
+    el.addEventListener('dblclick', (e) => this.onDoubleClick(e));
     // Use document for move/up so drag continues even when mouse leaves viewport
     document.addEventListener('mousemove', (e) => {
       // Only process if we're actively interacting with this viewport
@@ -845,6 +846,24 @@ export class Viewport2D {
           this.editor.clearSelection();
         }
       }
+    }
+  }
+
+  private onDoubleClick(e: MouseEvent): void {
+    if (e.button !== 0 || this.editor.activeTool !== 'select') return;
+    if (this.editor.vertexMode || this.editor.patchEditMode) return;
+
+    const [mx, my] = this.getLocalPos(e);
+    const [wx, wy] = this.screenToWorld(mx, my);
+    const picked = this.pickAt(wx, wy);
+    if (!picked) return;
+
+    if (picked.type === 'brush') {
+      this.editor.selectBrush(picked.entity, picked.brush);
+      this.editor.enterVertexMode();
+    } else if (picked.type === 'patch') {
+      this.editor.selectPatch(picked.entity, picked.patch);
+      this.editor.enterPatchEditMode();
     }
   }
 

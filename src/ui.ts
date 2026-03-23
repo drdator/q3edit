@@ -258,8 +258,26 @@ export class UI {
     this.buildTexturePanel();
   }
 
+  private brushPanelMode: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
+  private brushPanelItemCount = -1;
+
   private buildBrushPanel(): void {
     const body = document.getElementById('brush-body')!;
+    const modeSelect = document.getElementById('brush-panel-mode') as HTMLSelectElement;
+
+    modeSelect.addEventListener('change', () => {
+      this.brushPanelMode = modeSelect.value as typeof this.brushPanelMode;
+      this.brushPanelItemCount = -1; // force rebuild
+      this.editor.dirty = true;
+    });
+    // Stop click from toggling panel collapse
+    modeSelect.addEventListener('mousedown', (ev) => ev.stopPropagation());
+
+    // Add hamburger icon before the select
+    const icon = document.createElement('span');
+    icon.className = 'panel-dropdown-icon';
+    icon.textContent = '\u2630';
+    modeSelect.before(icon);
 
     const filterBtn = document.createElement('div');
     filterBtn.className = 'btn';
@@ -290,25 +308,36 @@ export class UI {
     if (!list) return;
 
     const e = this.editor;
+    const mode = this.brushPanelMode;
 
     type ListItem =
       | { kind: 'brush'; entity: Entity; brush: Brush; index: number; entityIdx: number }
-      | { kind: 'patch'; entity: Entity; patch: Patch; index: number; entityIdx: number };
+      | { kind: 'patch'; entity: Entity; patch: Patch; index: number; entityIdx: number }
+      | { kind: 'entity'; entity: Entity; entityIdx: number };
 
-    // Build flat list of brushes and patches
+    // Build flat list based on filter mode
     const items: ListItem[] = [];
     for (let ei = 0; ei < e.entities.length; ei++) {
       const entity = e.entities[ei];
-      for (let bi = 0; bi < entity.brushes.length; bi++) {
-        items.push({ kind: 'brush', entity, brush: entity.brushes[bi], index: bi, entityIdx: ei });
-      }
-      for (let pi = 0; pi < entity.patches.length; pi++) {
-        items.push({ kind: 'patch', entity, patch: entity.patches[pi], index: pi, entityIdx: ei });
+      if (mode === 'entities') {
+        items.push({ kind: 'entity', entity, entityIdx: ei });
+      } else {
+        if (mode === 'all' || mode === 'brushes') {
+          for (let bi = 0; bi < entity.brushes.length; bi++) {
+            items.push({ kind: 'brush', entity, brush: entity.brushes[bi], index: bi, entityIdx: ei });
+          }
+        }
+        if (mode === 'all' || mode === 'patches') {
+          for (let pi = 0; pi < entity.patches.length; pi++) {
+            items.push({ kind: 'patch', entity, patch: entity.patches[pi], index: pi, entityIdx: ei });
+          }
+        }
       }
     }
 
     // Rebuild DOM when item count changes
-    if (list.childElementCount !== items.length) {
+    if (this.brushPanelItemCount !== items.length) {
+      this.brushPanelItemCount = items.length;
       list.innerHTML = '';
       for (const item of items) {
         const el = document.createElement('div');
@@ -317,8 +346,10 @@ export class UI {
           const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
           if (item.kind === 'brush') {
             e.selectBrush(item.entity, item.brush, additive);
-          } else {
+          } else if (item.kind === 'patch') {
             e.selectPatch(item.entity, item.patch, additive);
+          } else {
+            e.selectEntity(item.entity, additive);
           }
           e.centerOnSelection();
         });
@@ -331,14 +362,22 @@ export class UI {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const el = children[i] as HTMLElement;
-      const selected = item.kind === 'brush'
-        ? e.isSelected(item.brush)
-        : e.isPatchSelected(item.patch);
+      let selected: boolean;
+      let label: string;
+      if (item.kind === 'brush') {
+        selected = e.isSelected(item.brush);
+        label = item.brush.name || `brush ${item.index}`;
+      } else if (item.kind === 'patch') {
+        selected = e.isPatchSelected(item.patch);
+        label = `patch ${item.index}`;
+      } else {
+        selected = e.isEntitySelected(item.entity);
+        label = `${item.entity.classname}`;
+      }
       const isWorldspawn = item.entityIdx === 0;
-      const label = item.kind === 'brush'
-        ? (item.brush.name || `brush ${item.index}`)
-        : `patch ${item.index}`;
-      const entityLabel = isWorldspawn ? '' : ` <span class="brush-entity">[${item.entity.classname}]</span>`;
+      const entityLabel = (item.kind !== 'entity' && !isWorldspawn)
+        ? ` <span class="brush-entity">[${item.entity.classname}]</span>`
+        : '';
       const html = label + entityLabel;
       if (el.innerHTML !== html) el.innerHTML = html;
       el.classList.toggle('selected', selected);
