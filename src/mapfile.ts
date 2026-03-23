@@ -47,7 +47,8 @@ export function serializeMap(entities: Entity[]): string {
       lines.push('patchDef2');
       lines.push('{');
       lines.push(patch.texture);
-      lines.push(`( ${patch.width} ${patch.height} ${patch.contentFlags} ${patch.surfaceFlags} ${patch.value} )`);
+      // Q3 patchDef2 format: first number is d_width (rows), second is d_height (CPs per row)
+      lines.push(`( ${patch.height} ${patch.width} ${patch.contentFlags} ${patch.surfaceFlags} ${patch.value} )`);
       lines.push('(');
       for (let r = 0; r < patch.height; r++) {
         const row = patch.ctrl[r];
@@ -293,8 +294,10 @@ function parsePatchDef2(lines: string[], getI: () => number, setI: (v: number) =
   if (!headerLine) return null;
   const headerMatch = headerLine.match(/\(\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\)/);
   if (!headerMatch) return null;
-  const width = parseInt(headerMatch[1]);
-  const height = parseInt(headerMatch[2]);
+  // Q3 patchDef2 format: first number is d_width (rows), second is d_height (CPs per row)
+  // Our convention: width = columns, height = rows — so swap them
+  const width = parseInt(headerMatch[2]);
+  const height = parseInt(headerMatch[1]);
   const contentFlags = parseInt(headerMatch[3]);
   const surfaceFlags = parseInt(headerMatch[4]);
   const value = parseInt(headerMatch[5]);
