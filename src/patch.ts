@@ -275,9 +275,9 @@ export function createFlatPatch(mins: Vec3, maxs: Vec3, texture: string): Patch 
   const z = maxs[2];
   const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
   const ctrl: PatchControlPoint[][] = [
-    [cp(x0, y0, z, 0, 0), cp(mx, y0, z, 0.5, 0), cp(x1, y0, z, 1, 0)],
+    [cp(x0, y1, z, 0, 0), cp(mx, y1, z, 0.5, 0), cp(x1, y1, z, 1, 0)],
     [cp(x0, my, z, 0, 0.5), cp(mx, my, z, 0.5, 0.5), cp(x1, my, z, 1, 0.5)],
-    [cp(x0, y1, z, 0, 1), cp(mx, y1, z, 0.5, 1), cp(x1, y1, z, 1, 1)],
+    [cp(x0, y0, z, 0, 1), cp(mx, y0, z, 0.5, 1), cp(x1, y0, z, 1, 1)],
   ];
   return makePatch(3, 3, ctrl, texture);
 }
@@ -290,16 +290,16 @@ export function createCylinderPatch(mins: Vec3, maxs: Vec3, texture: string): Pa
   const mz = (z0 + z1) / 2;
 
   // 9 columns around the XY rectangle, 3 rows (bottom, mid, top Z)
-  // Columns go: corners of a rectangle with midpoints pulled to form a curve
+  // Columns go counter-clockwise (outward-facing normals) when viewed from above
   const corners: [number, number][] = [
     [x0, my],                 // 0: left middle
-    [x0, y0],                 // 1: bottom-left corner (control point)
-    [mx, y0],                 // 2: bottom center
-    [x1, y0],                 // 3: bottom-right corner (control point)
+    [x0, y1],                 // 1: top-left corner (control point)
+    [mx, y1],                 // 2: top center
+    [x1, y1],                 // 3: top-right corner (control point)
     [x1, my],                 // 4: right middle
-    [x1, y1],                 // 5: top-right corner (control point)
-    [mx, y1],                 // 6: top center
-    [x0, y1],                 // 7: top-left corner (control point)
+    [x1, y0],                 // 5: bottom-right corner (control point)
+    [mx, y0],                 // 6: bottom center
+    [x0, y0],                 // 7: bottom-left corner (control point)
     [x0, my],                 // 8: wraps back to left middle
   ];
 
@@ -337,9 +337,9 @@ export function createBevelPatch(mins: Vec3, maxs: Vec3, texture: string): Patch
   const [x1, y1, z1] = maxs;
   const mz = (z0 + z1) / 2;
   const ctrl: PatchControlPoint[][] = [
-    [cp(x0, y0, z0, 0, 0), cp(x1, y0, z0, 1, 0), cp(x1, y1, z0, 1, 1)],
-    [cp(x0, y0, mz, 0, 0), cp(x1, y0, mz, 1, 0), cp(x1, y1, mz, 1, 1)],
-    [cp(x0, y0, z1, 0, 0), cp(x1, y0, z1, 1, 0), cp(x1, y1, z1, 1, 1)],
+    [cp(x1, y1, z0, 1, 1), cp(x1, y0, z0, 1, 0), cp(x0, y0, z0, 0, 0)],
+    [cp(x1, y1, mz, 1, 1), cp(x1, y0, mz, 1, 0), cp(x0, y0, mz, 0, 0)],
+    [cp(x1, y1, z1, 1, 1), cp(x1, y0, z1, 1, 0), cp(x0, y0, z1, 0, 0)],
   ];
   return makePatch(3, 3, ctrl, texture);
 }
@@ -351,9 +351,9 @@ export function createEndcapPatch(mins: Vec3, maxs: Vec3, texture: string): Patc
   const mx = (x0 + x1) / 2;
   const mz = (z0 + z1) / 2;
   const ctrl: PatchControlPoint[][] = [
-    [cp(x0, y0, z0, 0, 0), cp(x0, y1, z0, 0, 1), cp(mx, y1, z0, 0.5, 1), cp(x1, y1, z0, 1, 1), cp(x1, y0, z0, 1, 0)],
-    [cp(x0, y0, mz, 0, 0), cp(x0, y1, mz, 0, 1), cp(mx, y1, mz, 0.5, 1), cp(x1, y1, mz, 1, 1), cp(x1, y0, mz, 1, 0)],
-    [cp(x0, y0, z1, 0, 0), cp(x0, y1, z1, 0, 1), cp(mx, y1, z1, 0.5, 1), cp(x1, y1, z1, 1, 1), cp(x1, y0, z1, 1, 0)],
+    [cp(x1, y0, z0, 1, 0), cp(x1, y1, z0, 1, 1), cp(mx, y1, z0, 0.5, 1), cp(x0, y1, z0, 0, 1), cp(x0, y0, z0, 0, 0)],
+    [cp(x1, y0, mz, 1, 0), cp(x1, y1, mz, 1, 1), cp(mx, y1, mz, 0.5, 1), cp(x0, y1, mz, 0, 1), cp(x0, y0, mz, 0, 0)],
+    [cp(x1, y0, z1, 1, 0), cp(x1, y1, z1, 1, 1), cp(mx, y1, z1, 0.5, 1), cp(x0, y1, z1, 0, 1), cp(x0, y0, z1, 0, 0)],
   ];
   return makePatch(5, 3, ctrl, texture);
 }

@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "build:q3map": "cd q3map-compiler && make clean && make"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

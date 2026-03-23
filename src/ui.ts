@@ -5,6 +5,7 @@ import { Vec3 } from './math';
 import { PropertiesPanel } from './properties-panel';
 import { Brush } from './brush';
 import { Patch } from './patch';
+import { compileMap } from './q3map';
 
 const COMMON_TEXTURES = [
   'common/caulk',
@@ -57,6 +58,8 @@ export class UI {
         { label: 'Save', shortcut: 'Ctrl+S', action: () => this.editor.saveMapToFile() },
         { separator: true },
         { label: 'Export .map to Console', action: () => console.log(this.editor.serializeMap()) },
+        { separator: true },
+        { label: 'Compile BSP...', action: () => this.compileBSP() },
       ],
       'Edit': [
         { label: 'Undo', shortcut: 'Ctrl+Z', action: () => this.editor.undo() },
@@ -903,6 +906,153 @@ export class UI {
         e.stopPropagation();
       }
     });
+  }
+
+  private async compileBSP(): Promise<void> {
+    // Remove existing dialog if any
+    document.getElementById('compile-dialog')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'compile-dialog';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#2a2a2a;border:1px solid #08a;border-radius:6px;padding:16px 20px;width:560px;max-width:90vw;color:#eee;font:13px/1.5 monospace';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:14px;font-weight:bold;color:#08a;margin-bottom:8px';
+    title.textContent = 'Compile BSP';
+    dialog.appendChild(title);
+
+    const status = document.createElement('div');
+    status.style.cssText = 'margin-bottom:8px;color:#ccc';
+    status.textContent = 'Compiling...';
+    dialog.appendChild(status);
+
+    const log = document.createElement('pre');
+    log.style.cssText = 'background:#1a1a1a;padding:8px;border-radius:4px;margin-bottom:12px;height:250px;overflow-y:auto;font-size:11px;color:#aaa;white-space:pre-wrap;word-break:break-all';
+    log.textContent = '';
+    dialog.appendChild(log);
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = 'padding:6px 14px;background:#555;color:#eee;border:none;border-radius:4px;cursor:pointer;font:13px monospace';
+    closeBtn.onclick = () => overlay.remove();
+    closeBtn.disabled = true;
+    closeBtn.style.opacity = '0.5';
+
+    const runBtn = document.createElement('button');
+    runBtn.textContent = 'Run in ioquake3';
+    runBtn.style.cssText = 'padding:6px 14px;background:#0a0;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold;display:none';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save .bsp';
+    saveBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold;display:none';
+
+    buttons.appendChild(runBtn);
+    buttons.appendChild(saveBtn);
+    buttons.appendChild(closeBtn);
+    dialog.appendChild(buttons);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !closeBtn.disabled) {
+        overlay.remove();
+        e.stopPropagation();
+      }
+    });
+    overlay.tabIndex = 0;
+    overlay.focus();
+
+    // Run compilation
+    const mapText = this.editor.serializeMap();
+    const baseName = this.editor.fileName.replace(/\.map$/, '');
+
+    // Collect texture images used in the map so q3map knows their dimensions
+    let imageFiles: Map<string, Uint8Array> | undefined;
+    if (this.texMgr) {
+      imageFiles = new Map();
+      const usedTextures = new Set<string>();
+      for (const ent of this.editor.entities) {
+        for (const brush of ent.brushes) {
+          for (const face of brush.faces) usedTextures.add(face.texture);
+        }
+        for (const patch of ent.patches) usedTextures.add(patch.texture);
+      }
+      for (const tex of usedTextures) {
+        const found = this.texMgr.findImageFile(tex);
+        if (found) imageFiles.set(found[0], found[1]);
+      }
+    }
+
+    const result = await compileMap(mapText, {
+      args: ['-v'],
+      imageFiles,
+      onOutput: (line) => {
+        log.textContent += line + '\n';
+        log.scrollTop = log.scrollHeight;
+      },
+    });
+
+    // Done — enable buttons
+    closeBtn.disabled = false;
+    closeBtn.style.opacity = '1';
+
+    if (result.success && result.bsp) {
+      status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
+      status.style.color = '#0c0';
+      title.style.color = '#0c0';
+
+      saveBtn.style.display = '';
+      saveBtn.onclick = () => {
+        const blob = new Blob([new Uint8Array(result.bsp!)], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = baseName + '.bsp';
+        a.click();
+        URL.revokeObjectURL(url);
+        this.editor.statusMessage = `Saved ${baseName}.bsp`;
+      };
+
+      runBtn.style.display = '';
+      runBtn.onclick = async () => {
+        runBtn.textContent = 'Launching...';
+        runBtn.disabled = true;
+        try {
+          const resp = await fetch('/api/run-map', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: baseName, bsp: Array.from(result.bsp!) }),
+          });
+          const data = await resp.json();
+          if (data.ok) {
+            this.editor.statusMessage = `Launched ioquake3 with ${baseName}`;
+            runBtn.textContent = 'Launched!';
+          } else {
+            this.editor.statusMessage = `Launch failed: ${data.error}`;
+            runBtn.textContent = 'Failed';
+          }
+        } catch (e: any) {
+          this.editor.statusMessage = `Launch failed: ${e.message}`;
+          runBtn.textContent = 'Failed';
+        }
+        setTimeout(() => { runBtn.textContent = 'Run in ioquake3'; runBtn.disabled = false; }, 2000);
+      };
+
+      this.editor.statusMessage = 'BSP compiled successfully';
+    } else {
+      status.textContent = 'Compilation failed';
+      status.style.color = '#f44';
+      title.style.color = '#f44';
+      this.editor.statusMessage = 'BSP compilation failed';
+    }
+
+    closeBtn.focus();
   }
 
   private populateTextureList(list: HTMLElement, textures: string[], input: HTMLInputElement): void {

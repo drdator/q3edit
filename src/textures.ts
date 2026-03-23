@@ -381,14 +381,33 @@ export class TextureManager {
     return null;
   }
 
+  /**
+   * Find the raw image file data for a texture name (as used in .map files).
+   * Returns [pakPath, data] or null if not found.
+   */
+  findImageFile(name: string): [string, Uint8Array] | null {
+    const baseName = name.replace(/\.(tga|jpg|jpeg)$/i, '');
+    const candidates = [
+      baseName + '.tga',
+      baseName + '.jpg',
+      'textures/' + baseName + '.tga',
+      'textures/' + baseName + '.jpg',
+    ];
+    for (const path of candidates) {
+      const data = this.pak.get(path);
+      if (data) return [path, data];
+    }
+    return null;
+  }
+
   // List all texture paths available in the pak (for the texture browser)
   listTextures(): string[] {
     const textures: string[] = [];
     for (const path of this.pak.keys()) {
       if ((path.startsWith('textures/') || path.startsWith('models/')) &&
           (path.endsWith('.tga') || path.endsWith('.jpg'))) {
-        // Strip extension and 'textures/' prefix for display
-        const name = path.replace(/\.(tga|jpg)$/, '');
+        // Strip extension and 'textures/' prefix
+        const name = path.replace(/\.(tga|jpg)$/, '').replace(/^textures\//, '');
         if (!textures.includes(name)) {
           textures.push(name);
         }
@@ -418,7 +437,7 @@ export class TextureManager {
     const textures = new Set<string>();
     for (const path of this.pak.keys()) {
       if (path.startsWith(prefix) && (path.endsWith('.tga') || path.endsWith('.jpg'))) {
-        textures.add(path.replace(/\.(tga|jpg)$/, ''));
+        textures.add(path.replace(/\.(tga|jpg)$/, '').replace(/^textures\//, ''));
       }
     }
     return [...textures].sort();
