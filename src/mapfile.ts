@@ -26,8 +26,9 @@ export function serializeMap(entities: Entity[]): string {
       for (const face of brush.faces) {
         const [p1, p2, p3] = face.points;
         const fmt = (v: Vec3) => `( ${fmtNum(v[0])} ${fmtNum(v[1])} ${fmtNum(v[2])} )`;
+        // Swap p2/p3 back to standard Q3 format (inward-pointing normals)
         lines.push(
-          `${fmt(p1)} ${fmt(p2)} ${fmt(p3)} ` +
+          `${fmt(p1)} ${fmt(p3)} ${fmt(p2)} ` +
           `${face.texture} ${fmtNum(face.offsetX)} ${fmtNum(face.offsetY)} ` +
           `${fmtNum(face.rotation)} ${fmtNum(face.scaleX)} ${fmtNum(face.scaleY)} ` +
           `${face.contentFlags} ${face.surfaceFlags} ${face.value}`
@@ -181,15 +182,18 @@ function parseFaceLine(line: string): BrushFace | null {
   const pointRegex = /\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\)/g;
   const points: Vec3[] = [];
   let match;
+  let lastSuccessIndex = 0;
 
   while ((match = pointRegex.exec(line)) !== null && points.length < 3) {
     points.push([parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3])]);
+    lastSuccessIndex = pointRegex.lastIndex;
   }
 
   if (points.length < 3) return null;
 
   // Get the rest after the three point groups
-  const afterPoints = line.substring(pointRegex.lastIndex).trim();
+  // Note: can't use pointRegex.lastIndex — it resets to 0 when exec() returns null
+  const afterPoints = line.substring(lastSuccessIndex).trim();
   const parts = afterPoints.split(/\s+/);
 
   if (parts.length < 5) return null;
@@ -204,8 +208,10 @@ function parseFaceLine(line: string): BrushFace | null {
   const surfaceFlags = parseInt(parts[7]) || 0;
   const value = parseInt(parts[8]) || 0;
 
+  // Q3 .map format uses inward-pointing normals (cross(p2-p1, p3-p1) points into brush).
+  // Swap p2/p3 to produce outward-pointing normals for the clipping algorithm.
   return createFace(
-    points[0], points[1], points[2],
+    points[0], points[2], points[1],
     texture, offsetX, offsetY, rotation, scaleX, scaleY
   );
 }
