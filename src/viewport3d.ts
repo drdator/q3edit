@@ -502,7 +502,7 @@ export class Viewport3D {
     if (this.keys.has('d')) this.position = vec3Add(this.position, vec3Scale(right, speed));
     if (this.keys.has('a')) this.position = vec3Add(this.position, vec3Scale(right, -speed));
     if (this.keys.has('q') || this.keys.has(' ')) this.position[2] += speed;
-    if (this.keys.has('e') || this.keys.has('shift')) this.position[2] -= speed;
+    if (this.keys.has('e') || this.keys.has('shift') || this.keys.has('c')) this.position[2] -= speed;
 
     this.editor.dirty = true;
   }

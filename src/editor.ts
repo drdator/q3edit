@@ -118,7 +118,7 @@ export class Editor {
 
   isBrushVisible(brush: Brush): boolean {
     if (!this.renderSelectedOnly || this.selection.length === 0) return true;
-    return this.isSelected(brush);
+    return this.selection.some(s => (s.type === 'brush' || s.type === 'face') && s.brush === brush);
   }
 
   isSelected(brush: Brush): boolean {
