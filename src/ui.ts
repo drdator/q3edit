@@ -4,6 +4,7 @@ import { TextureManager } from './textures';
 import { Vec3 } from './math';
 import { PropertiesPanel } from './properties-panel';
 import { Brush } from './brush';
+import { Patch } from './patch';
 
 const COMMON_TEXTURES = [
   'common/caulk',
@@ -277,7 +278,10 @@ export class UI {
     body.appendChild(list);
 
     body.addEventListener('mousedown', (ev) => {
-      if (ev.target === body) this.editor.clearSelection();
+      if (ev.target !== body) return;
+      // Don't clear selection when clicking the scrollbar
+      if (ev.offsetX >= body.clientWidth) return;
+      this.editor.clearSelection();
     });
   }
 
@@ -287,12 +291,19 @@ export class UI {
 
     const e = this.editor;
 
-    // Build flat list of entity+brush pairs
-    const items: { entity: Entity; brush: Brush; index: number; entityIdx: number }[] = [];
+    type ListItem =
+      | { kind: 'brush'; entity: Entity; brush: Brush; index: number; entityIdx: number }
+      | { kind: 'patch'; entity: Entity; patch: Patch; index: number; entityIdx: number };
+
+    // Build flat list of brushes and patches
+    const items: ListItem[] = [];
     for (let ei = 0; ei < e.entities.length; ei++) {
       const entity = e.entities[ei];
       for (let bi = 0; bi < entity.brushes.length; bi++) {
-        items.push({ entity, brush: entity.brushes[bi], index: bi, entityIdx: ei });
+        items.push({ kind: 'brush', entity, brush: entity.brushes[bi], index: bi, entityIdx: ei });
+      }
+      for (let pi = 0; pi < entity.patches.length; pi++) {
+        items.push({ kind: 'patch', entity, patch: entity.patches[pi], index: pi, entityIdx: ei });
       }
     }
 
@@ -303,7 +314,12 @@ export class UI {
         const el = document.createElement('div');
         el.className = 'brush-item';
         el.addEventListener('mousedown', (ev) => {
-          e.selectBrush(item.entity, item.brush, ev.ctrlKey || ev.metaKey || ev.shiftKey);
+          const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
+          if (item.kind === 'brush') {
+            e.selectBrush(item.entity, item.brush, additive);
+          } else {
+            e.selectPatch(item.entity, item.patch, additive);
+          }
           e.centerOnSelection();
         });
         list.appendChild(el);
@@ -315,9 +331,13 @@ export class UI {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const el = children[i] as HTMLElement;
-      const selected = e.isSelected(item.brush);
+      const selected = item.kind === 'brush'
+        ? e.isSelected(item.brush)
+        : e.isPatchSelected(item.patch);
       const isWorldspawn = item.entityIdx === 0;
-      const label = item.brush.name || `brush ${item.index}`;
+      const label = item.kind === 'brush'
+        ? (item.brush.name || `brush ${item.index}`)
+        : `patch ${item.index}`;
       const entityLabel = isWorldspawn ? '' : ` <span class="brush-entity">[${item.entity.classname}]</span>`;
       const html = label + entityLabel;
       if (el.innerHTML !== html) el.innerHTML = html;
