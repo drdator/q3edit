@@ -1,5 +1,5 @@
-import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
-import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, splitBrushConvex, BrushValidationResult } from './brush';
+import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max, vec3Dot } from './math';
+import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, splitBrushConvex, BrushValidationResult, textureAxisFromPlane } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
@@ -628,6 +628,112 @@ export class Editor {
       }
     }
     this.dirty = true;
+  }
+
+  // ── Texture alignment ──
+
+  /** Get all faces affected by texture operations (selected faces, or all faces of selected brushes) */
+  private getTextureFaces(): BrushFace[] {
+    const faces: BrushFace[] = [];
+    for (const item of this.selection) {
+      if (item.type === 'face') {
+        faces.push(item.face);
+      } else if (item.type === 'brush') {
+        faces.push(...item.brush.faces);
+      }
+    }
+    return faces;
+  }
+
+  /** Shift texture offset by (du, dv) pixels */
+  shiftTexture(du: number, dv: number): void {
+    const faces = this.getTextureFaces();
+    if (faces.length === 0) return;
+    this.snapshot();
+    for (const face of faces) {
+      face.offsetX += du;
+      face.offsetY += dv;
+    }
+    this.dirty = true;
+  }
+
+  /** Scale texture by delta (added to current scale) */
+  scaleTexture(ds: number): void {
+    const faces = this.getTextureFaces();
+    if (faces.length === 0) return;
+    this.snapshot();
+    for (const face of faces) {
+      face.scaleX = Math.max(0.01, face.scaleX + ds);
+      face.scaleY = Math.max(0.01, face.scaleY + ds);
+    }
+    this.dirty = true;
+  }
+
+  /** Rotate texture by angle in degrees */
+  rotateTexture(angle: number): void {
+    const faces = this.getTextureFaces();
+    if (faces.length === 0) return;
+    this.snapshot();
+    for (const face of faces) {
+      face.rotation = ((face.rotation + angle) % 360 + 360) % 360;
+    }
+    this.dirty = true;
+  }
+
+  /** Reset texture alignment to defaults */
+  resetTextureAlignment(): void {
+    const faces = this.getTextureFaces();
+    if (faces.length === 0) return;
+    this.snapshot();
+    for (const face of faces) {
+      face.offsetX = 0;
+      face.offsetY = 0;
+      face.rotation = 0;
+      face.scaleX = 0.5;
+      face.scaleY = 0.5;
+    }
+    this.dirty = true;
+    this.statusMessage = 'Texture alignment reset';
+  }
+
+  /** Fit texture to face polygon bounds */
+  fitTexture(): void {
+    const faces = this.getTextureFaces();
+    if (faces.length === 0 || !this.textureManager) return;
+    this.snapshot();
+    for (const face of faces) {
+      if (face.polygon.length < 3) continue;
+      const texInfo = this.textureManager.getIfLoaded(face.texture);
+      const tw = texInfo?.width ?? 128;
+      const th = texInfo?.height ?? 128;
+
+      // Get texture axes for this face
+      const [sv, tv] = textureAxisFromPlane(face.plane.normal);
+
+      // Project polygon onto texture axes to find bounds
+      let minS = Infinity, maxS = -Infinity;
+      let minT = Infinity, maxT = -Infinity;
+      for (const v of face.polygon) {
+        const s = vec3Dot(v, sv);
+        const t = vec3Dot(v, tv);
+        minS = Math.min(minS, s);
+        maxS = Math.max(maxS, s);
+        minT = Math.min(minT, t);
+        maxT = Math.max(maxT, t);
+      }
+
+      const sRange = maxS - minS;
+      const tRange = maxT - minT;
+      if (sRange < 0.001 || tRange < 0.001) continue;
+
+      face.scaleX = sRange / tw;
+      face.scaleY = tRange / th;
+      face.rotation = 0;
+      face.offsetX = -minS / face.scaleX;
+      face.offsetY = -minT / face.scaleY;
+    }
+    this.dirty = true;
+    this.statusMessage = 'Texture fit to face';
   }
 
   // ── Vertex editing ──

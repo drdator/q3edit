@@ -232,7 +232,7 @@ const BASE_AXES: Vec3[][] = [
   [[0,-1,0], [1,0,0],  [0,0,-1]],   // -Y south
 ];
 
-function textureAxisFromPlane(normal: Vec3): [Vec3, Vec3] {
+export function textureAxisFromPlane(normal: Vec3): [Vec3, Vec3] {
   let bestAxis = 0;
   let bestDot = 0;
   for (let i = 0; i < 6; i++) {

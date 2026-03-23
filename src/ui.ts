@@ -454,6 +454,27 @@ export class UI {
       if (e.key === 'r' && !ctrl) { this.editor.rotateSelection(90); return; }
       if (e.key === 'R' && !ctrl) { this.editor.rotateSelection(15); return; }
 
+      // Texture shortcuts: Shift+Arrow = shift texture, Ctrl+Shift+Arrow = fine shift
+      if (e.key.startsWith('Arrow') && e.shiftKey && this.editor.selectedFaces.length > 0) {
+        e.preventDefault();
+        const step = ctrl ? 1 : 8;
+        const du = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
+        const dv = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
+        this.editor.shiftTexture(du, dv);
+        return;
+      }
+
+      // Texture fit: Ctrl+Shift+F
+      if (e.key === 'F' && ctrl && e.shiftKey) { e.preventDefault(); this.editor.fitTexture(); return; }
+      // Texture reset: Ctrl+Shift+N
+      if (e.key === 'N' && ctrl && e.shiftKey) { e.preventDefault(); this.editor.resetTextureAlignment(); return; }
+      // Texture rotate: Shift+PgUp/PgDn
+      if (e.key === 'PageUp' && e.shiftKey) { this.editor.rotateTexture(e.ctrlKey ? 1 : 15); return; }
+      if (e.key === 'PageDown' && e.shiftKey) { this.editor.rotateTexture(e.ctrlKey ? -1 : -15); return; }
+      // Texture scale: Ctrl+PgUp/PgDn (no Shift)
+      if (e.key === 'PageUp' && ctrl && !e.shiftKey) { this.editor.scaleTexture(0.05); return; }
+      if (e.key === 'PageDown' && ctrl && !e.shiftKey) { this.editor.scaleTexture(-0.05); return; }
+
       // Arrow keys: nudge selection (or vertices in vertex mode)
       if (e.key.startsWith('Arrow') && this.editor.selection.length > 0) {
         e.preventDefault();
@@ -612,12 +633,28 @@ export class UI {
 
     body.appendChild(dirRow);
 
+    // Search input
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.id = 'texture-search';
+    searchInput.placeholder = 'Search textures...';
+    searchInput.style.marginTop = '4px';
+    body.appendChild(searchInput);
+
     const list = document.createElement('div');
     list.className = 'texture-list';
     list.id = 'texture-list';
     body.appendChild(list);
 
+    const allTextures = texMgr.listTextures();
+
     const repopulate = () => {
+      const query = searchInput.value.trim().toLowerCase();
+      if (query) {
+        const filtered = allTextures.filter(t => t.toLowerCase().includes(query));
+        this.populateTextureList(list, filtered, input);
+        return;
+      }
       const dir = dirSelect.value;
       const textures = dir ? texMgr.listTexturesInDir(dir) : COMMON_TEXTURES;
       this.populateTextureList(list, textures, input);
@@ -626,7 +663,11 @@ export class UI {
     // Show common textures initially
     repopulate();
 
-    dirSelect.addEventListener('change', repopulate);
+    dirSelect.addEventListener('change', () => {
+      searchInput.value = '';
+      repopulate();
+    });
+    searchInput.addEventListener('input', repopulate);
   }
 
   /** Exit vertex mode with geometry validation. Shows warning dialog if brushes are invalid. */
