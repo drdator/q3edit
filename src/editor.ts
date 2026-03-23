@@ -9,6 +9,7 @@ import { BrushVertex, collectBrushVertices, moveVertices } from './vertex';
 export type Tool = 'select' | 'create' | 'entity' | 'clip';
 export type ClipMode = 'front' | 'back' | 'both';
 export type GizmoMode = 'move' | 'scale';
+export type InvisibleMode = 'show' | 'dim' | 'hide';
 
 export type SelectionItem = {
   type: 'brush';
@@ -65,6 +66,14 @@ export class Editor {
 
   // Render filter
   renderSelectedOnly = false;
+  invisibleMode: InvisibleMode = 'show';
+
+  /** Textures considered invisible (tool brushes) */
+  static readonly INVISIBLE_TEXTURES = new Set([
+    'common/clip', 'common/weapclip', 'common/trigger',
+    'common/hint', 'common/skip', 'common/nodraw',
+    'common/areaportal', 'common/donotenter', 'common/caulk',
+  ]);
 
   // Status message
   statusMessage = 'Ready';
@@ -117,6 +126,11 @@ export class Editor {
   }
 
   isBrushVisible(brush: Brush): boolean {
+    // In 'hide' mode, completely hide brushes where ALL faces are invisible
+    if (this.invisibleMode === 'hide' && brush.faces.length > 0 &&
+        brush.faces.every(f => Editor.INVISIBLE_TEXTURES.has(f.texture.toLowerCase()))) {
+      return false;
+    }
     if (!this.renderSelectedOnly || this.selection.length === 0) return true;
     return this.selection.some(s => (s.type === 'brush' || s.type === 'face') && s.brush === brush);
   }

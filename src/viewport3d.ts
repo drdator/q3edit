@@ -24,6 +24,8 @@ interface DrawGroup {
   selected: boolean;
   faceSelected: boolean;
   blendMode: BlendMode;
+  invisible: boolean;
+  solidOverride: boolean; // render as solid color (no texture)
 }
 
 export class Viewport3D {
@@ -44,6 +46,8 @@ export class Viewport3D {
   private solidSelLoc!: WebGLUniformLocation;
   private solidFaceSelLoc!: WebGLUniformLocation;
   private solidUseAlphaLoc!: WebGLUniformLocation;
+  private solidAlphaOverrideLoc!: WebGLUniformLocation;
+  private solidSolidOverrideLoc!: WebGLUniformLocation;
   private lineProg!: WebGLProgram;
   private linePVLoc!: WebGLUniformLocation;
   private lineColorLoc!: WebGLUniformLocation;
@@ -123,6 +127,8 @@ export class Viewport3D {
     this.solidSelLoc = gl.getUniformLocation(this.solidProg, 'uSelected')!;
     this.solidFaceSelLoc = gl.getUniformLocation(this.solidProg, 'uFaceSelected')!;
     this.solidUseAlphaLoc = gl.getUniformLocation(this.solidProg, 'uUseAlpha')!;
+    this.solidAlphaOverrideLoc = gl.getUniformLocation(this.solidProg, 'uAlphaOverride')!;
+    this.solidSolidOverrideLoc = gl.getUniformLocation(this.solidProg, 'uSolidOverride')!;
 
     this.lineProg = createProgram(gl, LINE_VERT_SRC, LINE_FRAG_SRC);
     this.linePVLoc = gl.getUniformLocation(this.lineProg, 'uPV')!;
@@ -200,6 +206,9 @@ export class Viewport3D {
       const brushSelected = this.editor.isSelected(brush);
       for (const face of brush.faces) {
         const fsel = this.editor.isFaceSelected(face);
+        // In 'hide' mode, skip invisible faces on mixed brushes (unless selected)
+        if (this.editor.invisibleMode === 'hide' && !fsel && !brushSelected &&
+            Editor.INVISIBLE_TEXTURES.has(face.texture.toLowerCase())) continue;
         addFace(face, brushSelected, fsel);
       }
     }
@@ -248,8 +257,13 @@ export class Viewport3D {
       }
       const count = allVerts.length / 8 - start;
       if (count > 0) {
-        const blendMode = tm?.getBlendMode(texName) ?? 'opaque';
-        this.drawGroups.push({ textureName: texName, start, count, selected, faceSelected, blendMode });
+        const invisible = Editor.INVISIBLE_TEXTURES.has(texName.toLowerCase());
+        let blendMode = tm?.getBlendMode(texName) ?? 'opaque';
+        if (invisible && this.editor.invisibleMode === 'dim' && blendMode === 'opaque') {
+          blendMode = 'blend';
+        }
+        const solidOverride = invisible && this.editor.invisibleMode === 'hide' && (selected || faceSelected);
+        this.drawGroups.push({ textureName: texName, start, count, selected, faceSelected, blendMode, invisible, solidOverride });
       }
     }
 
@@ -258,7 +272,7 @@ export class Viewport3D {
       const start = allVerts.length / 8;
       for (const v of entityVerts) allVerts.push(v);
       const count = entityVerts.length / 8;
-      this.drawGroups.push({ textureName: '__entity', start, count, selected: false, faceSelected: false, blendMode: 'opaque' });
+      this.drawGroups.push({ textureName: '__entity', start, count, selected: false, faceSelected: false, blendMode: 'opaque', invisible: false, solidOverride: false });
     }
 
     // Upload solid VBO
@@ -401,11 +415,15 @@ export class Viewport3D {
         }
         gl.uniform1f(this.solidSelLoc, group.selected ? 1.0 : 0.0);
         gl.uniform1f(this.solidFaceSelLoc, group.faceSelected ? 1.0 : 0.0);
+        const isDimInvis = group.invisible && this.editor.invisibleMode === 'dim';
+        gl.uniform1f(this.solidAlphaOverrideLoc, isDimInvis ? 0.3 : 0.0);
+        gl.uniform1f(this.solidSolidOverrideLoc, group.solidOverride ? 1.0 : 0.0);
         gl.drawArrays(gl.TRIANGLES, group.start, group.count);
       };
 
       // Pass 1: opaque
       gl.uniform1f(this.solidUseAlphaLoc, 0.0);
+      gl.uniform1f(this.solidAlphaOverrideLoc, 0.0);
       for (const group of this.drawGroups) {
         if (group.blendMode !== 'opaque') continue;
         drawGroup(group);
@@ -417,9 +435,11 @@ export class Viewport3D {
         if (group.blendMode === 'opaque') continue;
         if (!hasTransparent) {
           gl.enable(gl.BLEND);
-          gl.depthMask(false);
           hasTransparent = true;
         }
+        // Dimmed invisible faces keep depth writes so back faces are occluded
+        const isDimInvis = group.invisible && this.editor.invisibleMode === 'dim';
+        gl.depthMask(isDimInvis);
         if (group.blendMode === 'add') {
           gl.blendFunc(gl.ONE, gl.ONE);
           gl.uniform1f(this.solidUseAlphaLoc, 0.0);

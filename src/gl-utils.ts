@@ -26,6 +26,8 @@ uniform sampler2D uTexture;
 uniform float uSelected;
 uniform float uFaceSelected;
 uniform float uUseAlpha;
+uniform float uAlphaOverride; // 0.0 = no override, >0 = forced alpha
+uniform float uSolidOverride; // 1.0 = replace texture with solid color
 out vec4 fragColor;
 void main() {
   vec3 n = normalize(vNormal);
@@ -38,9 +40,12 @@ void main() {
   // Orange tint for selected brushes
   color = mix(color, vec3(1.0, 0.6, 0.2), uSelected * 0.25);
   // Cyan tint for selected face
-  color = mix(color, vec3(0.2, 0.7, 1.0), uFaceSelected * 0.35);
+  color = mix(color, vec3(0.2, 0.8, 1.0), uFaceSelected * 0.35);
+  // Solid cyan override (invisible faces selected in hide mode)
+  color = mix(color, vec3(0.15, 0.5, 0.7) * diff, uSolidOverride);
 
   float alpha = mix(1.0, texColor.a, uUseAlpha);
+  alpha = mix(alpha, uAlphaOverride, step(0.001, uAlphaOverride));
   fragColor = vec4(color, alpha);
 }
 `;

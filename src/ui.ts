@@ -1,4 +1,4 @@
-import { Editor, Tool } from './editor';
+import { Editor, Tool, InvisibleMode } from './editor';
 import { Entity, ENTITY_CLASSES } from './entity';
 import { TextureManager } from './textures';
 import { Vec3 } from './math';
@@ -69,6 +69,13 @@ export class UI {
         { separator: true },
         { label: 'Rotate 90°', shortcut: 'R', action: () => this.editor.rotateSelection(90) },
         { label: 'Rotate 15°', shortcut: 'Shift+R', action: () => this.editor.rotateSelection(15) },
+      ],
+      'View': [
+        { label: 'Cycle Invisible Mode', shortcut: 'I', action: () => this.cycleInvisibleMode() },
+        { label: 'Render Selected Only', action: () => {
+          this.editor.renderSelectedOnly = !this.editor.renderSelectedOnly;
+          this.editor.dirty = true;
+        }},
       ],
       'Tools': [
         { label: 'Select', shortcut: '1', action: () => this.setTool('select') },
@@ -192,6 +199,17 @@ export class UI {
     snapBtn.title = 'Toggle grid snapping (hold Ctrl to temporarily disable)';
     snapBtn.addEventListener('mousedown', () => this.toggleSnap());
     bar.appendChild(snapBtn);
+
+    bar.appendChild(this.createSeparator());
+
+    // Invisible geometry mode
+    const invisBtn = document.createElement('div');
+    invisBtn.className = 'tool-btn';
+    invisBtn.id = 'invis-toggle';
+    invisBtn.textContent = 'INVIS';
+    invisBtn.title = 'Cycle invisible geometry mode: show / dim / hide — I';
+    invisBtn.addEventListener('mousedown', () => this.cycleInvisibleMode());
+    bar.appendChild(invisBtn);
 
     bar.appendChild(this.createSeparator());
 
@@ -443,6 +461,9 @@ export class UI {
       if (e.key === 'Enter' && this.editor.activeTool === 'clip') { this.editor.executeClip(); return; }
       if (e.key === 'Tab' && this.editor.activeTool === 'clip') { e.preventDefault(); this.editor.cycleClipMode(); return; }
 
+      // Toggle invisible geometry
+      if (e.key === 'i' && !ctrl) { this.cycleInvisibleMode(); return; }
+
       // Focus on selection
       if (e.key === 'f' && !ctrl) { this.editor.centerOnSelection(); return; }
 
@@ -531,6 +552,19 @@ export class UI {
     this.closeMenus();
   }
 
+  private cycleInvisibleMode(): void {
+    const modes: InvisibleMode[] = ['show', 'dim', 'hide'];
+    const idx = modes.indexOf(this.editor.invisibleMode);
+    this.editor.invisibleMode = modes[(idx + 1) % modes.length];
+    this.editor.dirty = true;
+    const labels: Record<InvisibleMode, string> = {
+      show: 'Invisible: show all',
+      dim: 'Invisible: transparent',
+      hide: 'Invisible: hidden',
+    };
+    this.editor.statusMessage = labels[this.editor.invisibleMode];
+  }
+
   // ── Update UI state ──
 
   update(): void {
@@ -564,6 +598,10 @@ export class UI {
     document.getElementById('status-brushes')!.textContent = `Brushes: ${brushCount}`;
     document.getElementById('grid-label')!.textContent = `G:${e.gridSize}`;
     document.getElementById('snap-toggle')!.classList.toggle('active', e.snapToGrid);
+    const invisBtn = document.getElementById('invis-toggle')!;
+    const invisLabels: Record<InvisibleMode, string> = { show: 'INVIS', dim: 'DIM', hide: 'HIDE' };
+    invisBtn.textContent = invisLabels[e.invisibleMode];
+    invisBtn.classList.toggle('active', e.invisibleMode !== 'show');
 
     // Gizmo mode indicator (only when selection exists)
     const gizmoEl = document.getElementById('status-gizmo');
