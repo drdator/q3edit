@@ -8,7 +8,7 @@ import { Editor } from './editor';
 import { Brush, BrushFace, computeFaceUV } from './brush';
 import { Entity, entityOrigin } from './entity';
 import { pickVertex3D } from './vertex';
-import { TextureManager, TextureInfo } from './textures';
+import { TextureManager, TextureInfo, BlendMode } from './textures';
 import {
   VERT_SRC, FRAG_SRC, LINE_VERT_SRC, LINE_FRAG_SRC,
   createProgram, createLineBuffer, createSolidBuffer,
@@ -23,6 +23,7 @@ interface DrawGroup {
   count: number;
   selected: boolean;
   faceSelected: boolean;
+  blendMode: BlendMode;
 }
 
 export class Viewport3D {
@@ -42,6 +43,7 @@ export class Viewport3D {
   private solidTexLoc!: WebGLUniformLocation;
   private solidSelLoc!: WebGLUniformLocation;
   private solidFaceSelLoc!: WebGLUniformLocation;
+  private solidUseAlphaLoc!: WebGLUniformLocation;
   private lineProg!: WebGLProgram;
   private linePVLoc!: WebGLUniformLocation;
   private lineColorLoc!: WebGLUniformLocation;
@@ -120,6 +122,7 @@ export class Viewport3D {
     this.solidTexLoc = gl.getUniformLocation(this.solidProg, 'uTexture')!;
     this.solidSelLoc = gl.getUniformLocation(this.solidProg, 'uSelected')!;
     this.solidFaceSelLoc = gl.getUniformLocation(this.solidProg, 'uFaceSelected')!;
+    this.solidUseAlphaLoc = gl.getUniformLocation(this.solidProg, 'uUseAlpha')!;
 
     this.lineProg = createProgram(gl, LINE_VERT_SRC, LINE_FRAG_SRC);
     this.linePVLoc = gl.getUniformLocation(this.lineProg, 'uPV')!;
@@ -245,7 +248,8 @@ export class Viewport3D {
       }
       const count = allVerts.length / 8 - start;
       if (count > 0) {
-        this.drawGroups.push({ textureName: texName, start, count, selected, faceSelected });
+        const blendMode = tm?.getBlendMode(texName) ?? 'opaque';
+        this.drawGroups.push({ textureName: texName, start, count, selected, faceSelected, blendMode });
       }
     }
 
@@ -254,7 +258,7 @@ export class Viewport3D {
       const start = allVerts.length / 8;
       for (const v of entityVerts) allVerts.push(v);
       const count = entityVerts.length / 8;
-      this.drawGroups.push({ textureName: '__entity', start, count, selected: false, faceSelected: false });
+      this.drawGroups.push({ textureName: '__entity', start, count, selected: false, faceSelected: false, blendMode: 'opaque' });
     }
 
     // Upload solid VBO
@@ -376,7 +380,7 @@ export class Viewport3D {
     gl.bindVertexArray(this.gridVAO);
     gl.drawArrays(gl.LINES, 0, this.gridCount);
 
-    // Draw textured geometry by group
+    // Draw textured geometry by group (two-pass: opaque first, then transparent)
     if (this.drawGroups.length > 0) {
       gl.useProgram(this.solidProg);
       gl.uniformMatrix4fv(this.solidPVLoc, false, pv);
@@ -384,24 +388,50 @@ export class Viewport3D {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindVertexArray(this.solidVAO);
 
-      for (const group of this.drawGroups) {
-        // Bind texture
+      const drawGroup = (group: DrawGroup) => {
         const tm = this.editor.textureManager;
         if (tm && group.textureName !== '__entity') {
           const texInfo = tm.get(group.textureName);
           gl.bindTexture(gl.TEXTURE_2D, texInfo.glTexture);
         } else {
-          // Entity markers — use a green-ish solid color
-          // We'll just bind a white texture; the shader lighting gives color
           const tm2 = this.editor.textureManager;
           if (tm2) {
             gl.bindTexture(gl.TEXTURE_2D, tm2.get('__entity_green').glTexture);
           }
         }
-
         gl.uniform1f(this.solidSelLoc, group.selected ? 1.0 : 0.0);
         gl.uniform1f(this.solidFaceSelLoc, group.faceSelected ? 1.0 : 0.0);
         gl.drawArrays(gl.TRIANGLES, group.start, group.count);
+      };
+
+      // Pass 1: opaque
+      gl.uniform1f(this.solidUseAlphaLoc, 0.0);
+      for (const group of this.drawGroups) {
+        if (group.blendMode !== 'opaque') continue;
+        drawGroup(group);
+      }
+
+      // Pass 2: transparent (blended)
+      let hasTransparent = false;
+      for (const group of this.drawGroups) {
+        if (group.blendMode === 'opaque') continue;
+        if (!hasTransparent) {
+          gl.enable(gl.BLEND);
+          gl.depthMask(false);
+          hasTransparent = true;
+        }
+        if (group.blendMode === 'add') {
+          gl.blendFunc(gl.ONE, gl.ONE);
+          gl.uniform1f(this.solidUseAlphaLoc, 0.0);
+        } else {
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          gl.uniform1f(this.solidUseAlphaLoc, 1.0);
+        }
+        drawGroup(group);
+      }
+      if (hasTransparent) {
+        gl.disable(gl.BLEND);
+        gl.depthMask(true);
       }
     }
 

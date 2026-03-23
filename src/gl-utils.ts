@@ -25,6 +25,7 @@ in vec3 vWorldPos;
 uniform sampler2D uTexture;
 uniform float uSelected;
 uniform float uFaceSelected;
+uniform float uUseAlpha;
 out vec4 fragColor;
 void main() {
   vec3 n = normalize(vNormal);
@@ -39,7 +40,8 @@ void main() {
   // Cyan tint for selected face
   color = mix(color, vec3(0.2, 0.7, 1.0), uFaceSelected * 0.35);
 
-  fragColor = vec4(color, 1.0);
+  float alpha = mix(1.0, texColor.a, uUseAlpha);
+  fragColor = vec4(color, alpha);
 }
 `;
 

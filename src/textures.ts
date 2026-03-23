@@ -1,6 +1,8 @@
 import { PakFiles } from './pak';
 import { decodeTGA } from './tga';
 
+export type BlendMode = 'opaque' | 'add' | 'blend';
+
 export interface TextureInfo {
   glTexture: WebGLTexture;
   width: number;
@@ -16,6 +18,8 @@ export class TextureManager {
   private missing!: TextureInfo;
   // shader name → image path resolved from .shader files
   private shaderImages = new Map<string, string>();
+  // shader name → blend mode resolved from .shader files
+  private shaderBlendModes = new Map<string, BlendMode>();
 
   // Callback when a texture finishes loading (triggers redraw)
   onTextureLoaded: (() => void) | null = null;
@@ -69,6 +73,8 @@ export class TextureManager {
 
         let editorImage = '';
         let firstMapImage = '';
+        let hasTrans = false;
+        let stageBlend: BlendMode | null = null;
         let depth = 1;
 
         while (i < len && depth > 0) {
@@ -83,6 +89,36 @@ export class TextureManager {
 
           if (tokenLower === 'qer_editorimage' && depth === 1) {
             editorImage = readToken().toLowerCase();
+          } else if (tokenLower === 'surfaceparm' && depth === 1) {
+            skipWhitespace();
+            if (i < len && text[i] !== '{' && text[i] !== '}') {
+              const parm = readToken().toLowerCase();
+              if (parm === 'trans') hasTrans = true;
+            }
+          } else if (tokenLower === 'blendfunc' && depth === 2 && !stageBlend) {
+            skipWhitespace();
+            if (i < len && text[i] !== '{' && text[i] !== '}') {
+              const arg1 = readToken().toLowerCase();
+              if (arg1 === 'add') {
+                stageBlend = 'add';
+              } else if (arg1 === 'blend') {
+                stageBlend = 'blend';
+              } else if (arg1 === 'filter') {
+                stageBlend = 'blend';
+              } else if (arg1.startsWith('gl_')) {
+                // Explicit two-arg form: blendfunc GL_X GL_Y
+                skipWhitespace();
+                if (i < len && text[i] !== '{' && text[i] !== '}') {
+                  const arg2 = readToken().toLowerCase();
+                  stageBlend = (arg1 === 'gl_one' && arg2 === 'gl_one') ? 'add' : 'blend';
+                } else {
+                  stageBlend = 'blend';
+                }
+              } else {
+                // Unknown single-arg shorthand
+                stageBlend = 'blend';
+              }
+            }
           } else if (tokenLower === 'map' && depth === 2 && !firstMapImage) {
             const val = readToken().toLowerCase();
             if (val && val[0] !== '$' && val !== 'textures') {
@@ -91,17 +127,29 @@ export class TextureManager {
           }
         }
 
+        const key = shaderName.toLowerCase();
+        const shortKey = key.startsWith('textures/') ? key.substring(9) : key;
+
+        // Store blend mode (only transparent if surfaceparm trans is set)
+        const finalBlend = hasTrans ? (stageBlend ?? 'blend') : 'opaque';
+        if (finalBlend !== 'opaque') {
+          this.shaderBlendModes.set(shortKey, finalBlend);
+          this.shaderBlendModes.set(key, finalBlend);
+        }
+
         const image = editorImage || firstMapImage;
         if (image) {
-          const key = shaderName.toLowerCase();
-          // Strip textures/ prefix from shader name if present for lookup
-          const shortKey = key.startsWith('textures/') ? key.substring(9) : key;
           const imagePath = image.replace(/\.(tga|jpg|jpeg)$/i, '');
           this.shaderImages.set(shortKey, imagePath);
           this.shaderImages.set(key, imagePath);
         }
       }
     }
+  }
+
+  getBlendMode(name: string): BlendMode {
+    const key = name.toLowerCase().replace(/\\/g, '/').replace(/\.(tga|jpg|jpeg)$/i, '');
+    return this.shaderBlendModes.get(key) ?? this.shaderBlendModes.get('textures/' + key) ?? 'opaque';
   }
 
   get(name: string): TextureInfo {
