@@ -14,6 +14,8 @@ export class TextureManager {
   private loading = new Set<string>();
   private white!: TextureInfo;
   private missing!: TextureInfo;
+  // shader name → image path resolved from .shader files
+  private shaderImages = new Map<string, string>();
 
   // Callback when a texture finishes loading (triggers redraw)
   onTextureLoaded: (() => void) | null = null;
@@ -23,6 +25,83 @@ export class TextureManager {
     this.pak = pak;
     this.white = this.createSolid(255, 255, 255, 255, '__white');
     this.missing = this.createCheckerboard();
+    this.parseShaders();
+  }
+
+  /** Parse all scripts/*.shader files to build shader name → editor image mapping */
+  private parseShaders(): void {
+    for (const [path, data] of this.pak) {
+      if (!path.startsWith('scripts/') || !path.endsWith('.shader')) continue;
+
+      const text = new TextDecoder().decode(data);
+      let i = 0;
+      const len = text.length;
+
+      const skipWhitespace = () => {
+        while (i < len) {
+          if (text[i] === '/' && text[i + 1] === '/') {
+            while (i < len && text[i] !== '\n') i++;
+          } else if (text[i] === '/' && text[i + 1] === '*') {
+            i += 2;
+            while (i < len - 1 && !(text[i] === '*' && text[i + 1] === '/')) i++;
+            i += 2;
+          } else if (text[i] <= ' ') {
+            i++;
+          } else break;
+        }
+      };
+
+      const readToken = (): string => {
+        skipWhitespace();
+        if (i >= len) return '';
+        const start = i;
+        while (i < len && text[i] > ' ') i++;
+        return text.substring(start, i);
+      };
+
+      while (i < len) {
+        const shaderName = readToken();
+        if (!shaderName || shaderName === '{' || shaderName === '}') continue;
+
+        skipWhitespace();
+        if (i >= len || text[i] !== '{') continue;
+        i++; // skip opening {
+
+        let editorImage = '';
+        let firstMapImage = '';
+        let depth = 1;
+
+        while (i < len && depth > 0) {
+          skipWhitespace();
+          if (i >= len) break;
+
+          if (text[i] === '{') { depth++; i++; continue; }
+          if (text[i] === '}') { depth--; i++; continue; }
+
+          const token = readToken();
+          const tokenLower = token.toLowerCase();
+
+          if (tokenLower === 'qer_editorimage' && depth === 1) {
+            editorImage = readToken().toLowerCase();
+          } else if (tokenLower === 'map' && depth === 2 && !firstMapImage) {
+            const val = readToken().toLowerCase();
+            if (val && val[0] !== '$' && val !== 'textures') {
+              firstMapImage = val;
+            }
+          }
+        }
+
+        const image = editorImage || firstMapImage;
+        if (image) {
+          const key = shaderName.toLowerCase();
+          // Strip textures/ prefix from shader name if present for lookup
+          const shortKey = key.startsWith('textures/') ? key.substring(9) : key;
+          const imagePath = image.replace(/\.(tga|jpg|jpeg)$/i, '');
+          this.shaderImages.set(shortKey, imagePath);
+          this.shaderImages.set(key, imagePath);
+        }
+      }
+    }
   }
 
   get(name: string): TextureInfo {
@@ -80,6 +159,38 @@ export class TextureManager {
           this.onTextureLoaded?.();
           return;
         } catch { /* try next */ }
+      }
+    }
+
+    // Try shader-defined image as fallback
+    const shaderImage = this.shaderImages.get(baseName);
+    if (shaderImage && shaderImage !== baseName) {
+      const shaderCandidates = [
+        shaderImage + '.tga',
+        shaderImage + '.jpg',
+        'textures/' + shaderImage + '.tga',
+        'textures/' + shaderImage + '.jpg',
+      ];
+      for (const path of shaderCandidates) {
+        const data = this.pak.get(path);
+        if (!data) continue;
+
+        if (path.endsWith('.tga')) {
+          const result = decodeTGA(data);
+          if (result) {
+            const info = this.uploadRGBA(result.pixels, result.width, result.height);
+            this.cache.set(name, info);
+            this.onTextureLoaded?.();
+            return;
+          }
+        } else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+          try {
+            const info = await this.loadJPG(data);
+            this.cache.set(name, info);
+            this.onTextureLoaded?.();
+            return;
+          } catch { /* try next */ }
+        }
       }
     }
 
@@ -180,6 +291,42 @@ export class TextureManager {
         const url = URL.createObjectURL(blob);
         this.thumbnailCache.set(key, url);
         return url;
+      }
+    }
+
+    // Try shader-defined image as fallback
+    const shaderImage = this.shaderImages.get(baseName);
+    if (shaderImage && shaderImage !== baseName) {
+      const shaderCandidates = [
+        shaderImage + '.tga',
+        shaderImage + '.jpg',
+        'textures/' + shaderImage + '.tga',
+        'textures/' + shaderImage + '.jpg',
+      ];
+      for (const path of shaderCandidates) {
+        const data = this.pak.get(path);
+        if (!data) continue;
+
+        if (path.endsWith('.tga')) {
+          const result = decodeTGA(data);
+          if (result) {
+            const canvas = document.createElement('canvas');
+            canvas.width = result.width;
+            canvas.height = result.height;
+            const ctx = canvas.getContext('2d')!;
+            const imageData = ctx.createImageData(result.width, result.height);
+            imageData.data.set(result.pixels);
+            ctx.putImageData(imageData, 0, 0);
+            const url = canvas.toDataURL();
+            this.thumbnailCache.set(key, url);
+            return url;
+          }
+        } else {
+          const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
+          const url = URL.createObjectURL(blob);
+          this.thumbnailCache.set(key, url);
+          return url;
+        }
       }
     }
 
