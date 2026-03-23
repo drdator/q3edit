@@ -151,6 +151,9 @@ export class Viewport2D {
       this.drawRubberBand();
     }
 
+    // 3D camera icon
+    this.drawCamera();
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
@@ -414,6 +417,69 @@ export class Viewport2D {
         }
       }
     }
+  }
+
+  private drawCamera(): void {
+    const { ctx } = this;
+    const cam = this.editor.camera3d;
+
+    // Project camera position onto this 2D view's axes
+    const sx = cam.position[this.axisH];
+    const sy = cam.position[this.axisV];
+    const [cx, cy] = this.worldToScreen(sx, sy);
+
+    // Compute the forward direction projected onto this view plane
+    const cosPitch = Math.cos(cam.pitch);
+    const forward3d: [number, number, number] = [
+      Math.cos(cam.yaw) * cosPitch,
+      Math.sin(cam.yaw) * cosPitch,
+      Math.sin(cam.pitch),
+    ];
+    const fh = forward3d[this.axisH];
+    const fv = forward3d[this.axisV];
+    const len = Math.sqrt(fh * fh + fv * fv);
+
+    // Draw the camera as a triangle (wedge/cone) showing view direction
+    const size = 12; // pixels, fixed screen size
+    const fov = Math.PI / 3; // 60° field of view cone
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    if (len > 0.001) {
+      // Angle of the forward vector on screen (note: screen Y is flipped)
+      const angle = Math.atan2(-fv, fh);
+      ctx.rotate(angle);
+    } else {
+      // Camera is looking straight along the depth axis — show as a dot
+      ctx.fillStyle = 'rgba(0, 200, 0, 0.9)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    // Draw FOV cone (two lines extending from the camera)
+    const coneLen = size * 3;
+    const halfFov = fov / 2;
+    ctx.strokeStyle = 'rgba(0, 200, 0, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(coneLen * Math.cos(-halfFov), coneLen * Math.sin(-halfFov));
+    ctx.moveTo(0, 0);
+    ctx.lineTo(coneLen * Math.cos(halfFov), coneLen * Math.sin(halfFov));
+    ctx.stroke();
+
+    // Draw camera as wireframe rectangle
+    ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)';
+    ctx.lineWidth = 1.5;
+    const hw = size * 0.5;
+    const hh = size * 0.4;
+    ctx.strokeRect(-hw, -hh, hw * 2, hh * 2);
+
+    ctx.restore();
   }
 
   private drawRubberBand(): void {

@@ -366,6 +366,11 @@ export class Viewport3D {
     this.lastTime = time;
 
     this.updateCamera(dt);
+    // Sync camera state so 2D viewports can draw the camera icon
+    const cam = this.editor.camera3d;
+    cam.position = this.position;
+    cam.yaw = this.yaw;
+    cam.pitch = this.pitch;
     if (this.editor.dirty) {
       this.buildGeometry();
     }

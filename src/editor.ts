@@ -68,6 +68,11 @@ export class Editor {
   renderSelectedOnly = false;
   invisibleMode: InvisibleMode = 'show';
 
+  // 3D camera state (written by Viewport3D, read by Viewport2D)
+  camera3d: { position: Vec3; yaw: number; pitch: number } = {
+    position: [80, 80, 120], yaw: Math.PI * 0.25, pitch: -0.2,
+  };
+
   /** Textures considered invisible (tool brushes) */
   static readonly INVISIBLE_TEXTURES = new Set([
     'common/clip', 'common/weapclip', 'common/trigger',
