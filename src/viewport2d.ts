@@ -2,6 +2,7 @@ import { Vec3, vec3, vec3Snap, vec3Copy } from './math';
 import { Editor, SelectionItem } from './editor';
 import { Brush, brushContainsPoint2D, scaleBrushFaces } from './brush';
 import { Entity, entityOrigin } from './entity';
+import { Patch, PatchControlPoint, scalePatchControlPoints } from './patch';
 import { pickVertex2D } from './vertex';
 
 export type ViewAxis = 'xy' | 'xz' | 'yz';
@@ -41,6 +42,7 @@ export class Viewport2D {
   private resizing = false;
   private resizeEdges = { minH: false, maxH: false, minV: false, maxV: false };
   private resizeBrushes: { brush: Brush; origPoints: [Vec3, Vec3, Vec3][] }[] = [];
+  private resizePatches: { patch: Patch; origCtrl: PatchControlPoint[][] }[] = [];
   private resizeOrigMins: Vec3 = [0, 0, 0];
   private resizeOrigMaxs: Vec3 = [0, 0, 0];
   private resizeSnapshotTaken = false;
@@ -121,13 +123,24 @@ export class Viewport2D {
       this.drawBrush(brush, this.editor.isSelected(brush));
     }
 
+    // Patches
+    for (const { entity, patch } of this.editor.allPatches()) {
+      if (!this.editor.isPatchVisible(patch)) continue;
+      this.drawPatch(patch, this.editor.isPatchSelected(patch));
+    }
+
+    // Patch control point handles
+    if (this.editor.patchEditMode) {
+      this.drawPatchControlPoints();
+    }
+
     // Point entities
     for (const entity of this.editor.pointEntities()) {
       this.drawEntity(entity, this.editor.isEntitySelected(entity));
     }
 
     // Selection resize box (not in vertex mode)
-    if (this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode) {
+    if (this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode) {
       this.drawSelectionBox();
     }
 
@@ -239,6 +252,97 @@ export class Viewport2D {
       ctx.stroke();
     }
 
+  }
+
+  private drawPatch(patch: Patch, selected: boolean): void {
+    const { ctx } = this;
+    const h = this.axisH, v = this.axisV;
+
+    // Draw tessellation wireframe
+    ctx.strokeStyle = selected ? '#ff6600' : '#4488bb';
+    ctx.lineWidth = selected ? 1.5 : 1;
+    ctx.fillStyle = selected ? 'rgba(255, 102, 0, 0.08)' : 'rgba(60, 80, 100, 0.1)';
+
+    // Fill the AABB area lightly
+    const [x0, y0] = this.worldToScreen(patch.mins[h], patch.maxs[v]);
+    const [x1, y1] = this.worldToScreen(patch.maxs[h], patch.mins[v]);
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+
+    // Draw tessellation grid edges
+    const n = patch.subdivisions + 1;
+    const subCols = (patch.width - 1) / 2;
+    const subRows = (patch.height - 1) / 2;
+    ctx.beginPath();
+    for (let spr = 0; spr < subRows; spr++) {
+      for (let spc = 0; spc < subCols; spc++) {
+        const base = (spr * subCols + spc) * n * n;
+        for (let vi = 0; vi < n; vi++) {
+          for (let ui = 0; ui < n; ui++) {
+            const idx = base + vi * n + ui;
+            const p = patch.tessVerts[idx]?.position;
+            if (!p) continue;
+            const [sx, sy] = this.worldToScreen(p[h], p[v]);
+            if (ui < n - 1) {
+              const q = patch.tessVerts[idx + 1].position;
+              const [qx, qy] = this.worldToScreen(q[h], q[v]);
+              ctx.moveTo(sx, sy);
+              ctx.lineTo(qx, qy);
+            }
+            if (vi < n - 1) {
+              const q = patch.tessVerts[idx + n].position;
+              const [qx, qy] = this.worldToScreen(q[h], q[v]);
+              ctx.moveTo(sx, sy);
+              ctx.lineTo(qx, qy);
+            }
+          }
+        }
+      }
+    }
+    ctx.stroke();
+
+    // When selected, draw control lattice
+    if (selected) {
+      ctx.strokeStyle = 'rgba(200, 80, 200, 0.6)';
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      for (let r = 0; r < patch.height; r++) {
+        for (let c = 0; c < patch.width; c++) {
+          const p = patch.ctrl[r][c].xyz;
+          const [sx, sy] = this.worldToScreen(p[h], p[v]);
+          if (c < patch.width - 1) {
+            const q = patch.ctrl[r][c + 1].xyz;
+            const [qx, qy] = this.worldToScreen(q[h], q[v]);
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(qx, qy);
+          }
+          if (r < patch.height - 1) {
+            const q = patch.ctrl[r + 1][c].xyz;
+            const [qx, qy] = this.worldToScreen(q[h], q[v]);
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(qx, qy);
+          }
+        }
+      }
+      ctx.stroke();
+    }
+  }
+
+  private drawPatchControlPoints(): void {
+    const { ctx } = this;
+    const h = this.axisH, v = this.axisV;
+
+    for (let di = 0; di < this.editor.patchEditData.length; di++) {
+      const patch = this.editor.patchEditData[di].patch;
+      for (let r = 0; r < patch.height; r++) {
+        for (let c = 0; c < patch.width; c++) {
+          const p = patch.ctrl[r][c].xyz;
+          const [sx, sy] = this.worldToScreen(p[h], p[v]);
+          const isSel = this.editor.isControlPointSelected(di, r, c);
+          ctx.fillStyle = isSel ? '#ffffff' : '#00cc00';
+          ctx.fillRect(sx - 3, sy - 3, 6, 6);
+        }
+      }
+    }
   }
 
   private drawSelectionBox(): void {
@@ -632,6 +736,43 @@ export class Viewport2D {
         return;
       }
 
+      // Patch control point mode: pick/drag control points
+      if (this.editor.patchEditMode) {
+        const threshold = 8 / this.zoom;
+        let hitDi = -1, hitR = -1, hitC = -1;
+        let bestDist = threshold;
+        for (let di = 0; di < this.editor.patchEditData.length; di++) {
+          const patch = this.editor.patchEditData[di].patch;
+          for (let r = 0; r < patch.height; r++) {
+            for (let c = 0; c < patch.width; c++) {
+              const p = patch.ctrl[r][c].xyz;
+              const dx = Math.abs(wx - p[this.axisH]);
+              const dy = Math.abs(wy - p[this.axisV]);
+              const dist = Math.max(dx, dy);
+              if (dist < bestDist) {
+                bestDist = dist;
+                hitDi = di; hitR = r; hitC = c;
+              }
+            }
+          }
+        }
+        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+        if (hitDi >= 0) {
+          const wasSelected = this.editor.isControlPointSelected(hitDi, hitR, hitC);
+          this.editor.selectControlPoint(hitDi, hitR, hitC, additive);
+          if (wasSelected || !additive) {
+            this.vertexDragging = true;
+            this.vertexDragSnapshotTaken = false;
+            this.dragging = true;
+            this.hasDragged = false;
+            this.dragWorldStart = [wx, wy];
+          }
+        } else {
+          if (!additive) this.editor.clearControlPointSelection();
+        }
+        return;
+      }
+
       // Check for resize edge on combined selection AABB
       if (this.editor.activeTool === 'select' && this.editor.selection.length > 0) {
         const edge = this.detectResizeEdge(wx, wy);
@@ -642,9 +783,17 @@ export class Viewport2D {
           this.resizeBrushes = this.editor.selection
             .filter(s => s.type === 'brush')
             .map(s => ({
-              brush: s.brush,
-              origPoints: s.brush.faces.map(f =>
+              brush: (s as { brush: Brush }).brush,
+              origPoints: (s as { brush: Brush }).brush.faces.map(f =>
                 [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
+              ),
+            }));
+          this.resizePatches = this.editor.selection
+            .filter(s => s.type === 'patch')
+            .map(s => ({
+              patch: (s as { patch: Patch }).patch,
+              origCtrl: (s as { patch: Patch }).patch.ctrl.map(row =>
+                row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
               ),
             }));
           this.resizeOrigMins = vec3Copy(bounds.mins);
@@ -661,7 +810,9 @@ export class Viewport2D {
       if (picked) {
         const alreadySelected = picked.type === 'brush'
           ? this.editor.isSelected(picked.brush)
-          : this.editor.isEntitySelected(picked.entity);
+          : picked.type === 'patch'
+            ? this.editor.isPatchSelected(picked.patch)
+            : this.editor.isEntitySelected(picked.entity);
 
         if (!additive && !alreadySelected) {
           this.editor.clearSelection();
@@ -671,6 +822,8 @@ export class Viewport2D {
         if (additive || !alreadySelected) {
           if (picked.type === 'brush') {
             this.editor.selectBrush(picked.entity, picked.brush, additive);
+          } else if (picked.type === 'patch') {
+            this.editor.selectPatch(picked.entity, picked.patch, additive);
           } else {
             this.editor.selectEntity(picked.entity, additive);
           }
@@ -710,7 +863,7 @@ export class Viewport2D {
       if (this.spaceDown) {
         this.canvas.parentElement!.style.cursor = 'grab';
       } else {
-        const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode
+        const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode
           ? this.detectResizeEdge(wx, wy) : null;
         this.canvas.parentElement!.style.cursor = edge ? this.getResizeCursor(edge.edges) : '';
       }
@@ -731,7 +884,7 @@ export class Viewport2D {
       return;
     }
 
-    if (this.resizing && this.resizeBrushes.length > 0) {
+    if (this.resizing && (this.resizeBrushes.length > 0 || this.resizePatches.length > 0)) {
       const dx = wx - this.dragWorldStart[0];
       const dy = wy - this.dragWorldStart[1];
       const grid = this.editor.effectiveGrid(e.ctrlKey);
@@ -813,6 +966,9 @@ export class Viewport2D {
       for (const { brush, origPoints } of this.resizeBrushes) {
         scaleBrushFaces(brush, origPoints, scaleOrigin, scale);
       }
+      for (const { patch, origCtrl } of this.resizePatches) {
+        scalePatchControlPoints(patch, origCtrl, scaleOrigin, scale);
+      }
       this.editor.dirty = true;
       return;
     }
@@ -827,7 +983,7 @@ export class Viewport2D {
         this.editor.createEnd = snapped;
         this.editor.dirty = true;
       } else if (this.vertexDragging) {
-        // Move selected vertices
+        // Move selected vertices or control points
         const dx = wx - this.dragWorldStart[0];
         const dy = wy - this.dragWorldStart[1];
         const grid = this.editor.effectiveGrid(e.ctrlKey);
@@ -843,7 +999,11 @@ export class Viewport2D {
           const delta: Vec3 = [0, 0, 0];
           delta[this.axisH] = snappedDx;
           delta[this.axisV] = snappedDy;
-          this.editor.moveSelectedVertices(delta);
+          if (this.editor.patchEditMode) {
+            this.editor.moveSelectedControlPoints(delta);
+          } else {
+            this.editor.moveSelectedVertices(delta);
+          }
           this.dragWorldStart = [
             this.dragWorldStart[0] + snappedDx,
             this.dragWorldStart[1] + snappedDy,
@@ -897,6 +1057,12 @@ export class Viewport2D {
             this.editor.addBrushToSelection(entity, brush);
           }
         }
+        for (const { entity, patch } of this.editor.allPatches()) {
+          if (patch.maxs[this.axisH] >= minH && patch.mins[this.axisH] <= maxH &&
+              patch.maxs[this.axisV] >= minV && patch.mins[this.axisV] <= maxV) {
+            this.editor.addPatchToSelection(entity, patch);
+          }
+        }
         for (const entity of this.editor.pointEntities()) {
           const origin = entityOrigin(entity);
           if (!origin) continue;
@@ -919,6 +1085,7 @@ export class Viewport2D {
     if (this.resizing) {
       this.resizing = false;
       this.resizeBrushes = [];
+      this.resizePatches = [];
       this.canvas.parentElement!.style.cursor = '';
       this.editor.statusMessage = 'Resized';
       return;
@@ -1046,7 +1213,7 @@ export class Viewport2D {
     return false;
   }
 
-  private pickAt(wx: number, wy: number): { type: 'brush'; entity: Entity; brush: Brush } | { type: 'entity'; entity: Entity } | null {
+  private pickAt(wx: number, wy: number): { type: 'brush'; entity: Entity; brush: Brush } | { type: 'entity'; entity: Entity } | { type: 'patch'; entity: Entity; patch: Patch } | null {
     // Check point entities first (smaller targets)
     for (const entity of this.editor.pointEntities()) {
       const origin = entityOrigin(entity);
@@ -1058,8 +1225,9 @@ export class Viewport2D {
       }
     }
 
-    // Check brushes (pick smallest containing)
+    // Check brushes and patches (pick smallest containing AABB)
     let bestBrush: { entity: Entity; brush: Brush } | null = null;
+    let bestPatch: { entity: Entity; patch: Patch } | null = null;
     let bestArea = Infinity;
 
     for (const { entity, brush } of this.editor.allBrushes()) {
@@ -1069,12 +1237,30 @@ export class Viewport2D {
         if (area < bestArea) {
           bestArea = area;
           bestBrush = { entity, brush };
+          bestPatch = null;
+        }
+      }
+    }
+
+    for (const { entity, patch } of this.editor.allPatches()) {
+      if (!this.editor.isPatchVisible(patch)) continue;
+      const h = this.axisH, v = this.axisV;
+      if (wx >= patch.mins[h] && wx <= patch.maxs[h] &&
+          wy >= patch.mins[v] && wy <= patch.maxs[v]) {
+        const area = (patch.maxs[h] - patch.mins[h]) * (patch.maxs[v] - patch.mins[v]);
+        if (area < bestArea) {
+          bestArea = area;
+          bestPatch = { entity, patch };
+          bestBrush = null;
         }
       }
     }
 
     if (bestBrush) {
       return { type: 'brush', entity: bestBrush.entity, brush: bestBrush.brush };
+    }
+    if (bestPatch) {
+      return { type: 'patch', entity: bestPatch.entity, patch: bestPatch.patch };
     }
 
     return null;

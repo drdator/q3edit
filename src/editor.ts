@@ -1,6 +1,7 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max, vec3Dot } from './math';
 import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, splitBrushConvex, BrushValidationResult, textureAxisFromPlane } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
+import { Patch, clonePatch, translatePatch, rotatePatch, tessellatePatch, createFlatPatch, createCylinderPatch, createConePatch, createBevelPatch, createEndcapPatch } from './patch';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
 import { TextureManager } from './textures';
@@ -23,6 +24,10 @@ export type SelectionItem = {
   entity: Entity;
   brush: Brush;
   face: BrushFace;
+} | {
+  type: 'patch';
+  entity: Entity;
+  patch: Patch;
 }
 
 export class Editor {
@@ -63,6 +68,11 @@ export class Editor {
   vertexMode = false;
   vertexData: { brush: Brush; entity: Entity; vertices: BrushVertex[] }[] = [];
   vertexSelection: { dataIndex: number; vertexIndex: number }[] = [];
+
+  // Patch control point editing mode
+  patchEditMode = false;
+  patchEditData: { patch: Patch; entity: Entity }[] = [];
+  patchControlSelection: { dataIndex: number; row: number; col: number }[] = [];
 
   // Render filter
   renderSelectedOnly = false;
@@ -160,6 +170,34 @@ export class Editor {
     this.dirty = true;
   }
 
+  selectPatch(entity: Entity, patch: Patch, additive = false): void {
+    if (!additive) this.selection = [];
+    const idx = this.selection.findIndex(
+      s => s.type === 'patch' && s.patch === patch
+    );
+    if (idx >= 0) {
+      if (additive) this.selection.splice(idx, 1);
+      return;
+    }
+    this.selection.push({ type: 'patch', entity, patch });
+    this.dirty = true;
+  }
+
+  isPatchSelected(patch: Patch): boolean {
+    return this.selection.some(s => s.type === 'patch' && s.patch === patch);
+  }
+
+  addPatchToSelection(entity: Entity, patch: Patch): void {
+    if (this.isPatchSelected(patch)) return;
+    this.selection.push({ type: 'patch', entity, patch });
+    this.dirty = true;
+  }
+
+  isPatchVisible(patch: Patch): boolean {
+    if (!this.renderSelectedOnly || this.selection.length === 0) return true;
+    return this.selection.some(s => s.type === 'patch' && s.patch === patch);
+  }
+
   selectFace(entity: Entity, brush: Brush, face: BrushFace, additive = false): void {
     if (additive) {
       // Only allow additive if existing selection is all faces
@@ -232,6 +270,46 @@ export class Editor {
     return brush;
   }
 
+  // ── Patch creation ──
+
+  createPatch(preset: 'flat' | 'cylinder' | 'cone' | 'bevel' | 'endcap'): void {
+    const bounds = this.selectionBounds();
+    if (!bounds) {
+      this.statusMessage = 'Select a brush first';
+      return;
+    }
+    this.snapshot();
+    const { mins, maxs } = bounds;
+    const texture = this.currentTexture;
+    const creators = {
+      flat: createFlatPatch,
+      cylinder: createCylinderPatch,
+      cone: createConePatch,
+      bevel: createBevelPatch,
+      endcap: createEndcapPatch,
+    };
+    const patch = creators[preset](mins, maxs, texture);
+    this.worldspawn.patches.push(patch);
+    this.selection = [{ type: 'patch', entity: this.worldspawn, patch }];
+    this.dirty = true;
+    this.statusMessage = `Created ${preset} patch`;
+  }
+
+  changeSubdivisions(delta: number): void {
+    const patchItems = this.selection.filter(s => s.type === 'patch') as
+      { type: 'patch'; entity: Entity; patch: Patch }[];
+    if (patchItems.length === 0) return;
+    this.snapshot();
+    for (const item of patchItems) {
+      const newSub = Math.max(1, Math.min(24, item.patch.subdivisions + delta));
+      item.patch.subdivisions = newSub;
+      tessellatePatch(item.patch);
+    }
+    const level = patchItems[0].patch.subdivisions;
+    this.dirty = true;
+    this.statusMessage = `Subdivisions: ${level}`;
+  }
+
   deleteSelection(): void {
     if (this.selection.length === 0) return;
     this.snapshot();
@@ -241,6 +319,9 @@ export class Editor {
         const brush = item.brush;
         const idx = item.entity.brushes.indexOf(brush);
         if (idx >= 0) item.entity.brushes.splice(idx, 1);
+      } else if (item.type === 'patch') {
+        const idx = item.entity.patches.indexOf(item.patch);
+        if (idx >= 0) item.entity.patches.splice(idx, 1);
       } else {
         const idx = this.entities.indexOf(item.entity);
         // Don't delete worldspawn
@@ -259,6 +340,8 @@ export class Editor {
     for (const item of this.selection) {
       if (item.type === 'brush' || item.type === 'face') {
         translateBrush(item.brush, delta);
+      } else if (item.type === 'patch') {
+        translatePatch(item.patch, delta);
       } else {
         translateEntity(item.entity, delta);
       }
@@ -278,7 +361,7 @@ export class Editor {
     let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
     for (const item of this.selection) {
       if (item.type === 'entity') continue;
-      const b = item.brush;
+      const b = item.type === 'patch' ? item.patch : item.brush;
       for (let i = 0; i < 3; i++) {
         if (b.mins[i] < mins[i]) mins[i] = b.mins[i];
         if (b.maxs[i] > maxs[i]) maxs[i] = b.maxs[i];
@@ -293,6 +376,8 @@ export class Editor {
     for (const item of this.selection) {
       if (item.type === 'brush' || item.type === 'face') {
         rotateBrush(item.brush, center, axis, angle);
+      } else if (item.type === 'patch') {
+        rotatePatch(item.patch, center, axis, angle);
       }
     }
 
@@ -343,7 +428,7 @@ export class Editor {
     const newSelection: SelectionItem[] = [];
 
     for (const item of this.selection) {
-      if (item.type === 'entity') continue;
+      if (item.type === 'entity' || item.type === 'patch') continue;
       const brush = item.brush;
       const entity = item.entity;
       const idx = entity.brushes.indexOf(brush);
@@ -388,6 +473,11 @@ export class Editor {
         translateBrush(newBrush, offset);
         item.entity.brushes.push(newBrush);
         newSelection.push({ type: 'brush', entity: item.entity, brush: newBrush });
+      } else if (item.type === 'patch') {
+        const newPatch = clonePatch(item.patch);
+        translatePatch(newPatch, offset);
+        item.entity.patches.push(newPatch);
+        newSelection.push({ type: 'patch', entity: item.entity, patch: newPatch });
       } else {
         const newEntity = cloneEntity(item.entity);
         translateEntity(newEntity, offset);
@@ -411,6 +501,12 @@ export class Editor {
         if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
           translateBrush(item.brush, delta);
         }
+      } else if (item.type === 'patch') {
+        const snapped = vec3Snap(item.patch.mins, this.gridSize);
+        const delta: Vec3 = [snapped[0] - item.patch.mins[0], snapped[1] - item.patch.mins[1], snapped[2] - item.patch.mins[2]];
+        if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
+          translatePatch(item.patch, delta);
+        }
       } else {
         const origin = entityOrigin(item.entity);
         if (origin) {
@@ -432,6 +528,10 @@ export class Editor {
         const newBrush = cloneBrush(item.brush);
         item.entity.brushes.push(newBrush);
         newSelection.push({ type: 'brush', entity: item.entity, brush: newBrush });
+      } else if (item.type === 'patch') {
+        const newPatch = clonePatch(item.patch);
+        item.entity.patches.push(newPatch);
+        newSelection.push({ type: 'patch', entity: item.entity, patch: newPatch });
       } else {
         const newEntity = cloneEntity(item.entity);
         this.entities.push(newEntity);
@@ -578,11 +678,21 @@ export class Editor {
     }
   }
 
-  // ── Point entities (non-worldspawn, no brushes) ──
+  // ── Get all patches across all entities ──
+
+  *allPatches(): Iterable<{ entity: Entity; patch: Patch }> {
+    for (const entity of this.entities) {
+      for (const patch of entity.patches) {
+        yield { entity, patch };
+      }
+    }
+  }
+
+  // ── Point entities (non-worldspawn, no brushes/patches) ──
 
   *pointEntities(): Iterable<Entity> {
     for (let i = 1; i < this.entities.length; i++) {
-      if (this.entities[i].brushes.length === 0) {
+      if (this.entities[i].brushes.length === 0 && this.entities[i].patches.length === 0) {
         yield this.entities[i];
       }
     }
@@ -594,6 +704,9 @@ export class Editor {
     this.selection = [];
     for (const { entity, brush } of this.allBrushes()) {
       this.selection.push({ type: 'brush', entity, brush });
+    }
+    for (const { entity, patch } of this.allPatches()) {
+      this.selection.push({ type: 'patch', entity, patch });
     }
     for (const entity of this.pointEntities()) {
       this.selection.push({ type: 'entity', entity });
@@ -609,6 +722,9 @@ export class Editor {
       if (item.type === 'entity') {
         const o = entityOrigin(item.entity);
         if (o) { mins = vec3Min(mins, o); maxs = vec3Max(maxs, o); }
+      } else if (item.type === 'patch') {
+        mins = vec3Min(mins, item.patch.mins);
+        maxs = vec3Max(maxs, item.patch.maxs);
       } else {
         const b = item.brush;
         mins = vec3Min(mins, b.mins);
@@ -636,7 +752,7 @@ export class Editor {
 
   setTexture(texture: string): void {
     this.currentTexture = texture;
-    // Apply to selected face or all faces of selected brushes
+    // Apply to selected face, all faces of selected brushes, or selected patches
     for (const item of this.selection) {
       if (item.type === 'face') {
         item.face.texture = texture;
@@ -644,6 +760,8 @@ export class Editor {
         for (const face of item.brush.faces) {
           face.texture = texture;
         }
+      } else if (item.type === 'patch') {
+        item.patch.texture = texture;
       }
     }
     this.dirty = true;
@@ -890,6 +1008,97 @@ export class Editor {
       sum[0] += pos[0]; sum[1] += pos[1]; sum[2] += pos[2];
     }
     const n = this.vertexSelection.length;
+    return [sum[0] / n, sum[1] / n, sum[2] / n];
+  }
+
+  // ── Patch control point editing ──
+
+  enterPatchEditMode(): void {
+    const patchItems = this.selection.filter(s => s.type === 'patch') as
+      { type: 'patch'; entity: Entity; patch: Patch }[];
+    if (patchItems.length === 0) return;
+
+    this.patchEditData = [];
+    const seen = new Set<Patch>();
+    for (const item of patchItems) {
+      if (seen.has(item.patch)) continue;
+      seen.add(item.patch);
+      this.patchEditData.push({ patch: item.patch, entity: item.entity });
+    }
+
+    this.patchEditMode = true;
+    this.patchControlSelection = [];
+    this.dirty = true;
+    this.statusMessage = 'Patch edit mode';
+  }
+
+  exitPatchEditMode(): void {
+    if (!this.patchEditMode) return;
+    // Re-tessellate all edited patches
+    for (const data of this.patchEditData) {
+      tessellatePatch(data.patch);
+    }
+    this.patchEditMode = false;
+    this.patchEditData = [];
+    this.patchControlSelection = [];
+    this.dirty = true;
+  }
+
+  selectControlPoint(dataIndex: number, row: number, col: number, additive = false): void {
+    if (!additive) this.patchControlSelection = [];
+    const idx = this.patchControlSelection.findIndex(
+      cp => cp.dataIndex === dataIndex && cp.row === row && cp.col === col
+    );
+    if (idx >= 0) {
+      if (additive) this.patchControlSelection.splice(idx, 1);
+      return;
+    }
+    this.patchControlSelection.push({ dataIndex, row, col });
+    this.dirty = true;
+  }
+
+  clearControlPointSelection(): void {
+    this.patchControlSelection = [];
+    this.dirty = true;
+  }
+
+  isControlPointSelected(dataIndex: number, row: number, col: number): boolean {
+    return this.patchControlSelection.some(
+      cp => cp.dataIndex === dataIndex && cp.row === row && cp.col === col
+    );
+  }
+
+  moveSelectedControlPoints(delta: Vec3): void {
+    if (this.patchControlSelection.length === 0) return;
+
+    const affectedPatches = new Set<number>();
+    for (const cp of this.patchControlSelection) {
+      const data = this.patchEditData[cp.dataIndex];
+      if (!data) continue;
+      const pt = data.patch.ctrl[cp.row][cp.col];
+      pt.xyz[0] += delta[0];
+      pt.xyz[1] += delta[1];
+      pt.xyz[2] += delta[2];
+      affectedPatches.add(cp.dataIndex);
+    }
+
+    // Re-tessellate affected patches
+    for (const di of affectedPatches) {
+      tessellatePatch(this.patchEditData[di].patch);
+    }
+    this.dirty = true;
+  }
+
+  patchControlSelectionCenter(): Vec3 | null {
+    if (this.patchControlSelection.length === 0) return null;
+    let sum: Vec3 = [0, 0, 0];
+    for (const cp of this.patchControlSelection) {
+      const data = this.patchEditData[cp.dataIndex];
+      if (!data) continue;
+      const pos = data.patch.ctrl[cp.row][cp.col].xyz;
+      sum[0] += pos[0]; sum[1] += pos[1]; sum[2] += pos[2];
+    }
+    const n = this.patchControlSelection.length;
     return [sum[0] / n, sum[1] / n, sum[2] / n];
   }
 }

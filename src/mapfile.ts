@@ -1,6 +1,7 @@
 import { Vec3 } from './math';
 import { Brush, BrushFace, createFace, computeBrushGeometry } from './brush';
 import { Entity } from './entity';
+import { Patch, PatchControlPoint, tessellatePatch } from './patch';
 
 // ── Serialize to .map format ──
 
@@ -35,6 +36,28 @@ export function serializeMap(entities: Entity[]): string {
         );
       }
 
+      lines.push('}');
+    }
+
+    // Patches
+    for (let p = 0; p < entity.patches.length; p++) {
+      const patch = entity.patches[p];
+      lines.push(`// patch ${p}`);
+      lines.push('{');
+      lines.push('patchDef2');
+      lines.push('{');
+      lines.push(patch.texture);
+      lines.push(`( ${patch.width} ${patch.height} ${patch.contentFlags} ${patch.surfaceFlags} ${patch.value} )`);
+      lines.push('(');
+      for (let r = 0; r < patch.height; r++) {
+        const row = patch.ctrl[r];
+        const cpStrs = row.map(cp =>
+          `( ${fmtNum(cp.xyz[0])} ${fmtNum(cp.xyz[1])} ${fmtNum(cp.xyz[2])} ${fmtNum(cp.uv[0])} ${fmtNum(cp.uv[1])} )`
+        );
+        lines.push(`( ${cpStrs.join(' ')} )`);
+      }
+      lines.push(')');
+      lines.push('}');
       lines.push('}');
     }
 
@@ -87,6 +110,7 @@ export function parseMap(text: string): Entity[] {
       classname: 'worldspawn',
       properties: {},
       brushes: [],
+      patches: [],
     };
 
     // Parse properties and brushes
@@ -101,25 +125,42 @@ export function parseMap(text: string): Entity[] {
       }
 
       if (line === '{') {
-        // Brush — check if the previous non-blank line was a comment (brush name)
+        // Brush or patch — check if the previous non-blank line was a comment (brush name)
         let brushName: string | undefined;
         for (let j = i - 1; j >= 0; j--) {
           const prev = lines[j].trim();
           if (prev === '') continue;
           if (prev.startsWith('//')) {
             const label = prev.replace(/^\/\/\s*/, '');
-            // Skip auto-generated comments like "brush 0", "entity 0"
-            if (!/^brush \d+$/.test(label) && !/^entity \d+$/.test(label)) {
+            // Skip auto-generated comments like "brush 0", "entity 0", "patch 0"
+            if (!/^(brush|entity|patch) \d+$/.test(label)) {
               brushName = label;
             }
           }
           break;
         }
         i++;
-        const brush = parseBrush(lines, () => i, (v) => { i = v; });
-        if (brush) {
-          if (brushName) brush.name = brushName;
-          entity.brushes.push(brush);
+
+        // Peek at first non-blank/comment line to check for patchDef2
+        let peekIdx = i;
+        while (peekIdx < lines.length) {
+          const peekLine = lines[peekIdx].trim();
+          if (peekLine === '' || peekLine.startsWith('//')) { peekIdx++; continue; }
+          break;
+        }
+
+        if (peekIdx < lines.length && lines[peekIdx].trim() === 'patchDef2') {
+          i = peekIdx + 1; // skip past 'patchDef2'
+          const patch = parsePatchDef2(lines, () => i, (v) => { i = v; });
+          if (patch) {
+            entity.patches.push(patch);
+          }
+        } else {
+          const brush = parseBrush(lines, () => i, (v) => { i = v; });
+          if (brush) {
+            if (brushName) brush.name = brushName;
+            entity.brushes.push(brush);
+          }
         }
       } else if (line.startsWith('"')) {
         // Property
@@ -214,4 +255,100 @@ function parseFaceLine(line: string): BrushFace | null {
     points[0], points[2], points[1],
     texture, offsetX, offsetY, rotation, scaleX, scaleY
   );
+}
+
+// ── Parse patchDef2 ──
+// Format after 'patchDef2' keyword has been consumed:
+//   {
+//   texture_name
+//   ( width height contents flags value )
+//   (
+//     ( ( x y z u v ) ( x y z u v ) ... )
+//     ...
+//   )
+//   }
+//   }   ← outer brace from the brush-level block
+
+function parsePatchDef2(lines: string[], getI: () => number, setI: (v: number) => void): Patch | null {
+  function nextLine(): string | null {
+    while (getI() < lines.length) {
+      const line = lines[getI()].trim();
+      setI(getI() + 1);
+      if (line === '' || line.startsWith('//')) continue;
+      return line;
+    }
+    return null;
+  }
+
+  // Expect inner opening brace
+  const brace = nextLine();
+  if (brace !== '{') return null;
+
+  // Texture name
+  const texture = nextLine();
+  if (!texture) return null;
+
+  // ( width height contents flags value )
+  const headerLine = nextLine();
+  if (!headerLine) return null;
+  const headerMatch = headerLine.match(/\(\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\)/);
+  if (!headerMatch) return null;
+  const width = parseInt(headerMatch[1]);
+  const height = parseInt(headerMatch[2]);
+  const contentFlags = parseInt(headerMatch[3]);
+  const surfaceFlags = parseInt(headerMatch[4]);
+  const value = parseInt(headerMatch[5]);
+
+  // Opening ( of control point matrix
+  const matOpen = nextLine();
+  if (matOpen !== '(') return null;
+
+  // Parse rows of control points
+  const ctrl: PatchControlPoint[][] = [];
+  const cpRegex = /\(\s*(-?[\d.e+-]+)\s+(-?[\d.e+-]+)\s+(-?[\d.e+-]+)\s+(-?[\d.e+-]+)\s+(-?[\d.e+-]+)\s*\)/g;
+
+  for (let r = 0; r < height; r++) {
+    const rowLine = nextLine();
+    if (!rowLine) return null;
+    const row: PatchControlPoint[] = [];
+    let match;
+    cpRegex.lastIndex = 0;
+    while ((match = cpRegex.exec(rowLine)) !== null) {
+      row.push({
+        xyz: [parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3])],
+        uv: [parseFloat(match[4]), parseFloat(match[5])],
+      });
+    }
+    if (row.length !== width) return null;
+    ctrl.push(row);
+  }
+
+  // Closing ) of control point matrix
+  const matClose = nextLine();
+  if (matClose !== ')') return null;
+
+  // Inner closing brace
+  const innerClose = nextLine();
+  if (innerClose !== '}') return null;
+
+  // Outer closing brace
+  const outerClose = nextLine();
+  if (outerClose !== '}') return null;
+
+  const patch: Patch = {
+    width,
+    height,
+    texture,
+    contentFlags,
+    surfaceFlags,
+    value,
+    ctrl,
+    subdivisions: 6,
+    mins: [0, 0, 0],
+    maxs: [0, 0, 0],
+    tessVerts: [],
+    tessIndices: [],
+  };
+  tessellatePatch(patch);
+  return patch;
 }

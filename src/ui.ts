@@ -430,6 +430,8 @@ export class UI {
       if (e.key === 'Escape') {
         if (this.editor.vertexMode) {
           this.handleExitVertexMode();
+        } else if (this.editor.patchEditMode) {
+          this.editor.exitPatchEditMode();
         } else if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
           this.editor.cancelClip();
         } else {
@@ -444,10 +446,14 @@ export class UI {
       if (e.key === '3') { this.setTool('entity'); return; }
       if (e.key === '4') { this.setTool('clip'); return; }
 
-      // Toggle vertex editing mode
+      // Toggle vertex editing mode (V for brushes, V for patches if patches selected)
       if (e.key === 'v' && !ctrl) {
         if (this.editor.vertexMode) {
           this.handleExitVertexMode();
+        } else if (this.editor.patchEditMode) {
+          this.editor.exitPatchEditMode();
+        } else if (this.editor.selection.some(s => s.type === 'patch')) {
+          this.editor.enterPatchEditMode();
         } else if (this.editor.selection.length > 0) {
           this.editor.enterVertexMode();
         }
@@ -456,6 +462,28 @@ export class UI {
 
       if (e.key === '[') { this.decreaseGrid(); return; }
       if (e.key === ']') { this.increaseGrid(); return; }
+
+      // Patch creation: P = flat, Shift+P = cylinder, Ctrl+P = cone, Ctrl+Shift+P = bevel
+      if (e.key === 'p' && !ctrl && this.editor.selection.length > 0) {
+        this.editor.createPatch('flat'); return;
+      }
+      if (e.key === 'P' && !ctrl && this.editor.selection.length > 0) {
+        this.editor.createPatch('cylinder'); return;
+      }
+      if (e.key === 'p' && ctrl && !e.shiftKey && this.editor.selection.length > 0) {
+        e.preventDefault(); this.editor.createPatch('cone'); return;
+      }
+      if (e.key === 'p' && ctrl && e.shiftKey && this.editor.selection.length > 0) {
+        e.preventDefault(); this.editor.createPatch('bevel'); return;
+      }
+
+      // Patch subdivision: +/- to increase/decrease tessellation
+      if ((e.key === '+' || e.key === '=') && this.editor.selection.some(s => s.type === 'patch')) {
+        this.editor.changeSubdivisions(1); return;
+      }
+      if ((e.key === '-' || e.key === '_') && this.editor.selection.some(s => s.type === 'patch')) {
+        this.editor.changeSubdivisions(-1); return;
+      }
 
       // Clip tool: Enter to execute, Tab to cycle mode
       if (e.key === 'Enter' && this.editor.activeTool === 'clip') { this.editor.executeClip(); return; }
@@ -510,6 +538,8 @@ export class UI {
         this.editor.snapshot();
         if (this.editor.vertexMode && this.editor.vertexSelection.length > 0) {
           this.editor.moveSelectedVertices(delta);
+        } else if (this.editor.patchEditMode && this.editor.patchControlSelection.length > 0) {
+          this.editor.moveSelectedControlPoints(delta);
         } else {
           this.editor.moveSelection(delta);
         }
@@ -574,6 +604,8 @@ export class UI {
     let toolLabel: string;
     if (e.vertexMode) {
       toolLabel = 'Tool: vertex';
+    } else if (e.patchEditMode) {
+      toolLabel = 'Tool: patch edit';
     } else if (e.activeTool === 'clip') {
       toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`;
     } else {
@@ -585,6 +617,9 @@ export class UI {
     if (e.vertexMode) {
       const vc = e.vertexSelection.length;
       selLabel = `Sel: ${vc} vtx (V to exit)`;
+    } else if (e.patchEditMode) {
+      const pc = e.patchControlSelection.length;
+      selLabel = `Sel: ${pc} cp (V to exit)`;
     } else {
       const faceCount = e.selection.filter(s => s.type === 'face').length;
       selLabel = faceCount > 0

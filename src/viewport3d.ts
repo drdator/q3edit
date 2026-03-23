@@ -7,6 +7,7 @@ import {
 import { Editor } from './editor';
 import { Brush, BrushFace, computeFaceUV } from './brush';
 import { Entity, entityOrigin } from './entity';
+import { Patch } from './patch';
 import { pickVertex3D } from './vertex';
 import { TextureManager, TextureInfo, BlendMode } from './textures';
 import {
@@ -213,6 +214,35 @@ export class Viewport3D {
       }
     }
 
+    // Patch tessellation triangles — same VBO format as brush faces
+    for (const { entity, patch } of this.editor.allPatches()) {
+      if (!this.editor.isPatchVisible(patch)) continue;
+      const patchSelected = this.editor.isPatchSelected(patch);
+      const suffix = patchSelected ? '|sel' : '';
+      const texName = patch.texture.toLowerCase();
+      const key = texName + suffix;
+      let group = facesByTex.get(key);
+      if (!group) {
+        group = [];
+        facesByTex.set(key, group);
+      }
+      const verts: number[] = [];
+      for (let ti = 0; ti < patch.tessIndices.length; ti += 3) {
+        const i0 = patch.tessIndices[ti];
+        const i1 = patch.tessIndices[ti + 1];
+        const i2 = patch.tessIndices[ti + 2];
+        for (const idx of [i0, i1, i2]) {
+          const v = patch.tessVerts[idx];
+          verts.push(
+            v.position[0], v.position[1], v.position[2],
+            v.normal[0], v.normal[1], v.normal[2],
+            v.uv[0], v.uv[1]
+          );
+        }
+      }
+      group.push({ verts, selected: patchSelected, faceSelected: false });
+    }
+
     // Build entity marker geometry as a special "__entity" group
     const entityVerts: number[] = [];
     for (const entity of this.editor.pointEntities()) {
@@ -304,6 +334,38 @@ export class Viewport3D {
       }
     }
 
+    // Patch wireframe: boundary edges of the tessellation grid
+    for (const { entity, patch } of this.editor.allPatches()) {
+      if (!this.editor.isPatchVisible(patch)) continue;
+      const patchSel = this.editor.isPatchSelected(patch);
+      const arr = patchSel ? selLineVerts : wireVerts;
+      const n = patch.subdivisions + 1;
+      const subCols = (patch.width - 1) / 2;
+      const subRows = (patch.height - 1) / 2;
+      for (let spr = 0; spr < subRows; spr++) {
+        for (let spc = 0; spc < subCols; spc++) {
+          const base = (spr * subCols + spc) * n * n;
+          for (let vi = 0; vi < n; vi++) {
+            for (let ui = 0; ui < n; ui++) {
+              const idx = base + vi * n + ui;
+              const p = patch.tessVerts[idx]?.position;
+              if (!p) continue;
+              // Horizontal edge
+              if (ui < n - 1) {
+                const q = patch.tessVerts[idx + 1].position;
+                arr.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+              }
+              // Vertical edge
+              if (vi < n - 1) {
+                const q = patch.tessVerts[idx + n].position;
+                arr.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Entity selection wireframe
     for (const entity of this.editor.pointEntities()) {
       if (!this.editor.isEntitySelected(entity)) continue;
@@ -350,6 +412,36 @@ export class Viewport3D {
           arr.push(p[0]-s, p[1], p[2], p[0]+s, p[1], p[2]);
           arr.push(p[0], p[1]-s, p[2], p[0], p[1]+s, p[2]);
           arr.push(p[0], p[1], p[2]-s, p[0], p[1], p[2]+s);
+        }
+      }
+    }
+    // Patch control point handles
+    if (this.editor.patchEditMode) {
+      const s = 4;
+      for (let di = 0; di < this.editor.patchEditData.length; di++) {
+        const patch = this.editor.patchEditData[di].patch;
+        for (let r = 0; r < patch.height; r++) {
+          for (let c = 0; c < patch.width; c++) {
+            const p = patch.ctrl[r][c].xyz;
+            const arr = this.editor.isControlPointSelected(di, r, c) ? vtxSelVerts : vtxVerts;
+            arr.push(p[0]-s, p[1], p[2], p[0]+s, p[1], p[2]);
+            arr.push(p[0], p[1]-s, p[2], p[0], p[1]+s, p[2]);
+            arr.push(p[0], p[1], p[2]-s, p[0], p[1], p[2]+s);
+          }
+        }
+        // Control lattice lines (connecting adjacent control points)
+        for (let r = 0; r < patch.height; r++) {
+          for (let c = 0; c < patch.width; c++) {
+            const p = patch.ctrl[r][c].xyz;
+            if (c < patch.width - 1) {
+              const q = patch.ctrl[r][c + 1].xyz;
+              selLineVerts.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+            }
+            if (r < patch.height - 1) {
+              const q = patch.ctrl[r + 1][c].xyz;
+              selLineVerts.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+            }
+          }
         }
       }
     }
@@ -610,6 +702,29 @@ export class Viewport3D {
     return bestHit;
   }
 
+  pickPatchAt(screenX: number, screenY: number): { entity: Entity; patch: Patch; dist: number } | null {
+    const { rayOrigin, rayDir: dir } = this.getRay(screenX, screenY);
+
+    let bestDist = Infinity;
+    let bestHit: { entity: Entity; patch: Patch; dist: number } | null = null;
+
+    for (const { entity, patch } of this.editor.allPatches()) {
+      if (!this.editor.isPatchVisible(patch)) continue;
+      for (let ti = 0; ti < patch.tessIndices.length; ti += 3) {
+        const v0 = patch.tessVerts[patch.tessIndices[ti]].position;
+        const v1 = patch.tessVerts[patch.tessIndices[ti + 1]].position;
+        const v2 = patch.tessVerts[patch.tessIndices[ti + 2]].position;
+        const t = rayTriangleIntersect(rayOrigin, dir, v0, v1, v2);
+        if (t !== null && t < bestDist) {
+          bestDist = t;
+          bestHit = { entity, patch, dist: t };
+        }
+      }
+    }
+
+    return bestHit;
+  }
+
   // ── Input ──
 
   private setupEvents(): void {
@@ -678,17 +793,69 @@ export class Viewport3D {
             } else {
               if (!additive) this.editor.clearVertexSelection();
             }
+          } else if (this.editor.patchEditMode) {
+            // Patch control point picking in 3D
+            const { rayOrigin, rayDir } = this.getRay(this.dragStart[0], this.dragStart[1]);
+            const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+            let hitDi = -1, hitR = -1, hitC = -1;
+            let bestDistSq = 64; // pick threshold squared (8 world units)
+            for (let di = 0; di < this.editor.patchEditData.length; di++) {
+              const patch = this.editor.patchEditData[di].patch;
+              for (let r = 0; r < patch.height; r++) {
+                for (let c = 0; c < patch.width; c++) {
+                  const p = patch.ctrl[r][c].xyz;
+                  // Distance from point to ray
+                  const toP = vec3Sub(p, rayOrigin);
+                  const t = vec3Dot(toP, rayDir);
+                  if (t < 0) continue;
+                  const proj = vec3Add(rayOrigin, vec3Scale(rayDir, t));
+                  const d = vec3Sub(p, proj);
+                  const distSq = d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
+                  if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    hitDi = di; hitR = r; hitC = c;
+                  }
+                }
+              }
+            }
+            if (hitDi >= 0) {
+              this.editor.selectControlPoint(hitDi, hitR, hitC, additive);
+            } else {
+              if (!additive) this.editor.clearControlPointSelection();
+            }
           } else {
-            const hit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
-            if (hit) {
+            const brushHit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
+            const patchHit = this.pickPatchAt(this.dragStart[0], this.dragStart[1]);
+
+            // Compare distances — brushHit doesn't expose distance, so re-check
+            let usePatch = false;
+            if (patchHit && brushHit) {
+              // Recompute brush hit distance for comparison
+              const { rayOrigin, rayDir: dir } = this.getRay(this.dragStart[0], this.dragStart[1]);
+              let brushDist = Infinity;
+              for (const face of brushHit.brush.faces) {
+                if (face.polygon.length < 3) continue;
+                for (let ii = 1; ii < face.polygon.length - 1; ii++) {
+                  const t = rayTriangleIntersect(rayOrigin, dir, face.polygon[0], face.polygon[ii], face.polygon[ii + 1]);
+                  if (t !== null && t < brushDist) brushDist = t;
+                }
+              }
+              usePatch = patchHit.dist < brushDist;
+            } else if (patchHit && !brushHit) {
+              usePatch = true;
+            }
+
+            if (usePatch && patchHit) {
+              const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+              this.editor.selectPatch(patchHit.entity, patchHit.patch, additive);
+            } else if (brushHit) {
               if (e.altKey) {
-                // Alt+click: select individual face, Shift+Alt: additive face select
                 const additive = e.shiftKey;
-                this.editor.selectFace(hit.entity, hit.brush, hit.face, additive);
+                this.editor.selectFace(brushHit.entity, brushHit.brush, brushHit.face, additive);
               } else {
                 const additive = e.ctrlKey || e.metaKey || e.shiftKey;
                 if (!additive) this.editor.clearSelection();
-                this.editor.selectBrush(hit.entity, hit.brush, additive);
+                this.editor.selectBrush(brushHit.entity, brushHit.brush, additive);
               }
             } else {
               if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();

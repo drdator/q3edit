@@ -1,10 +1,12 @@
 import { Vec3, vec3, vec3Copy, vec3Add } from './math';
 import { Brush, cloneBrush, translateBrush } from './brush';
+import { Patch, clonePatch, translatePatch } from './patch';
 
 export interface Entity {
   classname: string;
   properties: Record<string, string>;
   brushes: Brush[];
+  patches: Patch[];
 }
 
 export function createEntity(classname: string, origin?: Vec3): Entity {
@@ -12,7 +14,7 @@ export function createEntity(classname: string, origin?: Vec3): Entity {
   if (origin) {
     properties['origin'] = `${origin[0]} ${origin[1]} ${origin[2]}`;
   }
-  return { classname, properties, brushes: [] };
+  return { classname, properties, brushes: [], patches: [] };
 }
 
 export function entityOrigin(entity: Entity): Vec3 | null {
@@ -34,6 +36,7 @@ export function cloneEntity(entity: Entity): Entity {
     classname: entity.classname,
     properties: { ...entity.properties },
     brushes: entity.brushes.map(cloneBrush),
+    patches: entity.patches.map(clonePatch),
   };
 }
 
@@ -44,6 +47,9 @@ export function translateEntity(entity: Entity, delta: Vec3): void {
   }
   for (const brush of entity.brushes) {
     translateBrush(brush, delta);
+  }
+  for (const patch of entity.patches) {
+    translatePatch(patch, delta);
   }
 }
 
