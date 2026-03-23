@@ -80,6 +80,10 @@ export class Viewport3D {
   private gridVBO!: WebGLBuffer;
   private gridCount = 0;
 
+  private lightRadiusVAO!: WebGLVertexArrayObject;
+  private lightRadiusVBO!: WebGLBuffer;
+  private lightRadiusCount = 0;
+
   // Gizmo
   private gizmo!: Gizmo;
 
@@ -150,6 +154,8 @@ export class Viewport3D {
     this.vtxHandleSelVAO = vtxHS.vao; this.vtxHandleSelVBO = vtxHS.vbo;
     const grid = createLineBuffer(gl);
     this.gridVAO = grid.vao; this.gridVBO = grid.vbo;
+    const lr = createLineBuffer(gl);
+    this.lightRadiusVAO = lr.vao; this.lightRadiusVBO = lr.vbo;
   }
 
   private buildGrid(): void {
@@ -386,6 +392,42 @@ export class Viewport3D {
       }
     }
 
+    // Build light radius circle geometry
+    const lightRadiusVerts: number[] = [];
+    const CIRCLE_SEGMENTS = 48;
+    for (const entity of this.editor.pointEntities()) {
+      if (entity.classname !== 'light' || !entity.properties['light']) continue;
+      if (!this.editor.isEntitySelected(entity)) continue;
+      const radius = parseFloat(entity.properties['light']);
+      if (!(radius > 0)) continue;
+      const origin = entityOrigin(entity);
+      if (!origin) continue;
+      // Draw 3 circles: XY, XZ, YZ planes
+      for (let axis = 0; axis < 3; axis++) {
+        for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
+          const a0 = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+          const a1 = ((i + 1) / CIRCLE_SEGMENTS) * Math.PI * 2;
+          const p0: Vec3 = [origin[0], origin[1], origin[2]];
+          const p1: Vec3 = [origin[0], origin[1], origin[2]];
+          if (axis === 0) { // XY
+            p0[0] += Math.cos(a0) * radius; p0[1] += Math.sin(a0) * radius;
+            p1[0] += Math.cos(a1) * radius; p1[1] += Math.sin(a1) * radius;
+          } else if (axis === 1) { // XZ
+            p0[0] += Math.cos(a0) * radius; p0[2] += Math.sin(a0) * radius;
+            p1[0] += Math.cos(a1) * radius; p1[2] += Math.sin(a1) * radius;
+          } else { // YZ
+            p0[1] += Math.cos(a0) * radius; p0[2] += Math.sin(a0) * radius;
+            p1[1] += Math.cos(a1) * radius; p1[2] += Math.sin(a1) * radius;
+          }
+          lightRadiusVerts.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2]);
+        }
+      }
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.lightRadiusVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lightRadiusVerts), gl.DYNAMIC_DRAW);
+    this.lightRadiusCount = lightRadiusVerts.length / 3;
+
     gl.bindBuffer(gl.ARRAY_BUFFER, this.lineVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(selLineVerts), gl.DYNAMIC_DRAW);
     this.lineCount = selLineVerts.length / 3;
@@ -559,6 +601,15 @@ export class Viewport3D {
       gl.uniform3f(this.lineColorLoc, 0.0, 0.0, 0.0);
       gl.bindVertexArray(this.wireVAO);
       gl.drawArrays(gl.LINES, 0, this.wireCount);
+    }
+
+    // Draw light radius circles
+    if (this.lightRadiusCount > 0) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
+      gl.uniform3f(this.lineColorLoc, 1.0, 1.0, 0.4);
+      gl.bindVertexArray(this.lightRadiusVAO);
+      gl.drawArrays(gl.LINES, 0, this.lightRadiusCount);
     }
 
     // Draw selected wireframe overlay (no depth test)
@@ -824,8 +875,9 @@ export class Viewport3D {
               if (!additive) this.editor.clearControlPointSelection();
             }
           } else {
-            const brushHit = this.pickBrushAt(this.dragStart[0], this.dragStart[1]);
-            const patchHit = this.pickPatchAt(this.dragStart[0], this.dragStart[1]);
+            const filter = this.editor.selectionFilter;
+            const brushHit = (filter === 'all' || filter === 'brushes') ? this.pickBrushAt(this.dragStart[0], this.dragStart[1]) : null;
+            const patchHit = (filter === 'all' || filter === 'patches') ? this.pickPatchAt(this.dragStart[0], this.dragStart[1]) : null;
 
             // Compare distances — brushHit doesn't expose distance, so re-check
             let usePatch = false;

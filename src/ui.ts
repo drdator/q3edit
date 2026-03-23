@@ -267,6 +267,7 @@ export class UI {
 
     modeSelect.addEventListener('change', () => {
       this.brushPanelMode = modeSelect.value as typeof this.brushPanelMode;
+      this.editor.selectionFilter = this.brushPanelMode;
       this.brushPanelItemCount = -1; // force rebuild
       this.editor.dirty = true;
     });

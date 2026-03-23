@@ -76,6 +76,8 @@ export class Editor {
 
   // Render filter
   renderSelectedOnly = false;
+  // Selection filter — constrains what types can be picked in viewports
+  selectionFilter: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
   invisibleMode: InvisibleMode = 'show';
 
   // 3D camera state (written by Viewport3D, read by Viewport2D)

@@ -139,8 +139,9 @@ export class Viewport2D {
       this.drawEntity(entity, this.editor.isEntitySelected(entity));
     }
 
-    // Selection resize box (not in vertex mode)
-    if (this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode) {
+    // Selection resize box (not in vertex mode, not for entity-only selections)
+    if (this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode
+        && this.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face')) {
       this.drawSelectionBox();
     }
 
@@ -431,6 +432,21 @@ export class Viewport2D {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+
+    // Light radius circle (selected only)
+    if (selected && entity.classname === 'light' && entity.properties['light']) {
+      const radius = parseFloat(entity.properties['light']);
+      if (radius > 0) {
+        const screenRadius = radius * this.zoom;
+        ctx.strokeStyle = 'rgba(255, 200, 0, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
 
     // Label
     ctx.fillStyle = selected ? '#ffaa00' : '#88cc88';
@@ -774,8 +790,9 @@ export class Viewport2D {
         return;
       }
 
-      // Check for resize edge on combined selection AABB
-      if (this.editor.activeTool === 'select' && this.editor.selection.length > 0) {
+      // Check for resize edge on combined selection AABB (skip entity-only selections)
+      if (this.editor.activeTool === 'select' && this.editor.selection.length > 0
+          && this.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face')) {
         const edge = this.detectResizeEdge(wx, wy);
         if (edge) {
           const bounds = this.editor.selectionBounds()!;
@@ -882,8 +899,9 @@ export class Viewport2D {
       if (this.spaceDown) {
         this.canvas.parentElement!.style.cursor = 'grab';
       } else {
-        const edge = this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode
-          ? this.detectResizeEdge(wx, wy) : null;
+        const canResize = this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode
+          && this.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face');
+        const edge = canResize ? this.detectResizeEdge(wx, wy) : null;
         this.canvas.parentElement!.style.cursor = edge ? this.getResizeCursor(edge.edges) : '';
       }
     }
@@ -1070,24 +1088,31 @@ export class Viewport2D {
       const dx = this.rubberBandEnd[0] - this.rubberBandStart[0];
       const dy = this.rubberBandEnd[1] - this.rubberBandStart[1];
       if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-        for (const { entity, brush } of this.editor.allBrushes()) {
-          if (brush.maxs[this.axisH] >= minH && brush.mins[this.axisH] <= maxH &&
-              brush.maxs[this.axisV] >= minV && brush.mins[this.axisV] <= maxV) {
-            this.editor.addBrushToSelection(entity, brush);
+        const filter = this.editor.selectionFilter;
+        if (filter === 'all' || filter === 'brushes') {
+          for (const { entity, brush } of this.editor.allBrushes()) {
+            if (brush.maxs[this.axisH] >= minH && brush.mins[this.axisH] <= maxH &&
+                brush.maxs[this.axisV] >= minV && brush.mins[this.axisV] <= maxV) {
+              this.editor.addBrushToSelection(entity, brush);
+            }
           }
         }
-        for (const { entity, patch } of this.editor.allPatches()) {
-          if (patch.maxs[this.axisH] >= minH && patch.mins[this.axisH] <= maxH &&
-              patch.maxs[this.axisV] >= minV && patch.mins[this.axisV] <= maxV) {
-            this.editor.addPatchToSelection(entity, patch);
+        if (filter === 'all' || filter === 'patches') {
+          for (const { entity, patch } of this.editor.allPatches()) {
+            if (patch.maxs[this.axisH] >= minH && patch.mins[this.axisH] <= maxH &&
+                patch.maxs[this.axisV] >= minV && patch.mins[this.axisV] <= maxV) {
+              this.editor.addPatchToSelection(entity, patch);
+            }
           }
         }
-        for (const entity of this.editor.pointEntities()) {
-          const origin = entityOrigin(entity);
-          if (!origin) continue;
-          if (origin[this.axisH] >= minH && origin[this.axisH] <= maxH &&
-              origin[this.axisV] >= minV && origin[this.axisV] <= maxV) {
-            this.editor.addEntityToSelection(entity);
+        if (filter === 'all' || filter === 'entities') {
+          for (const entity of this.editor.pointEntities()) {
+            const origin = entityOrigin(entity);
+            if (!origin) continue;
+            if (origin[this.axisH] >= minH && origin[this.axisH] <= maxH &&
+                origin[this.axisV] >= minV && origin[this.axisV] <= maxV) {
+              this.editor.addEntityToSelection(entity);
+            }
           }
         }
       }
@@ -1233,14 +1258,18 @@ export class Viewport2D {
   }
 
   private pickAt(wx: number, wy: number): { type: 'brush'; entity: Entity; brush: Brush } | { type: 'entity'; entity: Entity } | { type: 'patch'; entity: Entity; patch: Patch } | null {
+    const filter = this.editor.selectionFilter;
+
     // Check point entities first (smaller targets)
-    for (const entity of this.editor.pointEntities()) {
-      const origin = entityOrigin(entity);
-      if (!origin) continue;
-      const dx = Math.abs(wx - origin[this.axisH]);
-      const dy = Math.abs(wy - origin[this.axisV]);
-      if (dx < 12 / this.zoom && dy < 12 / this.zoom) {
-        return { type: 'entity', entity };
+    if (filter === 'all' || filter === 'entities') {
+      for (const entity of this.editor.pointEntities()) {
+        const origin = entityOrigin(entity);
+        if (!origin) continue;
+        const dx = Math.abs(wx - origin[this.axisH]);
+        const dy = Math.abs(wy - origin[this.axisV]);
+        if (dx < 12 / this.zoom && dy < 12 / this.zoom) {
+          return { type: 'entity', entity };
+        }
       }
     }
 
@@ -1249,28 +1278,32 @@ export class Viewport2D {
     let bestPatch: { entity: Entity; patch: Patch } | null = null;
     let bestArea = Infinity;
 
-    for (const { entity, brush } of this.editor.allBrushes()) {
-      if (this.pointInBrush2D(brush, wx, wy)) {
-        const area = (brush.maxs[this.axisH] - brush.mins[this.axisH]) *
-                     (brush.maxs[this.axisV] - brush.mins[this.axisV]);
-        if (area < bestArea) {
-          bestArea = area;
-          bestBrush = { entity, brush };
-          bestPatch = null;
+    if (filter === 'all' || filter === 'brushes') {
+      for (const { entity, brush } of this.editor.allBrushes()) {
+        if (this.pointInBrush2D(brush, wx, wy)) {
+          const area = (brush.maxs[this.axisH] - brush.mins[this.axisH]) *
+                       (brush.maxs[this.axisV] - brush.mins[this.axisV]);
+          if (area < bestArea) {
+            bestArea = area;
+            bestBrush = { entity, brush };
+            bestPatch = null;
+          }
         }
       }
     }
 
-    for (const { entity, patch } of this.editor.allPatches()) {
-      if (!this.editor.isPatchVisible(patch)) continue;
-      const h = this.axisH, v = this.axisV;
-      if (wx >= patch.mins[h] && wx <= patch.maxs[h] &&
-          wy >= patch.mins[v] && wy <= patch.maxs[v]) {
-        const area = (patch.maxs[h] - patch.mins[h]) * (patch.maxs[v] - patch.mins[v]);
-        if (area < bestArea) {
-          bestArea = area;
-          bestPatch = { entity, patch };
-          bestBrush = null;
+    if (filter === 'all' || filter === 'patches') {
+      for (const { entity, patch } of this.editor.allPatches()) {
+        if (!this.editor.isPatchVisible(patch)) continue;
+        const h = this.axisH, v = this.axisV;
+        if (wx >= patch.mins[h] && wx <= patch.maxs[h] &&
+            wy >= patch.mins[v] && wy <= patch.maxs[v]) {
+          const area = (patch.maxs[h] - patch.mins[h]) * (patch.maxs[v] - patch.mins[v]);
+          if (area < bestArea) {
+            bestArea = area;
+            bestPatch = { entity, patch };
+            bestBrush = null;
+          }
         }
       }
     }
