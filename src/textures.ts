@@ -130,8 +130,8 @@ export class TextureManager {
         const key = shaderName.toLowerCase();
         const shortKey = key.startsWith('textures/') ? key.substring(9) : key;
 
-        // Store blend mode (only transparent if surfaceparm trans is set)
-        const finalBlend = hasTrans ? (stageBlend ?? 'blend') : 'opaque';
+        // Store blend mode (transparent only if both surfaceparm trans AND blendfunc present)
+        const finalBlend = (hasTrans && stageBlend) ? stageBlend : 'opaque';
         if (finalBlend !== 'opaque') {
           this.shaderBlendModes.set(shortKey, finalBlend);
           this.shaderBlendModes.set(key, finalBlend);
