@@ -88,6 +88,11 @@ export class UI {
         { label: 'Clip', shortcut: '4', action: () => this.setTool('clip') },
         { label: 'Rotate', shortcut: '5', action: () => this.setTool('rotate') },
       ],
+      'CSG': [
+        { label: 'CSG Subtract', shortcut: 'Shift+Ctrl+S', action: () => this.editor.csgSubtract() },
+        { label: 'Make Hollow', shortcut: 'Shift+Ctrl+H', action: () => this.editor.csgHollow() },
+        { label: 'Merge Brushes', shortcut: 'Shift+Ctrl+M', action: () => this.editor.csgMerge() },
+      ],
       'Grid': [
         { label: 'Grid 1', action: () => this.setGrid(1) },
         { label: 'Grid 2', action: () => this.setGrid(2) },
@@ -525,6 +530,11 @@ export class UI {
       if (ctrl && e.key === 'a') { e.preventDefault(); this.editor.selectAll(); return; }
       if (ctrl && e.key === 'd') { e.preventDefault(); this.editor.duplicateSelection(); return; }
       if (ctrl && e.key === 'g') { e.preventDefault(); this.editor.snapSelectionToGrid(); return; }
+
+      // CSG operations
+      if (ctrl && e.shiftKey && e.key === 'S') { e.preventDefault(); this.editor.csgSubtract(); return; }
+      if (ctrl && e.shiftKey && e.key === 'H') { e.preventDefault(); this.editor.csgHollow(); return; }
+      if (ctrl && e.shiftKey && e.key === 'M') { e.preventDefault(); this.editor.csgMerge(); return; }
 
       if (e.key === 'Escape') {
         if (this.editor.vertexMode) {
