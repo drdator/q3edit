@@ -717,7 +717,7 @@ export class UI {
   }
 
   private increaseGrid(): void {
-    this.setGrid(Math.min(256, this.editor.gridSize * 2));
+    this.setGrid(this.editor.gridSize >= 256 ? 1 : this.editor.gridSize * 2);
   }
 
   private decreaseGrid(): void {
