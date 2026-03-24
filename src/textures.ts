@@ -381,6 +381,17 @@ export class TextureManager {
     return null;
   }
 
+  /** Get all .shader files from the pak as { 'scripts/foo.shader': 'contents...' } */
+  getShaderFiles(): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const [path, data] of this.pak) {
+      if (path.startsWith('scripts/') && path.endsWith('.shader')) {
+        result[path] = new TextDecoder().decode(data);
+      }
+    }
+    return result;
+  }
+
   /**
    * Find the raw image file data for a texture name (as used in .map files).
    * Returns [pakPath, data] or null if not found.
