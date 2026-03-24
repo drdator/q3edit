@@ -86,6 +86,7 @@ export class UI {
         { label: 'Create Brush', shortcut: '2', action: () => this.setTool('create') },
         { label: 'Place Entity', shortcut: '3', action: () => this.setTool('entity') },
         { label: 'Clip', shortcut: '4', action: () => this.setTool('clip') },
+        { label: 'Rotate', shortcut: '5', action: () => this.setTool('rotate') },
       ],
       'Grid': [
         { label: 'Grid 1', action: () => this.setGrid(1) },
@@ -174,6 +175,7 @@ export class UI {
       { id: 'create', label: 'BOX' },
       { id: 'entity', label: 'ENT' },
       { id: 'clip', label: 'CLIP' },
+      { id: 'rotate', label: 'ROT' },
     ];
 
     for (const tool of tools) {
@@ -497,6 +499,9 @@ export class UI {
           this.editor.exitPatchEditMode();
         } else if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
           this.editor.cancelClip();
+        } else if (this.editor.activeTool === 'rotate' && this.editor.rotateAnchor) {
+          this.editor.rotateAnchor = null;
+          this.editor.dirty = true;
         } else {
           this.editor.clearSelection();
         }
@@ -508,6 +513,7 @@ export class UI {
       if (e.key === '2') { this.setTool('create'); return; }
       if (e.key === '3') { this.setTool('entity'); return; }
       if (e.key === '4') { this.setTool('clip'); return; }
+      if (e.key === '5') { this.setTool('rotate'); return; }
 
       // Toggle vertex editing mode (V for brushes, V for patches if patches selected)
       if (e.key === 'v' && !ctrl) {
@@ -616,6 +622,9 @@ export class UI {
   private setTool(tool: Tool): void {
     if (this.editor.activeTool === 'clip' && tool !== 'clip') {
       this.editor.clipPoints = [];
+    }
+    if (this.editor.activeTool === 'rotate' && tool !== 'rotate') {
+      this.editor.rotateAnchor = null;
     }
     this.editor.activeTool = tool;
     this.editor.dirty = true;

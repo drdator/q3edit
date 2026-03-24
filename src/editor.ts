@@ -7,7 +7,7 @@ import { serializeMap, parseMap } from './mapfile';
 import { TextureManager } from './textures';
 import { BrushVertex, collectBrushVertices, moveVertices } from './vertex';
 
-export type Tool = 'select' | 'create' | 'entity' | 'clip';
+export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
 export type GizmoMode = 'move' | 'scale';
 export type InvisibleMode = 'show' | 'dim' | 'hide';
@@ -63,6 +63,9 @@ export class Editor {
   clipPoints: Vec3[] = [];
   clipMode: ClipMode = 'front';
   clipDepthAxis = 2; // depth axis of viewport where clip points were placed
+
+  // Rotate tool state
+  rotateAnchor: Vec3 | null = null;
 
   // Vertex editing mode
   vertexMode = false;

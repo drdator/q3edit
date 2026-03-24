@@ -1,8 +1,8 @@
 import { Vec3, vec3, vec3Snap, vec3Copy } from './math';
 import { Editor, SelectionItem } from './editor';
-import { Brush, brushContainsPoint2D, scaleBrushFaces } from './brush';
+import { Brush, brushContainsPoint2D, scaleBrushFaces, rotateBrush } from './brush';
 import { Entity, entityOrigin } from './entity';
-import { Patch, PatchControlPoint, scalePatchControlPoints } from './patch';
+import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from './patch';
 import { pickVertex2D } from './vertex';
 
 export type ViewAxis = 'xy' | 'xz' | 'yz';
@@ -56,6 +56,15 @@ export class Viewport2D {
   // Vertex drag state
   private vertexDragging = false;
   private vertexDragSnapshotTaken = false;
+
+  // Rotation tool drag state
+  private rotating = false;
+  private rotateStartAngle = 0;
+  private rotateAppliedAngle = 0;
+  private rotateBrushOriginals: { brush: Brush; points: [Vec3, Vec3, Vec3][]; polygons: Vec3[][] }[] = [];
+  private rotatePatchOriginals: { patch: Patch; ctrl: { xyz: Vec3; uv: [number, number] }[][] }[] = [];
+  private rotateSnapshotTaken = false;
+  private anchorDragging = false;
 
   constructor(canvas: HTMLCanvasElement, editor: Editor, axis: ViewAxis) {
     this.canvas = canvas;
@@ -158,6 +167,11 @@ export class Viewport2D {
     // Clip line preview
     if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0 && this.editor.clipDepthAxis === this.axisDepth) {
       this.drawClipPreview(w, h);
+    }
+
+    // Rotation anchor
+    if (this.editor.activeTool === 'rotate' && this.editor.rotateAnchor) {
+      this.drawRotateAnchor();
     }
 
     // Rubber band selection rectangle
@@ -602,6 +616,48 @@ export class Viewport2D {
     ctx.restore();
   }
 
+  private drawRotateAnchor(): void {
+    const { ctx } = this;
+    const anchor = this.editor.rotateAnchor!;
+    const [sx, sy] = this.worldToScreen(anchor[this.axisH], anchor[this.axisV]);
+
+    // Crosshair
+    const size = 10;
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx - size, sy); ctx.lineTo(sx + size, sy);
+    ctx.moveTo(sx, sy - size); ctx.lineTo(sx, sy + size);
+    ctx.stroke();
+
+    // Circle around crosshair
+    ctx.beginPath();
+    ctx.arc(sx, sy, size, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // While actively rotating, draw guide line and angle arc
+    if (this.rotating) {
+      // Arc showing rotation amount
+      const arcRadius = 40;
+      ctx.strokeStyle = 'rgba(255, 68, 68, 0.6)';
+      ctx.lineWidth = 1;
+      // Canvas Y is flipped relative to world Y, so negate angles for drawing
+      const drawStart = -this.rotateStartAngle;
+      const drawEnd = -(this.rotateStartAngle + this.rotateAppliedAngle);
+      ctx.beginPath();
+      ctx.arc(sx, sy, arcRadius, drawStart, drawEnd, false);
+      ctx.stroke();
+
+      // Filled arc sector
+      ctx.fillStyle = 'rgba(255, 68, 68, 0.1)';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.arc(sx, sy, arcRadius, drawStart, drawEnd, false);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
   private drawRubberBand(): void {
     const { ctx } = this;
     const x = Math.min(this.rubberBandStart[0], this.rubberBandEnd[0]);
@@ -724,6 +780,57 @@ export class Viewport2D {
         point[this.axisH] = Math.round(wx / grid) * grid;
         point[this.axisV] = Math.round(wy / grid) * grid;
         this.editor.addClipPoint(point, this.axisDepth);
+        return;
+      }
+
+      if (this.editor.activeTool === 'rotate') {
+        if (!this.editor.rotateAnchor || e.altKey) {
+          // Place or reposition anchor (click+drag to position)
+          const grid = this.editor.effectiveGrid(e.ctrlKey);
+          const anchor: Vec3 = [0, 0, 0];
+          anchor[this.axisH] = Math.round(wx / grid) * grid;
+          anchor[this.axisV] = Math.round(wy / grid) * grid;
+          this.editor.rotateAnchor = anchor;
+          this.anchorDragging = true;
+          this.dragging = true;
+          this.hasDragged = false;
+          this.editor.statusMessage = 'Drag to position anchor';
+          this.editor.dirty = true;
+        } else if (this.editor.selection.length > 0) {
+          // Start rotation drag
+          const anchor = this.editor.rotateAnchor;
+          this.rotateStartAngle = Math.atan2(wy - anchor[this.axisV], wx - anchor[this.axisH]);
+          this.rotateAppliedAngle = 0;
+          this.rotating = true;
+          this.rotateSnapshotTaken = false;
+          this.dragging = true;
+          this.hasDragged = false;
+
+          // Store originals for non-destructive rotation
+          this.rotateBrushOriginals = this.editor.selection
+            .filter(s => s.type === 'brush' || s.type === 'face')
+            .map(s => {
+              const brush = (s as { brush: Brush }).brush;
+              return {
+                brush,
+                points: brush.faces.map(f =>
+                  [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
+                ),
+                polygons: brush.faces.map(f => f.polygon.map(v => vec3Copy(v))),
+              };
+            });
+          this.rotatePatchOriginals = this.editor.selection
+            .filter(s => s.type === 'patch')
+            .map(s => {
+              const patch = (s as { patch: Patch }).patch;
+              return {
+                patch,
+                ctrl: patch.ctrl.map(row =>
+                  row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
+                ),
+              };
+            });
+        }
         return;
       }
 
@@ -1011,7 +1118,67 @@ export class Viewport2D {
     }
 
     if (this.dragging) {
-      if (this.editor.creating) {
+      if (this.rotating) {
+        // Rotation tool drag
+        const anchor = this.editor.rotateAnchor!;
+        const currentAngle = Math.atan2(wy - anchor[this.axisV], wx - anchor[this.axisH]);
+        let totalAngle = currentAngle - this.rotateStartAngle;
+
+        // Shift: snap to 15° increments
+        if (e.shiftKey) {
+          const snap = (15 / 180) * Math.PI;
+          totalAngle = Math.round(totalAngle / snap) * snap;
+        }
+
+        if (totalAngle !== this.rotateAppliedAngle) {
+          if (!this.rotateSnapshotTaken) {
+            this.editor.snapshot();
+            this.rotateSnapshotTaken = true;
+          }
+          this.hasDragged = true;
+
+          const axis = this.axisDepth;
+          // Build 3D anchor with depth from selection center
+          const center3d: Vec3 = [0, 0, 0];
+          center3d[this.axisH] = anchor[this.axisH];
+          center3d[this.axisV] = anchor[this.axisV];
+          const selCenter = this.editor.selectionCenter();
+          if (selCenter) center3d[this.axisDepth] = selCenter[this.axisDepth];
+
+          // Restore originals and apply total rotation
+          for (const { brush, points, polygons } of this.rotateBrushOriginals) {
+            for (let fi = 0; fi < brush.faces.length; fi++) {
+              brush.faces[fi].points[0] = vec3Copy(points[fi][0]);
+              brush.faces[fi].points[1] = vec3Copy(points[fi][1]);
+              brush.faces[fi].points[2] = vec3Copy(points[fi][2]);
+              brush.faces[fi].polygon = polygons[fi].map(v => vec3Copy(v));
+            }
+            rotateBrush(brush, center3d, axis, totalAngle);
+          }
+          for (const { patch, ctrl } of this.rotatePatchOriginals) {
+            for (let r = 0; r < patch.height; r++) {
+              for (let c = 0; c < patch.width; c++) {
+                patch.ctrl[r][c].xyz = vec3Copy(ctrl[r][c].xyz);
+              }
+            }
+            rotatePatch(patch, center3d, axis, totalAngle);
+          }
+
+          this.rotateAppliedAngle = totalAngle;
+          const degrees = (totalAngle * 180 / Math.PI);
+          this.editor.statusMessage = `Rotating ${degrees.toFixed(1)}°`;
+          this.editor.dirty = true;
+        }
+        return;
+      } else if (this.anchorDragging) {
+        // Drag to reposition rotation anchor
+        const grid = this.editor.effectiveGrid(e.ctrlKey);
+        const anchor = this.editor.rotateAnchor!;
+        anchor[this.axisH] = Math.round(wx / grid) * grid;
+        anchor[this.axisV] = Math.round(wy / grid) * grid;
+        this.editor.dirty = true;
+        return;
+      } else if (this.editor.creating) {
         // Update creation preview
         const grid = this.editor.effectiveGrid(e.ctrlKey);
         const snapped: Vec3 = vec3Copy(this.editor.createEnd);
@@ -1136,6 +1303,23 @@ export class Viewport2D {
     }
 
     if (this.dragging) {
+      if (this.anchorDragging) {
+        this.anchorDragging = false;
+        this.dragging = false;
+        this.editor.statusMessage = 'Anchor placed — click and drag to rotate';
+        return;
+      }
+      if (this.rotating) {
+        this.rotating = false;
+        this.dragging = false;
+        this.rotateBrushOriginals = [];
+        this.rotatePatchOriginals = [];
+        if (this.hasDragged) {
+          const degrees = (this.rotateAppliedAngle * 180 / Math.PI).toFixed(1);
+          this.editor.statusMessage = `Rotated ${degrees}°`;
+        }
+        return;
+      }
       if (this.vertexDragging) {
         this.vertexDragging = false;
         this.dragging = false;
