@@ -276,14 +276,14 @@ export class UI {
 
     // ── CSG ──
     addBtn({
-      icon: icon('subtract'),
-      title: 'CSG Subtract (Ctrl+Shift+S)',
-      onClick: () => this.editor.csgSubtract(),
-    });
-    addBtn({
       icon: icon('selection'),
       title: 'Make Hollow (Ctrl+Shift+H)',
       onClick: () => this.editor.csgHollow(),
+    });
+    addBtn({
+      icon: icon('subtract'),
+      title: 'CSG Subtract (Ctrl+Shift+S)',
+      onClick: () => this.editor.csgSubtract(),
     });
     addBtn({
       icon: icon('unite'),
