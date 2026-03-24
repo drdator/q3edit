@@ -627,7 +627,7 @@ export class Viewport2D {
 
     // Draw camera as wireframe rectangle
     ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1;
     const hw = size * 0.5;
     const hh = size * 0.4;
     ctx.strokeRect(-hw, -hh, hw * 2, hh * 2);
@@ -823,6 +823,14 @@ export class Viewport2D {
         const point: Vec3 = [0, 0, 0];
         point[this.axisH] = Math.round(wx / grid) * grid;
         point[this.axisV] = Math.round(wy / grid) * grid;
+        if (this.editor.snapToGeometry) {
+          const targets = this.editor.collectSnapTargets(true);
+          const threshold = 8 / this.zoom;
+          const snapH = findNearestSnap(wx, targets[this.axisH], threshold);
+          const snapV = findNearestSnap(wy, targets[this.axisV], threshold);
+          if (snapH !== null && Math.abs(snapH - wx) < Math.abs(point[this.axisH] - wx)) point[this.axisH] = snapH;
+          if (snapV !== null && Math.abs(snapV - wy) < Math.abs(point[this.axisV] - wy)) point[this.axisV] = snapV;
+        }
         this.editor.addClipPoint(point, this.axisDepth);
         return;
       }
