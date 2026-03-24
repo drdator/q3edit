@@ -517,9 +517,9 @@ export class UI {
 
       const ctrl = e.ctrlKey || e.metaKey;
 
+      if (ctrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); this.editor.redo(); return; }
       if (ctrl && e.key === 'z') { e.preventDefault(); this.editor.undo(); return; }
       if (ctrl && e.key === 'y') { e.preventDefault(); this.editor.redo(); return; }
-      if (ctrl && e.key === 'Z') { e.preventDefault(); this.editor.redo(); return; }
       if (ctrl && e.key === 's') { e.preventDefault(); this.editor.saveMapToFile(); return; }
       if (ctrl && e.key === 'o') { e.preventDefault(); this.editor.openMapFromFile(); return; }
       if (ctrl && e.key === 'a') { e.preventDefault(); this.editor.selectAll(); return; }
