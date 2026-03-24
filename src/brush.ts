@@ -280,7 +280,54 @@ export function computeFaceUV(
 // Clip a brush by a plane. Returns the portion on the back side of the plane
 // (behind the plane, where planePointDistance <= 0), or null if nothing remains.
 // planePoints are the 3 defining points for the new cap face.
-export function clipBrush(brush: Brush, planePoints: [Vec3, Vec3, Vec3], texture = 'common/caulk'): Brush | null {
+function copyFaceStyle(
+  source: BrushFace | undefined,
+  planePoints: [Vec3, Vec3, Vec3],
+  texture?: string,
+): BrushFace {
+  const face = createFace(
+    planePoints[0],
+    planePoints[1],
+    planePoints[2],
+    texture ?? source?.texture ?? 'common/caulk',
+    source?.offsetX ?? 0,
+    source?.offsetY ?? 0,
+    source?.rotation ?? 0,
+    source?.scaleX ?? 0.5,
+    source?.scaleY ?? 0.5,
+  );
+
+  if (source) {
+    face.contentFlags = source.contentFlags;
+    face.surfaceFlags = source.surfaceFlags;
+    face.value = source.value;
+  }
+
+  return face;
+}
+
+function dedupeCoplanarFaces(faces: BrushFace[]): BrushFace[] {
+  const NORMAL_EPSILON = 1e-4;
+  const DIST_EPSILON = 0.02;
+  const unique: BrushFace[] = [];
+
+  outer: for (const face of faces) {
+    for (const existing of unique) {
+      const sameNormal =
+        Math.abs(face.plane.normal[0] - existing.plane.normal[0]) < NORMAL_EPSILON &&
+        Math.abs(face.plane.normal[1] - existing.plane.normal[1]) < NORMAL_EPSILON &&
+        Math.abs(face.plane.normal[2] - existing.plane.normal[2]) < NORMAL_EPSILON;
+      if (sameNormal && Math.abs(face.plane.dist - existing.plane.dist) < DIST_EPSILON) {
+        continue outer;
+      }
+    }
+    unique.push(face);
+  }
+
+  return unique;
+}
+
+export function clipBrush(brush: Brush, planePoints: [Vec3, Vec3, Vec3], texture?: string): Brush | null {
   // Clone all original faces
   const faces: BrushFace[] = brush.faces.map(f => ({
     ...f,
@@ -290,16 +337,19 @@ export function clipBrush(brush: Brush, planePoints: [Vec3, Vec3, Vec3], texture
   }));
 
   // Add the clip face
-  faces.push(createFace(planePoints[0], planePoints[1], planePoints[2], texture));
+  faces.push(copyFaceStyle(brush.faces[0], planePoints, texture));
 
   const newBrush: Brush = { faces, mins: [0, 0, 0], maxs: [0, 0, 0] };
   computeBrushGeometry(newBrush);
 
   // Remove faces with degenerate polygons
-  newBrush.faces = newBrush.faces.filter(f => f.polygon.length >= 3);
+  newBrush.faces = dedupeCoplanarFaces(newBrush.faces.filter(f => f.polygon.length >= 3));
 
   // Need at least 4 faces for a valid convex brush
   if (newBrush.faces.length < 4) return null;
+
+  const validation = validateBrush(newBrush);
+  if (!validation.valid) return null;
 
   return newBrush;
 }

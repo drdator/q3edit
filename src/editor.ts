@@ -6,6 +6,7 @@ import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
 import { TextureManager } from './textures';
 import { BrushVertex, collectBrushVertices, moveVertices } from './vertex';
+import { subtractBrush, hollowBrush, mergeBrushes } from './csg';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -237,6 +238,21 @@ export class Editor {
   get selectedFace(): BrushFace | null {
     const s = this.selection[0];
     return s?.type === 'face' ? s.face : null;
+  }
+
+  private selectedBrushItems(): { entity: Entity; brush: Brush }[] {
+    const items = this.selection.filter(
+      s => s.type === 'brush' || s.type === 'face'
+    ) as ({ type: 'brush'; entity: Entity; brush: Brush } | { type: 'face'; entity: Entity; brush: Brush; face: BrushFace })[];
+
+    const unique: { entity: Entity; brush: Brush }[] = [];
+    const seen = new Set<Brush>();
+    for (const item of items) {
+      if (seen.has(item.brush)) continue;
+      seen.add(item.brush);
+      unique.push({ entity: item.entity, brush: item.brush });
+    }
+    return unique;
   }
 
   /** Returns effective grid size: 1 when snapping is off (toggle or Ctrl held), gridSize otherwise */
@@ -505,6 +521,121 @@ export class Editor {
     this.clipPoints = [];
     this.dirty = true;
     this.statusMessage = `Clipped (${this.clipMode})`;
+  }
+
+  // ── CSG operations ──
+
+  csgSubtract(): void {
+    const brushItems = this.selectedBrushItems();
+    if (brushItems.length === 0) {
+      this.statusMessage = 'CSG Subtract: select brushes to carve with';
+      return;
+    }
+
+    this.snapshot();
+    const carverSet = new Set(brushItems.map(s => s.brush));
+    const newSelection: SelectionItem[] = [];
+    let totalFragments = 0;
+
+    for (const entity of this.entities) {
+      const newBrushes: Brush[] = [];
+      for (const brush of entity.brushes) {
+        if (carverSet.has(brush)) continue; // carvers are removed
+
+        let pieces: Brush[] = [brush];
+        for (const carverBrush of carverSet) {
+          const next: Brush[] = [];
+          for (const piece of pieces) {
+            const frags = subtractBrush(piece, carverBrush);
+            if (frags !== null) {
+              next.push(...frags);
+            } else {
+              next.push(piece); // no overlap, keep as-is
+            }
+          }
+          pieces = next;
+        }
+        newBrushes.push(...pieces);
+        if (pieces.length > 1 || (pieces.length === 1 && pieces[0] !== brush)) {
+          totalFragments += pieces.length;
+          for (const p of pieces) {
+            newSelection.push({ type: 'brush', entity, brush: p });
+          }
+        }
+      }
+      entity.brushes = newBrushes;
+    }
+
+    this.selection = newSelection;
+    this.dirty = true;
+    this.statusMessage = totalFragments > 0
+      ? `CSG Subtract: ${totalFragments} fragments created`
+      : 'CSG Subtract: no intersections found';
+  }
+
+  csgHollow(): void {
+    const brushItems = this.selectedBrushItems();
+    if (brushItems.length === 0) {
+      this.statusMessage = 'CSG Hollow: select brushes first';
+      return;
+    }
+
+    this.snapshot();
+    const newSelection: SelectionItem[] = [];
+
+    for (const item of brushItems) {
+      const shells = hollowBrush(item.brush, this.gridSize);
+      if (shells.length === 0) continue;
+
+      // Remove original
+      const idx = item.entity.brushes.indexOf(item.brush);
+      if (idx >= 0) item.entity.brushes.splice(idx, 1);
+
+      // Add shell pieces
+      for (const shell of shells) {
+        item.entity.brushes.push(shell);
+        newSelection.push({ type: 'brush', entity: item.entity, brush: shell });
+      }
+    }
+
+    this.selection = newSelection;
+    this.dirty = true;
+    this.statusMessage = `CSG Hollow: ${newSelection.length} shell pieces (wall thickness: ${this.gridSize})`;
+  }
+
+  csgMerge(): void {
+    const brushItems = this.selectedBrushItems();
+    if (brushItems.length < 2) {
+      this.statusMessage = 'CSG Merge: select 2+ brushes';
+      return;
+    }
+
+    // All brushes must belong to the same entity
+    const entity = brushItems[0].entity;
+    if (!brushItems.every(s => s.entity === entity)) {
+      this.statusMessage = 'CSG Merge: brushes must be in the same entity';
+      return;
+    }
+
+    const merged = mergeBrushes(brushItems.map(s => s.brush));
+    if (!merged) {
+      this.statusMessage = 'CSG Merge: result is not convex — cannot merge';
+      return;
+    }
+
+    this.snapshot();
+
+    // Remove originals
+    for (const item of brushItems) {
+      const idx = entity.brushes.indexOf(item.brush);
+      if (idx >= 0) entity.brushes.splice(idx, 1);
+    }
+
+    // Add merged brush
+    entity.brushes.push(merged);
+    this.selection = [{ type: 'brush', entity, brush: merged }];
+    this.dirty = true;
+    this.statusMessage = `CSG Merge: ${brushItems.length} brushes merged into 1`;
   }
 
   duplicateSelection(): void {
