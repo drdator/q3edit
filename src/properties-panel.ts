@@ -98,8 +98,8 @@ export class PropertiesPanel {
         }
 
         const delBtn = document.createElement('div');
-        delBtn.className = 'btn kv-del';
-        delBtn.textContent = '\u00d7';
+        delBtn.className = 'btn icon-btn kv-del';
+        delBtn.innerHTML = '<i class="ph ph-trash"></i>';
         delBtn.title = 'Remove property';
         delBtn.addEventListener('mousedown', () => {
           delete entity.properties[currentKey];
@@ -116,7 +116,7 @@ export class PropertiesPanel {
       // Add property — just adds an empty row
       const addBtn = document.createElement('div');
       addBtn.className = 'btn';
-      addBtn.textContent = '+ Add Key';
+      addBtn.innerHTML = '<i class="ph ph-plus"></i> Add Key';
       addBtn.addEventListener('mousedown', () => {
         // Find a unique default key name
         let n = 1;
@@ -154,6 +154,7 @@ export class PropertiesPanel {
       ];
       const sizeInfo = document.createElement('label');
       sizeInfo.textContent = `Size: ${size.join(' x ')}`;
+      sizeInfo.style.marginBottom = '10px';
       container.appendChild(sizeInfo);
     } else {
       const totalFaces = brushes.reduce((sum, b) => sum + b.faces.length, 0);
@@ -161,6 +162,7 @@ export class PropertiesPanel {
       info.textContent = `${totalFaces} faces total`;
       info.style.color = '#888';
       info.style.fontSize = '11px';
+      info.style.marginBottom = '10px';
       container.appendChild(info);
     }
 
@@ -178,6 +180,7 @@ export class PropertiesPanel {
     hint.textContent = `Face ${brush.faces.indexOf(face) + 1} of ${brush.faces.length}`;
     hint.style.color = '#888';
     hint.style.fontSize = '11px';
+    hint.style.marginBottom = '10px';
     container.appendChild(hint);
 
     // Texture name
@@ -224,6 +227,7 @@ export class PropertiesPanel {
     hint.textContent = `${faces.length} faces selected`;
     hint.style.color = '#888';
     hint.style.fontSize = '11px';
+    hint.style.marginBottom = '10px';
     container.appendChild(hint);
 
     this.buildMultiFaceFields(container, faces);
@@ -298,10 +302,9 @@ export class PropertiesPanel {
       row.className = 'kv-row';
       row.appendChild(input);
       const locBtn = document.createElement('div');
-      locBtn.className = 'kv-del';
+      locBtn.className = 'btn icon-btn';
       locBtn.title = 'Locate in texture browser';
       locBtn.innerHTML = '<i class="ph ph-crosshair"></i>';
-      locBtn.style.cursor = 'pointer';
       locBtn.addEventListener('mousedown', () => {
         const tex = input.value || this.editor.currentTexture;
         if (tex) this.editor.onLocateTexture?.(tex);

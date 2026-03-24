@@ -344,6 +344,7 @@ html, body {
 }
 
 .panel-body input[type="text"],
+.panel-body input[type="number"],
 .panel-body select {
   width: 100%;
   background: var(--bg-darker);
@@ -355,18 +356,22 @@ html, body {
   margin-bottom: 4px;
 }
 
-.kv-row input[type="text"] {
+.kv-row input[type="text"],
+.kv-row input[type="number"] {
   margin-bottom: 0;
 }
 
 .panel-body input[type="text"]:focus,
+.panel-body input[type="number"]:focus,
 .panel-body select:focus {
   outline: 1px solid var(--accent-dim);
 }
 
 .panel-body .btn {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px 2px 5px;
   background: var(--bg-light);
   border: 1px solid var(--border-dark);
   border-top-color: var(--border-light);
@@ -402,23 +407,20 @@ html, body {
   box-sizing: border-box;
 }
 
-.kv-row .kv-del {
-  flex: 0 0 auto;
+.panel-body .btn.icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0;
   margin: 0;
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-  color: #888;
-  box-sizing: border-box;
 }
 
 .kv-del:hover {
   color: #ff4444;
+  border-color: #ff4444;
 }
 
 .kv-color {
