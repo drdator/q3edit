@@ -1277,14 +1277,17 @@ export class Viewport2D {
     let bestBrush: { entity: Entity; brush: Brush } | null = null;
     let bestPatch: { entity: Entity; patch: Patch } | null = null;
     let bestArea = Infinity;
+    let bestDepth = -Infinity;
 
     if (filter === 'all' || filter === 'brushes') {
       for (const { entity, brush } of this.editor.allBrushes()) {
         if (this.pointInBrush2D(brush, wx, wy)) {
           const area = (brush.maxs[this.axisH] - brush.mins[this.axisH]) *
                        (brush.maxs[this.axisV] - brush.mins[this.axisV]);
-          if (area < bestArea) {
+          const depth = brush.maxs[this.axisDepth];
+          if (area < bestArea || (area === bestArea && depth > bestDepth)) {
             bestArea = area;
+            bestDepth = depth;
             bestBrush = { entity, brush };
             bestPatch = null;
           }
@@ -1299,8 +1302,10 @@ export class Viewport2D {
         if (wx >= patch.mins[h] && wx <= patch.maxs[h] &&
             wy >= patch.mins[v] && wy <= patch.maxs[v]) {
           const area = (patch.maxs[h] - patch.mins[h]) * (patch.maxs[v] - patch.mins[v]);
-          if (area < bestArea) {
+          const depth = patch.maxs[this.axisDepth];
+          if (area < bestArea || (area === bestArea && depth > bestDepth)) {
             bestArea = area;
+            bestDepth = depth;
             bestPatch = { entity, patch };
             bestBrush = null;
           }
