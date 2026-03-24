@@ -184,7 +184,7 @@ export class PropertiesPanel {
     this.addFaceField(container, 'Texture', face.texture, 'text', (val) => {
       face.texture = val;
       this.editor.dirty = true;
-    });
+    }, { locateTexture: true });
 
     // Offset X/Y
     this.addFaceNumberRow(container, 'Offset', face.offsetX, face.offsetY, 'X', 'Y', (x, y) => {
@@ -237,7 +237,7 @@ export class PropertiesPanel {
       for (const f of faces) f.texture = val;
       this.editor.currentTexture = val;
       this.editor.dirty = true;
-    }, textures.size > 1 ? `(${textures.size} textures)` : undefined);
+    }, { placeholder: textures.size > 1 ? `(${textures.size} textures)` : undefined, locateTexture: true });
 
     // Offset
     const sameOx = faces.every(f => f.offsetX === faces[0].offsetX);
@@ -263,7 +263,7 @@ export class PropertiesPanel {
       const r = parseFloat(val) || 0;
       for (const f of faces) f.rotation = r;
       this.editor.dirty = true;
-    }, sameRot ? undefined : '(mixed)');
+    }, sameRot ? undefined : { placeholder: '(mixed)' });
 
     // Flags
     const sameSurf = faces.every(f => f.surfaceFlags === faces[0].surfaceFlags);
@@ -275,7 +275,7 @@ export class PropertiesPanel {
     });
   }
 
-  private addFaceField(container: HTMLElement, label: string, value: string, type: string, onChange: (val: string) => void, placeholder?: string): void {
+  private addFaceField(container: HTMLElement, label: string, value: string, type: string, onChange: (val: string) => void, opts?: { placeholder?: string; locateTexture?: boolean }): void {
     const lbl = document.createElement('label');
     lbl.textContent = label;
     lbl.style.marginTop = '4px';
@@ -285,10 +285,32 @@ export class PropertiesPanel {
     const input = document.createElement('input');
     input.type = type;
     input.value = value;
-    if (placeholder) input.placeholder = placeholder;
+    if (opts?.placeholder) input.placeholder = opts.placeholder;
     if (type === 'number') input.step = 'any';
+    if (type === 'text') {
+      input.spellcheck = false;
+      input.autocomplete = 'off';
+    }
     input.addEventListener('change', () => onChange(input.value));
-    container.appendChild(input);
+
+    if (opts?.locateTexture) {
+      const row = document.createElement('div');
+      row.className = 'kv-row';
+      row.appendChild(input);
+      const locBtn = document.createElement('div');
+      locBtn.className = 'kv-del';
+      locBtn.title = 'Locate in texture browser';
+      locBtn.innerHTML = '<i class="ph ph-crosshair"></i>';
+      locBtn.style.cursor = 'pointer';
+      locBtn.addEventListener('mousedown', () => {
+        const tex = input.value || this.editor.currentTexture;
+        if (tex) this.editor.onLocateTexture?.(tex);
+      });
+      row.appendChild(locBtn);
+      container.appendChild(row);
+    } else {
+      container.appendChild(input);
+    }
   }
 
   private addFaceNumberRow(

@@ -81,6 +81,9 @@ export class Editor {
 
   // Render filter
   renderSelectedOnly = false;
+
+  // UI callback for locating a texture in the texture panel
+  onLocateTexture: ((texture: string) => void) | null = null;
   // Selection filter — constrains what types can be picked in viewports
   selectionFilter: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
   invisibleMode: InvisibleMode = 'show';

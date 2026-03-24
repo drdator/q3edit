@@ -43,6 +43,8 @@ export class UI {
     this.buildSidePanel();
     this.buildStatusBar();
     this.setupKeyboard();
+
+    this.editor.onLocateTexture = (texture: string) => this.locateTexture(texture);
   }
 
   // ── Menu Bar ──
@@ -505,24 +507,6 @@ export class UI {
   private buildTexturePanel(): void {
     const body = document.getElementById('texture-body')!;
 
-    const label = document.createElement('label');
-    label.textContent = 'Current Texture';
-    body.appendChild(label);
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = 'texture-input';
-    input.value = this.editor.currentTexture;
-    input.addEventListener('change', () => {
-      this.editor.setTexture(input.value);
-    });
-    body.appendChild(input);
-
-    const listLabel = document.createElement('label');
-    listLabel.textContent = 'Common Textures';
-    listLabel.style.marginTop = '8px';
-    body.appendChild(listLabel);
-
     const list = document.createElement('div');
     list.className = 'texture-list';
 
@@ -532,8 +516,6 @@ export class UI {
       item.textContent = tex;
       item.addEventListener('mousedown', () => {
         this.editor.setTexture(tex);
-        input.value = tex;
-        // Update selection state
         list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
         item.classList.add('selected');
       });
@@ -844,24 +826,10 @@ export class UI {
     const body = document.getElementById('texture-body')!;
     body.innerHTML = '';
 
-    const label = document.createElement('label');
-    label.textContent = 'Current Texture';
-    body.appendChild(label);
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = 'texture-input';
-    input.value = this.editor.currentTexture;
-    input.addEventListener('change', () => {
-      this.editor.setTexture(input.value);
-    });
-    body.appendChild(input);
-
     // Directory selector + view toggle row
     const dirRow = document.createElement('div');
     dirRow.style.display = 'flex';
     dirRow.style.alignItems = 'stretch';
-    dirRow.style.marginTop = '6px';
     dirRow.style.gap = '2px';
 
     const dirSelect = document.createElement('select');
@@ -911,14 +879,14 @@ export class UI {
 
     const repopulate = () => {
       const query = searchInput.value.trim().toLowerCase();
+      const dir = dirSelect.value;
       if (query) {
         const filtered = allTextures.filter(t => t.toLowerCase().includes(query));
-        this.populateTextureList(list, filtered, input);
+        this.populateTextureList(list, filtered, null);
         return;
       }
-      const dir = dirSelect.value;
       const textures = dir ? texMgr.listTexturesInDir(dir) : COMMON_TEXTURES;
-      this.populateTextureList(list, textures, input);
+      this.populateTextureList(list, textures, dir || null);
     };
 
     // Show common textures initially
@@ -942,6 +910,53 @@ export class UI {
     );
 
     this.showGeometryWarning(issueLines, invalidBrushes);
+  }
+
+  /** Select the folder and scroll to a texture in the texture browser panel. */
+  private locateTexture(texture: string): void {
+    const dirSelect = document.getElementById('texture-dir-select') as HTMLSelectElement | null;
+    if (!dirSelect) return;
+
+    // Determine the folder from the texture path (e.g. "base_wall/concrete" -> "base_wall")
+    const stripped = texture.replace(/^textures\//, '');
+    const slashIdx = stripped.lastIndexOf('/');
+    const dir = slashIdx >= 0 ? stripped.slice(0, slashIdx) : '';
+
+    // Find matching option (could be bare name or textures/ prefixed)
+    let matched = false;
+    for (const opt of Array.from(dirSelect.options)) {
+      const optDir = opt.value.replace(/^textures\//, '');
+      if (optDir === dir) {
+        dirSelect.value = opt.value;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      dirSelect.value = '';
+    }
+
+    // Trigger repopulation
+    dirSelect.dispatchEvent(new Event('change'));
+
+    // Scroll to and highlight the texture
+    requestAnimationFrame(() => {
+      const list = document.getElementById('texture-list');
+      if (!list) return;
+      for (const item of Array.from(list.children) as HTMLElement[]) {
+        // Match by checking if clicking this item would set the right texture
+        // The item stores the full texture name in the mousedown handler,
+        // but we can match by checking selected state or text content
+        const itemText = item.textContent || '';
+        const texName = stripped.slice(slashIdx + 1);
+        if (itemText === texName || itemText === stripped || itemText === texture) {
+          list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
+          item.classList.add('selected');
+          item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          break;
+        }
+      }
+    });
   }
 
   /** Show a warning dialog for invalid brush geometry with Rebuild / Split / Revert options. */
@@ -1229,7 +1244,7 @@ export class UI {
     };
   }
 
-  private populateTextureList(list: HTMLElement, textures: string[], input: HTMLInputElement): void {
+  private populateTextureList(list: HTMLElement, textures: string[], selectedDir: string | null): void {
     list.innerHTML = '';
 
     if (this.showTextureThumbnails && this.texMgr) {
@@ -1242,6 +1257,15 @@ export class UI {
       const item = document.createElement('div');
       item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
 
+      // Strip textures/ prefix, then strip selected dir prefix in list mode
+      let displayName = tex.replace(/^textures\//, '');
+      if (selectedDir) {
+        const prefix = selectedDir.replace(/^textures\//, '') + '/';
+        if (displayName.startsWith(prefix)) {
+          displayName = displayName.slice(prefix.length);
+        }
+      }
+
       if (this.showTextureThumbnails && this.texMgr) {
         item.classList.add('texture-thumb');
         const img = document.createElement('img');
@@ -1252,15 +1276,14 @@ export class UI {
         item.appendChild(img);
         const name = document.createElement('span');
         name.className = 'texture-thumb-name';
-        name.textContent = tex.replace(/^textures\//, '').split('/').pop() || tex;
+        name.textContent = displayName.split('/').pop() || displayName;
         item.appendChild(name);
       } else {
-        item.textContent = tex.replace(/^textures\//, '');
+        item.textContent = displayName;
       }
 
       item.addEventListener('mousedown', () => {
         this.editor.setTexture(tex);
-        input.value = tex;
         list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
         item.classList.add('selected');
       });
