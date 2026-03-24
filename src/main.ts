@@ -66,13 +66,23 @@ async function init() {
     setLoadingStatus('Initializing texture manager...');
     const texMgr = new TextureManager(vp3D.gl, pak);
 
-    // Create a small green texture for entity markers
-    const greenPixels = new Uint8Array([40, 180, 40, 255]);
-    const greenTex = vp3D.gl.createTexture()!;
-    vp3D.gl.bindTexture(vp3D.gl.TEXTURE_2D, greenTex);
-    vp3D.gl.texImage2D(vp3D.gl.TEXTURE_2D, 0, vp3D.gl.RGBA, 1, 1, 0,
-      vp3D.gl.RGBA, vp3D.gl.UNSIGNED_BYTE, greenPixels);
-    texMgr.registerTexture('__entity_green', greenTex, 1, 1);
+    // Create solid-color textures for entity category markers
+    const registerColorTex = (name: string, r: number, g: number, b: number) => {
+      const pixels = new Uint8Array([r, g, b, 255]);
+      const tex = vp3D.gl.createTexture()!;
+      vp3D.gl.bindTexture(vp3D.gl.TEXTURE_2D, tex);
+      vp3D.gl.texImage2D(vp3D.gl.TEXTURE_2D, 0, vp3D.gl.RGBA, 1, 1, 0,
+        vp3D.gl.RGBA, vp3D.gl.UNSIGNED_BYTE, pixels);
+      texMgr.registerTexture(name, tex, 1, 1);
+    };
+    registerColorTex('__entity_green', 40, 180, 40);   // spawns (legacy fallback)
+    registerColorTex('__entity_#44cc44', 68, 204, 68);  // spawns
+    registerColorTex('__entity_#ffcc00', 255, 204, 0);  // lights
+    registerColorTex('__entity_#ff6644', 255, 102, 68);  // weapons
+    registerColorTex('__entity_#cc8844', 204, 136, 68);  // ammo
+    registerColorTex('__entity_#44bbff', 68, 187, 255);  // health/armor
+    registerColorTex('__entity_#cc44ff', 204, 68, 255);  // powerups
+    registerColorTex('__entity_#888888', 136, 136, 136);  // targets/triggers/misc
 
     editor.textureManager = texMgr;
 

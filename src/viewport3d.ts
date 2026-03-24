@@ -6,7 +6,7 @@ import {
 } from './math';
 import { Editor } from './editor';
 import { Brush, BrushFace, computeFaceUV } from './brush';
-import { Entity, entityOrigin } from './entity';
+import { Entity, entityOrigin, entityColor, parseLightColor } from './entity';
 import { Patch } from './patch';
 import { pickVertex3D } from './vertex';
 import { TextureManager, TextureInfo, BlendMode } from './textures';
@@ -82,7 +82,7 @@ export class Viewport3D {
 
   private lightRadiusVAO!: WebGLVertexArrayObject;
   private lightRadiusVBO!: WebGLBuffer;
-  private lightRadiusCount = 0;
+  private lightRadiusDraws: { start: number; count: number; color: [number, number, number] }[] = [];
 
   // Gizmo
   private gizmo!: Gizmo;
@@ -249,11 +249,15 @@ export class Viewport3D {
       group.push({ verts, selected: patchSelected, faceSelected: false });
     }
 
-    // Build entity marker geometry as a special "__entity" group
-    const entityVerts: number[] = [];
+    // Build entity marker geometry grouped by category color
+    const entityVertsByColor = new Map<string, number[]>();
     for (const entity of this.editor.pointEntities()) {
       const origin = entityOrigin(entity);
       if (!origin) continue;
+      const color = entityColor(entity.classname);
+      let verts = entityVertsByColor.get(color);
+      if (!verts) { verts = []; entityVertsByColor.set(color, verts); }
+
       const s = 8;
       const top: Vec3    = [origin[0], origin[1], origin[2] + s];
       const bottom: Vec3 = [origin[0], origin[1], origin[2] - s];
@@ -274,7 +278,7 @@ export class Viewport3D {
       ];
       for (const [v0, v1, v2, n] of tris) {
         for (const v of [v0, v1, v2]) {
-          entityVerts.push(v[0], v[1], v[2], n[0], n[1], n[2], 0, 0);
+          verts.push(v[0], v[1], v[2], n[0], n[1], n[2], 0, 0);
         }
       }
     }
@@ -303,12 +307,13 @@ export class Viewport3D {
       }
     }
 
-    // Entity markers
-    if (entityVerts.length > 0) {
+    // Entity markers (one draw group per category color)
+    for (const [color, verts] of entityVertsByColor) {
+      if (verts.length === 0) continue;
       const start = allVerts.length / 8;
-      for (const v of entityVerts) allVerts.push(v);
-      const count = entityVerts.length / 8;
-      this.drawGroups.push({ textureName: '__entity', start, count, selected: false, faceSelected: false, blendMode: 'opaque', invisible: false, solidOverride: false });
+      for (const v of verts) allVerts.push(v);
+      const count = verts.length / 8;
+      this.drawGroups.push({ textureName: `__entity_${color}`, start, count, selected: false, faceSelected: false, blendMode: 'opaque', invisible: false, solidOverride: false });
     }
 
     // Upload solid VBO
@@ -392,8 +397,9 @@ export class Viewport3D {
       }
     }
 
-    // Build light radius circle geometry
+    // Build light radius circle geometry (per-light for individual colors)
     const lightRadiusVerts: number[] = [];
+    this.lightRadiusDraws = [];
     const CIRCLE_SEGMENTS = 48;
     for (const entity of this.editor.pointEntities()) {
       if (entity.classname !== 'light' || !entity.properties['light']) continue;
@@ -402,6 +408,9 @@ export class Viewport3D {
       if (!(radius > 0)) continue;
       const origin = entityOrigin(entity);
       if (!origin) continue;
+      const lc = parseLightColor(entity);
+      const color: [number, number, number] = lc ?? [1.0, 1.0, 0.4];
+      const start = lightRadiusVerts.length / 3;
       // Draw 3 circles: XY, XZ, YZ planes
       for (let axis = 0; axis < 3; axis++) {
         for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
@@ -422,11 +431,12 @@ export class Viewport3D {
           lightRadiusVerts.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2]);
         }
       }
+      const count = lightRadiusVerts.length / 3 - start;
+      this.lightRadiusDraws.push({ start, count, color });
     }
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.lightRadiusVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lightRadiusVerts), gl.DYNAMIC_DRAW);
-    this.lightRadiusCount = lightRadiusVerts.length / 3;
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.lineVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(selLineVerts), gl.DYNAMIC_DRAW);
@@ -543,14 +553,9 @@ export class Viewport3D {
 
       const drawGroup = (group: DrawGroup) => {
         const tm = this.editor.textureManager;
-        if (tm && group.textureName !== '__entity') {
+        if (tm) {
           const texInfo = tm.get(group.textureName);
           gl.bindTexture(gl.TEXTURE_2D, texInfo.glTexture);
-        } else {
-          const tm2 = this.editor.textureManager;
-          if (tm2) {
-            gl.bindTexture(gl.TEXTURE_2D, tm2.get('__entity_green').glTexture);
-          }
         }
         gl.uniform1f(this.solidSelLoc, group.selected ? 1.0 : 0.0);
         gl.uniform1f(this.solidFaceSelLoc, group.faceSelected ? 1.0 : 0.0);
@@ -603,13 +608,15 @@ export class Viewport3D {
       gl.drawArrays(gl.LINES, 0, this.wireCount);
     }
 
-    // Draw light radius circles
-    if (this.lightRadiusCount > 0) {
+    // Draw light radius circles (per-light color)
+    if (this.lightRadiusDraws.length > 0) {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.uniform3f(this.lineColorLoc, 1.0, 1.0, 0.4);
       gl.bindVertexArray(this.lightRadiusVAO);
-      gl.drawArrays(gl.LINES, 0, this.lightRadiusCount);
+      for (const draw of this.lightRadiusDraws) {
+        gl.uniform3f(this.lineColorLoc, draw.color[0], draw.color[1], draw.color[2]);
+        gl.drawArrays(gl.LINES, draw.start, draw.count);
+      }
     }
 
     // Draw selected wireframe overlay (no depth test)
