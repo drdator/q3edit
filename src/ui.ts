@@ -793,6 +793,7 @@ export class UI {
     const snapTitles = { off: 'Snap: off', abs: 'Snap: absolute', rel: 'Snap: relative' };
     snapBtn.title = snapTitles[e.gridSnapMode];
     snapBtn.classList.toggle('active', e.gridSnapMode !== 'off');
+    snapBtn.classList.toggle('snap-abs', e.gridSnapMode === 'abs');
     document.getElementById('geosnap-toggle')!.classList.toggle('active', e.snapToGeometry);
     const invisBtn = document.getElementById('invis-toggle')!;
     const invisIcons: Record<InvisibleMode, string> = {

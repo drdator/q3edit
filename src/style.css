@@ -166,6 +166,11 @@ html, body {
   color: var(--accent);
 }
 
+.tool-btn.active.snap-abs {
+  border-color: #c44;
+  color: #e55;
+}
+
 .tool-btn:active {
   background: var(--bg-dark);
 }
