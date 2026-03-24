@@ -6,6 +6,7 @@ import { PropertiesPanel } from './properties-panel';
 import { Brush } from './brush';
 import { Patch } from './patch';
 import { compileMap } from './q3map';
+import '@phosphor-icons/web/regular';
 
 const COMMON_TEXTURES = [
   'common/caulk',
@@ -175,99 +176,142 @@ export class UI {
   private buildToolbar(): void {
     const bar = document.getElementById('toolbar')!;
 
-    const tools: { id: Tool; label: string }[] = [
-      { id: 'select', label: 'SEL' },
-      { id: 'create', label: 'BOX' },
-      { id: 'entity', label: 'ENT' },
-      { id: 'clip', label: 'CLIP' },
-      { id: 'rotate', label: 'ROT' },
+    const icon = (name: string, weight: string = 'regular'): string =>
+      `<i class="ph${weight === 'regular' ? '' : '-' + weight} ph-${name}"></i>`;
+
+    const addBtn = (opts: {
+      id?: string;
+      icon: string;
+      title: string;
+      active?: boolean;
+      dataset?: Record<string, string>;
+      onClick: () => void;
+    }) => {
+      const btn = document.createElement('div');
+      btn.className = 'tool-btn' + (opts.active ? ' active' : '');
+      if (opts.id) btn.id = opts.id;
+      btn.innerHTML = opts.icon;
+      btn.title = opts.title;
+      if (opts.dataset) for (const [k, v] of Object.entries(opts.dataset)) btn.dataset[k] = v;
+      btn.addEventListener('mousedown', () => opts.onClick());
+      bar.appendChild(btn);
+      return btn;
+    };
+
+    // ── Tools ──
+    const tools: { id: Tool; icon: string; title: string }[] = [
+      { id: 'select', icon: icon('cursor'),             title: 'Select (1)' },
+      { id: 'create', icon: icon('cube'),               title: 'Create Brush (2)' },
+      { id: 'entity', icon: icon('map-pin'),            title: 'Place Entity (3)' },
+      { id: 'clip',   icon: icon('scissors'),           title: 'Clip (4)' },
+      { id: 'rotate', icon: icon('arrows-clockwise'),   title: 'Rotate (5)' },
     ];
 
     for (const tool of tools) {
-      const btn = document.createElement('div');
-      btn.className = 'tool-btn' + (tool.id === this.editor.activeTool ? ' active' : '');
-      btn.textContent = tool.label;
-      btn.dataset.tool = tool.id;
-      btn.addEventListener('mousedown', () => this.setTool(tool.id));
-      bar.appendChild(btn);
-    }
-
-    bar.appendChild(this.createSeparator());
-
-    // Gizmo mode buttons (move / scale)
-    const gizmoModes: { id: 'move' | 'scale'; label: string; key: string }[] = [
-      { id: 'move', label: 'MOV', key: 'W' },
-      { id: 'scale', label: 'SCL', key: 'E' },
-    ];
-    for (const gm of gizmoModes) {
-      const btn = document.createElement('div');
-      btn.className = 'tool-btn' + (gm.id === this.editor.gizmoMode ? ' active' : '');
-      btn.id = `gizmo-${gm.id}`;
-      btn.textContent = gm.label;
-      btn.title = `${gm.id === 'move' ? 'Move' : 'Scale'} mode (${gm.key})`;
-      btn.addEventListener('mousedown', () => {
-        this.editor.gizmoMode = gm.id;
-        this.editor.dirty = true;
+      addBtn({
+        icon: tool.icon,
+        title: tool.title,
+        active: tool.id === this.editor.activeTool,
+        dataset: { tool: tool.id },
+        onClick: () => this.setTool(tool.id),
       });
-      bar.appendChild(btn);
     }
 
     bar.appendChild(this.createSeparator());
 
-    // Grid display
-    const gridLabel = document.createElement('div');
-    gridLabel.className = 'tool-btn';
-    gridLabel.id = 'grid-label';
-    gridLabel.textContent = `G:${this.editor.gridSize}`;
-    gridLabel.addEventListener('mousedown', () => this.increaseGrid());
-    bar.appendChild(gridLabel);
-
-    // Snap toggle (off / abs / rel)
-    const snapBtn = document.createElement('div');
-    snapBtn.className = 'tool-btn active';
-    snapBtn.id = 'snap-toggle';
-    snapBtn.textContent = 'REL';
-    snapBtn.title = 'Cycle grid snap: off / absolute / relative (hold Ctrl to temporarily disable)';
-    snapBtn.addEventListener('mousedown', () => this.toggleSnap());
-    bar.appendChild(snapBtn);
-
-    // Geometry snap toggle (on/off, always absolute)
-    const geoSnapBtn = document.createElement('div');
-    geoSnapBtn.className = 'tool-btn';
-    geoSnapBtn.id = 'geosnap-toggle';
-    geoSnapBtn.textContent = 'GEO';
-    geoSnapBtn.title = 'Toggle geometry snap — snap to vertices/edges of other brushes (G)';
-    geoSnapBtn.addEventListener('mousedown', () => this.toggleGeoSnap());
-    bar.appendChild(geoSnapBtn);
+    // ── Gizmo modes ──
+    addBtn({
+      id: 'gizmo-move',
+      icon: icon('arrows-out-cardinal'),
+      title: 'Move mode (W)',
+      active: this.editor.gizmoMode === 'move',
+      onClick: () => { this.editor.gizmoMode = 'move'; this.editor.dirty = true; },
+    });
+    addBtn({
+      id: 'gizmo-scale',
+      icon: icon('resize'),
+      title: 'Scale mode (E)',
+      active: this.editor.gizmoMode === 'scale',
+      onClick: () => { this.editor.gizmoMode = 'scale'; this.editor.dirty = true; },
+    });
 
     bar.appendChild(this.createSeparator());
 
-    // Invisible geometry mode
-    const invisBtn = document.createElement('div');
-    invisBtn.className = 'tool-btn';
-    invisBtn.id = 'invis-toggle';
-    invisBtn.textContent = 'INVIS';
-    invisBtn.title = 'Cycle invisible geometry mode: show / dim / hide — I';
-    invisBtn.addEventListener('mousedown', () => this.cycleInvisibleMode());
-    bar.appendChild(invisBtn);
+    // ── Grid / Snap ──
+    const gridBtn = addBtn({
+      id: 'grid-label',
+      icon: `<span class="tool-label">G:${this.editor.gridSize}</span>`,
+      title: 'Grid size (click to increase, [ / ])',
+      onClick: () => this.increaseGrid(),
+    });
+
+    addBtn({
+      id: 'snap-toggle',
+      icon: icon('magnet-straight'),
+      title: 'Cycle grid snap: off / absolute / relative',
+      active: true,
+      onClick: () => this.toggleSnap(),
+    });
+
+    addBtn({
+      id: 'geosnap-toggle',
+      icon: icon('polygon'),
+      title: 'Geometry snap (G)',
+      onClick: () => this.toggleGeoSnap(),
+    });
 
     bar.appendChild(this.createSeparator());
 
-    // Action buttons
-    const actions = [
-      { label: 'DEL', action: () => this.editor.deleteSelection() },
-      { label: 'DUP', action: () => this.editor.duplicateSelection() },
-      { label: 'UNDO', action: () => this.editor.undo() },
-      { label: 'REDO', action: () => this.editor.redo() },
-    ];
+    // ── View ──
+    addBtn({
+      id: 'invis-toggle',
+      icon: icon('eye'),
+      title: 'Invisible geometry: show / dim / hide (I)',
+      onClick: () => this.cycleInvisibleMode(),
+    });
 
-    for (const a of actions) {
-      const btn = document.createElement('div');
-      btn.className = 'tool-btn';
-      btn.textContent = a.label;
-      btn.addEventListener('mousedown', () => a.action());
-      bar.appendChild(btn);
-    }
+    bar.appendChild(this.createSeparator());
+
+    // ── CSG ──
+    addBtn({
+      icon: icon('subtract'),
+      title: 'CSG Subtract (Ctrl+Shift+S)',
+      onClick: () => this.editor.csgSubtract(),
+    });
+    addBtn({
+      icon: icon('selection'),
+      title: 'Make Hollow (Ctrl+Shift+H)',
+      onClick: () => this.editor.csgHollow(),
+    });
+    addBtn({
+      icon: icon('unite'),
+      title: 'Merge Brushes (Ctrl+Shift+M)',
+      onClick: () => this.editor.csgMerge(),
+    });
+
+    bar.appendChild(this.createSeparator());
+
+    // ── Actions ──
+    addBtn({
+      icon: icon('trash'),
+      title: 'Delete (Del)',
+      onClick: () => this.editor.deleteSelection(),
+    });
+    addBtn({
+      icon: icon('copy'),
+      title: 'Duplicate (Ctrl+D)',
+      onClick: () => this.editor.duplicateSelection(),
+    });
+    addBtn({
+      icon: icon('arrow-counter-clockwise'),
+      title: 'Undo (Ctrl+Z)',
+      onClick: () => this.editor.undo(),
+    });
+    addBtn({
+      icon: icon('arrow-clockwise'),
+      title: 'Redo (Ctrl+Y)',
+      onClick: () => this.editor.redo(),
+    });
   }
 
   private createSeparator(): HTMLElement {
@@ -762,15 +806,20 @@ export class UI {
     let brushCount = 0;
     for (const entity of e.entities) brushCount += entity.brushes.length;
     document.getElementById('status-brushes')!.textContent = `Brushes: ${brushCount}`;
-    document.getElementById('grid-label')!.textContent = `G:${e.gridSize}`;
+    document.getElementById('grid-label')!.innerHTML = `<span class="tool-label">G:${e.gridSize}</span>`;
     const snapBtn = document.getElementById('snap-toggle')!;
-    const snapLabels = { off: 'OFF', abs: 'ABS', rel: 'REL' };
-    snapBtn.textContent = snapLabels[e.gridSnapMode];
+    const snapTitles = { off: 'Snap: off', abs: 'Snap: absolute', rel: 'Snap: relative' };
+    snapBtn.title = snapTitles[e.gridSnapMode];
     snapBtn.classList.toggle('active', e.gridSnapMode !== 'off');
     document.getElementById('geosnap-toggle')!.classList.toggle('active', e.snapToGeometry);
     const invisBtn = document.getElementById('invis-toggle')!;
-    const invisLabels: Record<InvisibleMode, string> = { show: 'INVIS', dim: 'DIM', hide: 'HIDE' };
-    invisBtn.textContent = invisLabels[e.invisibleMode];
+    const invisIcons: Record<InvisibleMode, string> = {
+      show: 'ph ph-eye',
+      dim: 'ph ph-eye-slash',
+      hide: 'ph ph-eye-closed',
+    };
+    const invisIcon = invisBtn.querySelector('i');
+    if (invisIcon) invisIcon.className = invisIcons[e.invisibleMode];
     invisBtn.classList.toggle('active', e.invisibleMode !== 'show');
 
     // Gizmo mode toolbar buttons

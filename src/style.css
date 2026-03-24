@@ -109,63 +109,97 @@ html, body {
   margin: 2px 4px;
 }
 
-/* ── Toolbar ── */
+/* ── Main Area (toolbar + viewports) ── */
+#main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+/* ── Toolbar (left sidebar) ── */
 #toolbar {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  height: 28px;
+  width: 36px;
   background: var(--bg);
-  border-bottom: 1px solid var(--border-dark);
-  padding: 0 4px;
+  border-right: 1px solid var(--border-dark);
+  padding: 4px 0;
   gap: 2px;
   flex-shrink: 0;
   user-select: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+#toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 .tool-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 26px;
-  height: 22px;
-  padding: 0 6px;
-  background: var(--bg-light);
-  border: 1px solid var(--border-dark);
-  border-top-color: var(--border-light);
-  border-left-color: var(--border-light);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
   color: var(--text);
   cursor: default;
-  font-size: 10px;
-  font-weight: bold;
-  letter-spacing: 0.5px;
+  font-size: 18px;
+  flex-shrink: 0;
 }
 
 .tool-btn:hover {
   background: var(--bg-lighter);
+  border-color: var(--border-dark);
 }
 
 .tool-btn.active {
   background: var(--bg-dark);
-  border-top-color: var(--border-dark);
-  border-left-color: var(--border-dark);
-  border-bottom-color: var(--border-light);
-  border-right-color: var(--border-light);
+  border-color: var(--accent-dim);
   color: var(--accent);
 }
 
 .tool-btn:active {
   background: var(--bg-dark);
-  border-top-color: var(--border-dark);
-  border-left-color: var(--border-dark);
-  border-bottom-color: var(--border-light);
-  border-right-color: var(--border-light);
+}
+
+.tool-btn .tool-label {
+  font-size: 8px;
+  font-weight: bold;
+  letter-spacing: 0.3px;
+}
+
+/* Tooltip on hover */
+.tool-btn[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-darker);
+  color: var(--text-bright);
+  padding: 3px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
 }
 
 .tool-separator {
-  width: 1px;
-  height: 18px;
+  width: 20px;
+  height: 1px;
   background: var(--border-dark);
-  margin: 0 3px;
+  margin: 3px 0;
+  flex-shrink: 0;
 }
 
 /* ── Viewport Container ── */
