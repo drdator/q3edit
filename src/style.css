@@ -217,6 +217,7 @@ html, body {
   padding: 3px;
   background: var(--bg-dark);
   min-height: 0;
+  user-select: none;
 }
 
 .viewport {
