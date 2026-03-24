@@ -1,6 +1,6 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max, vec3Dot } from './math';
 import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, splitBrushConvex, BrushValidationResult, textureAxisFromPlane } from './brush';
-import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin } from './entity';
+import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin, entityDefaults } from './entity';
 import { Patch, clonePatch, translatePatch, rotatePatch, tessellatePatch, createFlatPatch, createCylinderPatch, createConePatch, createBevelPatch, createEndcapPatch } from './patch';
 import { History } from './history';
 import { serializeMap, parseMap } from './mapfile';
@@ -35,7 +35,8 @@ export class Editor {
   selection: SelectionItem[] = [];
   activeTool: Tool = 'select';
   gridSize = 16;
-  snapToGrid = true;
+  gridSnapMode: 'off' | 'abs' | 'rel' = 'rel';
+  snapToGeometry = false;
   currentTexture = 'common/caulk';
   currentEntityClass = 'info_player_deathmatch';
   dirty = true;
@@ -240,7 +241,48 @@ export class Editor {
 
   /** Returns effective grid size: 1 when snapping is off (toggle or Ctrl held), gridSize otherwise */
   effectiveGrid(ctrlKey = false): number {
-    return (!this.snapToGrid || ctrlKey) ? 1 : this.gridSize;
+    return (this.gridSnapMode === 'off' || ctrlKey) ? 1 : this.gridSize;
+  }
+
+  /** Whether grid snap is in absolute mode */
+  get gridAbsolute(): boolean {
+    return this.gridSnapMode === 'abs';
+  }
+
+  /** Collect sorted snap target values per axis from geometry.
+   *  When includeSelected is true, includes selected geometry (useful for rotation anchor). */
+  collectSnapTargets(includeSelected = false): [number[], number[], number[]] {
+    const sets: [Set<number>, Set<number>, Set<number>] = [new Set(), new Set(), new Set()];
+
+    for (const { brush } of this.allBrushes()) {
+      if (!includeSelected && this.isSelected(brush)) continue;
+      for (const face of brush.faces) {
+        for (const v of face.polygon) {
+          sets[0].add(v[0]); sets[1].add(v[1]); sets[2].add(v[2]);
+        }
+      }
+    }
+
+    for (const { patch } of this.allPatches()) {
+      if (!includeSelected && this.isPatchSelected(patch)) continue;
+      for (const row of patch.ctrl) {
+        for (const cp of row) {
+          sets[0].add(cp.xyz[0]); sets[1].add(cp.xyz[1]); sets[2].add(cp.xyz[2]);
+        }
+      }
+    }
+
+    for (const entity of this.pointEntities()) {
+      if (!includeSelected && this.isEntitySelected(entity)) continue;
+      const o = entityOrigin(entity);
+      if (o) { sets[0].add(o[0]); sets[1].add(o[1]); sets[2].add(o[2]); }
+    }
+
+    return [
+      [...sets[0]].sort((a, b) => a - b),
+      [...sets[1]].sort((a, b) => a - b),
+      [...sets[2]].sort((a, b) => a - b),
+    ];
   }
 
   // ── Brush operations ──
@@ -552,6 +594,13 @@ export class Editor {
   addEntity(classname: string, origin: Vec3, ctrlKey = false): Entity {
     const snapped = vec3Snap(origin, this.effectiveGrid(ctrlKey));
     const entity = createEntity(classname, snapped);
+    // Apply default properties for this entity class
+    const defaults = entityDefaults(classname);
+    for (const [key, value] of Object.entries(defaults)) {
+      if (!(key in entity.properties)) {
+        entity.properties[key] = value;
+      }
+    }
     this.entities.push(entity);
     this.dirty = true;
     return entity;

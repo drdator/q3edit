@@ -131,6 +131,89 @@ export function mat4Ortho(l: number, r: number, b: number, t: number, n: number,
   return m;
 }
 
+// ── Geometry snap helpers ──
+
+/** Binary search for the nearest value in a sorted array within threshold */
+export function findNearestSnap(value: number, sorted: number[], threshold: number): number | null {
+  if (sorted.length === 0) return null;
+  let lo = 0, hi = sorted.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < value) lo = mid + 1;
+    else hi = mid;
+  }
+  let bestDist = Infinity, bestVal = 0;
+  for (const idx of [lo - 1, lo]) {
+    if (idx >= 0 && idx < sorted.length) {
+      const dist = Math.abs(sorted[idx] - value);
+      if (dist < bestDist) { bestDist = dist; bestVal = sorted[idx]; }
+    }
+  }
+  return bestDist <= threshold ? bestVal : null;
+}
+
+/**
+ * Compute the best snap for one axis, considering grid mode and geometry targets.
+ * rawDelta: raw (unsnapped) movement from drag origin
+ * refValues: absolute positions of reference points WITH rawDelta already applied
+ * grid: grid size (1 = no grid snap)
+ * gridAbsolute: if true, snap positions to grid lines; if false, snap delta to grid increments
+ * geoTargets: sorted geometry snap targets (or null to skip geo snap)
+ * threshold: max distance for geometry snap (in world units)
+ */
+export function snapAxisDelta(
+  rawDelta: number,
+  refValues: number[],
+  grid: number,
+  gridAbsolute: boolean,
+  geoTargets: number[] | null,
+  threshold: number,
+): { delta: number; snapLine: number | null } {
+  // Grid snap
+  let gridDelta: number;
+  if (gridAbsolute && refValues.length > 0) {
+    // Absolute: snap the nearest reference position to a grid line
+    let bestDist = Infinity, bestCorr = 0;
+    for (const ref of refValues) {
+      const snapped = Math.round(ref / grid) * grid;
+      const dist = Math.abs(snapped - ref);
+      if (dist < bestDist) { bestDist = dist; bestCorr = snapped - ref; }
+    }
+    gridDelta = rawDelta + bestCorr;
+  } else {
+    // Relative: snap the delta to grid increments
+    gridDelta = Math.round(rawDelta / grid) * grid;
+  }
+  const gridDist = Math.abs(rawDelta - gridDelta);
+
+  if (!geoTargets || geoTargets.length === 0) {
+    return { delta: gridDelta, snapLine: null };
+  }
+
+  // Find nearest geometry target across all reference points
+  let bestGeoDist = Infinity;
+  let bestGeoCorr = 0;
+  let bestGeoLine = 0;
+  for (const ref of refValues) {
+    const snap = findNearestSnap(ref, geoTargets, threshold);
+    if (snap !== null) {
+      const dist = Math.abs(snap - ref);
+      if (dist < bestGeoDist) {
+        bestGeoDist = dist;
+        bestGeoCorr = snap - ref;
+        bestGeoLine = snap;
+      }
+    }
+  }
+
+  // If geo target found within threshold and closer to raw than grid snap, use geo
+  if (bestGeoDist < threshold && (bestGeoDist < gridDist || gridDelta === 0)) {
+    return { delta: rawDelta + bestGeoCorr, snapLine: bestGeoLine };
+  }
+
+  return { delta: gridDelta, snapLine: null };
+}
+
 // ── Ray-triangle intersection (Möller–Trumbore) ──
 
 export function rayTriangleIntersect(

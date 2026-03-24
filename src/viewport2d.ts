@@ -1,7 +1,7 @@
-import { Vec3, vec3, vec3Snap, vec3Copy } from './math';
+import { Vec3, vec3, vec3Snap, vec3Copy, snapAxisDelta, findNearestSnap } from './math';
 import { Editor, SelectionItem } from './editor';
 import { Brush, brushContainsPoint2D, scaleBrushFaces, rotateBrush } from './brush';
-import { Entity, entityOrigin } from './entity';
+import { Entity, entityOrigin, entityColor, lightColorCSS } from './entity';
 import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from './patch';
 import { pickVertex2D } from './vertex';
 
@@ -56,6 +56,10 @@ export class Viewport2D {
   // Vertex drag state
   private vertexDragging = false;
   private vertexDragSnapshotTaken = false;
+
+  // Geometry snap state
+  private geoSnapTargets: [number[], number[], number[]] | null = null;
+  private geoSnapLines: { axis: 'h' | 'v'; value: number }[] = [];
 
   // Rotation tool drag state
   private rotating = false;
@@ -172,6 +176,11 @@ export class Viewport2D {
     // Rotation anchor
     if (this.editor.activeTool === 'rotate' && this.editor.rotateAnchor) {
       this.drawRotateAnchor();
+    }
+
+    // Geometry snap guide lines
+    if (this.geoSnapLines.length > 0) {
+      this.drawGeoSnapLines(w, h);
     }
 
     // Rubber band selection rectangle
@@ -434,9 +443,13 @@ export class Viewport2D {
     const [sx, sy] = this.worldToScreen(origin[this.axisH], origin[this.axisV]);
     const size = 8;
 
+    // Category color
+    const catColor = entityColor(entity.classname);
+
     // Diamond shape
-    ctx.fillStyle = selected ? '#ff6600' : '#44cc44';
-    ctx.strokeStyle = selected ? '#ffaa00' : '#66ee66';
+    ctx.fillStyle = selected ? '#ff6600' : catColor;
+    ctx.strokeStyle = selected ? '#ffaa00' : catColor;
+    ctx.globalAlpha = selected ? 1.0 : 0.85;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(sx, sy - size);
@@ -445,6 +458,7 @@ export class Viewport2D {
     ctx.lineTo(sx - size, sy);
     ctx.closePath();
     ctx.fill();
+    ctx.globalAlpha = 1.0;
     ctx.stroke();
 
     // Light radius circle (selected only)
@@ -452,18 +466,21 @@ export class Viewport2D {
       const radius = parseFloat(entity.properties['light']);
       if (radius > 0) {
         const screenRadius = radius * this.zoom;
-        ctx.strokeStyle = 'rgba(255, 200, 0, 0.5)';
+        const lc = lightColorCSS(entity) ?? '#ffcc00';
+        ctx.strokeStyle = lc;
+        ctx.globalAlpha = 0.5;
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
         ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
+        ctx.globalAlpha = 1.0;
       }
     }
 
     // Label
-    ctx.fillStyle = selected ? '#ffaa00' : '#88cc88';
+    ctx.fillStyle = selected ? '#ffaa00' : catColor;
     ctx.font = '9px monospace';
     ctx.textAlign = 'left';
     ctx.fillText(entity.classname, sx + size + 3, sy + 3);
@@ -658,6 +675,31 @@ export class Viewport2D {
     }
   }
 
+  private drawGeoSnapLines(w: number, h: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 220, 120, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    for (const line of this.geoSnapLines) {
+      if (line.axis === 'h') {
+        const [sx] = this.worldToScreen(line.value, 0);
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, h);
+        ctx.stroke();
+      } else {
+        const [, sy] = this.worldToScreen(0, line.value);
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(w, sy);
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   private drawRubberBand(): void {
     const { ctx } = this;
     const x = Math.min(this.rubberBandStart[0], this.rubberBandEnd[0]);
@@ -790,8 +832,17 @@ export class Viewport2D {
           const anchor: Vec3 = [0, 0, 0];
           anchor[this.axisH] = Math.round(wx / grid) * grid;
           anchor[this.axisV] = Math.round(wy / grid) * grid;
+          if (this.editor.snapToGeometry) {
+            const targets = this.editor.collectSnapTargets(true);
+            const threshold = 8 / this.zoom;
+            const snapH = findNearestSnap(wx, targets[this.axisH], threshold);
+            const snapV = findNearestSnap(wy, targets[this.axisV], threshold);
+            if (snapH !== null && Math.abs(snapH - wx) < Math.abs(anchor[this.axisH] - wx)) anchor[this.axisH] = snapH;
+            if (snapV !== null && Math.abs(snapV - wy) < Math.abs(anchor[this.axisV] - wy)) anchor[this.axisV] = snapV;
+          }
           this.editor.rotateAnchor = anchor;
           this.anchorDragging = true;
+          this.geoSnapTargets = this.editor.snapToGeometry ? this.editor.collectSnapTargets(true) : null;
           this.dragging = true;
           this.hasDragged = false;
           this.editor.statusMessage = 'Drag to position anchor';
@@ -853,6 +904,8 @@ export class Viewport2D {
             this.dragging = true;
             this.hasDragged = false;
             this.dragWorldStart = [wx, wy];
+            this.geoSnapTargets = this.editor.snapToGeometry ? this.editor.collectSnapTargets() : null;
+            this.geoSnapLines = [];
           }
         } else {
           if (!additive) this.editor.clearVertexSelection();
@@ -890,6 +943,8 @@ export class Viewport2D {
             this.dragging = true;
             this.hasDragged = false;
             this.dragWorldStart = [wx, wy];
+            this.geoSnapTargets = this.editor.snapToGeometry ? this.editor.collectSnapTargets() : null;
+            this.geoSnapLines = [];
           }
         } else {
           if (!additive) this.editor.clearControlPointSelection();
@@ -925,6 +980,8 @@ export class Viewport2D {
           this.resizeOrigMaxs = vec3Copy(bounds.maxs);
           this.resizeSnapshotTaken = false;
           this.dragWorldStart = [wx, wy];
+          this.geoSnapTargets = this.editor.snapToGeometry ? this.editor.collectSnapTargets() : null;
+          this.geoSnapLines = [];
           return;
         }
       }
@@ -960,6 +1017,8 @@ export class Viewport2D {
         this.moveSnapshotTaken = false;
         this.dragStart = [mx, my];
         this.dragWorldStart = [wx, wy];
+        this.geoSnapTargets = this.editor.snapToGeometry ? this.editor.collectSnapTargets() : null;
+        this.geoSnapLines = [];
       } else {
         // Nothing picked — start rubber band selection
         this.rubberBanding = true;
@@ -1032,26 +1091,46 @@ export class Viewport2D {
       const dx = wx - this.dragWorldStart[0];
       const dy = wy - this.dragWorldStart[1];
       const grid = this.editor.effectiveGrid(e.ctrlKey);
-      const snappedDx = Math.round(dx / grid) * grid;
-      const snappedDy = Math.round(dy / grid) * grid;
 
       if (!this.resizeSnapshotTaken) {
         this.editor.snapshot();
         this.resizeSnapshotTaken = true;
       }
 
-      // Compute new edge positions
+      // Compute new edge positions, snapping each edge via grid or geometry
       const origMins = this.resizeOrigMins;
       const origMaxs = this.resizeOrigMaxs;
       const H = this.axisH;
       const V = this.axisV;
+      const threshold = 8 / this.zoom;
 
       let newMinH = origMins[H], newMaxH = origMaxs[H];
       let newMinV = origMins[V], newMaxV = origMaxs[V];
-      if (this.resizeEdges.minH) newMinH += snappedDx;
-      if (this.resizeEdges.maxH) newMaxH += snappedDx;
-      if (this.resizeEdges.minV) newMinV += snappedDy;
-      if (this.resizeEdges.maxV) newMaxV += snappedDy;
+      this.geoSnapLines = [];
+      const abs = this.editor.gridAbsolute;
+      const geoH = this.geoSnapTargets ? this.geoSnapTargets[H] : null;
+      const geoV = this.geoSnapTargets ? this.geoSnapTargets[V] : null;
+
+      if (this.resizeEdges.minH) {
+        const r = snapAxisDelta(dx, [origMins[H] + dx], grid, abs, geoH, threshold);
+        newMinH += r.delta;
+        if (r.snapLine !== null) this.geoSnapLines.push({ axis: 'h', value: r.snapLine });
+      }
+      if (this.resizeEdges.maxH) {
+        const r = snapAxisDelta(dx, [origMaxs[H] + dx], grid, abs, geoH, threshold);
+        newMaxH += r.delta;
+        if (r.snapLine !== null) this.geoSnapLines.push({ axis: 'h', value: r.snapLine });
+      }
+      if (this.resizeEdges.minV) {
+        const r = snapAxisDelta(dy, [origMins[V] + dy], grid, abs, geoV, threshold);
+        newMinV += r.delta;
+        if (r.snapLine !== null) this.geoSnapLines.push({ axis: 'v', value: r.snapLine });
+      }
+      if (this.resizeEdges.maxV) {
+        const r = snapAxisDelta(dy, [origMaxs[V] + dy], grid, abs, geoV, threshold);
+        newMaxV += r.delta;
+        if (r.snapLine !== null) this.geoSnapLines.push({ axis: 'v', value: r.snapLine });
+      }
 
       // Enforce minimum size (at least 1 unit)
       const minSize = Math.max(1, grid);
@@ -1176,6 +1255,13 @@ export class Viewport2D {
         const anchor = this.editor.rotateAnchor!;
         anchor[this.axisH] = Math.round(wx / grid) * grid;
         anchor[this.axisV] = Math.round(wy / grid) * grid;
+        if (this.geoSnapTargets) {
+          const threshold = 8 / this.zoom;
+          const snapH = findNearestSnap(wx, this.geoSnapTargets[this.axisH], threshold);
+          const snapV = findNearestSnap(wy, this.geoSnapTargets[this.axisV], threshold);
+          if (snapH !== null && Math.abs(snapH - wx) < Math.abs(anchor[this.axisH] - wx)) anchor[this.axisH] = snapH;
+          if (snapV !== null && Math.abs(snapV - wy) < Math.abs(anchor[this.axisV] - wy)) anchor[this.axisV] = snapV;
+        }
         this.editor.dirty = true;
         return;
       } else if (this.editor.creating) {
@@ -1191,8 +1277,27 @@ export class Viewport2D {
         const dx = wx - this.dragWorldStart[0];
         const dy = wy - this.dragWorldStart[1];
         const grid = this.editor.effectiveGrid(e.ctrlKey);
-        const snappedDx = Math.round(dx / grid) * grid;
-        const snappedDy = Math.round(dy / grid) * grid;
+        const H = this.axisH, V = this.axisV;
+        let snappedDx: number, snappedDy: number;
+
+        this.geoSnapLines = [];
+        const vtxCenter = this.editor.vertexMode
+          ? this.editor.vertexSelectionCenter()
+          : this.editor.patchControlSelectionCenter();
+        if (vtxCenter) {
+          const threshold = 8 / this.zoom;
+          const abs = this.editor.gridAbsolute;
+          const geoH = this.geoSnapTargets ? this.geoSnapTargets[H] : null;
+          const geoV = this.geoSnapTargets ? this.geoSnapTargets[V] : null;
+          const rH = snapAxisDelta(dx, [vtxCenter[H] + dx], grid, abs, geoH, threshold);
+          const rV = snapAxisDelta(dy, [vtxCenter[V] + dy], grid, abs, geoV, threshold);
+          snappedDx = rH.delta; snappedDy = rV.delta;
+          if (rH.snapLine !== null) this.geoSnapLines.push({ axis: 'h', value: rH.snapLine });
+          if (rV.snapLine !== null) this.geoSnapLines.push({ axis: 'v', value: rV.snapLine });
+        } else {
+          snappedDx = Math.round(dx / grid) * grid;
+          snappedDy = Math.round(dy / grid) * grid;
+        }
 
         if (snappedDx !== 0 || snappedDy !== 0) {
           if (!this.vertexDragSnapshotTaken) {
@@ -1218,8 +1323,27 @@ export class Viewport2D {
         const dx = wx - this.dragWorldStart[0];
         const dy = wy - this.dragWorldStart[1];
         const grid = this.editor.effectiveGrid(e.ctrlKey);
-        const snappedDx = Math.round(dx / grid) * grid;
-        const snappedDy = Math.round(dy / grid) * grid;
+        const H = this.axisH, V = this.axisV;
+        let snappedDx: number, snappedDy: number;
+
+        this.geoSnapLines = [];
+        const bounds = this.editor.selectionBounds();
+        if (bounds) {
+          const threshold = 8 / this.zoom;
+          const abs = this.editor.gridAbsolute;
+          const rawMinH = bounds.mins[H] + dx, rawMaxH = bounds.maxs[H] + dx;
+          const rawMinV = bounds.mins[V] + dy, rawMaxV = bounds.maxs[V] + dy;
+          const geoH = this.geoSnapTargets ? this.geoSnapTargets[H] : null;
+          const geoV = this.geoSnapTargets ? this.geoSnapTargets[V] : null;
+          const rH = snapAxisDelta(dx, [rawMinH, rawMaxH, (rawMinH + rawMaxH) / 2], grid, abs, geoH, threshold);
+          const rV = snapAxisDelta(dy, [rawMinV, rawMaxV, (rawMinV + rawMaxV) / 2], grid, abs, geoV, threshold);
+          snappedDx = rH.delta; snappedDy = rV.delta;
+          if (rH.snapLine !== null) this.geoSnapLines.push({ axis: 'h', value: rH.snapLine });
+          if (rV.snapLine !== null) this.geoSnapLines.push({ axis: 'v', value: rV.snapLine });
+        } else {
+          snappedDx = Math.round(dx / grid) * grid;
+          snappedDy = Math.round(dy / grid) * grid;
+        }
 
         if (snappedDx !== 0 || snappedDy !== 0) {
           if (!this.moveSnapshotTaken) {
@@ -1297,12 +1421,16 @@ export class Viewport2D {
       this.resizing = false;
       this.resizeBrushes = [];
       this.resizePatches = [];
+      this.geoSnapTargets = null;
+      this.geoSnapLines = [];
       this.canvas.parentElement!.style.cursor = '';
       this.editor.statusMessage = 'Resized';
       return;
     }
 
     if (this.dragging) {
+      this.geoSnapTargets = null;
+      this.geoSnapLines = [];
       if (this.anchorDragging) {
         this.anchorDragging = false;
         this.dragging = false;

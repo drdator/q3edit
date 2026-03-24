@@ -1,5 +1,5 @@
 import { Editor, Tool, InvisibleMode } from './editor';
-import { Entity, ENTITY_CLASSES } from './entity';
+import { Entity, ENTITY_CATEGORIES } from './entity';
 import { TextureManager } from './textures';
 import { Vec3 } from './math';
 import { PropertiesPanel } from './properties-panel';
@@ -197,14 +197,23 @@ export class UI {
     gridLabel.addEventListener('mousedown', () => this.increaseGrid());
     bar.appendChild(gridLabel);
 
-    // Snap toggle
+    // Snap toggle (off / abs / rel)
     const snapBtn = document.createElement('div');
     snapBtn.className = 'tool-btn active';
     snapBtn.id = 'snap-toggle';
-    snapBtn.textContent = 'SNAP';
-    snapBtn.title = 'Toggle grid snapping (hold Ctrl to temporarily disable)';
+    snapBtn.textContent = 'REL';
+    snapBtn.title = 'Cycle grid snap: off / absolute / relative (hold Ctrl to temporarily disable)';
     snapBtn.addEventListener('mousedown', () => this.toggleSnap());
     bar.appendChild(snapBtn);
+
+    // Geometry snap toggle (on/off, always absolute)
+    const geoSnapBtn = document.createElement('div');
+    geoSnapBtn.className = 'tool-btn';
+    geoSnapBtn.id = 'geosnap-toggle';
+    geoSnapBtn.textContent = 'GEO';
+    geoSnapBtn.title = 'Toggle geometry snap — snap to vertices/edges of other brushes (G)';
+    geoSnapBtn.addEventListener('mousedown', () => this.toggleGeoSnap());
+    bar.appendChild(geoSnapBtn);
 
     bar.appendChild(this.createSeparator());
 
@@ -400,12 +409,17 @@ export class UI {
 
     const select = document.createElement('select');
     select.id = 'entity-class-select';
-    for (const cls of ENTITY_CLASSES) {
-      const opt = document.createElement('option');
-      opt.value = cls;
-      opt.textContent = cls;
-      if (cls === this.editor.currentEntityClass) opt.selected = true;
-      select.appendChild(opt);
+    for (const cat of ENTITY_CATEGORIES) {
+      const group = document.createElement('optgroup');
+      group.label = cat.name;
+      for (const cls of cat.classes) {
+        const opt = document.createElement('option');
+        opt.value = cls.classname;
+        opt.textContent = cls.classname;
+        if (cls.classname === this.editor.currentEntityClass) opt.selected = true;
+        group.appendChild(opt);
+      }
+      select.appendChild(group);
     }
     select.addEventListener('change', () => {
       this.editor.currentEntityClass = select.value;
@@ -561,6 +575,9 @@ export class UI {
       // Toggle invisible geometry
       if (e.key === 'i' && !ctrl) { this.cycleInvisibleMode(); return; }
 
+      // Toggle geometry snap
+      if (e.key === 'g' && !ctrl) { this.toggleGeoSnap(); return; }
+
       // Focus on selection
       if (e.key === 'f' && !ctrl) { this.editor.centerOnSelection(); return; }
 
@@ -649,8 +666,19 @@ export class UI {
   }
 
   private toggleSnap(): void {
-    this.editor.snapToGrid = !this.editor.snapToGrid;
+    const modes: ('off' | 'abs' | 'rel')[] = ['off', 'abs', 'rel'];
+    const idx = modes.indexOf(this.editor.gridSnapMode);
+    this.editor.gridSnapMode = modes[(idx + 1) % modes.length];
     this.editor.dirty = true;
+    const labels = { off: 'Grid snap: OFF', abs: 'Grid snap: absolute', rel: 'Grid snap: relative' };
+    this.editor.statusMessage = labels[this.editor.gridSnapMode];
+    this.closeMenus();
+  }
+
+  private toggleGeoSnap(): void {
+    this.editor.snapToGeometry = !this.editor.snapToGeometry;
+    this.editor.dirty = true;
+    this.editor.statusMessage = this.editor.snapToGeometry ? 'Geometry snap: ON' : 'Geometry snap: OFF';
     this.closeMenus();
   }
 
@@ -684,7 +712,8 @@ export class UI {
       toolLabel = `Tool: ${e.activeTool}`;
     }
     document.getElementById('status-tool')!.textContent = toolLabel;
-    document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}${e.snapToGrid ? '' : ' (free)'}`;
+    const snapLabel = e.gridSnapMode === 'off' ? ' (free)' : e.gridSnapMode === 'abs' ? ' (abs)' : '';
+    document.getElementById('status-grid')!.textContent = `Grid: ${e.gridSize}${snapLabel}`;
     let selLabel: string;
     if (e.vertexMode) {
       const vc = e.vertexSelection.length;
@@ -704,7 +733,11 @@ export class UI {
     for (const entity of e.entities) brushCount += entity.brushes.length;
     document.getElementById('status-brushes')!.textContent = `Brushes: ${brushCount}`;
     document.getElementById('grid-label')!.textContent = `G:${e.gridSize}`;
-    document.getElementById('snap-toggle')!.classList.toggle('active', e.snapToGrid);
+    const snapBtn = document.getElementById('snap-toggle')!;
+    const snapLabels = { off: 'OFF', abs: 'ABS', rel: 'REL' };
+    snapBtn.textContent = snapLabels[e.gridSnapMode];
+    snapBtn.classList.toggle('active', e.gridSnapMode !== 'off');
+    document.getElementById('geosnap-toggle')!.classList.toggle('active', e.snapToGeometry);
     const invisBtn = document.getElementById('invis-toggle')!;
     const invisLabels: Record<InvisibleMode, string> = { show: 'INVIS', dim: 'DIM', hide: 'HIDE' };
     invisBtn.textContent = invisLabels[e.invisibleMode];
@@ -744,9 +777,9 @@ export class UI {
     // Directory selector + view toggle row
     const dirRow = document.createElement('div');
     dirRow.style.display = 'flex';
-    dirRow.style.alignItems = 'center';
+    dirRow.style.alignItems = 'stretch';
     dirRow.style.marginTop = '6px';
-    dirRow.style.gap = '4px';
+    dirRow.style.gap = '2px';
 
     const dirSelect = document.createElement('select');
     dirSelect.id = 'texture-dir-select';
@@ -933,9 +966,32 @@ export class UI {
     title.textContent = 'Compile BSP';
     dialog.appendChild(title);
 
+    // Quality selector
+    const qualityRow = document.createElement('div');
+    qualityRow.style.cssText = 'margin-bottom:10px;display:flex;gap:8px;align-items:center';
+    const qualityLabel = document.createElement('span');
+    qualityLabel.textContent = 'Quality:';
+    qualityLabel.style.color = '#aaa';
+    const qualitySelect = document.createElement('select');
+    qualitySelect.style.cssText = 'background:#1a1a1a;color:#eee;border:1px solid #555;border-radius:4px;padding:4px 8px;font:13px monospace';
+    for (const [value, label] of [
+      ['fast', 'Fast (BSP only, no lighting)'],
+      ['normal', 'Normal (BSP + fast vis + light)'],
+      ['full', 'Full (BSP + full vis + light)'],
+    ]) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (value === 'normal') opt.selected = true;
+      qualitySelect.appendChild(opt);
+    }
+    qualityRow.appendChild(qualityLabel);
+    qualityRow.appendChild(qualitySelect);
+    dialog.appendChild(qualityRow);
+
     const status = document.createElement('div');
     status.style.cssText = 'margin-bottom:8px;color:#ccc';
-    status.textContent = 'Compiling...';
+    status.textContent = '';
     dialog.appendChild(status);
 
     const log = document.createElement('pre');
@@ -946,12 +1002,14 @@ export class UI {
     const buttons = document.createElement('div');
     buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
 
+    const compileBtn = document.createElement('button');
+    compileBtn.textContent = 'Compile';
+    compileBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold';
+
     const closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
     closeBtn.style.cssText = 'padding:6px 14px;background:#555;color:#eee;border:none;border-radius:4px;cursor:pointer;font:13px monospace';
     closeBtn.onclick = () => overlay.remove();
-    closeBtn.disabled = true;
-    closeBtn.style.opacity = '0.5';
 
     const runBtn = document.createElement('button');
     runBtn.textContent = 'Run in ioquake3';
@@ -961,6 +1019,7 @@ export class UI {
     saveBtn.textContent = 'Save .bsp';
     saveBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold;display:none';
 
+    buttons.appendChild(compileBtn);
     buttons.appendChild(runBtn);
     buttons.appendChild(saveBtn);
     buttons.appendChild(closeBtn);
@@ -969,19 +1028,15 @@ export class UI {
     document.body.appendChild(overlay);
 
     overlay.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !closeBtn.disabled) {
+      if (e.key === 'Escape') {
         overlay.remove();
         e.stopPropagation();
       }
     });
     overlay.tabIndex = 0;
-    overlay.focus();
+    compileBtn.focus();
 
-    // Run compilation
-    const mapText = this.editor.serializeMap();
-    const baseName = this.editor.fileName.replace(/\.map$/, '');
-
-    // Collect texture images used in the map so q3map knows their dimensions
+    // Collect texture data once
     let imageFiles: Map<string, Uint8Array> | undefined;
     if (this.texMgr) {
       imageFiles = new Map();
@@ -997,71 +1052,98 @@ export class UI {
         if (found) imageFiles.set(found[0], found[1]);
       }
     }
+    const shaderFiles = this.texMgr?.getShaderFiles();
 
-    const result = await compileMap(mapText, {
-      args: ['-v'],
-      imageFiles,
-      onOutput: (line) => {
-        log.textContent += line + '\n';
-        log.scrollTop = log.scrollHeight;
-      },
-    });
+    const doCompile = async () => {
+      const quality = qualitySelect.value;
+      compileBtn.disabled = true;
+      compileBtn.style.display = 'none';
+      qualitySelect.disabled = true;
+      runBtn.style.display = 'none';
+      saveBtn.style.display = 'none';
+      status.textContent = 'Compiling...';
+      status.style.color = '#ccc';
+      title.style.color = '#08a';
+      log.textContent = '';
 
-    // Done — enable buttons
-    closeBtn.disabled = false;
-    closeBtn.style.opacity = '1';
+      const mapText = this.editor.serializeMap();
 
-    if (result.success && result.bsp) {
-      status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
-      status.style.color = '#0c0';
-      title.style.color = '#0c0';
+      const result = await compileMap(mapText, {
+        args: ['-v'],
+        vis: quality !== 'fast',
+        visArgs: quality === 'full' ? [] : ['-fast'],
+        light: quality !== 'fast',
+        shaderFiles,
+        imageFiles,
+        onOutput: (line) => {
+          log.textContent += line + '\n';
+          log.scrollTop = log.scrollHeight;
+        },
+      });
 
-      saveBtn.style.display = '';
-      saveBtn.onclick = () => {
-        const blob = new Blob([new Uint8Array(result.bsp!)], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = baseName + '.bsp';
-        a.click();
-        URL.revokeObjectURL(url);
-        this.editor.statusMessage = `Saved ${baseName}.bsp`;
-      };
+      return result;
+    };
 
-      runBtn.style.display = '';
-      runBtn.onclick = async () => {
-        runBtn.textContent = 'Launching...';
-        runBtn.disabled = true;
-        try {
-          const resp = await fetch('/api/run-map', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: baseName, bsp: Array.from(result.bsp!) }),
-          });
-          const data = await resp.json();
-          if (data.ok) {
-            this.editor.statusMessage = `Launched ioquake3 with ${baseName}`;
-            runBtn.textContent = 'Launched!';
-          } else {
-            this.editor.statusMessage = `Launch failed: ${data.error}`;
+    const baseName = this.editor.fileName.replace(/\.map$/, '');
+
+    compileBtn.onclick = async () => {
+      const result = await doCompile();
+
+      // Re-enable compile button for recompilation with different settings
+      compileBtn.disabled = false;
+      compileBtn.style.display = '';
+      qualitySelect.disabled = false;
+
+      if (result.success && result.bsp) {
+        status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
+        status.style.color = '#0c0';
+        title.style.color = '#0c0';
+
+        saveBtn.style.display = '';
+        saveBtn.onclick = () => {
+          const blob = new Blob([new Uint8Array(result.bsp!)], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = baseName + '.bsp';
+          a.click();
+          URL.revokeObjectURL(url);
+          this.editor.statusMessage = `Saved ${baseName}.bsp`;
+        };
+
+        runBtn.style.display = '';
+        runBtn.onclick = async () => {
+          runBtn.textContent = 'Launching...';
+          runBtn.disabled = true;
+          try {
+            const resp = await fetch('/api/run-map', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: baseName, bsp: Array.from(result.bsp!) }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+              this.editor.statusMessage = `Launched ioquake3 with ${baseName}`;
+              runBtn.textContent = 'Launched!';
+            } else {
+              this.editor.statusMessage = `Launch failed: ${data.error}`;
+              runBtn.textContent = 'Failed';
+            }
+          } catch (e: any) {
+            this.editor.statusMessage = `Launch failed: ${e.message}`;
             runBtn.textContent = 'Failed';
           }
-        } catch (e: any) {
-          this.editor.statusMessage = `Launch failed: ${e.message}`;
-          runBtn.textContent = 'Failed';
-        }
-        setTimeout(() => { runBtn.textContent = 'Run in ioquake3'; runBtn.disabled = false; }, 2000);
-      };
+          setTimeout(() => { runBtn.textContent = 'Run in ioquake3'; runBtn.disabled = false; }, 2000);
+        };
 
-      this.editor.statusMessage = 'BSP compiled successfully';
-    } else {
-      status.textContent = 'Compilation failed';
-      status.style.color = '#f44';
-      title.style.color = '#f44';
-      this.editor.statusMessage = 'BSP compilation failed';
-    }
-
-    closeBtn.focus();
+        this.editor.statusMessage = 'BSP compiled successfully';
+      } else {
+        status.textContent = 'Compilation failed';
+        status.style.color = '#f44';
+        title.style.color = '#f44';
+        this.editor.statusMessage = 'BSP compilation failed';
+      }
+    };
   }
 
   private populateTextureList(list: HTMLElement, textures: string[], input: HTMLInputElement): void {

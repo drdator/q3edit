@@ -1,4 +1,4 @@
-import { Vec3, Mat4, vec3Add, vec3Sub, vec3Scale, vec3Length, vec3Copy } from './math';
+import { Vec3, Mat4, vec3Add, vec3Sub, vec3Scale, vec3Length, vec3Copy, snapAxisDelta } from './math';
 import { Editor } from './editor';
 import { scaleBrushFaces } from './brush';
 import { PatchControlPoint, scalePatchControlPoints } from './patch';
@@ -31,6 +31,7 @@ export class Gizmo {
   private screenDirLen = 0;
   private worldPerPixel = 1;
 
+  private geoSnapTargets: [number[], number[], number[]] | null = null;
   private gl: WebGL2RenderingContext;
   private editor: Editor;
 
@@ -142,6 +143,7 @@ export class Gizmo {
     this.axis = axis;
     this.dragLast = [clientX, clientY];
     this.snapshotTaken = false;
+    this.geoSnapTargets = this.editor.snapToGeometry ? this.editor.collectSnapTargets() : null;
 
     // Cache screen direction and worldPerPixel at drag start
     const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
@@ -219,9 +221,15 @@ export class Gizmo {
     const worldDelta = projected * this.worldPerPixel;
 
     if (this.editor.vertexMode) {
-      // Vertex mode: only move, no scale
       const grid = this.editor.effectiveGrid(e.ctrlKey);
-      const snapped = Math.round(worldDelta / grid) * grid;
+      const a = this.axis;
+      const abs = this.editor.gridAbsolute;
+      const threshold = grid * 0.5;
+      const geo = this.geoSnapTargets ? this.geoSnapTargets[a] : null;
+      const vtxCenter = this.editor.vertexSelectionCenter();
+      const snapped = vtxCenter
+        ? snapAxisDelta(worldDelta, [vtxCenter[a] + worldDelta], grid, abs, geo, threshold).delta
+        : Math.round(worldDelta / grid) * grid;
       if (snapped !== 0) {
         const delta: Vec3 = vec3Scale(axis, snapped);
         this.editor.moveSelectedVertices(delta);
@@ -229,9 +237,15 @@ export class Gizmo {
         this.dragLast = [e.clientX, e.clientY];
       }
     } else if (this.editor.patchEditMode) {
-      // Patch control point mode: only move, no scale
       const grid = this.editor.effectiveGrid(e.ctrlKey);
-      const snapped = Math.round(worldDelta / grid) * grid;
+      const a = this.axis;
+      const abs = this.editor.gridAbsolute;
+      const threshold = grid * 0.5;
+      const geo = this.geoSnapTargets ? this.geoSnapTargets[a] : null;
+      const cpCenter = this.editor.patchControlSelectionCenter();
+      const snapped = cpCenter
+        ? snapAxisDelta(worldDelta, [cpCenter[a] + worldDelta], grid, abs, geo, threshold).delta
+        : Math.round(worldDelta / grid) * grid;
       if (snapped !== 0) {
         const delta: Vec3 = vec3Scale(axis, snapped);
         this.editor.moveSelectedControlPoints(delta);
@@ -240,7 +254,20 @@ export class Gizmo {
       }
     } else if (this.editor.gizmoMode === 'move') {
       const grid = this.editor.effectiveGrid(e.ctrlKey);
-      const snapped = Math.round(worldDelta / grid) * grid;
+      const a = this.axis;
+      const abs = this.editor.gridAbsolute;
+      const threshold = grid * 0.5;
+      const geo = this.geoSnapTargets ? this.geoSnapTargets[a] : null;
+      const bounds = this.editor.selectionBounds();
+      let refs: number[];
+      if (bounds) {
+        const rawMin = bounds.mins[a] + worldDelta;
+        const rawMax = bounds.maxs[a] + worldDelta;
+        refs = [rawMin, rawMax, (rawMin + rawMax) / 2];
+      } else {
+        refs = [this.center[a] + worldDelta];
+      }
+      const snapped = snapAxisDelta(worldDelta, refs, grid, abs, geo, threshold).delta;
       if (snapped !== 0) {
         const delta: Vec3 = vec3Scale(axis, snapped);
         this.editor.moveSelection(delta);
@@ -293,6 +320,7 @@ export class Gizmo {
   endDrag(): void {
     this.dragging = false;
     this.axis = -1;
+    this.geoSnapTargets = null;
     this.editor.dirty = true;
   }
 
