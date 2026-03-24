@@ -304,6 +304,9 @@ export class UI {
       title: 'Duplicate (Ctrl+D)',
       onClick: () => this.editor.duplicateSelection(),
     });
+
+    bar.appendChild(this.createSeparator());
+
     addBtn({
       icon: icon('arrow-counter-clockwise'),
       title: 'Undo (Ctrl+Z)',
