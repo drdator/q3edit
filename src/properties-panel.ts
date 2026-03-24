@@ -2,6 +2,16 @@ import { Editor } from './editor';
 import { Brush, BrushFace } from './brush';
 import { Entity } from './entity';
 
+/** Convert Q3 "r g b" (0-1 floats) to "#rrggbb" hex */
+function q3ColorToHex(value: string): string {
+  const parts = value.trim().split(/\s+/).map(Number);
+  if (parts.length >= 3 && parts.every(n => !isNaN(n))) {
+    const toHex = (n: number) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0');
+    return `#${toHex(parts[0])}${toHex(parts[1])}${toHex(parts[2])}`;
+  }
+  return '#ffffff';
+}
+
 export class PropertiesPanel {
   private editor: Editor;
 
@@ -37,32 +47,82 @@ export class PropertiesPanel {
         const keyInput = document.createElement('input');
         keyInput.type = 'text';
         keyInput.value = key;
-        keyInput.readOnly = true;
         keyInput.style.flex = '0.6';
+        let currentKey = key;
+        keyInput.addEventListener('change', () => {
+          const newKey = keyInput.value.trim();
+          if (!newKey || newKey === currentKey) { keyInput.value = currentKey; return; }
+          if (newKey in entity.properties) { keyInput.value = currentKey; return; }
+          entity.properties[newKey] = entity.properties[currentKey];
+          delete entity.properties[currentKey];
+          currentKey = newKey;
+          this.editor.dirty = true;
+        });
 
         const valInput = document.createElement('input');
         valInput.type = 'text';
         valInput.value = value;
         valInput.addEventListener('change', () => {
-          entity.properties[key] = valInput.value;
+          entity.properties[currentKey] = valInput.value;
+          if (colorSwatch) colorSwatch.style.backgroundColor = q3ColorToHex(valInput.value);
+          this.editor.dirty = true;
+        });
+
+        // Color picker for _color keys
+        let colorSwatch: HTMLElement | null = null;
+        if (key === '_color') {
+          colorSwatch = document.createElement('div');
+          colorSwatch.className = 'kv-color';
+          colorSwatch.style.backgroundColor = q3ColorToHex(value);
+          const hiddenInput = document.createElement('input');
+          hiddenInput.type = 'color';
+          hiddenInput.style.position = 'absolute';
+          hiddenInput.style.opacity = '0';
+          hiddenInput.style.width = '0';
+          hiddenInput.style.height = '0';
+          hiddenInput.style.pointerEvents = 'none';
+          hiddenInput.value = q3ColorToHex(value);
+          colorSwatch.appendChild(hiddenInput);
+          colorSwatch.addEventListener('mousedown', (e) => { e.stopPropagation(); hiddenInput.click(); });
+          hiddenInput.addEventListener('input', () => {
+            const hex = hiddenInput.value;
+            const r = parseInt(hex.slice(1, 3), 16) / 255;
+            const g = parseInt(hex.slice(3, 5), 16) / 255;
+            const b = parseInt(hex.slice(5, 7), 16) / 255;
+            const q3 = `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)}`;
+            valInput.value = q3;
+            entity.properties[currentKey] = q3;
+            colorSwatch!.style.backgroundColor = hex;
+            this.editor.dirty = true;
+          });
+        }
+
+        const delBtn = document.createElement('div');
+        delBtn.className = 'btn kv-del';
+        delBtn.textContent = '\u00d7';
+        delBtn.title = 'Remove property';
+        delBtn.addEventListener('mousedown', () => {
+          delete entity.properties[currentKey];
           this.editor.dirty = true;
         });
 
         row.appendChild(keyInput);
         row.appendChild(valInput);
+        if (colorSwatch) row.appendChild(colorSwatch);
+        row.appendChild(delBtn);
         propsDiv.appendChild(row);
       }
 
-      // Add property button
+      // Add property — just adds an empty row
       const addBtn = document.createElement('div');
       addBtn.className = 'btn';
       addBtn.textContent = '+ Add Key';
       addBtn.addEventListener('mousedown', () => {
-        const key = prompt('Key name:');
-        if (key) {
-          entity.properties[key] = '';
-          this.editor.dirty = true;
-        }
+        // Find a unique default key name
+        let n = 1;
+        while (`key${n}` in entity.properties) n++;
+        entity.properties[`key${n}`] = '';
+        this.editor.dirty = true;
       });
       propsDiv.appendChild(addBtn);
     } else if (sel.some(s => s.type === 'brush')) {
