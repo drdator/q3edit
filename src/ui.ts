@@ -189,6 +189,26 @@ export class UI {
 
     bar.appendChild(this.createSeparator());
 
+    // Gizmo mode buttons (move / scale)
+    const gizmoModes: { id: 'move' | 'scale'; label: string; key: string }[] = [
+      { id: 'move', label: 'MOV', key: 'W' },
+      { id: 'scale', label: 'SCL', key: 'E' },
+    ];
+    for (const gm of gizmoModes) {
+      const btn = document.createElement('div');
+      btn.className = 'tool-btn' + (gm.id === this.editor.gizmoMode ? ' active' : '');
+      btn.id = `gizmo-${gm.id}`;
+      btn.textContent = gm.label;
+      btn.title = `${gm.id === 'move' ? 'Move' : 'Scale'} mode (${gm.key})`;
+      btn.addEventListener('mousedown', () => {
+        this.editor.gizmoMode = gm.id;
+        this.editor.dirty = true;
+      });
+      bar.appendChild(btn);
+    }
+
+    bar.appendChild(this.createSeparator());
+
     // Grid display
     const gridLabel = document.createElement('div');
     gridLabel.className = 'tool-btn';
@@ -743,10 +763,14 @@ export class UI {
     invisBtn.textContent = invisLabels[e.invisibleMode];
     invisBtn.classList.toggle('active', e.invisibleMode !== 'show');
 
+    // Gizmo mode toolbar buttons
+    document.getElementById('gizmo-move')?.classList.toggle('active', e.gizmoMode === 'move');
+    document.getElementById('gizmo-scale')?.classList.toggle('active', e.gizmoMode === 'scale');
+
     // Gizmo mode indicator (only when selection exists)
     const gizmoEl = document.getElementById('status-gizmo');
     if (gizmoEl) {
-      gizmoEl.textContent = e.selection.length > 0 ? `3D: ${e.gizmoMode} (W/E)` : '';
+      gizmoEl.textContent = e.selection.length > 0 ? `${e.gizmoMode} (W/E)` : '';
     }
 
     // Update panels

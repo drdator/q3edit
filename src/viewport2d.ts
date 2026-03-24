@@ -387,18 +387,20 @@ export class Viewport2D {
       ctx.setLineDash([]);
     }
 
-    // Resize handles
-    const hs = 3;
-    ctx.fillStyle = '#ffaa00';
-    const midX = (x0 + x1) / 2, midY = (y0 + y1) / 2;
-    const handles = [
-      [midX, y0], [midX, y1],   // top, bottom
-      [x0, midY], [x1, midY],   // left, right
-      [x0, y0], [x1, y0],       // top-left, top-right
-      [x0, y1], [x1, y1],       // bottom-left, bottom-right
-    ];
-    for (const [hx, hy] of handles) {
-      ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
+    // Resize handles (only in scale mode)
+    if (this.editor.gizmoMode === 'scale') {
+      const hs = 3;
+      ctx.fillStyle = '#ffaa00';
+      const midX = (x0 + x1) / 2, midY = (y0 + y1) / 2;
+      const handles = [
+        [midX, y0], [midX, y1],   // top, bottom
+        [x0, midY], [x1, midY],   // left, right
+        [x0, y0], [x1, y0],       // top-left, top-right
+        [x0, y1], [x1, y1],       // bottom-left, bottom-right
+      ];
+      for (const [hx, hy] of handles) {
+        ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
+      }
     }
   }
 
@@ -952,8 +954,8 @@ export class Viewport2D {
         return;
       }
 
-      // Check for resize edge on combined selection AABB (skip entity-only selections)
-      if (this.editor.activeTool === 'select' && this.editor.selection.length > 0
+      // Check for resize edge on combined selection AABB (only in scale mode, skip entity-only selections)
+      if (this.editor.activeTool === 'select' && this.editor.gizmoMode === 'scale' && this.editor.selection.length > 0
           && this.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face')) {
         const edge = this.detectResizeEdge(wx, wy);
         if (edge) {
@@ -1065,7 +1067,7 @@ export class Viewport2D {
       if (this.spaceDown) {
         this.canvas.parentElement!.style.cursor = 'grab';
       } else {
-        const canResize = this.editor.activeTool === 'select' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode
+        const canResize = this.editor.activeTool === 'select' && this.editor.gizmoMode === 'scale' && this.editor.selection.length > 0 && !this.editor.vertexMode && !this.editor.patchEditMode
           && this.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face');
         const edge = canResize ? this.detectResizeEdge(wx, wy) : null;
         this.canvas.parentElement!.style.cursor = edge ? this.getResizeCursor(edge.edges) : '';
