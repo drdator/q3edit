@@ -20,6 +20,7 @@ import {
   isFaceSelected as isEditorFaceSelected,
   isPatchSelected as isEditorPatchSelected,
   selectAll as selectAllItems,
+  selectAllOfType as selectEditorAllOfType,
   selectCompleteTall as selectEditorCompleteTall,
   selectBrush as selectEditorBrush,
   selectBrushDirect as selectEditorBrushDirect,
@@ -592,6 +593,10 @@ export class Editor {
 
   selectAll(): void {
     selectAllItems(this);
+  }
+
+  selectAllOfType(): void {
+    selectEditorAllOfType(this);
   }
 
   invertSelection(): void {

@@ -313,6 +313,22 @@ function selectionCountLabel(count: number): string {
   return `${count} item${count === 1 ? '' : 's'}`;
 }
 
+function selectedTypeKeys(editor: Editor): Set<string> {
+  const keys = new Set<string>();
+  for (const item of editor.selection) {
+    if (item.type === 'entity') {
+      keys.add(`entity:${item.entity.classname.toLowerCase()}`);
+      continue;
+    }
+    if (item.type === 'patch') {
+      keys.add('patch');
+      continue;
+    }
+    keys.add('brush');
+  }
+  return keys;
+}
+
 export function selectCompleteTall(editor: Editor): void {
   const bounds = editor.selectionBounds();
   if (!bounds) {
@@ -401,6 +417,27 @@ export function invertSelection(editor: Editor): void {
   const scope = selectionCommandScope(editor);
   const selected = selectionCommandCandidates(editor, scope).filter(item => !isSelectableItemSelected(editor, item));
   replaceSelection(editor, selected, `Inverted selection: ${selectionCountLabel(selected.length)}`);
+}
+
+export function selectAllOfType(editor: Editor): void {
+  if (editor.selection.length === 0) {
+    editor.statusMessage = 'No selection for select all of type';
+    return;
+  }
+
+  const scope = selectionCommandScope(editor);
+  const typeKeys = selectedTypeKeys(editor);
+  const selected = selectionCommandCandidates(editor, scope).filter(item => {
+    if (item.type === 'entity') {
+      return typeKeys.has(`entity:${item.entity.classname.toLowerCase()}`);
+    }
+    if (item.type === 'patch') {
+      return typeKeys.has('patch');
+    }
+    return typeKeys.has('brush');
+  });
+
+  replaceSelection(editor, selected, `Selected all of type: ${selectionCountLabel(selected.length)}`);
 }
 
 export function selectAll(editor: Editor): void {

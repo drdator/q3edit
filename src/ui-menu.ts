@@ -38,6 +38,7 @@ export function buildMenuBar(ctx: MenuBarContext): void {
       { label: 'Paste', shortcut: 'Ctrl+V', action: () => ctx.editor.pasteClipboard() },
       { separator: true },
       { label: 'Select All', shortcut: 'Ctrl+A', action: () => ctx.editor.selectAll() },
+      { label: 'Select All Of Type', action: () => ctx.editor.selectAllOfType() },
       { label: 'Invert Selection', shortcut: 'Ctrl+Shift+I', action: () => ctx.editor.invertSelection() },
       { label: 'Select Touching', action: () => ctx.editor.selectTouching() },
       { label: 'Select Inside', action: () => ctx.editor.selectInside() },

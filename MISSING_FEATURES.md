@@ -33,18 +33,16 @@ Supported for selected brushes, patches, and entities, with browser clipboard in
 ### Find / Replace Textures
 Supported for exact or partial texture-name replacement across the current selection or the whole map.
 
-## Partial
-
 ### Selection Enhancements
-Implemented:
+Supported:
 - Nudge selection with arrow keys by grid amount
 - Select touching
 - Select inside
 - Select complete / partial tall
+- Select all of type
 - Invert selection
 
-Still missing:
-- Select all of type
+## Partial
 
 ### Display Filters
 Implemented:
@@ -91,8 +89,8 @@ Radiant has a plugin architecture. A web-native equivalent does not exist here y
 
 ## Suggested Next Priority
 
-1. Remaining selection enhancements
-2. Map regions
-3. Brush primitives beyond boxes
-4. Prefabs
-5. Connect entities
+1. Map regions
+2. Brush primitives beyond boxes
+3. Prefabs
+4. Connect entities
+5. Terrain system
