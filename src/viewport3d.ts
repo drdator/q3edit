@@ -19,6 +19,12 @@ import {
   WalkState, TraceResult, TraceFn, createWalkState, getEyePos, pmove,
   VIEWHEIGHT, CROUCH_VIEWHEIGHT, PLAYER_MINS, PLAYER_MAXS, PHYSICS_STEP,
 } from './q3-movement';
+import {
+  getRay3D,
+  pickBrushAt3D,
+  pickEntityAt3D,
+  pickPatchAt3D,
+} from './viewport3d-picking';
 
 // ── Texture draw group ──
 
@@ -1026,103 +1032,39 @@ export class Viewport3D {
   // ── Ray picking in 3D ──
 
   private getRay(screenX: number, screenY: number): { rayOrigin: Vec3; rayDir: Vec3 } {
-    const rect = this.canvas.getBoundingClientRect();
-    const x = (screenX - rect.left) / rect.width * 2 - 1;
-    const y = 1 - (screenY - rect.top) / rect.height * 2;
-
-    const aspect = rect.width / rect.height || 1;
-    const fovY = Math.PI / 3;
-    const tanHalf = Math.tan(fovY / 2);
-
-    const forward = this.getForward();
-    const right = vec3Normalize(vec3Cross(forward, [0, 0, 1]));
-    const up = vec3Cross(right, forward);
-
-    const dir = vec3Normalize(vec3Add(
-      vec3Add(forward, vec3Scale(right, x * tanHalf * aspect)),
-      vec3Scale(up, y * tanHalf)
-    ));
-    return { rayOrigin: this.position, rayDir: dir };
+    return getRay3D({
+      canvas: this.canvas,
+      editor: this.editor,
+      position: this.position,
+      getForward: () => this.getForward(),
+    }, screenX, screenY);
   }
 
   pickBrushAt(screenX: number, screenY: number): { entity: Entity; brush: Brush; face: BrushFace } | null {
-    const { rayOrigin, rayDir: dir } = this.getRay(screenX, screenY);
-
-    let bestDist = Infinity;
-    let bestHit: { entity: Entity; brush: Brush; face: BrushFace } | null = null;
-
-    for (const { entity, brush } of this.editor.allBrushes()) {
-      if (!this.editor.isBrushVisible(brush, entity)) continue;
-      for (const face of brush.faces) {
-        if (face.polygon.length < 3) continue;
-        for (let i = 1; i < face.polygon.length - 1; i++) {
-          const t = rayTriangleIntersect(
-            rayOrigin, dir,
-            face.polygon[0], face.polygon[i], face.polygon[i + 1]
-          );
-          if (t !== null && t < bestDist) {
-            bestDist = t;
-            bestHit = { entity, brush, face };
-          }
-        }
-      }
-    }
-
-    return bestHit;
+    return pickBrushAt3D({
+      canvas: this.canvas,
+      editor: this.editor,
+      position: this.position,
+      getForward: () => this.getForward(),
+    }, screenX, screenY);
   }
 
   pickPatchAt(screenX: number, screenY: number): { entity: Entity; patch: Patch; dist: number } | null {
-    const { rayOrigin, rayDir: dir } = this.getRay(screenX, screenY);
-
-    let bestDist = Infinity;
-    let bestHit: { entity: Entity; patch: Patch; dist: number } | null = null;
-
-    for (const { entity, patch } of this.editor.allPatches()) {
-      if (!this.editor.isPatchVisible(patch, entity)) continue;
-      for (let ti = 0; ti < patch.tessIndices.length; ti += 3) {
-        const v0 = patch.tessVerts[patch.tessIndices[ti]].position;
-        const v1 = patch.tessVerts[patch.tessIndices[ti + 1]].position;
-        const v2 = patch.tessVerts[patch.tessIndices[ti + 2]].position;
-        const t = rayTriangleIntersect(rayOrigin, dir, v0, v1, v2);
-        if (t !== null && t < bestDist) {
-          bestDist = t;
-          bestHit = { entity, patch, dist: t };
-        }
-      }
-    }
-
-    return bestHit;
+    return pickPatchAt3D({
+      canvas: this.canvas,
+      editor: this.editor,
+      position: this.position,
+      getForward: () => this.getForward(),
+    }, screenX, screenY);
   }
 
   pickEntityAt(screenX: number, screenY: number): { entity: Entity; dist: number } | null {
-    const { rayOrigin, rayDir } = this.getRay(screenX, screenY);
-
-    let bestDist = Infinity;
-    let bestHit: { entity: Entity; dist: number } | null = null;
-
-    for (const entity of this.editor.nonWorldspawnEntities()) {
-      if (!this.editor.isEntityVisible(entity)) continue;
-
-      let bounds = this.editor.entityBounds(entity);
-      if (this.editor.isPointEntity(entity)) {
-        const origin = this.editor.entityDisplayOrigin(entity);
-        if (!origin) continue;
-        const size = 8;
-        bounds = {
-          mins: [origin[0] - size, origin[1] - size, origin[2] - size],
-          maxs: [origin[0] + size, origin[1] + size, origin[2] + size],
-        };
-      }
-      if (!bounds) continue;
-
-      const dist = rayAabbIntersect(rayOrigin, rayDir, bounds.mins, bounds.maxs);
-      if (dist !== null && dist < bestDist) {
-        bestDist = dist;
-        bestHit = { entity, dist };
-      }
-    }
-
-    return bestHit;
+    return pickEntityAt3D({
+      canvas: this.canvas,
+      editor: this.editor,
+      position: this.position,
+      getForward: () => this.getForward(),
+    }, screenX, screenY);
   }
 
   // ── Picking / selection on click ──
@@ -1376,28 +1318,4 @@ export class Viewport3D {
       this.keys.delete(e.key.toLowerCase());
     });
   }
-}
-
-function rayAabbIntersect(origin: Vec3, dir: Vec3, mins: Vec3, maxs: Vec3): number | null {
-  let tMin = -Infinity;
-  let tMax = Infinity;
-
-  for (let axis = 0; axis < 3; axis++) {
-    const invDir = Math.abs(dir[axis]) < 1e-8 ? Infinity : 1 / dir[axis];
-    let t0 = (mins[axis] - origin[axis]) * invDir;
-    let t1 = (maxs[axis] - origin[axis]) * invDir;
-
-    if (t0 > t1) {
-      const temp = t0;
-      t0 = t1;
-      t1 = temp;
-    }
-
-    tMin = Math.max(tMin, t0);
-    tMax = Math.min(tMax, t1);
-    if (tMax < tMin) return null;
-  }
-
-  if (tMax < 0) return null;
-  return tMin >= 0 ? tMin : tMax;
 }
