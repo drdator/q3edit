@@ -1,7 +1,7 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
 import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, BrushValidationResult } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin, entityDefaults } from './entity';
-import { Patch, clonePatch, translatePatch, rotatePatch, tessellatePatch, createFlatPatch, createCylinderPatch, createConePatch, createBevelPatch, createEndcapPatch } from './patch';
+import { Patch, clonePatch, translatePatch, rotatePatch } from './patch';
 import { History } from './history';
 import { TextureManager } from './textures';
 import { BrushVertex } from './vertex';
@@ -64,6 +64,17 @@ import {
   splitBrushesConvex as splitEditorBrushesConvex,
   vertexSelectionCenter as getEditorVertexSelectionCenter,
 } from './editor-vertex';
+import {
+  changeSubdivisions as changeEditorPatchSubdivisions,
+  clearControlPointSelection as clearEditorControlPointSelection,
+  createPatch as createEditorPatch,
+  enterPatchEditMode as enterEditorPatchEditMode,
+  exitPatchEditMode as exitEditorPatchEditMode,
+  isControlPointSelected as isEditorControlPointSelected,
+  moveSelectedControlPoints as moveEditorSelectedControlPoints,
+  patchControlSelectionCenter as getEditorPatchControlSelectionCenter,
+  selectControlPoint as selectEditorControlPoint,
+} from './editor-patch';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -303,41 +314,11 @@ export class Editor {
   // ── Patch creation ──
 
   createPatch(preset: 'flat' | 'cylinder' | 'cone' | 'bevel' | 'endcap'): void {
-    const bounds = this.selectionBounds();
-    if (!bounds) {
-      this.statusMessage = 'Select a brush first';
-      return;
-    }
-    this.snapshot();
-    const { mins, maxs } = bounds;
-    const texture = this.currentTexture;
-    const creators = {
-      flat: createFlatPatch,
-      cylinder: createCylinderPatch,
-      cone: createConePatch,
-      bevel: createBevelPatch,
-      endcap: createEndcapPatch,
-    };
-    const patch = creators[preset](mins, maxs, texture);
-    this.worldspawn.patches.push(patch);
-    this.selection = [{ type: 'patch', entity: this.worldspawn, patch }];
-    this.dirty = true;
-    this.statusMessage = `Created ${preset} patch`;
+    createEditorPatch(this, preset);
   }
 
   changeSubdivisions(delta: number): void {
-    const patchItems = this.selection.filter(s => s.type === 'patch') as
-      { type: 'patch'; entity: Entity; patch: Patch }[];
-    if (patchItems.length === 0) return;
-    this.snapshot();
-    for (const item of patchItems) {
-      const newSub = Math.max(1, Math.min(24, item.patch.subdivisions + delta));
-      item.patch.subdivisions = newSub;
-      tessellatePatch(item.patch);
-    }
-    const level = patchItems[0].patch.subdivisions;
-    this.dirty = true;
-    this.statusMessage = `Subdivisions: ${level}`;
+    changeEditorPatchSubdivisions(this, delta);
   }
 
   deleteSelection(): void {
@@ -871,91 +852,30 @@ export class Editor {
   // ── Patch control point editing ──
 
   enterPatchEditMode(): void {
-    const patchItems = this.selection.filter(s => s.type === 'patch') as
-      { type: 'patch'; entity: Entity; patch: Patch }[];
-    if (patchItems.length === 0) return;
-
-    this.patchEditData = [];
-    const seen = new Set<Patch>();
-    for (const item of patchItems) {
-      if (seen.has(item.patch)) continue;
-      seen.add(item.patch);
-      this.patchEditData.push({ patch: item.patch, entity: item.entity });
-    }
-
-    this.patchEditMode = true;
-    this.patchControlSelection = [];
-    this.dirty = true;
-    this.statusMessage = 'Patch edit mode';
+    enterEditorPatchEditMode(this);
   }
 
   exitPatchEditMode(): void {
-    if (!this.patchEditMode) return;
-    // Re-tessellate all edited patches
-    for (const data of this.patchEditData) {
-      tessellatePatch(data.patch);
-    }
-    this.patchEditMode = false;
-    this.patchEditData = [];
-    this.patchControlSelection = [];
-    this.dirty = true;
+    exitEditorPatchEditMode(this);
   }
 
   selectControlPoint(dataIndex: number, row: number, col: number, additive = false): void {
-    if (!additive) this.patchControlSelection = [];
-    const idx = this.patchControlSelection.findIndex(
-      cp => cp.dataIndex === dataIndex && cp.row === row && cp.col === col
-    );
-    if (idx >= 0) {
-      if (additive) this.patchControlSelection.splice(idx, 1);
-      return;
-    }
-    this.patchControlSelection.push({ dataIndex, row, col });
-    this.dirty = true;
+    selectEditorControlPoint(this, dataIndex, row, col, additive);
   }
 
   clearControlPointSelection(): void {
-    this.patchControlSelection = [];
-    this.dirty = true;
+    clearEditorControlPointSelection(this);
   }
 
   isControlPointSelected(dataIndex: number, row: number, col: number): boolean {
-    return this.patchControlSelection.some(
-      cp => cp.dataIndex === dataIndex && cp.row === row && cp.col === col
-    );
+    return isEditorControlPointSelected(this, dataIndex, row, col);
   }
 
   moveSelectedControlPoints(delta: Vec3): void {
-    if (this.patchControlSelection.length === 0) return;
-
-    const affectedPatches = new Set<number>();
-    for (const cp of this.patchControlSelection) {
-      const data = this.patchEditData[cp.dataIndex];
-      if (!data) continue;
-      const pt = data.patch.ctrl[cp.row][cp.col];
-      pt.xyz[0] += delta[0];
-      pt.xyz[1] += delta[1];
-      pt.xyz[2] += delta[2];
-      affectedPatches.add(cp.dataIndex);
-    }
-
-    // Re-tessellate affected patches
-    for (const di of affectedPatches) {
-      tessellatePatch(this.patchEditData[di].patch);
-    }
-    this.dirty = true;
+    moveEditorSelectedControlPoints(this, delta);
   }
 
   patchControlSelectionCenter(): Vec3 | null {
-    if (this.patchControlSelection.length === 0) return null;
-    let sum: Vec3 = [0, 0, 0];
-    for (const cp of this.patchControlSelection) {
-      const data = this.patchEditData[cp.dataIndex];
-      if (!data) continue;
-      const pos = data.patch.ctrl[cp.row][cp.col].xyz;
-      sum[0] += pos[0]; sum[1] += pos[1]; sum[2] += pos[2];
-    }
-    const n = this.patchControlSelection.length;
-    return [sum[0] / n, sum[1] / n, sum[2] / n];
+    return getEditorPatchControlSelectionCenter(this);
   }
 }
