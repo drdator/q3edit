@@ -1,5 +1,5 @@
 import { Editor, Tool, InvisibleMode } from './editor';
-import { Entity, ENTITY_CATEGORIES } from './entity';
+import { BRUSH_ENTITY_CLASSES, Entity, ENTITY_CATEGORIES } from './entity';
 import { TextureManager } from './textures';
 import { PropertiesPanel } from './properties-panel';
 import { Brush } from './brush';
@@ -36,6 +36,7 @@ export class UI {
   private propertiesPanel: PropertiesPanel;
   private texMgr: TextureManager | null = null;
   private showTextureThumbnails = false;
+  private collapsedBrushPanelEntities = new WeakSet<Entity>();
 
   constructor(editor: Editor) {
     this.editor = editor;
@@ -108,7 +109,7 @@ export class UI {
   }
 
   private brushPanelMode: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
-  private brushPanelItemCount = -1;
+  private brushPanelSignature = '';
 
   private buildBrushPanel(): void {
     const body = document.getElementById('brush-body')!;
@@ -117,7 +118,7 @@ export class UI {
     modeSelect.addEventListener('change', () => {
       this.brushPanelMode = modeSelect.value as typeof this.brushPanelMode;
       this.editor.selectionFilter = this.brushPanelMode;
-      this.brushPanelItemCount = -1; // force rebuild
+      this.brushPanelSignature = '';
       this.editor.dirty = true;
     });
     // Stop click from toggling panel collapse
@@ -161,43 +162,152 @@ export class UI {
     const mode = this.brushPanelMode;
 
     type ListItem =
-      | { kind: 'brush'; entity: Entity; brush: Brush; index: number; entityIdx: number }
-      | { kind: 'patch'; entity: Entity; patch: Patch; index: number; entityIdx: number }
-      | { kind: 'entity'; entity: Entity; entityIdx: number };
+      | {
+          kind: 'entity';
+          entity: Entity;
+          entityIdx: number;
+          label: string;
+          meta: string;
+          collapsible: boolean;
+          collapsed: boolean;
+        }
+      | {
+          kind: 'brush';
+          entity: Entity;
+          brush: Brush;
+          index: number;
+          entityIdx: number;
+          label: string;
+        }
+      | {
+          kind: 'patch';
+          entity: Entity;
+          patch: Patch;
+          index: number;
+          entityIdx: number;
+          label: string;
+        };
 
-    // Build flat list based on filter mode
     const items: ListItem[] = [];
+    const signatureParts: string[] = [mode];
+
     for (let ei = 0; ei < e.entities.length; ei++) {
       const entity = e.entities[ei];
-      if (mode === 'entities') {
-        items.push({ kind: 'entity', entity, entityIdx: ei });
-      } else {
-        if (mode === 'all' || mode === 'brushes') {
-          for (let bi = 0; bi < entity.brushes.length; bi++) {
-            items.push({ kind: 'brush', entity, brush: entity.brushes[bi], index: bi, entityIdx: ei });
-          }
-        }
-        if (mode === 'all' || mode === 'patches') {
-          for (let pi = 0; pi < entity.patches.length; pi++) {
-            items.push({ kind: 'patch', entity, patch: entity.patches[pi], index: pi, entityIdx: ei });
-          }
-        }
+      const brushChildren = (mode === 'all' || mode === 'brushes')
+        ? entity.brushes.map((brush, index) => ({
+            kind: 'brush' as const,
+            entity,
+            brush,
+            index,
+            entityIdx: ei,
+            label: brush.name || `brush ${index}`,
+          }))
+        : [];
+      const patchChildren = (mode === 'all' || mode === 'patches')
+        ? entity.patches.map((patch, index) => ({
+            kind: 'patch' as const,
+            entity,
+            patch,
+            index,
+            entityIdx: ei,
+            label: `patch ${index}`,
+          }))
+        : [];
+
+      const includeEntity =
+        mode === 'entities' ||
+        mode === 'all' ||
+        brushChildren.length > 0 ||
+        patchChildren.length > 0;
+      if (!includeEntity) continue;
+
+      const childCount = brushChildren.length + patchChildren.length;
+      const collapsed = childCount > 0 && this.collapsedBrushPanelEntities.has(entity);
+      const label = this.objectTreeEntityLabel(entity, ei === 0);
+      const meta = this.objectTreeEntityMeta(entity, entity.brushes.length, entity.patches.length);
+
+      items.push({
+        kind: 'entity',
+        entity,
+        entityIdx: ei,
+        label,
+        meta,
+        collapsible: mode !== 'entities' && childCount > 0,
+        collapsed,
+      });
+      signatureParts.push(`${ei}:${entity.classname}:${entity.brushes.length}:${entity.patches.length}:${collapsed ? 1 : 0}`);
+
+      if (mode !== 'entities' && !collapsed) {
+        items.push(...brushChildren, ...patchChildren);
       }
     }
 
-    // Rebuild DOM when item count changes
-    if (this.brushPanelItemCount !== items.length) {
-      this.brushPanelItemCount = items.length;
+    const signature = signatureParts.join('|');
+
+    if (this.brushPanelSignature !== signature) {
+      this.brushPanelSignature = signature;
       list.innerHTML = '';
       for (const item of items) {
         const el = document.createElement('div');
-        el.className = 'brush-item';
+        el.className = item.kind === 'entity'
+          ? 'brush-item brush-tree-entity'
+          : 'brush-item brush-tree-child';
+
+        const row = document.createElement('div');
+        row.className = 'brush-tree-row';
+
+        if (item.kind === 'entity') {
+          const toggle = document.createElement('span');
+          toggle.className = 'brush-tree-toggle' + (item.collapsible ? '' : ' empty');
+          toggle.textContent = item.collapsible ? (item.collapsed ? '+' : '\u2212') : '';
+          if (item.collapsible) {
+            toggle.addEventListener('mousedown', (ev) => {
+              ev.stopPropagation();
+              if (this.collapsedBrushPanelEntities.has(item.entity)) {
+                this.collapsedBrushPanelEntities.delete(item.entity);
+              } else {
+                this.collapsedBrushPanelEntities.add(item.entity);
+              }
+              this.brushPanelSignature = '';
+              this.editor.dirty = true;
+            });
+          }
+
+          const label = document.createElement('span');
+          label.className = 'brush-tree-label';
+          label.textContent = item.label;
+
+          const meta = document.createElement('span');
+          meta.className = 'brush-tree-meta';
+          meta.textContent = item.meta;
+
+          row.appendChild(toggle);
+          row.appendChild(label);
+          row.appendChild(meta);
+        } else {
+          const indent = document.createElement('span');
+          indent.className = 'brush-tree-indent';
+
+          const kind = document.createElement('span');
+          kind.className = 'brush-tree-kind';
+          kind.textContent = item.kind === 'brush' ? 'B' : 'P';
+
+          const label = document.createElement('span');
+          label.className = 'brush-tree-label';
+          label.textContent = item.label;
+
+          row.appendChild(indent);
+          row.appendChild(kind);
+          row.appendChild(label);
+        }
+
+        el.appendChild(row);
         el.addEventListener('mousedown', (ev) => {
           const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
           if (item.kind === 'brush') {
-            e.selectBrush(item.entity, item.brush, additive);
+            e.selectBrushDirect(item.entity, item.brush, additive);
           } else if (item.kind === 'patch') {
-            e.selectPatch(item.entity, item.patch, additive);
+            e.selectPatchDirect(item.entity, item.patch, additive);
           } else {
             e.selectEntity(item.entity, additive);
           }
@@ -207,31 +317,39 @@ export class UI {
       }
     }
 
-    // Update labels and selection state
     const children = list.children;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const el = children[i] as HTMLElement;
       let selected: boolean;
-      let label: string;
       if (item.kind === 'brush') {
         selected = e.isSelected(item.brush);
-        label = item.brush.name || `brush ${item.index}`;
       } else if (item.kind === 'patch') {
         selected = e.isPatchSelected(item.patch);
-        label = `patch ${item.index}`;
       } else {
         selected = e.isEntitySelected(item.entity);
-        label = `${item.entity.classname}`;
       }
-      const isWorldspawn = item.entityIdx === 0;
-      const entityLabel = (item.kind !== 'entity' && !isWorldspawn)
-        ? ` <span class="brush-entity">[${item.entity.classname}]</span>`
-        : '';
-      const html = label + entityLabel;
-      if (el.innerHTML !== html) el.innerHTML = html;
       el.classList.toggle('selected', selected);
     }
+  }
+
+  private objectTreeEntityLabel(entity: Entity, isWorldspawn: boolean): string {
+    if (isWorldspawn) return 'worldspawn';
+    const name = entity.properties['targetname'] || entity.properties['name'];
+    return name ? `${entity.classname} "${name}"` : entity.classname;
+  }
+
+  private objectTreeEntityMeta(entity: Entity, brushCount: number, patchCount: number): string {
+    const parts: string[] = [];
+    if (brushCount > 0) parts.push(`${brushCount} brush${brushCount === 1 ? '' : 'es'}`);
+    if (patchCount > 0) parts.push(`${patchCount} patch${patchCount === 1 ? '' : 'es'}`);
+    if (parts.length === 0 && this.editor.isPointEntity(entity)) {
+      const origin = this.editor.entityDisplayOrigin(entity);
+      if (origin) {
+        parts.push(`@ ${origin[0].toFixed(0)} ${origin[1].toFixed(0)} ${origin[2].toFixed(0)}`);
+      }
+    }
+    return parts.join(', ');
   }
 
   private buildEntityPanel(): void {
@@ -260,6 +378,46 @@ export class UI {
       this.editor.currentEntityClass = select.value;
     });
     body.appendChild(select);
+
+    const brushEntityLabel = document.createElement('label');
+    brushEntityLabel.textContent = 'Brush Entity Class';
+    brushEntityLabel.style.marginTop = '10px';
+    body.appendChild(brushEntityLabel);
+
+    const brushEntitySelect = document.createElement('select');
+    brushEntitySelect.id = 'brush-entity-class-select';
+    for (const classname of BRUSH_ENTITY_CLASSES) {
+      const opt = document.createElement('option');
+      opt.value = classname;
+      opt.textContent = classname;
+      if (classname === this.editor.currentBrushEntityClass) opt.selected = true;
+      brushEntitySelect.appendChild(opt);
+    }
+    brushEntitySelect.addEventListener('change', () => {
+      this.editor.currentBrushEntityClass = brushEntitySelect.value;
+    });
+    body.appendChild(brushEntitySelect);
+
+    const brushEntityActions = document.createElement('div');
+    brushEntityActions.className = 'kv-row';
+
+    const groupBtn = document.createElement('div');
+    groupBtn.className = 'btn';
+    groupBtn.textContent = 'Group Selection';
+    groupBtn.addEventListener('mousedown', () => {
+      this.editor.groupSelectionIntoEntity();
+    });
+
+    const ungroupBtn = document.createElement('div');
+    ungroupBtn.className = 'btn';
+    ungroupBtn.textContent = 'To Worldspawn';
+    ungroupBtn.addEventListener('mousedown', () => {
+      this.editor.moveSelectionToWorldspawn();
+    });
+
+    brushEntityActions.appendChild(groupBtn);
+    brushEntityActions.appendChild(ungroupBtn);
+    body.appendChild(brushEntityActions);
 
     // Properties area (shown when entity selected)
     const propsDiv = document.createElement('div');

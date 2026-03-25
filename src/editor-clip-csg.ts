@@ -39,9 +39,9 @@ export function executeClip(editor: Editor): void {
 
   editor.snapshot();
   const newSelection: SelectionItem[] = [];
+  const brushItems = getSelectedBrushItems(editor);
 
-  for (const item of editor.selection) {
-    if (item.type === 'entity' || item.type === 'patch') continue;
+  for (const item of brushItems) {
     const idx = item.entity.brushes.indexOf(item.brush);
     if (idx < 0) continue;
 

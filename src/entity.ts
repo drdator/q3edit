@@ -212,8 +212,23 @@ export const ENTITY_CATEGORIES: EntityCategory[] = [
   },
 ];
 
+export const BRUSH_ENTITY_CLASSES = [
+  'func_group',
+  'func_detail',
+  'func_door',
+  'func_button',
+  'func_plat',
+  'func_rotating',
+  'func_bobbing',
+  'trigger_multiple',
+  'trigger_push',
+  'trigger_teleport',
+  'trigger_hurt',
+];
+
 // Flat list of all entity classnames (for backward compat)
 export const ENTITY_CLASSES = ENTITY_CATEGORIES.flatMap(cat => cat.classes.map(c => c.classname));
+export const ENTITY_CLASS_SUGGESTIONS = [...new Set([...ENTITY_CLASSES, ...BRUSH_ENTITY_CLASSES])];
 
 // Lookup maps built from categories
 const _entityDefMap = new Map<string, EntityClassDef>();

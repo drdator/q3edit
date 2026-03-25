@@ -9,6 +9,7 @@ import {
 } from './patch';
 import type { Entity } from './entity';
 import type { Vec3 } from './math';
+import { getSelectedPatchItems } from './editor-selection';
 import type { Editor } from './editor';
 
 export function createPatch(
@@ -38,8 +39,7 @@ export function createPatch(
 }
 
 export function changeSubdivisions(editor: Editor, delta: number): void {
-  const patchItems = editor.selection.filter(s => s.type === 'patch') as
-    { type: 'patch'; entity: Entity; patch: Patch }[];
+  const patchItems = getSelectedPatchItems(editor);
   if (patchItems.length === 0) return;
   editor.snapshot();
   for (const item of patchItems) {
@@ -53,8 +53,7 @@ export function changeSubdivisions(editor: Editor, delta: number): void {
 }
 
 export function enterPatchEditMode(editor: Editor): void {
-  const patchItems = editor.selection.filter(s => s.type === 'patch') as
-    { type: 'patch'; entity: Entity; patch: Patch }[];
+  const patchItems = getSelectedPatchItems(editor);
   if (patchItems.length === 0) return;
 
   editor.patchEditData = [];

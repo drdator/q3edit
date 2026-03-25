@@ -1,11 +1,12 @@
 import { type Brush, type BrushValidationResult, rebuildBrush, splitBrushConvex, validateBrush } from './brush';
 import type { Entity } from './entity';
 import type { Vec3 } from './math';
+import { getSelectedBrushItems } from './editor-selection';
 import { collectBrushVertices, moveVertices } from './vertex';
 import type { Editor } from './editor';
 
 export function enterVertexMode(editor: Editor): void {
-  const brushItems = editor.selection.filter(s => s.type === 'brush' || s.type === 'face');
+  const brushItems = getSelectedBrushItems(editor);
   if (brushItems.length === 0) return;
 
   editor.vertexData = [];

@@ -2,6 +2,7 @@ import { Vec3, Mat4, vec3Add, vec3Sub, vec3Scale, vec3Length, vec3Copy, snapAxis
 import { Editor } from './editor';
 import { scaleBrushFaces } from './brush';
 import { PatchControlPoint, scalePatchControlPoints } from './patch';
+import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { createLineBuffer } from './gl-utils';
 
 export interface GizmoSegment {
@@ -163,32 +164,30 @@ export class Gizmo {
       if (center) this.center = center;
       this.origPoints = [];
       this.origPatchCtrls = [];
+      const selectedBrushItems = getSelectedBrushItems(this.editor);
+      const selectedPatchItems = getSelectedPatchItems(this.editor);
       let mins: Vec3 = [Infinity, Infinity, Infinity];
       let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
-      for (const item of this.editor.selection) {
-        if (item.type === 'patch') {
-          this.origPoints.push([]);
-          this.origPatchCtrls.push(
-            item.patch.ctrl.map(row =>
-              row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
-            )
-          );
-          for (let i = 0; i < 3; i++) {
-            if (item.patch.mins[i] < mins[i]) mins[i] = item.patch.mins[i];
-            if (item.patch.maxs[i] > maxs[i]) maxs[i] = item.patch.maxs[i];
-          }
-          continue;
-        }
-        this.origPatchCtrls.push([]);
-        if (item.type === 'entity') { this.origPoints.push([]); continue; }
+      for (const { brush } of selectedBrushItems) {
         this.origPoints.push(
-          item.brush.faces.map((f: { points: [Vec3, Vec3, Vec3] }) =>
+          brush.faces.map((f: { points: [Vec3, Vec3, Vec3] }) =>
             [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
           )
         );
         for (let i = 0; i < 3; i++) {
-          if (item.brush.mins[i] < mins[i]) mins[i] = item.brush.mins[i];
-          if (item.brush.maxs[i] > maxs[i]) maxs[i] = item.brush.maxs[i];
+          if (brush.mins[i] < mins[i]) mins[i] = brush.mins[i];
+          if (brush.maxs[i] > maxs[i]) maxs[i] = brush.maxs[i];
+        }
+      }
+      for (const { patch } of selectedPatchItems) {
+        this.origPatchCtrls.push(
+          patch.ctrl.map(row =>
+            row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
+          )
+        );
+        for (let i = 0; i < 3; i++) {
+          if (patch.mins[i] < mins[i]) mins[i] = patch.mins[i];
+          if (patch.maxs[i] > maxs[i]) maxs[i] = patch.maxs[i];
         }
       }
       this.origMins = mins;
@@ -296,22 +295,18 @@ export class Gizmo {
       scale[a] = scaleFactor;
       const origin: Vec3 = vec3Copy(this.center);
 
-      let idx = 0;
-      for (const item of this.editor.selection) {
-        if (item.type === 'patch') {
-          const origCtrl = this.origPatchCtrls[idx];
-          if (origCtrl.length > 0) {
-            scalePatchControlPoints(item.patch, origCtrl, origin, scale);
-          }
-          idx++;
-          continue;
-        }
-        if (item.type === 'entity') { idx++; continue; }
-        const origPts = this.origPoints[idx];
-        if (origPts.length > 0) {
-          scaleBrushFaces(item.brush, origPts, origin, scale);
-        }
-        idx++;
+      const selectedBrushItems = getSelectedBrushItems(this.editor);
+      const selectedPatchItems = getSelectedPatchItems(this.editor);
+
+      for (let i = 0; i < selectedBrushItems.length; i++) {
+        const origPts = this.origPoints[i];
+        if (!origPts || origPts.length === 0) continue;
+        scaleBrushFaces(selectedBrushItems[i].brush, origPts, origin, scale);
+      }
+      for (let i = 0; i < selectedPatchItems.length; i++) {
+        const origCtrl = this.origPatchCtrls[i];
+        if (!origCtrl || origCtrl.length === 0) continue;
+        scalePatchControlPoints(selectedPatchItems[i].patch, origCtrl, origin, scale);
       }
       this.editor.dirty = true;
     }

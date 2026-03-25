@@ -4,6 +4,27 @@ import type { Patch } from './patch';
 import type { Editor } from './editor';
 import { nonWorldspawnEntities } from './editor-queries';
 
+function selectsWholeEntity(editor: Editor, entity: Entity): boolean {
+  return entity !== editor.worldspawn && (entity.brushes.length > 0 || entity.patches.length > 0);
+}
+
+export function hasDirectGeometrySelection(editor: Editor, entity: Entity): boolean {
+  return editor.selection.some(item =>
+    item.entity === entity && (item.type === 'brush' || item.type === 'patch' || item.type === 'face')
+  );
+}
+
+export function isBrushDirectlySelected(editor: Editor, brush: Brush): boolean {
+  return editor.selection.some(item =>
+    (item.type === 'brush' && item.brush === brush) ||
+    (item.type === 'face' && item.brush === brush)
+  );
+}
+
+export function isPatchDirectlySelected(editor: Editor, patch: Patch): boolean {
+  return editor.selection.some(item => item.type === 'patch' && item.patch === patch);
+}
+
 export function clearSelection(editor: Editor): void {
   editor.selection = [];
   editor.exitVertexMode();
@@ -11,6 +32,14 @@ export function clearSelection(editor: Editor): void {
 }
 
 export function selectBrush(editor: Editor, entity: Entity, brush: Brush, additive = false): void {
+  if (selectsWholeEntity(editor, entity) && !hasDirectGeometrySelection(editor, entity)) {
+    selectEntity(editor, entity, additive);
+    return;
+  }
+  selectBrushDirect(editor, entity, brush, additive);
+}
+
+export function selectBrushDirect(editor: Editor, entity: Entity, brush: Brush, additive = false): void {
   if (!additive) editor.selection = [];
   const idx = editor.selection.findIndex(
     s => s.type === 'brush' && s.brush === brush
@@ -48,6 +77,14 @@ export function isEntitySelected(editor: Editor, entity: Entity): boolean {
 }
 
 export function addBrushToSelection(editor: Editor, entity: Entity, brush: Brush): void {
+  if (selectsWholeEntity(editor, entity) && !hasDirectGeometrySelection(editor, entity)) {
+    addEntityToSelection(editor, entity);
+    return;
+  }
+  addBrushDirectToSelection(editor, entity, brush);
+}
+
+export function addBrushDirectToSelection(editor: Editor, entity: Entity, brush: Brush): void {
   if (isBrushSelected(editor, brush, entity)) return;
   editor.selection.push({ type: 'brush', entity, brush });
   editor.dirty = true;
@@ -60,6 +97,14 @@ export function addEntityToSelection(editor: Editor, entity: Entity): void {
 }
 
 export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additive = false): void {
+  if (selectsWholeEntity(editor, entity) && !hasDirectGeometrySelection(editor, entity)) {
+    selectEntity(editor, entity, additive);
+    return;
+  }
+  selectPatchDirect(editor, entity, patch, additive);
+}
+
+export function selectPatchDirect(editor: Editor, entity: Entity, patch: Patch, additive = false): void {
   if (!additive) editor.selection = [];
   const idx = editor.selection.findIndex(
     s => s.type === 'patch' && s.patch === patch
@@ -80,6 +125,14 @@ export function isPatchSelected(editor: Editor, patch: Patch, entity?: Entity): 
 }
 
 export function addPatchToSelection(editor: Editor, entity: Entity, patch: Patch): void {
+  if (selectsWholeEntity(editor, entity) && !hasDirectGeometrySelection(editor, entity)) {
+    addEntityToSelection(editor, entity);
+    return;
+  }
+  addPatchDirectToSelection(editor, entity, patch);
+}
+
+export function addPatchDirectToSelection(editor: Editor, entity: Entity, patch: Patch): void {
   if (isPatchSelected(editor, patch, entity)) return;
   editor.selection.push({ type: 'patch', entity, patch });
   editor.dirty = true;
@@ -126,22 +179,48 @@ export function getSelectedFace(editor: Editor): BrushFace | null {
 }
 
 export function getSelectedBrushItems(editor: Editor): { entity: Entity; brush: Brush }[] {
-  const items = editor.selection.filter(
-    s => s.type === 'brush' || s.type === 'face'
-  ) as ({ type: 'brush'; entity: Entity; brush: Brush } | {
-    type: 'face';
-    entity: Entity;
-    brush: Brush;
-    face: BrushFace;
-  })[];
-
   const unique: { entity: Entity; brush: Brush }[] = [];
   const seen = new Set<Brush>();
-  for (const item of items) {
+
+  for (const item of editor.selection) {
+    if (item.type === 'entity') {
+      for (const brush of item.entity.brushes) {
+        if (seen.has(brush)) continue;
+        seen.add(brush);
+        unique.push({ entity: item.entity, brush });
+      }
+      continue;
+    }
+
+    if (item.type !== 'brush' && item.type !== 'face') continue;
     if (seen.has(item.brush)) continue;
     seen.add(item.brush);
     unique.push({ entity: item.entity, brush: item.brush });
   }
+
+  return unique;
+}
+
+export function getSelectedPatchItems(editor: Editor): { entity: Entity; patch: Patch }[] {
+  const unique: { entity: Entity; patch: Patch }[] = [];
+  const seen = new Set<Patch>();
+
+  for (const item of editor.selection) {
+    if (item.type === 'entity') {
+      for (const patch of item.entity.patches) {
+        if (seen.has(patch)) continue;
+        seen.add(patch);
+        unique.push({ entity: item.entity, patch });
+      }
+      continue;
+    }
+
+    if (item.type !== 'patch') continue;
+    if (seen.has(item.patch)) continue;
+    seen.add(item.patch);
+    unique.push({ entity: item.entity, patch: item.patch });
+  }
+
   return unique;
 }
 

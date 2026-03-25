@@ -452,6 +452,55 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.brush-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.brush-tree-entity {
+  font-weight: 600;
+}
+
+.brush-tree-child {
+  padding-left: 12px;
+}
+
+.brush-tree-toggle,
+.brush-tree-indent,
+.brush-tree-kind {
+  flex: 0 0 auto;
+  width: 10px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.brush-tree-toggle {
+  cursor: pointer;
+}
+
+.brush-tree-toggle.empty {
+  cursor: default;
+}
+
+.brush-tree-kind {
+  font-size: 9px;
+}
+
+.brush-tree-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brush-tree-meta {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
 .brush-item:hover {
   background: var(--bg-light);
 }
@@ -465,6 +514,12 @@ html, body {
 .brush-item .brush-entity {
   color: var(--text-dim);
   font-size: 9px;
+}
+
+.brush-item.selected .brush-tree-meta,
+.brush-item.selected .brush-tree-toggle,
+.brush-item.selected .brush-tree-kind {
+  color: var(--text-bright);
 }
 
 .texture-list {

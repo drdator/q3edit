@@ -2,6 +2,7 @@ import { vec3Add, vec3Dot, vec3Scale, vec3Sub, rayTriangleIntersect, Vec3 } from
 import { Editor } from './editor';
 import { Brush, BrushFace } from './brush';
 import { Entity } from './entity';
+import { hasDirectGeometrySelection, isBrushDirectlySelected, isPatchDirectlySelected } from './editor-selection';
 import { Patch } from './patch';
 import { pickVertex3D } from './vertex';
 
@@ -12,6 +13,44 @@ export interface Viewport3DSelectionContext {
   pickBrushAt: (screenX: number, screenY: number) => { entity: Entity; brush: Brush; face: BrushFace } | null;
   pickPatchAt: (screenX: number, screenY: number) => { entity: Entity; patch: Patch; dist: number } | null;
   pickEntityAt: (screenX: number, screenY: number) => { entity: Entity; dist: number } | null;
+}
+
+type Viewport3DSurfacePick =
+  | { type: 'brush'; entity: Entity; brush: Brush; face: BrushFace }
+  | { type: 'patch'; entity: Entity; patch: Patch; dist: number };
+
+function pickPrimarySurface(
+  ctx: Viewport3DSelectionContext,
+  sx: number,
+  sy: number,
+): Viewport3DSurfacePick | null {
+  const filter = ctx.editor.selectionFilter;
+  const brushHit = (filter === 'all' || filter === 'brushes') ? ctx.pickBrushAt(sx, sy) : null;
+  const patchHit = (filter === 'all' || filter === 'patches') ? ctx.pickPatchAt(sx, sy) : null;
+
+  let usePatch = false;
+  if (patchHit && brushHit) {
+    const { rayOrigin, rayDir: dir } = ctx.getRay(sx, sy);
+    let brushDist = Infinity;
+    for (const face of brushHit.brush.faces) {
+      if (face.polygon.length < 3) continue;
+      for (let ii = 1; ii < face.polygon.length - 1; ii++) {
+        const t = rayTriangleIntersect(rayOrigin, dir, face.polygon[0], face.polygon[ii], face.polygon[ii + 1]);
+        if (t !== null && t < brushDist) brushDist = t;
+      }
+    }
+    usePatch = patchHit.dist < brushDist;
+  } else if (patchHit && !brushHit) {
+    usePatch = true;
+  }
+
+  if (usePatch && patchHit) return { type: 'patch', ...patchHit };
+  if (brushHit) return { type: 'brush', ...brushHit };
+  return null;
+}
+
+function isGroupedGeometrySelection(ctx: Viewport3DSelectionContext, entity: Entity): boolean {
+  return entity !== ctx.editor.worldspawn && ctx.editor.hasEntityGeometry(entity);
 }
 
 export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEvent): void {
@@ -73,8 +112,7 @@ export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEv
   }
 
   const filter = ctx.editor.selectionFilter;
-  const brushHit = (filter === 'all' || filter === 'brushes') ? ctx.pickBrushAt(sx, sy) : null;
-  const patchHit = (filter === 'all' || filter === 'patches') ? ctx.pickPatchAt(sx, sy) : null;
+  const surfaceHit = pickPrimarySurface(ctx, sx, sy);
   const entityHit = (filter === 'all' || filter === 'entities') ? ctx.pickEntityAt(sx, sy) : null;
 
   if (filter === 'entities') {
@@ -87,33 +125,34 @@ export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEv
     return;
   }
 
-  let usePatch = false;
-  if (patchHit && brushHit) {
-    const { rayOrigin, rayDir: dir } = ctx.getRay(sx, sy);
-    let brushDist = Infinity;
-    for (const face of brushHit.brush.faces) {
-      if (face.polygon.length < 3) continue;
-      for (let ii = 1; ii < face.polygon.length - 1; ii++) {
-        const t = rayTriangleIntersect(rayOrigin, dir, face.polygon[0], face.polygon[ii], face.polygon[ii + 1]);
-        if (t !== null && t < brushDist) brushDist = t;
-      }
-    }
-    usePatch = patchHit.dist < brushDist;
-  } else if (patchHit && !brushHit) {
-    usePatch = true;
-  }
-
-  if (usePatch && patchHit) {
+  if (surfaceHit?.type === 'patch') {
+    const directGroupEditing = surfaceHit.entity !== ctx.editor.worldspawn &&
+      hasDirectGeometrySelection(ctx.editor, surfaceHit.entity);
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-    ctx.editor.selectPatch(patchHit.entity, patchHit.patch, additive);
-  } else if (brushHit) {
+    const alreadySelected = directGroupEditing
+      ? isPatchDirectlySelected(ctx.editor, surfaceHit.patch)
+      : ctx.editor.isPatchSelected(surfaceHit.patch);
+    if (!additive && !alreadySelected) ctx.editor.clearSelection();
+    if (additive || !alreadySelected) {
+      if (directGroupEditing) ctx.editor.selectPatchDirect(surfaceHit.entity, surfaceHit.patch, additive);
+      else ctx.editor.selectPatch(surfaceHit.entity, surfaceHit.patch, additive);
+    }
+  } else if (surfaceHit?.type === 'brush') {
     if (e.altKey) {
       const additive = e.shiftKey;
-      ctx.editor.selectFace(brushHit.entity, brushHit.brush, brushHit.face, additive);
+      ctx.editor.selectFace(surfaceHit.entity, surfaceHit.brush, surfaceHit.face, additive);
     } else {
+      const directGroupEditing = surfaceHit.entity !== ctx.editor.worldspawn &&
+        hasDirectGeometrySelection(ctx.editor, surfaceHit.entity);
       const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-      if (!additive) ctx.editor.clearSelection();
-      ctx.editor.selectBrush(brushHit.entity, brushHit.brush, additive);
+      const alreadySelected = directGroupEditing
+        ? isBrushDirectlySelected(ctx.editor, surfaceHit.brush)
+        : ctx.editor.isSelected(surfaceHit.brush);
+      if (!additive && !alreadySelected) ctx.editor.clearSelection();
+      if (additive || !alreadySelected) {
+        if (directGroupEditing) ctx.editor.selectBrushDirect(surfaceHit.entity, surfaceHit.brush, additive);
+        else ctx.editor.selectBrush(surfaceHit.entity, surfaceHit.brush, additive);
+      }
     }
   } else if (entityHit) {
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -121,4 +160,47 @@ export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEv
   } else if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
     ctx.editor.clearSelection();
   }
+}
+
+export function handleViewport3DDoublePick(ctx: Viewport3DSelectionContext, e: MouseEvent): void {
+  if (ctx.editor.vertexMode || ctx.editor.patchEditMode) return;
+
+  const [sx, sy] = ctx.dragStart;
+  const surfaceHit = pickPrimarySurface(ctx, sx, sy);
+  if (!surfaceHit) return;
+
+  if (surfaceHit.type === 'brush') {
+    const grouped = isGroupedGeometrySelection(ctx, surfaceHit.entity);
+    const alreadyDirect = ctx.editor.selection.length === 1 &&
+      ctx.editor.selection[0].type === 'brush' &&
+      ctx.editor.selection[0].brush === surfaceHit.brush;
+    if (grouped) {
+      ctx.editor.selectBrushDirect(surfaceHit.entity, surfaceHit.brush);
+      if (alreadyDirect) {
+        ctx.editor.enterVertexMode();
+      } else {
+        ctx.editor.statusMessage = 'Brush selected inside group';
+      }
+      return;
+    }
+    ctx.editor.selectBrush(surfaceHit.entity, surfaceHit.brush);
+    ctx.editor.enterVertexMode();
+    return;
+  }
+
+  const grouped = isGroupedGeometrySelection(ctx, surfaceHit.entity);
+  const alreadyDirect = ctx.editor.selection.length === 1 &&
+    ctx.editor.selection[0].type === 'patch' &&
+    ctx.editor.selection[0].patch === surfaceHit.patch;
+  if (grouped) {
+    ctx.editor.selectPatchDirect(surfaceHit.entity, surfaceHit.patch);
+    if (alreadyDirect) {
+      ctx.editor.enterPatchEditMode();
+    } else {
+      ctx.editor.statusMessage = 'Patch selected inside group';
+    }
+    return;
+  }
+  ctx.editor.selectPatch(surfaceHit.entity, surfaceHit.patch);
+  ctx.editor.enterPatchEditMode();
 }

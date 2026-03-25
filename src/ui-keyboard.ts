@@ -1,5 +1,6 @@
 import { Editor, Tool } from './editor';
 import { Vec3 } from './math';
+import { getSelectedPatchItems } from './editor-selection';
 
 export interface KeyboardContext {
   editor: Editor;
@@ -25,6 +26,8 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if (ctrl && e.key === 'o') { e.preventDefault(); ctx.editor.openMapFromFile(); return; }
     if (ctrl && e.key === 'a') { e.preventDefault(); ctx.editor.selectAll(); return; }
     if (ctrl && e.key === 'd') { e.preventDefault(); ctx.editor.duplicateSelection(); return; }
+    if (ctrl && e.shiftKey && e.key === 'G') { e.preventDefault(); ctx.editor.groupSelectionIntoEntity(); return; }
+    if (ctrl && e.shiftKey && e.key === 'U') { e.preventDefault(); ctx.editor.moveSelectionToWorldspawn(); return; }
     if (ctrl && e.key === 'g') { e.preventDefault(); ctx.editor.snapSelectionToGrid(); return; }
 
     if (ctrl && e.shiftKey && e.key === 'S') { e.preventDefault(); ctx.editor.csgSubtract(); return; }
@@ -55,11 +58,12 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if (e.key === '5') { ctx.setTool('rotate'); return; }
 
     if (e.key === 'v' && !ctrl) {
+      const selectedPatchItems = getSelectedPatchItems(ctx.editor);
       if (ctx.editor.vertexMode) {
         ctx.handleExitVertexMode();
       } else if (ctx.editor.patchEditMode) {
         ctx.editor.exitPatchEditMode();
-      } else if (ctx.editor.selection.some(s => s.type === 'patch')) {
+      } else if (selectedPatchItems.length > 0) {
         ctx.editor.enterPatchEditMode();
       } else if (ctx.editor.selection.length > 0) {
         ctx.editor.enterVertexMode();
@@ -89,11 +93,11 @@ export function setupKeyboard(ctx: KeyboardContext): void {
       return;
     }
 
-    if ((e.key === '+' || e.key === '=') && ctx.editor.selection.some(s => s.type === 'patch')) {
+    if ((e.key === '+' || e.key === '=') && getSelectedPatchItems(ctx.editor).length > 0) {
       ctx.editor.changeSubdivisions(1);
       return;
     }
-    if ((e.key === '-' || e.key === '_') && ctx.editor.selection.some(s => s.type === 'patch')) {
+    if ((e.key === '-' || e.key === '_') && getSelectedPatchItems(ctx.editor).length > 0) {
       ctx.editor.changeSubdivisions(-1);
       return;
     }

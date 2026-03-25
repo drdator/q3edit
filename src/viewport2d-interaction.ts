@@ -5,6 +5,13 @@ import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from '
 import { pickVertex2D } from './vertex';
 import { rotateBrushLocked } from './texture-lock';
 import {
+  getSelectedBrushItems,
+  getSelectedPatchItems,
+  hasDirectGeometrySelection,
+  isBrushDirectlySelected,
+  isPatchDirectlySelected,
+} from './editor-selection';
+import {
   detectResizeEdge as detectResizeEdge2D,
   getResizeCursor as getResizeCursor2D,
   pickAt as pickAt2D,
@@ -237,40 +244,30 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       state.rotateSnapshotTaken = false;
       state.dragging = true;
       state.hasDragged = false;
-      state.rotateBrushOriginals = ctx.editor.selection
-        .filter(s => s.type === 'brush' || s.type === 'face')
-        .map(s => {
-          const brush = (s as { brush: Brush }).brush;
-          return {
-            brush,
-            points: brush.faces.map(f =>
-              [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
-            ),
-            planes: brush.faces.map(f => ({
-              normal: vec3Copy(f.plane.normal),
-              dist: f.plane.dist,
-            })),
-            polygons: brush.faces.map(f => f.polygon.map(v => vec3Copy(v))),
-            textures: brush.faces.map(f => ({
-              offsetX: f.offsetX,
-              offsetY: f.offsetY,
-              rotation: f.rotation,
-              scaleX: f.scaleX,
-              scaleY: f.scaleY,
-            })),
-          };
-        });
-      state.rotatePatchOriginals = ctx.editor.selection
-        .filter(s => s.type === 'patch')
-        .map(s => {
-          const patch = (s as { patch: Patch }).patch;
-          return {
-            patch,
-            ctrl: patch.ctrl.map(row =>
-              row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
-            ),
-          };
-        });
+      state.rotateBrushOriginals = getSelectedBrushItems(ctx.editor).map(({ brush }) => ({
+        brush,
+        points: brush.faces.map(f =>
+          [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
+        ),
+        planes: brush.faces.map(f => ({
+          normal: vec3Copy(f.plane.normal),
+          dist: f.plane.dist,
+        })),
+        polygons: brush.faces.map(f => f.polygon.map(v => vec3Copy(v))),
+        textures: brush.faces.map(f => ({
+          offsetX: f.offsetX,
+          offsetY: f.offsetY,
+          rotation: f.rotation,
+          scaleX: f.scaleX,
+          scaleY: f.scaleY,
+        })),
+      }));
+      state.rotatePatchOriginals = getSelectedPatchItems(ctx.editor).map(({ patch }) => ({
+        patch,
+        ctrl: patch.ctrl.map(row =>
+          row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
+        ),
+      }));
     }
     return;
   }
@@ -348,30 +345,28 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
     return;
   }
 
+  const selectedBrushItems = getSelectedBrushItems(ctx.editor);
+  const selectedPatchItems = getSelectedPatchItems(ctx.editor);
   const canResize = ctx.editor.activeTool === 'select' && ctx.editor.gizmoMode === 'scale' && ctx.editor.selection.length > 0
-    && ctx.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face');
+    && (selectedBrushItems.length > 0 || selectedPatchItems.length > 0);
   if (canResize) {
     const edge = detectResizeEdge2D(ctx, wx, wy);
     if (edge) {
       const bounds = ctx.editor.selectionBounds()!;
       state.resizing = true;
       state.resizeEdges = edge.edges;
-      state.resizeBrushes = ctx.editor.selection
-        .filter(s => s.type === 'brush')
-        .map(s => ({
-          brush: (s as { brush: Brush }).brush,
-          origPoints: (s as { brush: Brush }).brush.faces.map(f =>
-            [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
-          ),
-        }));
-      state.resizePatches = ctx.editor.selection
-        .filter(s => s.type === 'patch')
-        .map(s => ({
-          patch: (s as { patch: Patch }).patch,
-          origCtrl: (s as { patch: Patch }).patch.ctrl.map(row =>
-            row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
-          ),
-        }));
+      state.resizeBrushes = selectedBrushItems.map(({ brush }) => ({
+        brush,
+        origPoints: brush.faces.map(f =>
+          [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
+        ),
+      }));
+      state.resizePatches = selectedPatchItems.map(({ patch }) => ({
+        patch,
+        origCtrl: patch.ctrl.map(row =>
+          row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
+        ),
+      }));
       state.resizeOrigMins = vec3Copy(bounds.mins);
       state.resizeOrigMaxs = vec3Copy(bounds.maxs);
       state.resizeSnapshotTaken = false;
@@ -385,10 +380,13 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
   const picked = pickAt2D(ctx, wx, wy);
   const additive = e.ctrlKey || e.metaKey || e.shiftKey;
   if (picked) {
+    const directGroupEditing = picked.type !== 'entity' &&
+      picked.entity !== ctx.editor.worldspawn &&
+      hasDirectGeometrySelection(ctx.editor, picked.entity);
     const alreadySelected = picked.type === 'brush'
-      ? ctx.editor.isSelected(picked.brush)
+      ? (directGroupEditing ? isBrushDirectlySelected(ctx.editor, picked.brush) : ctx.editor.isSelected(picked.brush))
       : picked.type === 'patch'
-        ? ctx.editor.isPatchSelected(picked.patch)
+        ? (directGroupEditing ? isPatchDirectlySelected(ctx.editor, picked.patch) : ctx.editor.isPatchSelected(picked.patch))
         : ctx.editor.isEntitySelected(picked.entity);
 
     if (!additive && !alreadySelected) {
@@ -397,9 +395,11 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
 
     if (additive || !alreadySelected) {
       if (picked.type === 'brush') {
-        ctx.editor.selectBrush(picked.entity, picked.brush, additive);
+        if (directGroupEditing) ctx.editor.selectBrushDirect(picked.entity, picked.brush, additive);
+        else ctx.editor.selectBrush(picked.entity, picked.brush, additive);
       } else if (picked.type === 'patch') {
-        ctx.editor.selectPatch(picked.entity, picked.patch, additive);
+        if (directGroupEditing) ctx.editor.selectPatchDirect(picked.entity, picked.patch, additive);
+        else ctx.editor.selectPatch(picked.entity, picked.patch, additive);
       } else {
         ctx.editor.selectEntity(picked.entity, additive);
       }
@@ -433,9 +433,35 @@ export function handleViewport2DDoubleClick(ctx: Viewport2DInteractionContext, e
   if (!picked) return;
 
   if (picked.type === 'brush') {
+    const grouped = picked.entity !== ctx.editor.worldspawn && ctx.editor.hasEntityGeometry(picked.entity);
+    const alreadyDirect = ctx.editor.selection.length === 1 &&
+      ctx.editor.selection[0].type === 'brush' &&
+      ctx.editor.selection[0].brush === picked.brush;
+    if (grouped) {
+      ctx.editor.selectBrushDirect(picked.entity, picked.brush);
+      if (alreadyDirect) {
+        ctx.editor.enterVertexMode();
+      } else {
+        ctx.editor.statusMessage = 'Brush selected inside group';
+      }
+      return;
+    }
     ctx.editor.selectBrush(picked.entity, picked.brush);
     ctx.editor.enterVertexMode();
   } else if (picked.type === 'patch') {
+    const grouped = picked.entity !== ctx.editor.worldspawn && ctx.editor.hasEntityGeometry(picked.entity);
+    const alreadyDirect = ctx.editor.selection.length === 1 &&
+      ctx.editor.selection[0].type === 'patch' &&
+      ctx.editor.selection[0].patch === picked.patch;
+    if (grouped) {
+      ctx.editor.selectPatchDirect(picked.entity, picked.patch);
+      if (alreadyDirect) {
+        ctx.editor.enterPatchEditMode();
+      } else {
+        ctx.editor.statusMessage = 'Patch selected inside group';
+      }
+      return;
+    }
     ctx.editor.selectPatch(picked.entity, picked.patch);
     ctx.editor.enterPatchEditMode();
   }
@@ -454,7 +480,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     } else {
       const canResize = ctx.editor.activeTool === 'select' && ctx.editor.gizmoMode === 'scale' && ctx.editor.selection.length > 0
         && !ctx.editor.vertexMode && !ctx.editor.patchEditMode
-        && ctx.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face');
+        && (getSelectedBrushItems(ctx.editor).length > 0 || getSelectedPatchItems(ctx.editor).length > 0);
       const edge = canResize ? detectResizeEdge2D(ctx, wx, wy) : null;
       ctx.canvas.parentElement!.style.cursor = edge ? getResizeCursor2D(edge.edges) : '';
     }

@@ -7,7 +7,9 @@ import { TextureManager } from './textures';
 import { BrushVertex } from './vertex';
 import {
   addBrushToSelection as addBrushSelectionItem,
+  addBrushDirectToSelection as addBrushDirectSelectionItem,
   addEntityToSelection as addEntitySelectionItem,
+  addPatchDirectToSelection as addPatchDirectSelectionItem,
   addPatchToSelection as addPatchSelectionItem,
   clearSelection as clearEditorSelection,
   getSelectedFace,
@@ -18,9 +20,11 @@ import {
   isPatchSelected as isEditorPatchSelected,
   selectAll as selectAllItems,
   selectBrush as selectEditorBrush,
+  selectBrushDirect as selectEditorBrushDirect,
   selectEntity as selectEditorEntity,
   selectFace as selectEditorFace,
   selectPatch as selectEditorPatch,
+  selectPatchDirect as selectEditorPatchDirect,
 } from './editor-selection';
 import {
   allBrushes as iterateAllBrushes,
@@ -91,6 +95,10 @@ import {
   snapSelectionToGrid as snapEditorSelectionToGrid,
 } from './editor-transforms';
 import {
+  groupSelectionIntoEntity as groupEditorSelectionIntoEntity,
+  moveSelectionToWorldspawn as moveEditorSelectionToWorldspawn,
+} from './editor-grouping';
+import {
   addClipPoint as addEditorClipPoint,
   cancelClip as cancelEditorClip,
   csgHollow as hollowEditorBrushes,
@@ -151,6 +159,7 @@ export class Editor {
   snapToGeometry = false;
   currentTexture = 'common/caulk';
   currentEntityClass = 'info_player_deathmatch';
+  currentBrushEntityClass = 'func_group';
   dirty = true;
   textureManager: TextureManager | null = null;
   history = new History();
@@ -239,6 +248,10 @@ export class Editor {
     selectEditorBrush(this, entity, brush, additive);
   }
 
+  selectBrushDirect(entity: Entity, brush: Brush, additive = false): void {
+    selectEditorBrushDirect(this, entity, brush, additive);
+  }
+
   selectEntity(entity: Entity, additive = false): void {
     selectEditorEntity(this, entity, additive);
   }
@@ -267,6 +280,10 @@ export class Editor {
     addBrushSelectionItem(this, entity, brush);
   }
 
+  addBrushDirectToSelection(entity: Entity, brush: Brush): void {
+    addBrushDirectSelectionItem(this, entity, brush);
+  }
+
   addEntityToSelection(entity: Entity): void {
     addEntitySelectionItem(this, entity);
   }
@@ -275,12 +292,20 @@ export class Editor {
     selectEditorPatch(this, entity, patch, additive);
   }
 
+  selectPatchDirect(entity: Entity, patch: Patch, additive = false): void {
+    selectEditorPatchDirect(this, entity, patch, additive);
+  }
+
   isPatchSelected(patch: Patch, entity?: Entity): boolean {
     return isEditorPatchSelected(this, patch, entity);
   }
 
   addPatchToSelection(entity: Entity, patch: Patch): void {
     addPatchSelectionItem(this, entity, patch);
+  }
+
+  addPatchDirectToSelection(entity: Entity, patch: Patch): void {
+    addPatchDirectSelectionItem(this, entity, patch);
   }
 
   isPatchVisible(patch: Patch, entity?: Entity): boolean {
@@ -438,6 +463,14 @@ export class Editor {
 
   addEntity(classname: string, origin: Vec3, ctrlKey = false): Entity {
     return addEditorEntity(this, classname, origin, ctrlKey);
+  }
+
+  groupSelectionIntoEntity(classname = this.currentBrushEntityClass): void {
+    groupEditorSelectionIntoEntity(this, classname);
+  }
+
+  moveSelectionToWorldspawn(): void {
+    moveEditorSelectionToWorldspawn(this);
   }
 
   // ── History ──

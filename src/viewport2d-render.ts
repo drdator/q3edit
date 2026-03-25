@@ -1,6 +1,7 @@
 import { Editor } from './editor';
 import { Brush } from './brush';
 import { Entity, entityColor, entityOrigin, lightColorCSS } from './entity';
+import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { Patch } from './patch';
 
 interface GeoSnapLine {
@@ -62,9 +63,12 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
     drawEntity(ctx, entity, ctx.editor.isEntitySelected(entity));
   }
 
+  const selectedBrushItems = getSelectedBrushItems(ctx.editor);
+  const selectedPatchItems = getSelectedPatchItems(ctx.editor);
+
   if (ctx.editor.activeTool === 'select' && ctx.editor.selection.length > 0 &&
       !ctx.editor.vertexMode && !ctx.editor.patchEditMode &&
-      ctx.editor.selection.some(s => s.type === 'brush' || s.type === 'patch' || s.type === 'face')) {
+      (selectedBrushItems.length > 0 || selectedPatchItems.length > 0)) {
     drawSelectionBox(ctx);
   }
 

@@ -26,7 +26,7 @@ import {
   getViewport3DRight,
   updateViewport3DCamera,
 } from './viewport3d-navigation';
-import { handleViewport3DPick } from './viewport3d-selection';
+import { handleViewport3DDoublePick, handleViewport3DPick } from './viewport3d-selection';
 import {
   createViewport3DFullscreenUI,
   enterViewport3DFullscreen,
@@ -417,6 +417,17 @@ export class Viewport3D {
     }, e);
   }
 
+  private handleDoublePick(e: MouseEvent): void {
+    handleViewport3DDoublePick({
+      editor: this.editor,
+      dragStart: this.dragStart,
+      getRay: (screenX, screenY) => this.getRay(screenX, screenY),
+      pickBrushAt: (screenX, screenY) => this.pickBrushAt(screenX, screenY),
+      pickPatchAt: (screenX, screenY) => this.pickPatchAt(screenX, screenY),
+      pickEntityAt: (screenX, screenY) => this.pickEntityAt(screenX, screenY),
+    }, e);
+  }
+
   // ── Input ──
 
   private setupEvents(): void {
@@ -505,14 +516,16 @@ export class Viewport3D {
         document.exitPointerLock();
         // In regular mode, left-click non-drag selects geometry
         if (!isEditMode && !this.didDrag && e.button === 0) {
-          this.handlePick(e);
+          if (e.detail >= 2) this.handleDoublePick(e);
+          else this.handlePick(e);
         }
         return;
       }
 
       // Edit mode: left-click selects geometry directly (no pointer lock involved)
       if (isEditMode && e.button === 0 && !this.didDrag) {
-        this.handlePick(e);
+        if (e.detail >= 2) this.handleDoublePick(e);
+        else this.handlePick(e);
       }
     });
 

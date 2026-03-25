@@ -1,6 +1,6 @@
 import { Editor } from './editor';
 import { Brush, BrushFace } from './brush';
-import { Entity } from './entity';
+import { ENTITY_CLASS_SUGGESTIONS, Entity } from './entity';
 
 /** Convert Q3 "r g b" (0-1 floats) to "#rrggbb" hex */
 function q3ColorToHex(value: string): string {
@@ -33,11 +33,44 @@ export class PropertiesPanel {
       this.buildMultiFacePropsUI(propsDiv, faceItems.map(f => f.face));
     } else if (sel.length === 1 && sel[0].type === 'entity') {
       const entity = sel[0].entity;
+      const isWorldspawn = this.editor.entities[0] === entity;
 
       const title = document.createElement('label');
       title.textContent = `Properties: ${entity.classname}`;
       title.style.fontWeight = 'bold';
       propsDiv.appendChild(title);
+
+      const classLabel = document.createElement('label');
+      classLabel.textContent = 'Classname';
+      classLabel.style.marginTop = '4px';
+      classLabel.style.fontSize = '11px';
+      propsDiv.appendChild(classLabel);
+
+      if (isWorldspawn) {
+        const classValue = document.createElement('input');
+        classValue.type = 'text';
+        classValue.value = entity.classname;
+        classValue.disabled = true;
+        propsDiv.appendChild(classValue);
+      } else {
+        const classInput = document.createElement('input');
+        classInput.type = 'text';
+        classInput.value = entity.classname;
+        classInput.spellcheck = false;
+        classInput.autocomplete = 'off';
+        classInput.setAttribute('list', this.ensureEntityClassDatalist());
+        classInput.addEventListener('change', () => {
+          const nextClassname = classInput.value.trim();
+          if (!nextClassname) {
+            classInput.value = entity.classname;
+            return;
+          }
+          entity.classname = nextClassname;
+          entity.properties['classname'] = nextClassname;
+          this.editor.dirty = true;
+        });
+        propsDiv.appendChild(classInput);
+      }
 
       for (const [key, value] of Object.entries(entity.properties)) {
         if (key === 'classname') continue;
@@ -131,6 +164,22 @@ export class PropertiesPanel {
     } else {
       propsDiv.innerHTML = '<label style="color: #666">No selection</label>';
     }
+  }
+
+  private ensureEntityClassDatalist(): string {
+    const listId = 'entity-class-suggestions';
+    let list = document.getElementById(listId) as HTMLDataListElement | null;
+    if (!list) {
+      list = document.createElement('datalist');
+      list.id = listId;
+      for (const classname of ENTITY_CLASS_SUGGESTIONS) {
+        const option = document.createElement('option');
+        option.value = classname;
+        list.appendChild(option);
+      }
+      document.body.appendChild(list);
+    }
+    return listId;
   }
 
   private buildBrushPropsUI(container: HTMLElement, brushes: Brush[]): void {
