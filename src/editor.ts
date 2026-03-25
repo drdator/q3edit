@@ -201,6 +201,7 @@ export class Editor {
   // Selection filter — constrains what types can be picked in viewports
   selectionFilter: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
   invisibleMode: InvisibleMode = 'show';
+  textureLock = true;
 
   // 3D camera state (written by Viewport3D, read by Viewport2D)
   camera3d: { position: Vec3; yaw: number; pitch: number } = {
@@ -308,6 +309,12 @@ export class Editor {
 
   showHidden(): void {
     showEditorHidden(this);
+  }
+
+  toggleTextureLock(): void {
+    this.textureLock = !this.textureLock;
+    this.dirty = true;
+    this.statusMessage = this.textureLock ? 'Texture lock: ON' : 'Texture lock: OFF';
   }
 
   makeDetail(): void {

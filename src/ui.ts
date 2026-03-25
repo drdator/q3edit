@@ -86,6 +86,7 @@ export class UI {
         { label: 'Flip Z', shortcut: 'Shift+Z', action: () => this.editor.flipSelection(2) },
       ],
       'View': [
+        { label: 'Texture Lock', shortcut: 'T', action: () => this.editor.toggleTextureLock() },
         { label: 'Cycle Invisible Mode', shortcut: 'I', action: () => this.cycleInvisibleMode() },
         { label: 'Render Selected Only', action: () => {
           this.editor.renderSelectedOnly = !this.editor.renderSelectedOnly;
@@ -268,6 +269,14 @@ export class UI {
       icon: icon('polygon'),
       title: 'Geometry snap (G)',
       onClick: () => this.toggleGeoSnap(),
+    });
+
+    addBtn({
+      id: 'texlock-toggle',
+      icon: `<span class="tool-label">TL</span>`,
+      title: 'Texture lock (T)',
+      active: this.editor.textureLock,
+      onClick: () => this.editor.toggleTextureLock(),
     });
 
     bar.appendChild(this.createSeparator());
@@ -643,6 +652,7 @@ export class UI {
 
       // Toggle invisible geometry
       if (e.key === 'i' && !ctrl) { this.cycleInvisibleMode(); return; }
+      if (e.key === 't' && !ctrl) { this.editor.toggleTextureLock(); return; }
 
       // Hide/show hidden items
       if (e.key === 'h' && !ctrl) { this.editor.hideSelected(); return; }
@@ -815,6 +825,7 @@ export class UI {
     snapBtn.classList.toggle('active', e.gridSnapMode !== 'off');
     snapBtn.classList.toggle('snap-abs', e.gridSnapMode === 'abs');
     document.getElementById('geosnap-toggle')!.classList.toggle('active', e.snapToGeometry);
+    document.getElementById('texlock-toggle')!.classList.toggle('active', e.textureLock);
     const invisBtn = document.getElementById('invis-toggle')!;
     const invisIcons: Record<InvisibleMode, string> = {
       show: 'ph ph-eye',

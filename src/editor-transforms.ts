@@ -1,9 +1,20 @@
 import { cloneBrush, createBoxBrush, mirrorBrush, rotateBrush, translateBrush, type Brush } from './brush';
-import { cloneEntity, createEntity, entityDefaults, entityOrigin, mirrorEntity, rotateEntity, translateEntity, type Entity } from './entity';
-import { vec3Snap, type Vec3 } from './math';
+import {
+  cloneEntity,
+  createEntity,
+  entityDefaults,
+  entityOrigin,
+  mirrorEntity,
+  rotateEntity,
+  setEntityOrigin,
+  translateEntity,
+  type Entity
+} from './entity';
+import { vec3Add, vec3MirrorAxis, vec3RotateAxis, vec3Snap, type Vec3 } from './math';
 import { clonePatch, mirrorPatch, rotatePatch, translatePatch } from './patch';
 import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
+import { mirrorBrushLocked, rotateBrushLocked, translateBrushLocked } from './texture-lock';
 
 function selectedEntitySet(editor: Editor): Set<Entity> {
   return new Set(
@@ -11,6 +22,84 @@ function selectedEntitySet(editor: Editor): Set<Entity> {
       .filter((item): item is Extract<SelectionItem, { type: 'entity' }> => item.type === 'entity')
       .map(item => item.entity)
   );
+}
+
+function translateEditorBrush(editor: Editor, brush: Brush, delta: Vec3): void {
+  if (editor.textureLock) {
+    translateBrushLocked(brush, delta);
+    return;
+  }
+  translateBrush(brush, delta);
+}
+
+function rotateEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: number, angle: number): void {
+  if (editor.textureLock) {
+    rotateBrushLocked(brush, center, axis, angle);
+    return;
+  }
+  rotateBrush(brush, center, axis, angle);
+}
+
+function mirrorEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: number): void {
+  if (editor.textureLock) {
+    mirrorBrushLocked(brush, center, axis);
+    return;
+  }
+  mirrorBrush(brush, center, axis);
+}
+
+function translateEditorEntity(editor: Editor, entity: Entity, delta: Vec3): void {
+  if (!editor.textureLock) {
+    translateEntity(entity, delta);
+    return;
+  }
+
+  const origin = entityOrigin(entity);
+  if (origin) {
+    setEntityOrigin(entity, vec3Add(origin, delta));
+  }
+  for (const brush of entity.brushes) {
+    translateEditorBrush(editor, brush, delta);
+  }
+  for (const patch of entity.patches) {
+    translatePatch(patch, delta);
+  }
+}
+
+function rotateEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number, angle: number): void {
+  if (!editor.textureLock) {
+    rotateEntity(entity, center, axis, angle);
+    return;
+  }
+
+  const origin = entityOrigin(entity);
+  if (origin) {
+    setEntityOrigin(entity, vec3RotateAxis(origin, center, axis, angle));
+  }
+  for (const brush of entity.brushes) {
+    rotateEditorBrush(editor, brush, center, axis, angle);
+  }
+  for (const patch of entity.patches) {
+    rotatePatch(patch, center, axis, angle);
+  }
+}
+
+function mirrorEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number): void {
+  if (!editor.textureLock) {
+    mirrorEntity(entity, center, axis);
+    return;
+  }
+
+  const origin = entityOrigin(entity);
+  if (origin) {
+    setEntityOrigin(entity, vec3MirrorAxis(origin, center, axis));
+  }
+  for (const brush of entity.brushes) {
+    mirrorEditorBrush(editor, brush, center, axis);
+  }
+  for (const patch of entity.patches) {
+    mirrorPatch(patch, center, axis);
+  }
 }
 
 export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, ctrlKey = false): Brush {
@@ -73,11 +162,11 @@ export function moveSelection(editor: Editor, delta: Vec3): void {
   for (const item of editor.selection) {
     if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
-      translateBrush(item.brush, delta);
+      translateEditorBrush(editor, item.brush, delta);
     } else if (item.type === 'patch') {
       translatePatch(item.patch, delta);
     } else {
-      translateEntity(item.entity, delta);
+      translateEditorEntity(editor, item.entity, delta);
     }
   }
   editor.dirty = true;
@@ -102,11 +191,11 @@ export function rotateSelection(editor: Editor, angleDeg: number): void {
   for (const item of editor.selection) {
     if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
-      rotateBrush(item.brush, center, axis, angle);
+      rotateEditorBrush(editor, item.brush, center, axis, angle);
     } else if (item.type === 'patch') {
       rotatePatch(item.patch, center, axis, angle);
     } else {
-      rotateEntity(item.entity, center, axis, angle);
+      rotateEditorEntity(editor, item.entity, center, axis, angle);
     }
   }
 
@@ -127,11 +216,11 @@ export function flipSelection(editor: Editor, axis: number): void {
   for (const item of editor.selection) {
     if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
-      mirrorBrush(item.brush, center, axis);
+      mirrorEditorBrush(editor, item.brush, center, axis);
     } else if (item.type === 'patch') {
       mirrorPatch(item.patch, center, axis);
     } else {
-      mirrorEntity(item.entity, center, axis);
+      mirrorEditorEntity(editor, item.entity, center, axis);
     }
   }
 
@@ -152,7 +241,7 @@ export function duplicateSelection(editor: Editor): void {
     if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
       const newBrush = cloneBrush(item.brush);
-      translateBrush(newBrush, offset);
+      translateEditorBrush(editor, newBrush, offset);
       item.entity.brushes.push(newBrush);
       newSelection.push({ type: 'brush', entity: item.entity, brush: newBrush });
     } else if (item.type === 'patch') {
@@ -162,7 +251,7 @@ export function duplicateSelection(editor: Editor): void {
       newSelection.push({ type: 'patch', entity: item.entity, patch: newPatch });
     } else {
       const newEntity = cloneEntity(item.entity);
-      translateEntity(newEntity, offset);
+      translateEditorEntity(editor, newEntity, offset);
       editor.entities.push(newEntity);
       newSelection.push({ type: 'entity', entity: newEntity });
     }
@@ -187,7 +276,7 @@ export function snapSelectionToGrid(editor: Editor): void {
         snapped[2] - item.brush.mins[2],
       ];
       if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
-        translateBrush(item.brush, delta);
+        translateEditorBrush(editor, item.brush, delta);
       }
     } else if (item.type === 'patch') {
       const snapped = vec3Snap(item.patch.mins, editor.gridSize);
@@ -209,7 +298,7 @@ export function snapSelectionToGrid(editor: Editor): void {
           snapped[2] - origin[2],
         ];
         if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
-          translateEntity(item.entity, delta);
+          translateEditorEntity(editor, item.entity, delta);
         }
         continue;
       }
@@ -222,7 +311,7 @@ export function snapSelectionToGrid(editor: Editor): void {
         snapped[2] - bounds.mins[2],
       ];
       if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
-        translateEntity(item.entity, delta);
+        translateEditorEntity(editor, item.entity, delta);
       }
     }
   }

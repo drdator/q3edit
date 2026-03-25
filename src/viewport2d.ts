@@ -4,6 +4,7 @@ import { Brush, brushContainsPoint2D, scaleBrushFaces, rotateBrush } from './bru
 import { Entity, entityOrigin, entityColor, lightColorCSS } from './entity';
 import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from './patch';
 import { pickVertex2D } from './vertex';
+import { rotateBrushLocked } from './texture-lock';
 
 export type ViewAxis = 'xy' | 'xz' | 'yz';
 
@@ -65,7 +66,13 @@ export class Viewport2D {
   private rotating = false;
   private rotateStartAngle = 0;
   private rotateAppliedAngle = 0;
-  private rotateBrushOriginals: { brush: Brush; points: [Vec3, Vec3, Vec3][]; polygons: Vec3[][] }[] = [];
+  private rotateBrushOriginals: {
+    brush: Brush;
+    points: [Vec3, Vec3, Vec3][];
+    planes: { normal: Vec3; dist: number }[];
+    polygons: Vec3[][];
+    textures: { offsetX: number; offsetY: number; rotation: number; scaleX: number; scaleY: number }[];
+  }[] = [];
   private rotatePatchOriginals: { patch: Patch; ctrl: { xyz: Vec3; uv: [number, number] }[][] }[] = [];
   private rotateSnapshotTaken = false;
   private anchorDragging = false;
@@ -891,7 +898,18 @@ export class Viewport2D {
                 points: brush.faces.map(f =>
                   [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
                 ),
+                planes: brush.faces.map(f => ({
+                  normal: vec3Copy(f.plane.normal),
+                  dist: f.plane.dist,
+                })),
                 polygons: brush.faces.map(f => f.polygon.map(v => vec3Copy(v))),
+                textures: brush.faces.map(f => ({
+                  offsetX: f.offsetX,
+                  offsetY: f.offsetY,
+                  rotation: f.rotation,
+                  scaleX: f.scaleX,
+                  scaleY: f.scaleY,
+                })),
               };
             });
           this.rotatePatchOriginals = this.editor.selection
@@ -1249,14 +1267,24 @@ export class Viewport2D {
           if (selCenter) center3d[this.axisDepth] = selCenter[this.axisDepth];
 
           // Restore originals and apply total rotation
-          for (const { brush, points, polygons } of this.rotateBrushOriginals) {
+          for (const { brush, points, planes, polygons, textures } of this.rotateBrushOriginals) {
             for (let fi = 0; fi < brush.faces.length; fi++) {
               brush.faces[fi].points[0] = vec3Copy(points[fi][0]);
               brush.faces[fi].points[1] = vec3Copy(points[fi][1]);
               brush.faces[fi].points[2] = vec3Copy(points[fi][2]);
+              brush.faces[fi].plane = { normal: vec3Copy(planes[fi].normal), dist: planes[fi].dist };
               brush.faces[fi].polygon = polygons[fi].map(v => vec3Copy(v));
+              brush.faces[fi].offsetX = textures[fi].offsetX;
+              brush.faces[fi].offsetY = textures[fi].offsetY;
+              brush.faces[fi].rotation = textures[fi].rotation;
+              brush.faces[fi].scaleX = textures[fi].scaleX;
+              brush.faces[fi].scaleY = textures[fi].scaleY;
             }
-            rotateBrush(brush, center3d, axis, totalAngle);
+            if (this.editor.textureLock) {
+              rotateBrushLocked(brush, center3d, axis, totalAngle);
+            } else {
+              rotateBrush(brush, center3d, axis, totalAngle);
+            }
           }
           for (const { patch, ctrl } of this.rotatePatchOriginals) {
             for (let r = 0; r < patch.height; r++) {
