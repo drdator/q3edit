@@ -5,6 +5,12 @@ import { Entity, entityOrigin, entityColor, lightColorCSS } from './entity';
 import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from './patch';
 import { pickVertex2D } from './vertex';
 import { rotateBrushLocked } from './texture-lock';
+import {
+  detectResizeEdge as detectResizeEdge2D,
+  getResizeCursor as getResizeCursor2D,
+  pickAt as pickAt2D,
+  pickEntityAt as pickEntityAt2D,
+} from './viewport2d-picking';
 
 export type ViewAxis = 'xy' | 'xz' | 'yz';
 
@@ -1567,163 +1573,18 @@ export class Viewport2D {
   private detectResizeEdge(wx: number, wy: number): {
     edges: { minH: boolean; maxH: boolean; minV: boolean; maxV: boolean };
   } | null {
-    const bounds = this.editor.selectionBounds();
-    if (!bounds) return null;
-    const threshold = 6 / this.zoom;
-
-    const inH = wx >= bounds.mins[this.axisH] - threshold && wx <= bounds.maxs[this.axisH] + threshold;
-    const inV = wy >= bounds.mins[this.axisV] - threshold && wy <= bounds.maxs[this.axisV] + threshold;
-    if (!inH || !inV) return null;
-
-    const nearMinH = Math.abs(wx - bounds.mins[this.axisH]) < threshold;
-    const nearMaxH = Math.abs(wx - bounds.maxs[this.axisH]) < threshold;
-    const nearMinV = Math.abs(wy - bounds.mins[this.axisV]) < threshold;
-    const nearMaxV = Math.abs(wy - bounds.maxs[this.axisV]) < threshold;
-
-    if (nearMinH || nearMaxH || nearMinV || nearMaxV) {
-      return { edges: { minH: nearMinH, maxH: nearMaxH, minV: nearMinV, maxV: nearMaxV } };
-    }
-    return null;
+    return detectResizeEdge2D(this, wx, wy);
   }
 
   private getResizeCursor(edges: { minH: boolean; maxH: boolean; minV: boolean; maxV: boolean }): string {
-    const h = edges.minH || edges.maxH;
-    const v = edges.minV || edges.maxV;
-    if (h && v) {
-      // Corner: NW/SE diagonal vs NE/SW diagonal
-      if ((edges.minH && edges.maxV) || (edges.maxH && edges.minV)) return 'nwse-resize';
-      return 'nesw-resize';
-    }
-    if (h) return 'ew-resize';
-    if (v) return 'ns-resize';
-    return '';
-  }
-
-  // Point-in-polygon test (ray casting) projected onto the 2D viewport axes
-  private pointInBrush2D(brush: Brush, wx: number, wy: number): boolean {
-    const h = this.axisH;
-    const v = this.axisV;
-    // Quick AABB reject
-    if (wx < brush.mins[h] || wx > brush.maxs[h] ||
-        wy < brush.mins[v] || wy > brush.maxs[v]) return false;
-    // Test each face polygon — if point is inside any face's 2D projection, it's a hit
-    for (const face of brush.faces) {
-      const poly = face.polygon;
-      if (poly.length < 3) continue;
-      let inside = false;
-      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-        const yi = poly[i][v], yj = poly[j][v];
-        const xi = poly[i][h], xj = poly[j][h];
-        if ((yi > wy) !== (yj > wy) &&
-            wx < (xj - xi) * (wy - yi) / (yj - yi) + xi) {
-          inside = !inside;
-        }
-      }
-      if (inside) return true;
-    }
-    return false;
+    return getResizeCursor2D(edges);
   }
 
   private pickEntityAt(wx: number, wy: number, includeBrushEntities: boolean): { type: 'entity'; entity: Entity } | null {
-    let bestEntity: Entity | null = null;
-    let bestArea = Infinity;
-    let bestDepth = -Infinity;
-
-    for (const entity of this.editor.nonWorldspawnEntities()) {
-      if (!this.editor.isEntityVisible(entity)) continue;
-      if (!includeBrushEntities && !this.editor.isPointEntity(entity)) continue;
-
-      const origin = this.editor.entityDisplayOrigin(entity);
-      if (origin) {
-        const dx = Math.abs(wx - origin[this.axisH]);
-        const dy = Math.abs(wy - origin[this.axisV]);
-        if (dx < 12 / this.zoom && dy < 12 / this.zoom) {
-          return { type: 'entity', entity };
-        }
-      }
-
-      if (!includeBrushEntities || this.editor.isPointEntity(entity)) continue;
-
-      const bounds = this.editor.entityBounds(entity);
-      if (!bounds) continue;
-      if (wx < bounds.mins[this.axisH] || wx > bounds.maxs[this.axisH] ||
-          wy < bounds.mins[this.axisV] || wy > bounds.maxs[this.axisV]) {
-        continue;
-      }
-
-      const area = (bounds.maxs[this.axisH] - bounds.mins[this.axisH]) *
-                   (bounds.maxs[this.axisV] - bounds.mins[this.axisV]);
-      const depth = bounds.maxs[this.axisDepth];
-      if (area < bestArea || (area === bestArea && depth > bestDepth)) {
-        bestArea = area;
-        bestDepth = depth;
-        bestEntity = entity;
-      }
-    }
-
-    return bestEntity ? { type: 'entity', entity: bestEntity } : null;
+    return pickEntityAt2D(this, wx, wy, includeBrushEntities);
   }
 
   private pickAt(wx: number, wy: number): { type: 'brush'; entity: Entity; brush: Brush } | { type: 'entity'; entity: Entity } | { type: 'patch'; entity: Entity; patch: Patch } | null {
-    const filter = this.editor.selectionFilter;
-
-    if (filter === 'entities') {
-      return this.pickEntityAt(wx, wy, true);
-    }
-
-    if (filter === 'all') {
-      const pointEntityHit = this.pickEntityAt(wx, wy, false);
-      if (pointEntityHit) return pointEntityHit;
-    }
-
-    // Check brushes and patches (pick smallest containing AABB)
-    let bestBrush: { entity: Entity; brush: Brush } | null = null;
-    let bestPatch: { entity: Entity; patch: Patch } | null = null;
-    let bestArea = Infinity;
-    let bestDepth = -Infinity;
-
-    if (filter === 'all' || filter === 'brushes') {
-      for (const { entity, brush } of this.editor.allBrushes()) {
-        if (!this.editor.isBrushVisible(brush, entity)) continue;
-        if (this.pointInBrush2D(brush, wx, wy)) {
-          const area = (brush.maxs[this.axisH] - brush.mins[this.axisH]) *
-                       (brush.maxs[this.axisV] - brush.mins[this.axisV]);
-          const depth = brush.maxs[this.axisDepth];
-          if (area < bestArea || (area === bestArea && depth > bestDepth)) {
-            bestArea = area;
-            bestDepth = depth;
-            bestBrush = { entity, brush };
-            bestPatch = null;
-          }
-        }
-      }
-    }
-
-    if (filter === 'all' || filter === 'patches') {
-      for (const { entity, patch } of this.editor.allPatches()) {
-        if (!this.editor.isPatchVisible(patch, entity)) continue;
-        const h = this.axisH, v = this.axisV;
-        if (wx >= patch.mins[h] && wx <= patch.maxs[h] &&
-            wy >= patch.mins[v] && wy <= patch.maxs[v]) {
-          const area = (patch.maxs[h] - patch.mins[h]) * (patch.maxs[v] - patch.mins[v]);
-          const depth = patch.maxs[this.axisDepth];
-          if (area < bestArea || (area === bestArea && depth > bestDepth)) {
-            bestArea = area;
-            bestDepth = depth;
-            bestPatch = { entity, patch };
-            bestBrush = null;
-          }
-        }
-      }
-    }
-
-    if (bestBrush) {
-      return { type: 'brush', entity: bestBrush.entity, brush: bestBrush.brush };
-    }
-    if (bestPatch) {
-      return { type: 'patch', entity: bestPatch.entity, patch: bestPatch.patch };
-    }
-
-    return null;
+    return pickAt2D(this, wx, wy);
   }
 }
