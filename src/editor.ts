@@ -112,6 +112,12 @@ import {
   reconcileHiddenState as reconcileEditorHiddenState,
   showHidden as showEditorHidden,
 } from './editor-visibility';
+import {
+  brushDetailState as getBrushDetailState,
+  makeDetail as makeEditorDetail,
+  makeStructural as makeEditorStructural,
+  patchDetailState as getPatchDetailState,
+} from './editor-contents';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -302,6 +308,14 @@ export class Editor {
 
   showHidden(): void {
     showEditorHidden(this);
+  }
+
+  makeDetail(): void {
+    makeEditorDetail(this);
+  }
+
+  makeStructural(): void {
+    makeEditorStructural(this);
   }
 
   selectFace(entity: Entity, brush: Brush, face: BrushFace, additive = false): void {
@@ -501,6 +515,14 @@ export class Editor {
 
   entityDisplayOrigin(entity: Entity): Vec3 | null {
     return getEntityDisplayOrigin(entity);
+  }
+
+  brushDetailState(brush: Brush): boolean | null {
+    return getBrushDetailState(brush);
+  }
+
+  patchDetailState(patch: Patch): boolean {
+    return getPatchDetailState(patch);
   }
 
   // ── Select all ──

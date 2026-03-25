@@ -166,6 +166,35 @@ export class PropertiesPanel {
       container.appendChild(info);
     }
 
+    const detailStates = brushes.map(brush => this.editor.brushDetailState(brush));
+    const detailState = detailStates.every(state => state === true)
+      ? true
+      : detailStates.every(state => state === false)
+        ? false
+        : null;
+
+    const classInfo = document.createElement('label');
+    classInfo.textContent = `Classification: ${detailState === null ? 'Mixed' : detailState ? 'Detail' : 'Structural'}`;
+    classInfo.style.marginBottom = '8px';
+    container.appendChild(classInfo);
+
+    const classRow = document.createElement('div');
+    classRow.className = 'kv-row';
+
+    const detailBtn = document.createElement('div');
+    detailBtn.className = 'btn';
+    detailBtn.textContent = 'Make Detail';
+    detailBtn.addEventListener('mousedown', () => this.editor.makeDetail());
+
+    const structuralBtn = document.createElement('div');
+    structuralBtn.className = 'btn';
+    structuralBtn.textContent = 'Make Structural';
+    structuralBtn.addEventListener('mousedown', () => this.editor.makeStructural());
+
+    classRow.appendChild(detailBtn);
+    classRow.appendChild(structuralBtn);
+    container.appendChild(classRow);
+
     const allFaces = brushes.flatMap(b => b.faces);
     this.buildMultiFaceFields(container, allFaces);
   }

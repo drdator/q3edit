@@ -1,0 +1,2 @@
+export const CONTENTS_DETAIL = 0x08000000;
+export const CONTENTS_STRUCTURAL = 0x10000000;
