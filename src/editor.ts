@@ -92,6 +92,11 @@ import {
   cycleClipMode as cycleEditorClipMode,
   executeClip as executeEditorClip,
 } from './editor-clip-csg';
+import {
+  INVISIBLE_TEXTURES,
+  isBrushVisible as isEditorBrushVisible,
+  isPatchVisible as isEditorPatchVisible,
+} from './editor-visibility';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -182,11 +187,7 @@ export class Editor {
   fullscreen3d = false;
 
   /** Textures considered invisible (tool brushes) */
-  static readonly INVISIBLE_TEXTURES = new Set([
-    'common/clip', 'common/weapclip', 'common/trigger',
-    'common/hint', 'common/skip', 'common/nodraw',
-    'common/areaportal', 'common/donotenter', 'common/caulk',
-  ]);
+  static readonly INVISIBLE_TEXTURES = INVISIBLE_TEXTURES;
 
   // Status message
   statusMessage = 'Ready';
@@ -218,13 +219,7 @@ export class Editor {
   }
 
   isBrushVisible(brush: Brush): boolean {
-    // In 'hide' mode, completely hide brushes where ALL faces are invisible
-    if (this.invisibleMode === 'hide' && brush.faces.length > 0 &&
-        brush.faces.every(f => Editor.INVISIBLE_TEXTURES.has(f.texture.toLowerCase()))) {
-      return false;
-    }
-    if (!this.renderSelectedOnly || this.selection.length === 0) return true;
-    return this.selection.some(s => (s.type === 'brush' || s.type === 'face') && s.brush === brush);
+    return isEditorBrushVisible(this, brush);
   }
 
   isSelected(brush: Brush): boolean {
@@ -256,8 +251,7 @@ export class Editor {
   }
 
   isPatchVisible(patch: Patch): boolean {
-    if (!this.renderSelectedOnly || this.selection.length === 0) return true;
-    return this.selection.some(s => s.type === 'patch' && s.patch === patch);
+    return isEditorPatchVisible(this, patch);
   }
 
   selectFace(entity: Entity, brush: Brush, face: BrushFace, additive = false): void {
