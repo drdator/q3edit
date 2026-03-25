@@ -15,6 +15,10 @@ import {
   createProgram, createLineBuffer, createSolidBuffer,
 } from './gl-utils';
 import { Gizmo } from './gizmo';
+import {
+  WalkState, TraceResult, TraceFn, createWalkState, getEyePos, pmove,
+  VIEWHEIGHT, CROUCH_VIEWHEIGHT, PLAYER_MINS, PLAYER_MAXS, PHYSICS_STEP,
+} from './q3-movement';
 
 // ── Texture draw group ──
 
@@ -104,14 +108,14 @@ export class Viewport3D {
   private fullscreenOverlay!: HTMLDivElement;
   private hudModeEl!: HTMLSpanElement;
 
-  // Walk physics
-  private velocityZ = 0;          // vertical velocity (units/sec)
-  private onGround = false;
-  private static readonly GRAVITY = -800;       // units/sec²
-  private static readonly JUMP_SPEED = 270;     // units/sec
-  private static readonly EYE_HEIGHT = 50;      // eye above feet
-  private static readonly PLAYER_HALF_W = 14;   // half-width of player AABB
-  private static readonly STEP_HEIGHT = 18;     // max step-up height
+  // Walk physics (Q3 movement)
+  private walkState: WalkState | null = null;
+  private physicsAccum = 0;
+  private walkStepSmooth = 0;     // decaying step offset for view smoothing
+  private walkViewH = VIEWHEIGHT; // smooth view height (for crouch transitions)
+  private walkLandChange = 0;     // landing deflect amount
+  private walkLandTime = 0;       // when landing started (ms, from performance.now)
+  private walkBobCycle = 0;       // head bob phase (radians)
 
   constructor(canvas: HTMLCanvasElement, editor: Editor) {
     this.canvas = canvas;
@@ -150,11 +154,15 @@ export class Viewport3D {
       <div class="fullscreen-hud">
         <span class="hud-mode">WALK</span>
         <span class="hud-sep"></span>
-        <span>WASD move</span>
+        <span>WASD</span>
         <span class="hud-sep"></span>
-        <span>V cycle mode</span>
+        <span>Space jump</span>
         <span class="hud-sep"></span>
-        <span>ESC exit</span>
+        <span>C crouch</span>
+        <span class="hud-sep"></span>
+        <span>V mode</span>
+        <span class="hud-sep"></span>
+        <span>Esc exit</span>
       </div>
     `;
     this.hudModeEl = this.fullscreenOverlay.querySelector('.hud-mode')!;
@@ -170,14 +178,23 @@ export class Viewport3D {
     this.fullscreenBtn.style.display = 'none';
     this.canvas.requestPointerLock();
     this.keys.clear();
+    this.physicsAccum = 0;
     this.editor.dirty = true;
   }
 
   private setFullscreenMode(mode: 'walk' | 'fly' | 'edit'): void {
     this.fullscreenMode = mode;
     this.hudModeEl.textContent = mode.toUpperCase();
-    this.velocityZ = 0;
-    this.onGround = false;
+
+    if (mode === 'walk') {
+      // Create Q3 walk state from current eye position
+      this.walkState = createWalkState(this.position);
+      this.walkStepSmooth = 0;
+      this.walkViewH = VIEWHEIGHT;
+      this.physicsAccum = 0;
+    } else {
+      this.walkState = null;
+    }
 
     if (mode === 'edit') {
       // Release pointer lock so the cursor is visible for clicking
@@ -804,177 +821,88 @@ export class Viewport3D {
     ];
   }
 
-  // ── Walk-mode collision ──
+  // ── AABB trace against raw brush geometry (Q3-style Minkowski expansion) ──
 
-  /**
-   * Trace an AABB from `start` along `delta` against all brush geometry.
-   * Returns the clipped end position using slide-move (up to 3 clip planes).
-   * The AABB is defined by the player half-width and height below the eye.
-   *
-   * `start` and return value are the eye position (top-center of AABB).
-   */
-  private clipMove(start: Vec3, delta: Vec3): Vec3 {
-    const hw = Viewport3D.PLAYER_HALF_W;
-    const eyeH = Viewport3D.EYE_HEIGHT;
+  private tracePlayerBox(start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3): TraceResult {
+    // AABB center offset and half-extents for Minkowski expansion
+    const cx = (mins[0] + maxs[0]) * 0.5;
+    const cy = (mins[1] + maxs[1]) * 0.5;
+    const cz = (mins[2] + maxs[2]) * 0.5;
+    const hx = (maxs[0] - mins[0]) * 0.5;
+    const hy = (maxs[1] - mins[1]) * 0.5;
+    const hz = (maxs[2] - mins[2]) * 0.5;
 
-    // Expand each brush face plane by the player AABB half-extents projected onto the face normal.
-    // Then do a point trace against the expanded planes.
-    let remaining: Vec3 = vec3Copy(delta);
-    let pos: Vec3 = vec3Copy(start);
-
-    for (let bounce = 0; bounce < 4; bounce++) {
-      const moveLen = vec3Length(remaining);
-      if (moveLen < 0.001) break;
-
-      // Find the earliest collision along `remaining`
-      let bestFrac = 1.0;
-      let hitNormal: Vec3 | null = null;
-
-      for (const { brush } of this.editor.allBrushes()) {
-        // Quick AABB reject: skip brush if it's nowhere near the sweep
-        const endPos = vec3Add(pos, remaining);
-        const sweepMins: Vec3 = [
-          Math.min(pos[0], endPos[0]) - hw,
-          Math.min(pos[1], endPos[1]) - hw,
-          Math.min(pos[2], endPos[2]) - eyeH,
-        ];
-        const sweepMaxs: Vec3 = [
-          Math.max(pos[0], endPos[0]) + hw,
-          Math.max(pos[1], endPos[1]) + hw,
-          Math.max(pos[2], endPos[2]),
-        ];
-        if (brush.maxs[0] < sweepMins[0] || brush.mins[0] > sweepMaxs[0] ||
-            brush.maxs[1] < sweepMins[1] || brush.mins[1] > sweepMaxs[1] ||
-            brush.maxs[2] < sweepMins[2] || brush.mins[2] > sweepMaxs[2]) continue;
-
-        // Trace against expanded brush using Minkowski-expanded half-space intersection
-        let enterFrac = -1.0;
-        let leaveFrac = 1.0;
-        let enterNormal: Vec3 | null = null;
-        let startsOut = false;
-
-        for (const face of brush.faces) {
-          const n = face.plane.normal;
-          // AABB half-extent projection onto plane normal
-          const expand = hw * Math.abs(n[0]) + hw * Math.abs(n[1]) + eyeH * Math.abs(n[2]);
-          // Offset for eye being at top of AABB: shift by (eyeH/2 - eyeH) in Z = -eyeH/2
-          // Actually, eye is at top of AABB, feet at (pos - [0,0,eyeH]).
-          // Center of AABB = pos - [0,0, eyeH/2]. The half-extent in Z is eyeH/2.
-          // So we trace from the AABB center, with half-extents [hw, hw, eyeH/2].
-          const centerOffset = n[2] * (-eyeH / 2);  // dot(n, [0,0,-eyeH/2])
-          const halfH = eyeH / 2;
-          const expandFull = hw * Math.abs(n[0]) + hw * Math.abs(n[1]) + halfH * Math.abs(n[2]);
-
-          const d1 = vec3Dot(n, pos) + centerOffset - face.plane.dist - expandFull;
-          const d2 = vec3Dot(n, vec3Add(pos, remaining)) + centerOffset - face.plane.dist - expandFull;
-
-          if (d1 > 0) startsOut = true;
-
-          // Both in front → outside this plane, can skip
-          if (d1 > 0 && d2 > 0) { enterFrac = 2; break; }
-          // Both behind → inside this plane, continue
-          if (d1 <= 0 && d2 <= 0) continue;
-
-          const f = d1 / (d1 - d2);
-          if (d1 > 0) {
-            // Entering the brush
-            if (f > enterFrac) {
-              enterFrac = f;
-              enterNormal = n;
-            }
-          } else {
-            // Leaving the brush
-            if (f < leaveFrac) leaveFrac = f;
-          }
-        }
-
-        if (!startsOut) continue;  // started inside brush, ignore
-        if (enterFrac < leaveFrac && enterFrac >= -0.01 && enterFrac < bestFrac) {
-          bestFrac = Math.max(0, enterFrac - 0.03 / moveLen); // pull back slightly
-          hitNormal = enterNormal;
-        }
-      }
-
-      if (bestFrac >= 1.0) {
-        // No collision, apply full remaining move
-        pos = vec3Add(pos, remaining);
-        break;
-      }
-
-      // Move to collision point
-      pos = vec3Add(pos, vec3Scale(remaining, bestFrac));
-
-      if (!hitNormal) break;
-
-      // Slide: remove the component of remaining velocity along the hit normal
-      const leftover = vec3Scale(remaining, 1 - bestFrac);
-      const backoff = vec3Dot(leftover, hitNormal);
-      remaining = vec3Sub(leftover, vec3Scale(hitNormal, backoff));
-    }
-
-    return pos;
-  }
-
-  /**
-   * Trace downward from `eyePos` to find the ground height.
-   * Returns the Z of the eye if standing on ground, or null if no ground within range.
-   */
-  private traceGround(eyePos: Vec3): number | null {
-    const hw = Viewport3D.PLAYER_HALF_W;
-    const eyeH = Viewport3D.EYE_HEIGHT;
-    const halfH = eyeH / 2;
-    const probeDepth = 4; // how far below feet to check
-
-    // Trace the AABB downward by probeDepth
-    const delta: Vec3 = [0, 0, -(probeDepth)];
+    // Trace from AABB center (apply center offset to start/end)
+    const ts: Vec3 = [start[0] + cx, start[1] + cy, start[2] + cz];
+    const te: Vec3 = [end[0] + cx, end[1] + cy, end[2] + cz];
 
     let bestFrac = 1.0;
+    let bestNormal: Vec3 = [0, 0, 1];
 
     for (const { brush } of this.editor.allBrushes()) {
-      // Quick AABB reject
-      if (brush.maxs[0] < eyePos[0] - hw || brush.mins[0] > eyePos[0] + hw ||
-          brush.maxs[1] < eyePos[1] - hw || brush.mins[1] > eyePos[1] + hw ||
-          brush.maxs[2] < eyePos[2] - eyeH - probeDepth || brush.mins[2] > eyePos[2]) continue;
+      // Quick AABB sweep rejection
+      if (brush.maxs[0] < Math.min(ts[0], te[0]) - hx || brush.mins[0] > Math.max(ts[0], te[0]) + hx ||
+          brush.maxs[1] < Math.min(ts[1], te[1]) - hy || brush.mins[1] > Math.max(ts[1], te[1]) + hy ||
+          brush.maxs[2] < Math.min(ts[2], te[2]) - hz || brush.mins[2] > Math.max(ts[2], te[2]) + hz) continue;
 
       let enterFrac = -1.0;
       let leaveFrac = 1.0;
-      let enterNormal: Vec3 | null = null;
+      let enterNormal: Vec3 = [0, 0, 1];
       let startsOut = false;
+      let endsOut = false;
 
       for (const face of brush.faces) {
         const n = face.plane.normal;
-        const centerOffset = n[2] * (-halfH);
-        const expandFull = hw * Math.abs(n[0]) + hw * Math.abs(n[1]) + halfH * Math.abs(n[2]);
+        const expand = hx * Math.abs(n[0]) + hy * Math.abs(n[1]) + hz * Math.abs(n[2]);
 
-        const d1 = vec3Dot(n, eyePos) + centerOffset - face.plane.dist - expandFull;
-        const d2 = vec3Dot(n, vec3Add(eyePos, delta)) + centerOffset - face.plane.dist - expandFull;
+        const d1 = vec3Dot(n, ts) - face.plane.dist - expand;
+        const d2 = vec3Dot(n, te) - face.plane.dist - expand;
 
         if (d1 > 0) startsOut = true;
-        if (d1 > 0 && d2 > 0) { enterFrac = 2; break; }
+        if (d2 > 0) endsOut = true;
+
+        // Q3: SURFACE_CLIP_EPSILON = 0.125
+        if (d1 > 0 && (d2 >= 0.125 || d2 >= d1)) { enterFrac = 2; break; }
         if (d1 <= 0 && d2 <= 0) continue;
 
-        const f = d1 / (d1 - d2);
-        if (d1 > 0) {
-          if (f > enterFrac) { enterFrac = f; enterNormal = n; }
+        if (d1 > d2) {
+          // Entering: pull back by SURFACE_CLIP_EPSILON (0.125)
+          const ef = (d1 - 0.125) / (d1 - d2);
+          if (ef > enterFrac) {
+            enterFrac = Math.max(0, ef);
+            enterNormal = face.plane.normal;
+          }
         } else {
-          if (f < leaveFrac) leaveFrac = f;
+          // Leaving: push forward by SURFACE_CLIP_EPSILON
+          const lf = (d1 + 0.125) / (d1 - d2);
+          if (lf < leaveFrac) leaveFrac = Math.min(1, lf);
         }
       }
 
-      if (!startsOut) continue;
-      if (enterFrac < leaveFrac && enterFrac >= -0.01 && enterFrac < bestFrac) {
-        // Only count as ground if the hit surface is mostly horizontal (walkable)
-        if (enterNormal && enterNormal[2] > 0.7) {
-          bestFrac = Math.max(0, enterFrac);
+      if (!startsOut) {
+        if (!endsOut) {
+          // Start AND end inside brush: allSolid
+          return { fraction: 0, endPos: vec3Copy(start), normal: [0, 0, 1], allSolid: true };
         }
+        continue; // Starts inside but exits — skip
+      }
+
+      if (enterFrac < leaveFrac && enterFrac >= 0 && enterFrac < bestFrac) {
+        bestFrac = enterFrac;
+        bestNormal = vec3Copy(enterNormal);
       }
     }
 
-    if (bestFrac < 1.0) {
-      // Ground hit: return the eye Z at that contact point
-      return eyePos[2] + delta[2] * bestFrac;
-    }
-    return null;
+    return {
+      fraction: bestFrac,
+      endPos: [
+        start[0] + (end[0] - start[0]) * bestFrac,
+        start[1] + (end[1] - start[1]) * bestFrac,
+        start[2] + (end[2] - start[2]) * bestFrac,
+      ],
+      normal: bestNormal,
+      allSolid: false,
+    };
   }
 
   private updateCamera(dt: number): void {
@@ -986,70 +914,79 @@ export class Viewport3D {
       if (this.keys.size === 0) return;
     }
 
-    const sprint = this.keys.has('shift') ? 2.5 : 1;
-    const speed = this.moveSpeed * dt * sprint;
+    if (isWalkMode && this.walkState) {
+      // ── Q3 walk mode: full Quake 3 player movement physics ──
 
-    if (isWalkMode) {
-      // Walk mode: movement on horizontal plane, gravity, collision
-      const flatForward: Vec3 = [Math.cos(this.yaw), Math.sin(this.yaw), 0];
-      const flatRight: Vec3 = [Math.cos(this.yaw - Math.PI / 2), Math.sin(this.yaw - Math.PI / 2), 0];
+      // Build move command from keys
+      let fwd = 0, side = 0;
+      if (this.keys.has('w')) fwd += 1;
+      if (this.keys.has('s')) fwd -= 1;
+      if (this.keys.has('d')) side += 1;
+      if (this.keys.has('a')) side -= 1;
+      const jump = this.keys.has(' ');
+      const walk = this.keys.has('shift');
+      const crouch = this.keys.has('c');
 
-      // Build horizontal move delta
-      let moveH: Vec3 = [0, 0, 0];
-      if (this.keys.has('w')) moveH = vec3Add(moveH, vec3Scale(flatForward, speed));
-      if (this.keys.has('s')) moveH = vec3Add(moveH, vec3Scale(flatForward, -speed));
-      if (this.keys.has('d')) moveH = vec3Add(moveH, vec3Scale(flatRight, speed));
-      if (this.keys.has('a')) moveH = vec3Add(moveH, vec3Scale(flatRight, -speed));
+      // Fixed timestep accumulator (125fps like Q3)
+      this.physicsAccum += dt;
+      if (this.physicsAccum > 0.1) this.physicsAccum = 0.1; // Cap to avoid spiral of death
 
-      // Try step-up: move upward by STEP_HEIGHT, do horizontal move, then settle down
-      const stepH = Viewport3D.STEP_HEIGHT;
-      const steppedUp = this.clipMove(this.position, [0, 0, stepH]);
-      const actualStep = steppedUp[2] - this.position[2];
+      const traceFn: TraceFn = (start, end, mins, maxs) =>
+        this.tracePlayerBox(start, end, mins, maxs);
 
-      // Horizontal move (at stepped-up height)
-      const afterH = this.clipMove(steppedUp, moveH);
+      while (this.physicsAccum >= PHYSICS_STEP) {
+        pmove(this.walkState, traceFn, this.yaw, fwd, side, jump, walk, crouch, PHYSICS_STEP);
+        this.physicsAccum -= PHYSICS_STEP;
+      }
 
-      // Step back down
-      const afterDown = this.clipMove(afterH, [0, 0, -actualStep]);
-      this.position = afterDown;
+      // View smoothing: step offset (smooth stair climbing, decays over ~200ms)
+      if (this.walkState.stepOffset > 0) {
+        this.walkStepSmooth += this.walkState.stepOffset;
+      }
+      if (this.walkStepSmooth > 0) {
+        this.walkStepSmooth = Math.max(0, this.walkStepSmooth - dt * 80);
+      }
 
-      // Apply gravity
-      this.velocityZ += Viewport3D.GRAVITY * dt;
-      // Clamp terminal velocity
-      if (this.velocityZ < -1200) this.velocityZ = -1200;
+      // View smoothing: landing deflect (Q3-style: ramp down 150ms, return 300ms)
+      if (this.walkState.landDeflect !== 0) {
+        this.walkLandChange = this.walkState.landDeflect;
+        this.walkLandTime = performance.now();
+      }
+      let landOffset = 0;
+      const landElapsed = performance.now() - this.walkLandTime;
+      if (landElapsed < 150) {
+        landOffset = this.walkLandChange * (landElapsed / 150);
+      } else if (landElapsed < 450) {
+        landOffset = this.walkLandChange * (1 - (landElapsed - 150) / 300);
+      }
 
-      const gravityDelta: Vec3 = [0, 0, this.velocityZ * dt];
-      const afterGrav = this.clipMove(this.position, gravityDelta);
+      // View smoothing: crouch transition
+      const targetViewH = this.walkState.crouching ? CROUCH_VIEWHEIGHT : VIEWHEIGHT;
+      this.walkViewH += (targetViewH - this.walkViewH) * Math.min(1, dt * 12);
 
-      // If we didn't move the full gravity amount, we hit something
-      const actualDz = afterGrav[2] - this.position[2];
-      if (Math.abs(actualDz - gravityDelta[2]) > 0.01) {
-        if (this.velocityZ < 0) {
-          // Hit ground
-          this.onGround = true;
-        }
-        this.velocityZ = 0;
+      // Head bob (Q3-style: sinusoidal bounce while walking)
+      let bobOffset = 0;
+      if (this.walkState.walking && (fwd !== 0 || side !== 0)) {
+        const xyspeed = Math.sqrt(
+          this.walkState.velocity[0] ** 2 + this.walkState.velocity[1] ** 2
+        );
+        this.walkBobCycle += dt * xyspeed * 0.035;
+        bobOffset = Math.sin(this.walkBobCycle) * Math.min(xyspeed / 320, 1) * 1.5;
       } else {
-        this.onGround = false;
+        // Smoothly decay bob phase toward 0
+        this.walkBobCycle *= Math.max(0, 1 - dt * 6);
       }
 
-      this.position = afterGrav;
-
-      // Ground snapping: if we think we're on ground, do a small trace to stay attached
-      if (this.onGround) {
-        const groundZ = this.traceGround(this.position);
-        if (groundZ !== null) {
-          this.position[2] = groundZ;
-        }
-      }
-
-      // Jump
-      if (this.keys.has(' ') && this.onGround) {
-        this.velocityZ = Viewport3D.JUMP_SPEED;
-        this.onGround = false;
-      }
+      // Update camera position from walk state
+      this.position = [
+        this.walkState.origin[0],
+        this.walkState.origin[1],
+        this.walkState.origin[2] + this.walkViewH - this.walkStepSmooth + landOffset + bobOffset,
+      ];
     } else {
-      // Fly mode (or normal editor camera): movement follows look direction
+      // ── Fly mode (or normal editor camera) ──
+      const sprint = this.keys.has('shift') ? 2.5 : 1;
+      const speed = this.moveSpeed * dt * sprint;
       const forward = this.getForward();
       const right = this.getRight();
       const boostSpeed = !this.fullscreen && (this.keys.has('control') || this.keys.has('meta')) ? speed * 3 / sprint : speed;
