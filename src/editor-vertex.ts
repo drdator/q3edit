@@ -68,6 +68,7 @@ export function splitBrushesConvex(editor: Editor, invalidBrushes: { brush: Brus
       entity.brushes.push(piece);
     }
   }
+  editor.reconcileHiddenState();
   editor.selection = [];
   editor.dirty = true;
 }

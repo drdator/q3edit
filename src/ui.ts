@@ -70,6 +70,8 @@ export class UI {
         { separator: true },
         { label: 'Select All', shortcut: 'Ctrl+A', action: () => this.editor.selectAll() },
         { label: 'Deselect', shortcut: 'Esc', action: () => this.editor.clearSelection() },
+        { label: 'Hide Selected', shortcut: 'H', action: () => this.editor.hideSelected() },
+        { label: 'Show Hidden', shortcut: 'Shift+H', action: () => this.editor.showHidden() },
         { separator: true },
         { label: 'Duplicate', shortcut: 'Ctrl+D', action: () => this.editor.duplicateSelection() },
         { label: 'Delete', shortcut: 'Del', action: () => this.editor.deleteSelection() },
@@ -635,6 +637,10 @@ export class UI {
 
       // Toggle invisible geometry
       if (e.key === 'i' && !ctrl) { this.cycleInvisibleMode(); return; }
+
+      // Hide/show hidden items
+      if (e.key === 'h' && !ctrl) { this.editor.hideSelected(); return; }
+      if (e.key === 'H' && !ctrl) { this.editor.showHidden(); return; }
 
       // Toggle geometry snap
       if (e.key === 'g' && !ctrl) { this.toggleGeoSnap(); return; }

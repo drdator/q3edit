@@ -100,9 +100,16 @@ import {
 } from './editor-clip-csg';
 import {
   INVISIBLE_TEXTURES,
+  clearHiddenState as clearEditorHiddenState,
+  hideSelected as hideEditorSelection,
+  isBrushHidden as isEditorBrushHidden,
+  isEntityHidden as isEditorEntityHidden,
+  isPatchHidden as isEditorPatchHidden,
   isBrushVisible as isEditorBrushVisible,
   isEntityVisible as isEditorEntityVisible,
   isPatchVisible as isEditorPatchVisible,
+  reconcileHiddenState as reconcileEditorHiddenState,
+  showHidden as showEditorHidden,
 } from './editor-visibility';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
@@ -178,6 +185,9 @@ export class Editor {
 
   // Render filter
   renderSelectedOnly = false;
+  hiddenBrushes = new Set<Brush>();
+  hiddenPatches = new Set<Patch>();
+  hiddenEntities = new Set<Entity>();
 
   // UI callback for locating a texture in the texture panel
   onLocateTexture: ((texture: string) => void) | null = null;
@@ -229,12 +239,20 @@ export class Editor {
     return isEditorBrushVisible(this, brush, entity);
   }
 
+  isBrushHidden(brush: Brush, entity?: Entity): boolean {
+    return isEditorBrushHidden(this, brush, entity);
+  }
+
   isSelected(brush: Brush, entity?: Entity): boolean {
     return isBrushSelected(this, brush, entity);
   }
 
   isEntitySelected(entity: Entity): boolean {
     return isEditorEntitySelected(this, entity);
+  }
+
+  isEntityHidden(entity: Entity): boolean {
+    return isEditorEntityHidden(this, entity);
   }
 
   addBrushToSelection(entity: Entity, brush: Brush): void {
@@ -261,8 +279,28 @@ export class Editor {
     return isEditorPatchVisible(this, patch, entity);
   }
 
+  isPatchHidden(patch: Patch, entity?: Entity): boolean {
+    return isEditorPatchHidden(this, patch, entity);
+  }
+
   isEntityVisible(entity: Entity): boolean {
     return isEditorEntityVisible(this, entity);
+  }
+
+  clearHiddenState(): void {
+    clearEditorHiddenState(this);
+  }
+
+  reconcileHiddenState(): void {
+    reconcileEditorHiddenState(this);
+  }
+
+  hideSelected(): void {
+    hideEditorSelection(this);
+  }
+
+  showHidden(): void {
+    showEditorHidden(this);
   }
 
   selectFace(entity: Entity, brush: Brush, face: BrushFace, additive = false): void {

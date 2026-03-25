@@ -60,6 +60,7 @@ export function executeClip(editor: Editor): void {
     }
   }
 
+  editor.reconcileHiddenState();
   editor.selection = newSelection;
   editor.clipPoints = [];
   editor.dirty = true;
@@ -107,6 +108,7 @@ export function csgSubtract(editor: Editor): void {
     entity.brushes = newBrushes;
   }
 
+  editor.reconcileHiddenState();
   editor.selection = newSelection;
   editor.dirty = true;
   editor.statusMessage = totalFragments > 0
@@ -137,6 +139,7 @@ export function csgHollow(editor: Editor): void {
     }
   }
 
+  editor.reconcileHiddenState();
   editor.selection = newSelection;
   editor.dirty = true;
   editor.statusMessage = `CSG Hollow: ${newSelection.length} shell pieces (wall thickness: ${editor.gridSize})`;
@@ -168,6 +171,7 @@ export function csgMerge(editor: Editor): void {
   }
 
   entity.brushes.push(merged);
+  editor.reconcileHiddenState();
   editor.selection = [{ type: 'brush', entity, brush: merged }];
   editor.dirty = true;
   editor.statusMessage = `CSG Merge: ${brushItems.length} brushes merged into 1`;

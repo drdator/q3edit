@@ -60,6 +60,7 @@ export function deleteSelection(editor: Editor): void {
     }
   }
 
+  editor.reconcileHiddenState();
   editor.selection = [];
   editor.dirty = true;
   editor.statusMessage = 'Deleted';

@@ -12,6 +12,7 @@ export function undo(editor: Editor): void {
   if (prev) {
     editor.entities = prev;
     editor.selection = [];
+    editor.clearHiddenState();
     editor.exitVertexMode();
     editor.dirty = true;
     editor.statusMessage = 'Undo';
@@ -23,6 +24,7 @@ export function redo(editor: Editor): void {
   if (next) {
     editor.entities = next;
     editor.selection = [];
+    editor.clearHiddenState();
     editor.exitVertexMode();
     editor.dirty = true;
     editor.statusMessage = 'Redo';
@@ -37,6 +39,7 @@ export function loadMap(editor: Editor, text: string): void {
   snapshot(editor);
   editor.entities = parseMap(text);
   editor.selection = [];
+  editor.clearHiddenState();
   editor.dirty = true;
   editor.statusMessage = 'Map loaded';
 }
@@ -45,6 +48,7 @@ export function newMap(editor: Editor): void {
   snapshot(editor);
   editor.entities = [];
   editor.selection = [];
+  editor.clearHiddenState();
   editor.dirty = true;
   editor.statusMessage = 'New map';
 }
@@ -80,6 +84,7 @@ export function openMapFromFile(editor: Editor): void {
 
 export function createDefaultMap(editor: Editor): void {
   editor.entities = [];
+  editor.clearHiddenState();
   const worldspawn = editor.worldspawn;
 
   const wallTexture = 'base_wall/basewall03';
