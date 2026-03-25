@@ -1,31 +1,120 @@
 import { type BrushFace, textureAxisFromPlane } from './brush';
 import { vec3Dot } from './math';
+import type { Patch } from './patch';
 import type { Editor } from './editor';
 
-export function setTexture(editor: Editor, texture: string): void {
-  editor.currentTexture = texture;
+export type TextureReplaceScope = 'selection' | 'map';
+export type TextureReplaceMatch = 'exact' | 'contains';
+
+type TextureTarget =
+  | { kind: 'face'; face: BrushFace }
+  | { kind: 'patch'; patch: Patch };
+
+function canonicalTextureName(texture: string): string {
+  return texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '');
+}
+
+function normalizedTextureName(texture: string): string {
+  return canonicalTextureName(texture).toLowerCase();
+}
+
+function collectSelectedTextureTargets(editor: Editor): TextureTarget[] {
+  const targets: TextureTarget[] = [];
+  const seenFaces = new Set<BrushFace>();
+  const seenPatches = new Set<Patch>();
+
   for (const item of editor.selection) {
-    if (item.type === 'face') {
-      item.face.texture = texture;
-    } else if (item.type === 'brush') {
-      for (const face of item.brush.faces) {
-        face.texture = texture;
+    if (item.type === 'entity') {
+      for (const brush of item.entity.brushes) {
+        for (const face of brush.faces) {
+          if (seenFaces.has(face)) continue;
+          seenFaces.add(face);
+          targets.push({ kind: 'face', face });
+        }
       }
-    } else if (item.type === 'patch') {
-      item.patch.texture = texture;
+      for (const patch of item.entity.patches) {
+        if (seenPatches.has(patch)) continue;
+        seenPatches.add(patch);
+        targets.push({ kind: 'patch', patch });
+      }
+      continue;
+    }
+
+    if (item.type === 'brush') {
+      for (const face of item.brush.faces) {
+        if (seenFaces.has(face)) continue;
+        seenFaces.add(face);
+        targets.push({ kind: 'face', face });
+      }
+      continue;
+    }
+
+    if (item.type === 'face') {
+      if (seenFaces.has(item.face)) continue;
+      seenFaces.add(item.face);
+      targets.push({ kind: 'face', face: item.face });
+      continue;
+    }
+
+    if (seenPatches.has(item.patch)) continue;
+    seenPatches.add(item.patch);
+    targets.push({ kind: 'patch', patch: item.patch });
+  }
+
+  return targets;
+}
+
+function collectMapTextureTargets(editor: Editor): TextureTarget[] {
+  const targets: TextureTarget[] = [];
+  for (const entity of editor.entities) {
+    for (const brush of entity.brushes) {
+      for (const face of brush.faces) {
+        targets.push({ kind: 'face', face });
+      }
+    }
+    for (const patch of entity.patches) {
+      targets.push({ kind: 'patch', patch });
     }
   }
+  return targets;
+}
+
+function textureTargetTexture(target: TextureTarget): string {
+  return target.kind === 'face' ? target.face.texture : target.patch.texture;
+}
+
+function setTextureTarget(target: TextureTarget, texture: string): void {
+  if (target.kind === 'face') {
+    target.face.texture = texture;
+  } else {
+    target.patch.texture = texture;
+  }
+}
+
+export function setTexture(editor: Editor, texture: string): void {
+  const nextTexture = canonicalTextureName(texture);
+  if (!nextTexture) return;
+
+  editor.currentTexture = nextTexture;
+  const targets = collectSelectedTextureTargets(editor);
+  let snapshotTaken = false;
+
+  for (const target of targets) {
+    if (textureTargetTexture(target) === nextTexture) continue;
+    if (!snapshotTaken) {
+      editor.snapshot();
+      snapshotTaken = true;
+    }
+    setTextureTarget(target, nextTexture);
+  }
+
   editor.dirty = true;
 }
 
 export function getTextureFaces(editor: Editor): BrushFace[] {
   const faces: BrushFace[] = [];
-  for (const item of editor.selection) {
-    if (item.type === 'face') {
-      faces.push(item.face);
-    } else if (item.type === 'brush') {
-      faces.push(...item.brush.faces);
-    }
+  for (const target of collectSelectedTextureTargets(editor)) {
+    if (target.kind === 'face') faces.push(target.face);
   }
   return faces;
 }
@@ -114,4 +203,64 @@ export function fitTexture(editor: Editor): void {
   }
   editor.dirty = true;
   editor.statusMessage = 'Texture fit to face';
+}
+
+export function replaceTextures(
+  editor: Editor,
+  findTexture: string,
+  replaceTexture: string,
+  scope: TextureReplaceScope,
+  match: TextureReplaceMatch,
+): number {
+  const find = canonicalTextureName(findTexture);
+  const replace = canonicalTextureName(replaceTexture);
+
+  if (!find || !replace) {
+    editor.statusMessage = 'Find and replace textures are required';
+    return 0;
+  }
+
+  const targets = scope === 'map'
+    ? collectMapTextureTargets(editor)
+    : collectSelectedTextureTargets(editor);
+
+  if (targets.length === 0) {
+    editor.statusMessage = scope === 'map'
+      ? 'Map contains no textured surfaces'
+      : 'Nothing selected for texture replace';
+    return 0;
+  }
+
+  const normalizedFind = find.toLowerCase();
+  let replaced = 0;
+  let snapshotTaken = false;
+
+  for (const target of targets) {
+    const current = textureTargetTexture(target);
+    const normalizedCurrent = normalizedTextureName(current);
+    const matches = match === 'exact'
+      ? normalizedCurrent === normalizedFind
+      : normalizedCurrent.includes(normalizedFind);
+    if (!matches || current === replace) continue;
+
+    if (!snapshotTaken) {
+      editor.snapshot();
+      snapshotTaken = true;
+    }
+
+    setTextureTarget(target, replace);
+    replaced++;
+  }
+
+  if (replaced === 0) {
+    editor.statusMessage = scope === 'map'
+      ? 'No matching textures in map'
+      : 'No matching textures in selection';
+    return 0;
+  }
+
+  editor.currentTexture = replace;
+  editor.dirty = true;
+  editor.statusMessage = `Replaced ${replaced} surface${replaced === 1 ? '' : 's'} in ${scope === 'map' ? 'map' : 'selection'}`;
+  return replaced;
 }

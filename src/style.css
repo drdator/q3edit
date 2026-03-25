@@ -528,6 +528,36 @@ html, body {
   gap: 1px;
 }
 
+.texture-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-dark);
+}
+
+.texture-subhead {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.texture-tools .kv-row {
+  align-items: stretch;
+}
+
+.texture-tools .btn {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.texture-apply-btn {
+  justify-content: center;
+}
+
 .texture-item {
   padding: 3px 4px;
   cursor: default;

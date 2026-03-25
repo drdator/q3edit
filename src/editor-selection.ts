@@ -1,8 +1,8 @@
 import type { Brush, BrushFace } from './brush';
 import type { Entity } from './entity';
 import type { Patch } from './patch';
-import type { Editor } from './editor';
-import { nonWorldspawnEntities } from './editor-queries';
+import type { Editor, SelectionItem } from './editor';
+import { entityBounds as getEntityBounds, nonWorldspawnEntities } from './editor-queries';
 
 function selectsWholeEntity(editor: Editor, entity: Entity): boolean {
   return entity !== editor.worldspawn && (entity.brushes.length > 0 || entity.patches.length > 0);
@@ -222,6 +222,185 @@ export function getSelectedPatchItems(editor: Editor): { entity: Entity; patch: 
   }
 
   return unique;
+}
+
+type SelectableItem = Extract<SelectionItem, { type: 'brush' | 'patch' | 'entity' }>;
+
+type SelectionCommandScope =
+  | { mode: 'global' }
+  | { mode: 'entity-children'; entity: Entity };
+
+function selectionCommandScope(editor: Editor): SelectionCommandScope {
+  if (editor.selection.length === 0) return { mode: 'global' };
+  if (editor.selection.some(item => item.type === 'entity')) return { mode: 'global' };
+
+  const entity = editor.selection[0].entity;
+  if (entity === editor.worldspawn) return { mode: 'global' };
+  if (!editor.selection.every(item => item.type !== 'entity' && item.entity === entity)) {
+    return { mode: 'global' };
+  }
+
+  return { mode: 'entity-children', entity };
+}
+
+function selectionCommandCandidates(editor: Editor, scope: SelectionCommandScope): SelectableItem[] {
+  if (scope.mode === 'entity-children') {
+    const items: SelectableItem[] = [];
+    for (const brush of scope.entity.brushes) {
+      if (editor.isBrushHidden(brush, scope.entity)) continue;
+      items.push({ type: 'brush', entity: scope.entity, brush });
+    }
+    for (const patch of scope.entity.patches) {
+      if (editor.isPatchHidden(patch, scope.entity)) continue;
+      items.push({ type: 'patch', entity: scope.entity, patch });
+    }
+    return items;
+  }
+
+  const items: SelectableItem[] = [];
+  const worldspawn = editor.entities[0];
+  if (worldspawn) {
+    for (const brush of worldspawn.brushes) {
+      if (editor.isBrushHidden(brush, worldspawn)) continue;
+      items.push({ type: 'brush', entity: worldspawn, brush });
+    }
+    for (const patch of worldspawn.patches) {
+      if (editor.isPatchHidden(patch, worldspawn)) continue;
+      items.push({ type: 'patch', entity: worldspawn, patch });
+    }
+  }
+
+  for (const entity of nonWorldspawnEntities(editor)) {
+    if (editor.isEntityHidden(entity)) continue;
+    items.push({ type: 'entity', entity });
+  }
+
+  return items;
+}
+
+function selectionItemBounds(item: SelectableItem): { mins: [number, number, number]; maxs: [number, number, number] } | null {
+  if (item.type === 'brush') {
+    return { mins: item.brush.mins, maxs: item.brush.maxs };
+  }
+  if (item.type === 'patch') {
+    return { mins: item.patch.mins, maxs: item.patch.maxs };
+  }
+  return getEntityBounds(item.entity);
+}
+
+function isSelectableItemSelected(editor: Editor, item: SelectableItem): boolean {
+  if (item.type === 'entity') {
+    return editor.selection.some(selectionItem => selectionItem.entity === item.entity);
+  }
+  if (item.type === 'patch') {
+    return editor.selection.some(selectionItem => selectionItem.type === 'patch' && selectionItem.patch === item.patch);
+  }
+  return editor.selection.some(selectionItem =>
+    (selectionItem.type === 'brush' && selectionItem.brush === item.brush) ||
+    (selectionItem.type === 'face' && selectionItem.brush === item.brush)
+  );
+}
+
+function replaceSelection(editor: Editor, items: SelectableItem[], statusMessage: string): void {
+  if (editor.patchEditMode) editor.exitPatchEditMode();
+  if (editor.vertexMode) editor.exitVertexMode();
+  editor.selection = items;
+  editor.dirty = true;
+  editor.statusMessage = statusMessage;
+}
+
+function selectionCountLabel(count: number): string {
+  return `${count} item${count === 1 ? '' : 's'}`;
+}
+
+export function selectCompleteTall(editor: Editor): void {
+  const bounds = editor.selectionBounds();
+  if (!bounds) {
+    editor.statusMessage = 'No selection for complete tall';
+    return;
+  }
+
+  const axes = [editor.nudgeAxisH, editor.nudgeAxisV];
+  const scope = selectionCommandScope(editor);
+  const selected = selectionCommandCandidates(editor, scope).filter(item => {
+    const itemBounds = selectionItemBounds(item);
+    if (!itemBounds) return false;
+    return axes.every(axis =>
+      itemBounds.maxs[axis] <= bounds.maxs[axis] && itemBounds.mins[axis] >= bounds.mins[axis]
+    );
+  });
+
+  replaceSelection(editor, selected, `Selected ${selectionCountLabel(selected.length)} by complete tall`);
+}
+
+export function selectPartialTall(editor: Editor): void {
+  const bounds = editor.selectionBounds();
+  if (!bounds) {
+    editor.statusMessage = 'No selection for partial tall';
+    return;
+  }
+
+  const axes = [editor.nudgeAxisH, editor.nudgeAxisV];
+  const scope = selectionCommandScope(editor);
+  const selected = selectionCommandCandidates(editor, scope).filter(item => {
+    const itemBounds = selectionItemBounds(item);
+    if (!itemBounds) return false;
+    return axes.every(axis =>
+      !(itemBounds.mins[axis] > bounds.maxs[axis] || itemBounds.maxs[axis] < bounds.mins[axis])
+    );
+  });
+
+  replaceSelection(editor, selected, `Selected ${selectionCountLabel(selected.length)} by partial tall`);
+}
+
+export function selectTouching(editor: Editor): void {
+  const bounds = editor.selectionBounds();
+  if (!bounds) {
+    editor.statusMessage = 'No selection for touching';
+    return;
+  }
+
+  const scope = selectionCommandScope(editor);
+  const selected = selectionCommandCandidates(editor, scope).filter(item => {
+    const itemBounds = selectionItemBounds(item);
+    if (!itemBounds) return false;
+    for (let axis = 0; axis < 3; axis++) {
+      if (itemBounds.mins[axis] > bounds.maxs[axis] + 1 || itemBounds.maxs[axis] < bounds.mins[axis] - 1) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  replaceSelection(editor, selected, `Selected ${selectionCountLabel(selected.length)} touching`);
+}
+
+export function selectInside(editor: Editor): void {
+  const bounds = editor.selectionBounds();
+  if (!bounds) {
+    editor.statusMessage = 'No selection for inside';
+    return;
+  }
+
+  const scope = selectionCommandScope(editor);
+  const selected = selectionCommandCandidates(editor, scope).filter(item => {
+    const itemBounds = selectionItemBounds(item);
+    if (!itemBounds) return false;
+    for (let axis = 0; axis < 3; axis++) {
+      if (itemBounds.maxs[axis] > bounds.maxs[axis] || itemBounds.mins[axis] < bounds.mins[axis]) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  replaceSelection(editor, selected, `Selected ${selectionCountLabel(selected.length)} inside`);
+}
+
+export function invertSelection(editor: Editor): void {
+  const scope = selectionCommandScope(editor);
+  const selected = selectionCommandCandidates(editor, scope).filter(item => !isSelectableItemSelected(editor, item));
+  replaceSelection(editor, selected, `Inverted selection: ${selectionCountLabel(selected.length)}`);
 }
 
 export function selectAll(editor: Editor): void {

@@ -14,17 +14,22 @@ import {
   clearSelection as clearEditorSelection,
   getSelectedFace,
   getSelectedFaces,
+  invertSelection as invertEditorSelection,
   isBrushSelected,
   isEntitySelected as isEditorEntitySelected,
   isFaceSelected as isEditorFaceSelected,
   isPatchSelected as isEditorPatchSelected,
   selectAll as selectAllItems,
+  selectCompleteTall as selectEditorCompleteTall,
   selectBrush as selectEditorBrush,
   selectBrushDirect as selectEditorBrushDirect,
   selectEntity as selectEditorEntity,
   selectFace as selectEditorFace,
+  selectInside as selectEditorInside,
+  selectPartialTall as selectEditorPartialTall,
   selectPatch as selectEditorPatch,
   selectPatchDirect as selectEditorPatchDirect,
+  selectTouching as selectEditorTouching,
 } from './editor-selection';
 import {
   allBrushes as iterateAllBrushes,
@@ -58,11 +63,14 @@ import {
 import {
   fitTexture as fitEditorTexture,
   getTextureFaces as collectTextureFaces,
+  replaceTextures as replaceEditorTextures,
   resetTextureAlignment as resetEditorTextureAlignment,
   rotateTexture as rotateEditorTexture,
   scaleTexture as scaleEditorTexture,
   setTexture as setEditorTexture,
   shiftTexture as shiftEditorTexture,
+  type TextureReplaceMatch,
+  type TextureReplaceScope,
 } from './editor-textures';
 import {
   clearVertexSelection as clearEditorVertexSelection,
@@ -586,6 +594,26 @@ export class Editor {
     selectAllItems(this);
   }
 
+  invertSelection(): void {
+    invertEditorSelection(this);
+  }
+
+  selectTouching(): void {
+    selectEditorTouching(this);
+  }
+
+  selectInside(): void {
+    selectEditorInside(this);
+  }
+
+  selectCompleteTall(): void {
+    selectEditorCompleteTall(this);
+  }
+
+  selectPartialTall(): void {
+    selectEditorPartialTall(this);
+  }
+
   selectionBounds(): { mins: Vec3; maxs: Vec3 } | null {
     return getSelectionBounds(this);
   }
@@ -606,6 +634,15 @@ export class Editor {
 
   setTexture(texture: string): void {
     setEditorTexture(this, texture);
+  }
+
+  replaceTextures(
+    findTexture: string,
+    replaceTexture: string,
+    scope: TextureReplaceScope,
+    match: TextureReplaceMatch,
+  ): number {
+    return replaceEditorTextures(this, findTexture, replaceTexture, scope, match);
   }
 
   // ── Texture alignment ──

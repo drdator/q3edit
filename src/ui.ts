@@ -36,6 +36,12 @@ export class UI {
   private propertiesPanel: PropertiesPanel;
   private texMgr: TextureManager | null = null;
   private showTextureThumbnails = false;
+  private textureDir = '';
+  private textureSearch = '';
+  private textureFind = '';
+  private textureReplace = '';
+  private textureReplaceScope: 'selection' | 'map' = 'selection';
+  private textureReplaceMatch: 'exact' | 'contains' = 'exact';
   private collapsedBrushPanelEntities = new WeakSet<Entity>();
 
   constructor(editor: Editor) {
@@ -428,9 +434,145 @@ export class UI {
 
   private buildTexturePanel(): void {
     const body = document.getElementById('texture-body')!;
+    body.innerHTML = '';
+
+    this.buildTextureReplaceControls(body);
+    this.buildTextureBrowser(body);
+  }
+
+  private buildTextureReplaceControls(body: HTMLElement): void {
+    const section = document.createElement('div');
+    section.className = 'texture-tools';
+
+    const title = document.createElement('div');
+    title.className = 'texture-subhead';
+    title.textContent = 'Find / Replace';
+    section.appendChild(title);
+
+    const bindSubmitKey = (input: HTMLInputElement) => {
+      input.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter') return;
+        ev.preventDefault();
+        this.applyTextureReplace();
+      });
+    };
+
+    const findLabel = document.createElement('label');
+    findLabel.textContent = 'Find';
+    section.appendChild(findLabel);
+
+    const findRow = document.createElement('div');
+    findRow.className = 'kv-row';
+
+    const findInput = document.createElement('input');
+    findInput.type = 'text';
+    findInput.value = this.textureFind;
+    findInput.spellcheck = false;
+    findInput.autocomplete = 'off';
+    findInput.addEventListener('input', () => {
+      this.textureFind = findInput.value;
+    });
+    bindSubmitKey(findInput);
+
+    const findCurrentBtn = document.createElement('div');
+    findCurrentBtn.className = 'btn';
+    findCurrentBtn.textContent = 'Current';
+    findCurrentBtn.addEventListener('mousedown', () => {
+      this.textureFind = this.editor.currentTexture;
+      findInput.value = this.textureFind;
+    });
+
+    findRow.appendChild(findInput);
+    findRow.appendChild(findCurrentBtn);
+    section.appendChild(findRow);
+
+    const replaceLabel = document.createElement('label');
+    replaceLabel.textContent = 'Replace With';
+    section.appendChild(replaceLabel);
+
+    const replaceRow = document.createElement('div');
+    replaceRow.className = 'kv-row';
+
+    const replaceInput = document.createElement('input');
+    replaceInput.type = 'text';
+    replaceInput.value = this.textureReplace;
+    replaceInput.spellcheck = false;
+    replaceInput.autocomplete = 'off';
+    replaceInput.addEventListener('input', () => {
+      this.textureReplace = replaceInput.value;
+    });
+    bindSubmitKey(replaceInput);
+
+    const replaceCurrentBtn = document.createElement('div');
+    replaceCurrentBtn.className = 'btn';
+    replaceCurrentBtn.textContent = 'Current';
+    replaceCurrentBtn.addEventListener('mousedown', () => {
+      this.textureReplace = this.editor.currentTexture;
+      replaceInput.value = this.textureReplace;
+    });
+
+    replaceRow.appendChild(replaceInput);
+    replaceRow.appendChild(replaceCurrentBtn);
+    section.appendChild(replaceRow);
+
+    const optionsRow = document.createElement('div');
+    optionsRow.className = 'kv-row';
+
+    const scopeSelect = document.createElement('select');
+    for (const [value, label] of [['selection', 'Selection'], ['map', 'Whole Map']] as const) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (value === this.textureReplaceScope) opt.selected = true;
+      scopeSelect.appendChild(opt);
+    }
+    scopeSelect.addEventListener('change', () => {
+      this.textureReplaceScope = scopeSelect.value as 'selection' | 'map';
+    });
+
+    const matchSelect = document.createElement('select');
+    for (const [value, label] of [['exact', 'Exact Match'], ['contains', 'Name Contains']] as const) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (value === this.textureReplaceMatch) opt.selected = true;
+      matchSelect.appendChild(opt);
+    }
+    matchSelect.addEventListener('change', () => {
+      this.textureReplaceMatch = matchSelect.value as 'exact' | 'contains';
+    });
+
+    optionsRow.appendChild(scopeSelect);
+    optionsRow.appendChild(matchSelect);
+    section.appendChild(optionsRow);
+
+    const replaceBtn = document.createElement('div');
+    replaceBtn.className = 'btn texture-apply-btn';
+    replaceBtn.textContent = 'Replace Textures';
+    replaceBtn.addEventListener('mousedown', () => this.applyTextureReplace());
+    section.appendChild(replaceBtn);
+
+    body.appendChild(section);
+  }
+
+  private applyTextureReplace(): void {
+    this.editor.replaceTextures(
+      this.textureFind,
+      this.textureReplace,
+      this.textureReplaceScope,
+      this.textureReplaceMatch,
+    );
+  }
+
+  private buildTextureBrowser(body: HTMLElement): void {
+    if (this.texMgr) {
+      this.buildManagedTextureBrowser(body, this.texMgr);
+      return;
+    }
 
     const list = document.createElement('div');
     list.className = 'texture-list';
+    list.id = 'texture-list';
 
     for (const tex of COMMON_TEXTURES) {
       const item = document.createElement('div');
@@ -610,9 +752,10 @@ export class UI {
 
   updateTextureBrowser(texMgr: TextureManager): void {
     this.texMgr = texMgr;
-    const body = document.getElementById('texture-body')!;
-    body.innerHTML = '';
+    this.buildTexturePanel();
+  }
 
+  private buildManagedTextureBrowser(body: HTMLElement, texMgr: TextureManager): void {
     // Directory selector + view toggle row
     const dirRow = document.createElement('div');
     dirRow.style.display = 'flex';
@@ -632,6 +775,9 @@ export class UI {
       opt.value = dir;
       opt.textContent = dir;
       dirSelect.appendChild(opt);
+    }
+    if (Array.from(dirSelect.options).some(opt => opt.value === this.textureDir)) {
+      dirSelect.value = this.textureDir;
     }
     dirRow.appendChild(dirSelect);
 
@@ -654,6 +800,7 @@ export class UI {
     searchInput.type = 'text';
     searchInput.id = 'texture-search';
     searchInput.placeholder = 'Search textures...';
+    searchInput.value = this.textureSearch;
     searchInput.style.marginTop = '4px';
     body.appendChild(searchInput);
 
@@ -665,8 +812,8 @@ export class UI {
     const allTextures = texMgr.listTextures();
 
     const repopulate = () => {
-      const query = searchInput.value.trim().toLowerCase();
-      const dir = dirSelect.value;
+      const query = this.textureSearch.trim().toLowerCase();
+      const dir = this.textureDir;
       if (query) {
         const filtered = allTextures.filter(t => t.toLowerCase().includes(query));
         this.populateTextureList(list, filtered, null);
@@ -680,10 +827,15 @@ export class UI {
     repopulate();
 
     dirSelect.addEventListener('change', () => {
+      this.textureDir = dirSelect.value;
+      this.textureSearch = '';
       searchInput.value = '';
       repopulate();
     });
-    searchInput.addEventListener('input', repopulate);
+    searchInput.addEventListener('input', () => {
+      this.textureSearch = searchInput.value;
+      repopulate();
+    });
   }
 
   /** Exit vertex mode with geometry validation. Shows warning dialog if brushes are invalid. */
