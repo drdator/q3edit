@@ -1,6 +1,6 @@
 import {
-  Vec3, vec3Add, vec3Sub, vec3Scale, vec3Cross, vec3Dot,
-  vec3Normalize, vec3Length, vec3Copy,
+  Vec3, vec3Add, vec3Sub, vec3Scale, vec3Dot,
+  vec3Copy,
   Mat4, mat4Identity,
   rayTriangleIntersect,
 } from './math';
@@ -15,8 +15,7 @@ import {
 } from './gl-utils';
 import { Gizmo } from './gizmo';
 import {
-  WalkState, TraceResult, TraceFn, createWalkState, getEyePos, pmove,
-  VIEWHEIGHT, CROUCH_VIEWHEIGHT, PLAYER_MINS, PLAYER_MAXS, PHYSICS_STEP,
+  WalkState, createWalkState, VIEWHEIGHT,
 } from './q3-movement';
 import {
   getRay3D,
@@ -26,6 +25,12 @@ import {
 } from './viewport3d-picking';
 import { DrawGroup, LightRadiusDraw, renderViewport3D } from './viewport3d-render';
 import { buildViewport3DGeometry } from './viewport3d-geometry';
+import {
+  centerViewport3DOnSelection,
+  getViewport3DForward,
+  getViewport3DRight,
+  updateViewport3DCamera,
+} from './viewport3d-navigation';
 
 export class Viewport3D {
   canvas: HTMLCanvasElement;
@@ -221,17 +226,8 @@ export class Viewport3D {
   }
 
   centerOnSelection(): void {
-    const bounds = this.editor.selectionBounds();
-    if (!bounds) return;
-    const center: Vec3 = [
-      (bounds.mins[0] + bounds.maxs[0]) / 2,
-      (bounds.mins[1] + bounds.maxs[1]) / 2,
-      (bounds.mins[2] + bounds.maxs[2]) / 2,
-    ];
-    const size = vec3Length(vec3Sub(bounds.maxs, bounds.mins));
-    const dist = Math.max(size * 1.5, 128);
-    const forward = this.getForward();
-    this.position = vec3Sub(center, vec3Scale(forward, dist));
+    const position = centerViewport3DOnSelection(this.editor, this.yaw, this.pitch);
+    if (position) this.position = position;
   }
 
   private initGL(): void {
@@ -367,199 +363,40 @@ export class Viewport3D {
   }
 
   private getForward(): Vec3 {
-    return [
-      Math.cos(this.yaw) * Math.cos(this.pitch),
-      Math.sin(this.yaw) * Math.cos(this.pitch),
-      Math.sin(this.pitch),
-    ];
+    return getViewport3DForward(this.yaw, this.pitch);
   }
 
   private getRight(): Vec3 {
-    return [
-      Math.cos(this.yaw - Math.PI / 2),
-      Math.sin(this.yaw - Math.PI / 2),
-      0,
-    ];
-  }
-
-  // ── AABB trace against raw brush geometry (Q3-style Minkowski expansion) ──
-
-  private tracePlayerBox(start: Vec3, end: Vec3, mins: Vec3, maxs: Vec3): TraceResult {
-    // AABB center offset and half-extents for Minkowski expansion
-    const cx = (mins[0] + maxs[0]) * 0.5;
-    const cy = (mins[1] + maxs[1]) * 0.5;
-    const cz = (mins[2] + maxs[2]) * 0.5;
-    const hx = (maxs[0] - mins[0]) * 0.5;
-    const hy = (maxs[1] - mins[1]) * 0.5;
-    const hz = (maxs[2] - mins[2]) * 0.5;
-
-    // Trace from AABB center (apply center offset to start/end)
-    const ts: Vec3 = [start[0] + cx, start[1] + cy, start[2] + cz];
-    const te: Vec3 = [end[0] + cx, end[1] + cy, end[2] + cz];
-
-    let bestFrac = 1.0;
-    let bestNormal: Vec3 = [0, 0, 1];
-
-    for (const { brush } of this.editor.allBrushes()) {
-      // Quick AABB sweep rejection
-      if (brush.maxs[0] < Math.min(ts[0], te[0]) - hx || brush.mins[0] > Math.max(ts[0], te[0]) + hx ||
-          brush.maxs[1] < Math.min(ts[1], te[1]) - hy || brush.mins[1] > Math.max(ts[1], te[1]) + hy ||
-          brush.maxs[2] < Math.min(ts[2], te[2]) - hz || brush.mins[2] > Math.max(ts[2], te[2]) + hz) continue;
-
-      let enterFrac = -1.0;
-      let leaveFrac = 1.0;
-      let enterNormal: Vec3 = [0, 0, 1];
-      let startsOut = false;
-      let endsOut = false;
-
-      for (const face of brush.faces) {
-        const n = face.plane.normal;
-        const expand = hx * Math.abs(n[0]) + hy * Math.abs(n[1]) + hz * Math.abs(n[2]);
-
-        const d1 = vec3Dot(n, ts) - face.plane.dist - expand;
-        const d2 = vec3Dot(n, te) - face.plane.dist - expand;
-
-        if (d1 > 0) startsOut = true;
-        if (d2 > 0) endsOut = true;
-
-        // Q3: SURFACE_CLIP_EPSILON = 0.125
-        if (d1 > 0 && (d2 >= 0.125 || d2 >= d1)) { enterFrac = 2; break; }
-        if (d1 <= 0 && d2 <= 0) continue;
-
-        if (d1 > d2) {
-          // Entering: pull back by SURFACE_CLIP_EPSILON (0.125)
-          const ef = (d1 - 0.125) / (d1 - d2);
-          if (ef > enterFrac) {
-            enterFrac = Math.max(0, ef);
-            enterNormal = face.plane.normal;
-          }
-        } else {
-          // Leaving: push forward by SURFACE_CLIP_EPSILON
-          const lf = (d1 + 0.125) / (d1 - d2);
-          if (lf < leaveFrac) leaveFrac = Math.min(1, lf);
-        }
-      }
-
-      if (!startsOut) {
-        if (!endsOut) {
-          // Start AND end inside brush: allSolid
-          return { fraction: 0, endPos: vec3Copy(start), normal: [0, 0, 1], allSolid: true };
-        }
-        continue; // Starts inside but exits — skip
-      }
-
-      if (enterFrac < leaveFrac && enterFrac >= 0 && enterFrac < bestFrac) {
-        bestFrac = enterFrac;
-        bestNormal = vec3Copy(enterNormal);
-      }
-    }
-
-    return {
-      fraction: bestFrac,
-      endPos: [
-        start[0] + (end[0] - start[0]) * bestFrac,
-        start[1] + (end[1] - start[1]) * bestFrac,
-        start[2] + (end[2] - start[2]) * bestFrac,
-      ],
-      normal: bestNormal,
-      allSolid: false,
-    };
+    return getViewport3DRight(this.yaw);
   }
 
   private updateCamera(dt: number): void {
-    const isWalkMode = this.fullscreen && this.fullscreenMode === 'walk';
-
-    // In walk mode, always run physics (gravity) even without key input
-    if (!isWalkMode) {
-      if (!this.looking && !this.fullscreen && this.keys.size === 0) return;
-      if (this.keys.size === 0) return;
-    }
-
-    if (isWalkMode && this.walkState) {
-      // ── Q3 walk mode: full Quake 3 player movement physics ──
-
-      // Build move command from keys
-      let fwd = 0, side = 0;
-      if (this.keys.has('w')) fwd += 1;
-      if (this.keys.has('s')) fwd -= 1;
-      if (this.keys.has('d')) side += 1;
-      if (this.keys.has('a')) side -= 1;
-      const jump = this.keys.has(' ');
-      const walk = this.keys.has('shift');
-      const crouch = this.keys.has('c');
-
-      // Fixed timestep accumulator (125fps like Q3)
-      this.physicsAccum += dt;
-      if (this.physicsAccum > 0.1) this.physicsAccum = 0.1; // Cap to avoid spiral of death
-
-      const traceFn: TraceFn = (start, end, mins, maxs) =>
-        this.tracePlayerBox(start, end, mins, maxs);
-
-      while (this.physicsAccum >= PHYSICS_STEP) {
-        pmove(this.walkState, traceFn, this.yaw, fwd, side, jump, walk, crouch, PHYSICS_STEP);
-        this.physicsAccum -= PHYSICS_STEP;
-      }
-
-      // View smoothing: step offset (smooth stair climbing, decays over ~200ms)
-      if (this.walkState.stepOffset > 0) {
-        this.walkStepSmooth += this.walkState.stepOffset;
-      }
-      if (this.walkStepSmooth > 0) {
-        this.walkStepSmooth = Math.max(0, this.walkStepSmooth - dt * 80);
-      }
-
-      // View smoothing: landing deflect (Q3-style: ramp down 150ms, return 300ms)
-      if (this.walkState.landDeflect !== 0) {
-        this.walkLandChange = this.walkState.landDeflect;
-        this.walkLandTime = performance.now();
-      }
-      let landOffset = 0;
-      const landElapsed = performance.now() - this.walkLandTime;
-      if (landElapsed < 150) {
-        landOffset = this.walkLandChange * (landElapsed / 150);
-      } else if (landElapsed < 450) {
-        landOffset = this.walkLandChange * (1 - (landElapsed - 150) / 300);
-      }
-
-      // View smoothing: crouch transition
-      const targetViewH = this.walkState.crouching ? CROUCH_VIEWHEIGHT : VIEWHEIGHT;
-      this.walkViewH += (targetViewH - this.walkViewH) * Math.min(1, dt * 12);
-
-      // Head bob (Q3-style: sinusoidal bounce while walking)
-      let bobOffset = 0;
-      if (this.walkState.walking && (fwd !== 0 || side !== 0)) {
-        const xyspeed = Math.sqrt(
-          this.walkState.velocity[0] ** 2 + this.walkState.velocity[1] ** 2
-        );
-        this.walkBobCycle += dt * xyspeed * 0.035;
-        bobOffset = Math.sin(this.walkBobCycle) * Math.min(xyspeed / 320, 1) * 1.5;
-      } else {
-        // Smoothly decay bob phase toward 0
-        this.walkBobCycle *= Math.max(0, 1 - dt * 6);
-      }
-
-      // Update camera position from walk state
-      this.position = [
-        this.walkState.origin[0],
-        this.walkState.origin[1],
-        this.walkState.origin[2] + this.walkViewH - this.walkStepSmooth + landOffset + bobOffset,
-      ];
-    } else {
-      // ── Fly mode (or normal editor camera) ──
-      const sprint = this.keys.has('shift') ? 2.5 : 1;
-      const speed = this.moveSpeed * dt * sprint;
-      const forward = this.getForward();
-      const right = this.getRight();
-      const boostSpeed = !this.fullscreen && (this.keys.has('control') || this.keys.has('meta')) ? speed * 3 / sprint : speed;
-
-      if (this.keys.has('w')) this.position = vec3Add(this.position, vec3Scale(forward, boostSpeed));
-      if (this.keys.has('s')) this.position = vec3Add(this.position, vec3Scale(forward, -boostSpeed));
-      if (this.keys.has('d')) this.position = vec3Add(this.position, vec3Scale(right, boostSpeed));
-      if (this.keys.has('a')) this.position = vec3Add(this.position, vec3Scale(right, -boostSpeed));
-      if (this.keys.has('q') || this.keys.has(' ')) this.position[2] += boostSpeed;
-      if (this.keys.has('e') || this.keys.has('c') || (!this.fullscreen && this.keys.has('shift'))) this.position[2] -= boostSpeed;
-    }
-
+    const result = updateViewport3DCamera({
+      editor: this.editor,
+      fullscreen: this.fullscreen,
+      fullscreenMode: this.fullscreenMode,
+      looking: this.looking,
+      keys: this.keys,
+      moveSpeed: this.moveSpeed,
+      position: this.position,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      walkState: this.walkState,
+      physicsAccum: this.physicsAccum,
+      walkStepSmooth: this.walkStepSmooth,
+      walkViewH: this.walkViewH,
+      walkLandChange: this.walkLandChange,
+      walkLandTime: this.walkLandTime,
+      walkBobCycle: this.walkBobCycle,
+    }, dt);
+    if (!result.dirty) return;
+    this.position = result.position;
+    this.physicsAccum = result.physicsAccum;
+    this.walkStepSmooth = result.walkStepSmooth;
+    this.walkViewH = result.walkViewH;
+    this.walkLandChange = result.walkLandChange;
+    this.walkLandTime = result.walkLandTime;
+    this.walkBobCycle = result.walkBobCycle;
     this.editor.dirty = true;
   }
 
