@@ -52,6 +52,10 @@ import {
   undo as undoDocument,
 } from './editor-document';
 import {
+  copySelection as copyEditorSelection,
+  pasteClipboard as pasteEditorClipboard,
+} from './editor-clipboard';
+import {
   fitTexture as fitEditorTexture,
   getTextureFaces as collectTextureFaces,
   resetTextureAlignment as resetEditorTextureAlignment,
@@ -164,6 +168,7 @@ export class Editor {
   textureManager: TextureManager | null = null;
   history = new History();
   fileName = 'untitled.map';
+  clipboardText = '';
 
   // Drag state for brush creation
   creating = false;
@@ -507,6 +512,16 @@ export class Editor {
 
   openMapFromFile(): void {
     openEditorMapFromFile(this);
+  }
+
+  // ── Clipboard ──
+
+  async copySelection(): Promise<void> {
+    await copyEditorSelection(this);
+  }
+
+  async pasteClipboard(): Promise<void> {
+    await pasteEditorClipboard(this);
   }
 
   // ── Default map ──

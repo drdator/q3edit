@@ -27,6 +27,9 @@ Supported for brushes, patches, and entities.
 ### Flip Operations
 Supported on X / Y / Z axes.
 
+### Copy / Paste
+Supported for selected brushes, patches, and entities, with browser clipboard integration plus an internal fallback.
+
 ## Partial
 
 ### Selection Enhancements
@@ -56,43 +59,40 @@ Radiant can create cylinders (3-9 sided), cones, spheres, torus, and pyramids. W
 ### 2. Terrain System
 Radiant has a full terrain editor with raise/lower sculpting and vertex-level terrain mesh editing.
 
-### 3. Copy / Paste
-Radiant has clipboard copy/paste of brushes and entities. We have duplicate / clone, but no clipboard workflow.
-
-### 4. Find / Replace Textures
+### 3. Find / Replace Textures
 Radiant has a dedicated dialog to search and batch-replace textures across the map, including selected-only workflows.
 
-### 5. Map Regions
+### 4. Map Regions
 Radiant can isolate a region of the map for editing and compiling, ignoring everything outside it.
 
-### 6. Prefabs
+### 5. Prefabs
 Radiant can save / load prefabs (reusable grouped brush assemblies).
 
-### 7. Connect Entities (target / targetname)
+### 6. Connect Entities (target / targetname)
 Radiant can auto-wire target / targetname links between selected entities and draw path lines.
 
-### 8. Pointfile / Leak Navigation
+### 7. Pointfile / Leak Navigation
 Radiant loads pointfiles from the compiler and lets you navigate leak paths.
 
-### 9. Splines / Paths
+### 8. Splines / Paths
 Radiant has spline path tools for camera paths and entity movement.
 
-### 10. Cubic Clipping (View Distance)
+### 9. Cubic Clipping (View Distance)
 Radiant can clip the 3D view at a configurable distance for large-map performance.
 
-### 11. Arbitrary Rotation / Scale Dialogs
+### 10. Arbitrary Rotation / Scale Dialogs
 Radiant has precise numeric input dialogs for rotation and scaling. We only have direct manipulation plus fixed-angle rotation shortcuts.
 
-### 12. Edge Dragging
+### 11. Edge Dragging
 Radiant can drag edges, not just vertices, in vertex editing mode.
 
-### 13. Plugin System
+### 12. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Copy / paste
-2. Find / replace textures
-3. Remaining selection enhancements
-4. Map regions
-5. Brush primitives beyond boxes
+1. Find / replace textures
+2. Remaining selection enhancements
+3. Map regions
+4. Brush primitives beyond boxes
+5. Prefabs

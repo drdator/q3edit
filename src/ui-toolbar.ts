@@ -145,6 +145,16 @@ export function buildToolbar(ctx: ToolbarContext): void {
   });
   addBtn({
     icon: icon('copy'),
+    title: 'Copy (Ctrl+C)',
+    onClick: () => { void ctx.editor.copySelection(); },
+  });
+  addBtn({
+    icon: icon('clipboard'),
+    title: 'Paste (Ctrl+V)',
+    onClick: () => { void ctx.editor.pasteClipboard(); },
+  });
+  addBtn({
+    icon: icon('files'),
     title: 'Duplicate (Ctrl+D)',
     onClick: () => ctx.editor.duplicateSelection(),
   });

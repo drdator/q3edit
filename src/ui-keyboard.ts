@@ -24,6 +24,8 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if (ctrl && e.key === 'y') { e.preventDefault(); ctx.editor.redo(); return; }
     if (ctrl && e.key === 's') { e.preventDefault(); ctx.editor.saveMapToFile(); return; }
     if (ctrl && e.key === 'o') { e.preventDefault(); ctx.editor.openMapFromFile(); return; }
+    if (ctrl && e.key === 'c') { e.preventDefault(); void ctx.editor.copySelection(); return; }
+    if (ctrl && e.key === 'v') { e.preventDefault(); void ctx.editor.pasteClipboard(); return; }
     if (ctrl && e.key === 'a') { e.preventDefault(); ctx.editor.selectAll(); return; }
     if (ctrl && e.key === 'd') { e.preventDefault(); ctx.editor.duplicateSelection(); return; }
     if (ctrl && e.shiftKey && e.key === 'G') { e.preventDefault(); ctx.editor.groupSelectionIntoEntity(); return; }
