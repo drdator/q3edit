@@ -134,6 +134,17 @@ import {
   showHidden as showEditorHidden,
 } from './editor-visibility';
 import {
+  clearRegion as clearEditorRegion,
+  collectRegionEntities as collectEditorRegionEntities,
+  isBrushInRegion as isEditorBrushInRegion,
+  isEntityInRegion as isEditorEntityInRegion,
+  isPatchInRegion as isEditorPatchInRegion,
+  isRegionActive as isEditorRegionActive,
+  serializeRegionMap as serializeEditorRegionMap,
+  setRegionFromSelection as setEditorRegionFromSelection,
+  type RegionBounds,
+} from './editor-regions';
+import {
   brushDetailState as getBrushDetailState,
   makeDetail as makeEditorDetail,
   makeStructural as makeEditorStructural,
@@ -218,6 +229,7 @@ export class Editor {
   hiddenBrushes = new Set<Brush>();
   hiddenPatches = new Set<Patch>();
   hiddenEntities = new Set<Entity>();
+  regionBounds: RegionBounds | null = null;
 
   // UI callback for locating a texture in the texture panel
   onLocateTexture: ((texture: string) => void) | null = null;
@@ -278,6 +290,10 @@ export class Editor {
     return isEditorBrushHidden(this, brush, entity);
   }
 
+  isBrushInRegion(brush: Brush, entity?: Entity): boolean {
+    return isEditorBrushInRegion(this, brush, entity);
+  }
+
   isSelected(brush: Brush, entity?: Entity): boolean {
     return isBrushSelected(this, brush, entity);
   }
@@ -288,6 +304,10 @@ export class Editor {
 
   isEntityHidden(entity: Entity): boolean {
     return isEditorEntityHidden(this, entity);
+  }
+
+  isEntityInRegion(entity: Entity): boolean {
+    return isEditorEntityInRegion(this, entity);
   }
 
   addBrushToSelection(entity: Entity, brush: Brush): void {
@@ -330,8 +350,24 @@ export class Editor {
     return isEditorPatchHidden(this, patch, entity);
   }
 
+  isPatchInRegion(patch: Patch, entity?: Entity): boolean {
+    return isEditorPatchInRegion(this, patch, entity);
+  }
+
   isEntityVisible(entity: Entity): boolean {
     return isEditorEntityVisible(this, entity);
+  }
+
+  isRegionActive(): boolean {
+    return isEditorRegionActive(this);
+  }
+
+  setRegionFromSelection(): void {
+    setEditorRegionFromSelection(this);
+  }
+
+  clearRegion(): void {
+    clearEditorRegion(this);
   }
 
   clearHiddenState(): void {
@@ -505,6 +541,14 @@ export class Editor {
 
   serializeMap(): string {
     return serializeEditorMap(this);
+  }
+
+  serializeRegionMap(addCompileBoundaryBrushes = false): string {
+    return serializeEditorRegionMap(this, { addCompileBoundaryBrushes });
+  }
+
+  collectRegionEntities(addCompileBoundaryBrushes = false): Entity[] {
+    return collectEditorRegionEntities(this, { addCompileBoundaryBrushes });
   }
 
   loadMap(text: string): void {

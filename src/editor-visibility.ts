@@ -3,6 +3,7 @@ import type { Entity } from './entity';
 import type { Patch } from './patch';
 import type { Editor } from './editor';
 import { allBrushes, allPatches } from './editor-queries';
+import { isBrushInRegion, isEntityInRegion, isPatchInRegion } from './editor-regions';
 
 export const INVISIBLE_TEXTURES = new Set([
   'common/clip', 'common/weapclip', 'common/trigger',
@@ -96,6 +97,7 @@ export function isPatchHidden(editor: Editor, patch: Patch, entity?: Entity): bo
 }
 
 export function isBrushVisible(editor: Editor, brush: Brush, entity?: Entity): boolean {
+  if (!isBrushInRegion(editor, brush)) return false;
   if (isBrushHidden(editor, brush, entity)) return false;
   if (editor.invisibleMode === 'hide' && brush.faces.length > 0 &&
       brush.faces.every(face => INVISIBLE_TEXTURES.has(face.texture.toLowerCase()))) {
@@ -109,6 +111,7 @@ export function isBrushVisible(editor: Editor, brush: Brush, entity?: Entity): b
 }
 
 export function isPatchVisible(editor: Editor, patch: Patch, entity?: Entity): boolean {
+  if (!isPatchInRegion(editor, patch)) return false;
   if (isPatchHidden(editor, patch, entity)) return false;
   if (!editor.renderSelectedOnly || editor.selection.length === 0) return true;
   return editor.selection.some(item =>
@@ -118,6 +121,7 @@ export function isPatchVisible(editor: Editor, patch: Patch, entity?: Entity): b
 }
 
 export function isEntityVisible(editor: Editor, entity: Entity): boolean {
+  if (!isEntityInRegion(editor, entity)) return false;
   if (isEntityHidden(editor, entity)) return false;
   if (!editor.renderSelectedOnly || editor.selection.length === 0) return true;
   return editor.selection.some(item =>

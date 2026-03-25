@@ -75,6 +75,10 @@ export function buildMenuBar(ctx: MenuBarContext): void {
         },
       },
     ],
+    'Region': [
+      { label: 'Set From Selection', action: () => ctx.editor.setRegionFromSelection() },
+      { label: 'Region Off', action: () => ctx.editor.clearRegion() },
+    ],
     'Tools': [
       { label: 'Select', shortcut: '1', action: () => ctx.setTool('select') },
       { label: 'Create Brush', shortcut: '2', action: () => ctx.setTool('create') },

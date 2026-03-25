@@ -82,6 +82,7 @@ export function collectSnapTargets(editor: Editor, includeSelected = false): [nu
   const sets: [Set<number>, Set<number>, Set<number>] = [new Set(), new Set(), new Set()];
 
   for (const { entity, brush } of allBrushes(editor)) {
+    if (!editor.isBrushInRegion(brush, entity)) continue;
     if (!includeSelected && editor.selection.some(item =>
       (item.type === 'brush' && item.brush === brush) ||
       (item.type === 'entity' && item.entity === entity)
@@ -96,6 +97,7 @@ export function collectSnapTargets(editor: Editor, includeSelected = false): [nu
   }
 
   for (const { entity, patch } of allPatches(editor)) {
+    if (!editor.isPatchInRegion(patch, entity)) continue;
     if (!includeSelected && editor.selection.some(item =>
       (item.type === 'patch' && item.patch === patch) ||
       (item.type === 'entity' && item.entity === entity)
@@ -110,6 +112,7 @@ export function collectSnapTargets(editor: Editor, includeSelected = false): [nu
   }
 
   for (const entity of nonWorldspawnEntities(editor)) {
+    if (!editor.isEntityInRegion(entity)) continue;
     if (!includeSelected && editor.selection.some(item => item.type === 'entity' && item.entity === entity)) continue;
     const origin = entityOrigin(entity);
     if (!origin) continue;

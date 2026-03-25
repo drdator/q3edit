@@ -52,6 +52,16 @@ Implemented:
 Still missing:
 - Granular per-category filters for water, clip, caulk, hint, lights, detail, paths, entity names, angles, coordinates, blocks, and similar Radiant toggles
 
+### Map Regions
+Implemented:
+- Region from the current selection bounds
+- Region-aware viewport rendering, picking, object tree listing, and 3D walk collision
+- Region-only BSP compile export, with temporary boundary walls around the region like classic Radiant
+
+Still missing:
+- Additional Radiant region commands like current-XY, single-brush, and tall-brush regioning
+- Save / load region workflows
+
 ## Missing
 
 ### 1. Brush Primitives Beyond Boxes
@@ -60,37 +70,34 @@ Radiant can create cylinders (3-9 sided), cones, spheres, torus, and pyramids. W
 ### 2. Terrain System
 Radiant has a full terrain editor with raise/lower sculpting and vertex-level terrain mesh editing.
 
-### 3. Map Regions
-Radiant can isolate a region of the map for editing and compiling, ignoring everything outside it.
-
-### 4. Prefabs
+### 3. Prefabs
 Radiant can save / load prefabs (reusable grouped brush assemblies).
 
-### 5. Connect Entities (target / targetname)
+### 4. Connect Entities (target / targetname)
 Radiant can auto-wire target / targetname links between selected entities and draw path lines.
 
-### 6. Pointfile / Leak Navigation
+### 5. Pointfile / Leak Navigation
 Radiant loads pointfiles from the compiler and lets you navigate leak paths.
 
-### 7. Splines / Paths
+### 6. Splines / Paths
 Radiant has spline path tools for camera paths and entity movement.
 
-### 8. Cubic Clipping (View Distance)
+### 7. Cubic Clipping (View Distance)
 Radiant can clip the 3D view at a configurable distance for large-map performance.
 
-### 9. Arbitrary Rotation / Scale Dialogs
+### 8. Arbitrary Rotation / Scale Dialogs
 Radiant has precise numeric input dialogs for rotation and scaling. We only have direct manipulation plus fixed-angle rotation shortcuts.
 
-### 10. Edge Dragging
+### 9. Edge Dragging
 Radiant can drag edges, not just vertices, in vertex editing mode.
 
-### 11. Plugin System
+### 10. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Map regions
-2. Brush primitives beyond boxes
-3. Prefabs
-4. Connect entities
-5. Terrain system
+1. Brush primitives beyond boxes
+2. Prefabs
+3. Connect entities
+4. Terrain system
+5. Pointfile / leak navigation

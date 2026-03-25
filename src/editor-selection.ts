@@ -247,10 +247,12 @@ function selectionCommandCandidates(editor: Editor, scope: SelectionCommandScope
   if (scope.mode === 'entity-children') {
     const items: SelectableItem[] = [];
     for (const brush of scope.entity.brushes) {
+      if (!editor.isBrushInRegion(brush, scope.entity)) continue;
       if (editor.isBrushHidden(brush, scope.entity)) continue;
       items.push({ type: 'brush', entity: scope.entity, brush });
     }
     for (const patch of scope.entity.patches) {
+      if (!editor.isPatchInRegion(patch, scope.entity)) continue;
       if (editor.isPatchHidden(patch, scope.entity)) continue;
       items.push({ type: 'patch', entity: scope.entity, patch });
     }
@@ -261,16 +263,19 @@ function selectionCommandCandidates(editor: Editor, scope: SelectionCommandScope
   const worldspawn = editor.entities[0];
   if (worldspawn) {
     for (const brush of worldspawn.brushes) {
+      if (!editor.isBrushInRegion(brush, worldspawn)) continue;
       if (editor.isBrushHidden(brush, worldspawn)) continue;
       items.push({ type: 'brush', entity: worldspawn, brush });
     }
     for (const patch of worldspawn.patches) {
+      if (!editor.isPatchInRegion(patch, worldspawn)) continue;
       if (editor.isPatchHidden(patch, worldspawn)) continue;
       items.push({ type: 'patch', entity: worldspawn, patch });
     }
   }
 
   for (const entity of nonWorldspawnEntities(editor)) {
+    if (!editor.isEntityInRegion(entity)) continue;
     if (editor.isEntityHidden(entity)) continue;
     items.push({ type: 'entity', entity });
   }
@@ -445,13 +450,16 @@ export function selectAll(editor: Editor): void {
   const worldspawn = editor.entities[0];
   if (worldspawn) {
     for (const brush of worldspawn.brushes) {
+      if (!editor.isBrushInRegion(brush, worldspawn)) continue;
       editor.selection.push({ type: 'brush', entity: worldspawn, brush });
     }
     for (const patch of worldspawn.patches) {
+      if (!editor.isPatchInRegion(patch, worldspawn)) continue;
       editor.selection.push({ type: 'patch', entity: worldspawn, patch });
     }
   }
   for (const entity of nonWorldspawnEntities(editor)) {
+    if (!editor.isEntityInRegion(entity)) continue;
     editor.selection.push({ type: 'entity', entity });
   }
   editor.dirty = true;

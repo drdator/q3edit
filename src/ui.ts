@@ -195,12 +195,18 @@ export class UI {
         };
 
     const items: ListItem[] = [];
-    const signatureParts: string[] = [mode];
+    const regionSignature = e.regionBounds
+      ? `${e.regionBounds.mins.join(',')}:${e.regionBounds.maxs.join(',')}`
+      : 'none';
+    const signatureParts: string[] = [mode, regionSignature];
 
     for (let ei = 0; ei < e.entities.length; ei++) {
       const entity = e.entities[ei];
+      if (!e.isEntityInRegion(entity)) continue;
       const brushChildren = (mode === 'all' || mode === 'brushes')
-        ? entity.brushes.map((brush, index) => ({
+        ? entity.brushes
+          .filter(brush => e.isBrushInRegion(brush, entity))
+          .map((brush, index) => ({
             kind: 'brush' as const,
             entity,
             brush,
@@ -210,7 +216,9 @@ export class UI {
           }))
         : [];
       const patchChildren = (mode === 'all' || mode === 'patches')
-        ? entity.patches.map((patch, index) => ({
+        ? entity.patches
+          .filter(patch => e.isPatchInRegion(patch, entity))
+          .map((patch, index) => ({
             kind: 'patch' as const,
             entity,
             patch,
@@ -230,7 +238,7 @@ export class UI {
       const childCount = brushChildren.length + patchChildren.length;
       const collapsed = childCount > 0 && this.collapsedBrushPanelEntities.has(entity);
       const label = this.objectTreeEntityLabel(entity, ei === 0);
-      const meta = this.objectTreeEntityMeta(entity, entity.brushes.length, entity.patches.length);
+      const meta = this.objectTreeEntityMeta(entity, brushChildren.length, patchChildren.length);
 
       items.push({
         kind: 'entity',
@@ -598,6 +606,7 @@ export class UI {
       <span class="status-item" id="status-tool">Tool: Select</span>
       <span class="status-item" id="status-grid">Grid: 16</span>
       <span class="status-item" id="status-sel">Sel: 0</span>
+      <span class="status-item" id="status-region"></span>
       <span class="status-item" id="status-brushes">Brushes: 0</span>
       <span class="status-item" id="status-gizmo"></span>
     `;
@@ -712,9 +721,30 @@ export class UI {
     }
     document.getElementById('status-sel')!.textContent = selLabel;
 
-    let brushCount = 0;
-    for (const entity of e.entities) brushCount += entity.brushes.length;
-    document.getElementById('status-brushes')!.textContent = `Brushes: ${brushCount}`;
+    let totalBrushCount = 0;
+    let visibleBrushCount = 0;
+    for (const entity of e.entities) {
+      for (const brush of entity.brushes) {
+        totalBrushCount++;
+        if (e.isBrushInRegion(brush, entity)) visibleBrushCount++;
+      }
+    }
+    document.getElementById('status-brushes')!.textContent = e.regionBounds
+      ? `Brushes: ${visibleBrushCount}/${totalBrushCount}`
+      : `Brushes: ${totalBrushCount}`;
+    const regionEl = document.getElementById('status-region');
+    if (regionEl) {
+      if (e.regionBounds) {
+        const size = [
+          e.regionBounds.maxs[0] - e.regionBounds.mins[0],
+          e.regionBounds.maxs[1] - e.regionBounds.mins[1],
+          e.regionBounds.maxs[2] - e.regionBounds.mins[2],
+        ].map(v => Math.round(v));
+        regionEl.textContent = `Region: ${size[0]} x ${size[1]} x ${size[2]}`;
+      } else {
+        regionEl.textContent = '';
+      }
+    }
     document.getElementById('grid-label')!.innerHTML = `<span class="tool-label">G:${e.gridSize}</span>`;
     const snapBtn = document.getElementById('snap-toggle')!;
     const snapTitles = { off: 'Snap: off', abs: 'Snap: absolute', rel: 'Snap: relative' };
@@ -1000,7 +1030,7 @@ export class UI {
 
     const title = document.createElement('div');
     title.style.cssText = 'font-size:14px;font-weight:bold;color:#08a;margin-bottom:8px';
-    title.textContent = 'Compile BSP';
+    title.textContent = this.editor.isRegionActive() ? 'Compile BSP (Region)' : 'Compile BSP';
     dialog.appendChild(title);
 
     // Quality selector
@@ -1028,7 +1058,7 @@ export class UI {
 
     const status = document.createElement('div');
     status.style.cssText = 'margin-bottom:8px;color:#ccc';
-    status.textContent = '';
+    status.textContent = this.editor.isRegionActive() ? 'Active region only' : '';
     dialog.appendChild(status);
 
     const log = document.createElement('pre');
@@ -1073,37 +1103,41 @@ export class UI {
     overlay.tabIndex = 0;
     compileBtn.focus();
 
-    // Collect texture data once
-    let imageFiles: Map<string, Uint8Array> | undefined;
-    if (this.texMgr) {
-      imageFiles = new Map();
-      const usedTextures = new Set<string>();
-      for (const ent of this.editor.entities) {
-        for (const brush of ent.brushes) {
-          for (const face of brush.faces) usedTextures.add(face.texture);
-        }
-        for (const patch of ent.patches) usedTextures.add(patch.texture);
-      }
-      for (const tex of usedTextures) {
-        const found = this.texMgr.findImageFile(tex);
-        if (found) imageFiles.set(found[0], found[1]);
-      }
-    }
-    const shaderFiles = this.texMgr?.getShaderFiles();
-
     const doCompile = async () => {
+      const compileWithRegion = this.editor.isRegionActive();
+      const compileEntities = compileWithRegion
+        ? this.editor.collectRegionEntities(true)
+        : this.editor.entities;
+      let imageFiles: Map<string, Uint8Array> | undefined;
+      if (this.texMgr) {
+        imageFiles = new Map();
+        const usedTextures = new Set<string>();
+        for (const ent of compileEntities) {
+          for (const brush of ent.brushes) {
+            for (const face of brush.faces) usedTextures.add(face.texture);
+          }
+          for (const patch of ent.patches) usedTextures.add(patch.texture);
+        }
+        for (const tex of usedTextures) {
+          const found = this.texMgr.findImageFile(tex);
+          if (found) imageFiles.set(found[0], found[1]);
+        }
+      }
+      const shaderFiles = this.texMgr?.getShaderFiles();
       const quality = qualitySelect.value;
       compileBtn.disabled = true;
       compileBtn.style.display = 'none';
       qualitySelect.disabled = true;
       runBtn.style.display = 'none';
       saveBtn.style.display = 'none';
-      status.textContent = 'Compiling...';
+      status.textContent = compileWithRegion ? 'Compiling active region...' : 'Compiling...';
       status.style.color = '#ccc';
       title.style.color = '#08a';
       log.textContent = '';
 
-      const mapText = this.editor.serializeMap();
+      const mapText = compileWithRegion
+        ? this.editor.serializeRegionMap(true)
+        : this.editor.serializeMap();
 
       const result = await compileMap(mapText, {
         args: ['-v'],
