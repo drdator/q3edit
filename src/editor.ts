@@ -1,11 +1,10 @@
-import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max, vec3Dot } from './math';
-import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, validateBrush, rebuildBrush, splitBrushConvex, BrushValidationResult, textureAxisFromPlane } from './brush';
+import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
+import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, BrushValidationResult } from './brush';
 import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin, entityDefaults } from './entity';
 import { Patch, clonePatch, translatePatch, rotatePatch, tessellatePatch, createFlatPatch, createCylinderPatch, createConePatch, createBevelPatch, createEndcapPatch } from './patch';
 import { History } from './history';
-import { serializeMap, parseMap } from './mapfile';
 import { TextureManager } from './textures';
-import { BrushVertex, collectBrushVertices, moveVertices } from './vertex';
+import { BrushVertex } from './vertex';
 import { subtractBrush, hollowBrush, mergeBrushes } from './csg';
 import {
   addBrushToSelection as addBrushSelectionItem,
@@ -33,6 +32,38 @@ import {
   selectionBounds as getSelectionBounds,
   selectionCenter as getSelectionCenter,
 } from './editor-queries';
+import {
+  createDefaultMap as createDefaultEditorMap,
+  loadMap as loadEditorMap,
+  newMap as createNewMap,
+  openMapFromFile as openEditorMapFromFile,
+  redo as redoDocument,
+  saveMapToFile as saveEditorMapToFile,
+  serializeMap as serializeEditorMap,
+  snapshot as snapshotDocument,
+  undo as undoDocument,
+} from './editor-document';
+import {
+  fitTexture as fitEditorTexture,
+  getTextureFaces as collectTextureFaces,
+  resetTextureAlignment as resetEditorTextureAlignment,
+  rotateTexture as rotateEditorTexture,
+  scaleTexture as scaleEditorTexture,
+  setTexture as setEditorTexture,
+  shiftTexture as shiftEditorTexture,
+} from './editor-textures';
+import {
+  clearVertexSelection as clearEditorVertexSelection,
+  enterVertexMode as enterEditorVertexMode,
+  exitVertexMode as exitEditorVertexMode,
+  isVertexSelected as isEditorVertexSelected,
+  moveSelectedVertices as moveEditorSelectedVertices,
+  rebuildBrushes as rebuildEditorBrushes,
+  refreshVertexData as refreshEditorVertexData,
+  selectVertex as selectEditorVertex,
+  splitBrushesConvex as splitEditorBrushesConvex,
+  vertexSelectionCenter as getEditorVertexSelectionCenter,
+} from './editor-vertex';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -676,117 +707,43 @@ export class Editor {
   // ── History ──
 
   snapshot(): void {
-    this.history.snapshot(this.entities);
+    snapshotDocument(this);
   }
 
   undo(): void {
-    const prev = this.history.undo(this.entities);
-    if (prev) {
-      this.entities = prev;
-      this.selection = [];
-      this.exitVertexMode();
-      this.dirty = true;
-      this.statusMessage = 'Undo';
-    }
+    undoDocument(this);
   }
 
   redo(): void {
-    const next = this.history.redo(this.entities);
-    if (next) {
-      this.entities = next;
-      this.selection = [];
-      this.exitVertexMode();
-      this.dirty = true;
-      this.statusMessage = 'Redo';
-    }
+    redoDocument(this);
   }
 
   // ── File I/O ──
 
   serializeMap(): string {
-    return serializeMap(this.entities);
+    return serializeEditorMap(this);
   }
 
   loadMap(text: string): void {
-    this.snapshot();
-    this.entities = parseMap(text);
-    this.selection = [];
-    this.dirty = true;
-    this.statusMessage = 'Map loaded';
+    loadEditorMap(this, text);
   }
 
   newMap(): void {
-    this.snapshot();
-    this.entities = [];
-    this.selection = [];
-    this.dirty = true;
-    this.statusMessage = 'New map';
+    createNewMap(this);
   }
 
   saveMapToFile(): void {
-    const data = this.serializeMap();
-    const blob = new Blob([data], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = this.fileName;
-    a.click();
-    URL.revokeObjectURL(url);
-    this.statusMessage = `Saved ${this.fileName}`;
+    saveEditorMapToFile(this);
   }
 
   openMapFromFile(): void {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.map';
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      this.fileName = file.name;
-      const reader = new FileReader();
-      reader.onload = () => {
-        this.loadMap(reader.result as string);
-      };
-      reader.readAsText(file);
-    };
-    input.click();
+    openEditorMapFromFile(this);
   }
 
   // ── Default map ──
 
   createDefaultMap(): void {
-    this.entities = [];
-    const ws = this.worldspawn;
-
-    const tex = 'base_wall/basewall03';
-    const floorTex = 'base_floor/concrete';
-    const ceilTex = 'base_floor/concrete';
-
-    // Floor
-    ws.brushes.push(createBoxBrush([0, 0, -16], [512, 512, 0], floorTex));
-    // Ceiling
-    ws.brushes.push(createBoxBrush([0, 0, 256], [512, 512, 272], ceilTex));
-    // North wall (+Y)
-    ws.brushes.push(createBoxBrush([0, 512, 0], [512, 528, 256], tex));
-    // South wall (-Y)
-    ws.brushes.push(createBoxBrush([0, -16, 0], [512, 0, 256], tex));
-    // East wall (+X)
-    ws.brushes.push(createBoxBrush([512, 0, 0], [528, 512, 256], tex));
-    // West wall (-X)
-    ws.brushes.push(createBoxBrush([-16, 0, 0], [0, 512, 256], tex));
-
-    // Spawn point
-    const spawn = createEntity('info_player_deathmatch', [256, 256, 32]);
-    spawn.properties['angle'] = '0';
-    this.entities.push(spawn);
-
-    // Light
-    const light = createEntity('light', [256, 256, 200]);
-    light.properties['light'] = '300';
-    this.entities.push(light);
-
-    this.dirty = true;
-    this.statusMessage = 'Default map created';
+    createDefaultEditorMap(this);
   }
 
   // ── Get all brushes across all entities ──
@@ -832,264 +789,83 @@ export class Editor {
   }
 
   setTexture(texture: string): void {
-    this.currentTexture = texture;
-    // Apply to selected face, all faces of selected brushes, or selected patches
-    for (const item of this.selection) {
-      if (item.type === 'face') {
-        item.face.texture = texture;
-      } else if (item.type === 'brush') {
-        for (const face of item.brush.faces) {
-          face.texture = texture;
-        }
-      } else if (item.type === 'patch') {
-        item.patch.texture = texture;
-      }
-    }
-    this.dirty = true;
+    setEditorTexture(this, texture);
   }
 
   // ── Texture alignment ──
 
   /** Get all faces affected by texture operations (selected faces, or all faces of selected brushes) */
   private getTextureFaces(): BrushFace[] {
-    const faces: BrushFace[] = [];
-    for (const item of this.selection) {
-      if (item.type === 'face') {
-        faces.push(item.face);
-      } else if (item.type === 'brush') {
-        faces.push(...item.brush.faces);
-      }
-    }
-    return faces;
+    return collectTextureFaces(this);
   }
 
   /** Shift texture offset by (du, dv) pixels */
   shiftTexture(du: number, dv: number): void {
-    const faces = this.getTextureFaces();
-    if (faces.length === 0) return;
-    this.snapshot();
-    for (const face of faces) {
-      face.offsetX += du;
-      face.offsetY += dv;
-    }
-    this.dirty = true;
+    shiftEditorTexture(this, du, dv);
   }
 
   /** Scale texture by delta (added to current scale) */
   scaleTexture(ds: number): void {
-    const faces = this.getTextureFaces();
-    if (faces.length === 0) return;
-    this.snapshot();
-    for (const face of faces) {
-      face.scaleX = Math.max(0.01, face.scaleX + ds);
-      face.scaleY = Math.max(0.01, face.scaleY + ds);
-    }
-    this.dirty = true;
+    scaleEditorTexture(this, ds);
   }
 
   /** Rotate texture by angle in degrees */
   rotateTexture(angle: number): void {
-    const faces = this.getTextureFaces();
-    if (faces.length === 0) return;
-    this.snapshot();
-    for (const face of faces) {
-      face.rotation = ((face.rotation + angle) % 360 + 360) % 360;
-    }
-    this.dirty = true;
+    rotateEditorTexture(this, angle);
   }
 
   /** Reset texture alignment to defaults */
   resetTextureAlignment(): void {
-    const faces = this.getTextureFaces();
-    if (faces.length === 0) return;
-    this.snapshot();
-    for (const face of faces) {
-      face.offsetX = 0;
-      face.offsetY = 0;
-      face.rotation = 0;
-      face.scaleX = 0.5;
-      face.scaleY = 0.5;
-    }
-    this.dirty = true;
-    this.statusMessage = 'Texture alignment reset';
+    resetEditorTextureAlignment(this);
   }
 
   /** Fit texture to face polygon bounds */
   fitTexture(): void {
-    const faces = this.getTextureFaces();
-    if (faces.length === 0 || !this.textureManager) return;
-    this.snapshot();
-    for (const face of faces) {
-      if (face.polygon.length < 3) continue;
-      const texInfo = this.textureManager.getIfLoaded(face.texture);
-      const tw = texInfo?.width ?? 128;
-      const th = texInfo?.height ?? 128;
-
-      // Get texture axes for this face
-      const [sv, tv] = textureAxisFromPlane(face.plane.normal);
-
-      // Project polygon onto texture axes to find bounds
-      let minS = Infinity, maxS = -Infinity;
-      let minT = Infinity, maxT = -Infinity;
-      for (const v of face.polygon) {
-        const s = vec3Dot(v, sv);
-        const t = vec3Dot(v, tv);
-        minS = Math.min(minS, s);
-        maxS = Math.max(maxS, s);
-        minT = Math.min(minT, t);
-        maxT = Math.max(maxT, t);
-      }
-
-      const sRange = maxS - minS;
-      const tRange = maxT - minT;
-      if (sRange < 0.001 || tRange < 0.001) continue;
-
-      face.scaleX = sRange / tw;
-      face.scaleY = tRange / th;
-      face.rotation = 0;
-      face.offsetX = -minS / face.scaleX;
-      face.offsetY = -minT / face.scaleY;
-    }
-    this.dirty = true;
-    this.statusMessage = 'Texture fit to face';
+    fitEditorTexture(this);
   }
 
   // ── Vertex editing ──
 
   enterVertexMode(): void {
-    const brushItems = this.selection.filter(s => s.type === 'brush' || s.type === 'face');
-    if (brushItems.length === 0) return;
-
-    this.vertexData = [];
-    const seen = new Set<Brush>();
-    for (const item of brushItems) {
-      if (seen.has(item.brush)) continue;
-      seen.add(item.brush);
-      this.vertexData.push({
-        brush: item.brush,
-        entity: item.entity,
-        vertices: collectBrushVertices(item.brush),
-      });
-    }
-
-    this.vertexMode = true;
-    this.vertexSelection = [];
-    this.dirty = true;
-    this.statusMessage = 'Vertex mode';
+    enterEditorVertexMode(this);
   }
 
   exitVertexMode(): { invalidBrushes: { brush: Brush; entity: Entity; result: BrushValidationResult }[] } | null {
-    if (!this.vertexMode) return null;
-
-    // Validate all edited brushes before leaving vertex mode
-    const invalidBrushes: { brush: Brush; entity: Entity; result: BrushValidationResult }[] = [];
-    for (const data of this.vertexData) {
-      const result = validateBrush(data.brush);
-      if (!result.valid) {
-        invalidBrushes.push({ brush: data.brush, entity: data.entity, result });
-      }
-    }
-
-    this.vertexMode = false;
-    this.vertexData = [];
-    this.vertexSelection = [];
-    this.dirty = true;
-
-    if (invalidBrushes.length > 0) {
-      return { invalidBrushes };
-    }
-    return null;
+    return exitEditorVertexMode(this);
   }
 
   /** Rebuild invalid brushes from their face planes (reconvexifies). */
   rebuildBrushes(brushes: Brush[]): void {
-    for (const brush of brushes) {
-      rebuildBrush(brush);
-    }
-    this.dirty = true;
+    rebuildEditorBrushes(this, brushes);
   }
 
   /** Split non-convex brushes into multiple convex brushes. */
   splitBrushesConvex(invalidBrushes: { brush: Brush; entity: Entity }[]): void {
-    for (const { brush, entity } of invalidBrushes) {
-      const pieces = splitBrushConvex(brush);
-      if (pieces.length <= 1) continue; // No split occurred
-
-      // Replace original brush with the convex pieces
-      const idx = entity.brushes.indexOf(brush);
-      if (idx >= 0) entity.brushes.splice(idx, 1);
-      for (const piece of pieces) {
-        entity.brushes.push(piece);
-      }
-    }
-    this.selection = [];
-    this.dirty = true;
+    splitEditorBrushesConvex(this, invalidBrushes);
   }
 
   selectVertex(dataIndex: number, vertexIndex: number, additive = false): void {
-    if (!additive) this.vertexSelection = [];
-    const idx = this.vertexSelection.findIndex(
-      v => v.dataIndex === dataIndex && v.vertexIndex === vertexIndex
-    );
-    if (idx >= 0) {
-      if (additive) this.vertexSelection.splice(idx, 1);
-      return;
-    }
-    this.vertexSelection.push({ dataIndex, vertexIndex });
-    this.dirty = true;
+    selectEditorVertex(this, dataIndex, vertexIndex, additive);
   }
 
   clearVertexSelection(): void {
-    this.vertexSelection = [];
-    this.dirty = true;
+    clearEditorVertexSelection(this);
   }
 
   isVertexSelected(dataIndex: number, vertexIndex: number): boolean {
-    return this.vertexSelection.some(
-      v => v.dataIndex === dataIndex && v.vertexIndex === vertexIndex
-    );
+    return isEditorVertexSelected(this, dataIndex, vertexIndex);
   }
 
   moveSelectedVertices(delta: Vec3): void {
-    if (this.vertexSelection.length === 0) return;
-
-    // Group selected vertex indices by dataIndex (brush)
-    const byBrush = new Map<number, number[]>();
-    for (const vs of this.vertexSelection) {
-      let arr = byBrush.get(vs.dataIndex);
-      if (!arr) { arr = []; byBrush.set(vs.dataIndex, arr); }
-      arr.push(vs.vertexIndex);
-    }
-
-    for (const [di, indices] of byBrush) {
-      const data = this.vertexData[di];
-      moveVertices(data.brush, data.vertices, indices, delta);
-    }
-
-    // Refresh vertex data (polygon topology may have changed)
-    this.refreshVertexData();
-    this.dirty = true;
+    moveEditorSelectedVertices(this, delta);
   }
 
   refreshVertexData(): void {
-    // Polygons are edited directly — vertex indices are stable, no remapping needed.
-    // Just filter out any that went out of range as a safety measure.
-    this.vertexSelection = this.vertexSelection.filter(vs =>
-      vs.dataIndex < this.vertexData.length &&
-      vs.vertexIndex < this.vertexData[vs.dataIndex].vertices.length
-    );
+    refreshEditorVertexData(this);
   }
 
   vertexSelectionCenter(): Vec3 | null {
-    if (this.vertexSelection.length === 0) return null;
-    let sum: Vec3 = [0, 0, 0];
-    for (const vs of this.vertexSelection) {
-      const pos = this.vertexData[vs.dataIndex]?.vertices[vs.vertexIndex]?.position;
-      if (!pos) continue;
-      sum[0] += pos[0]; sum[1] += pos[1]; sum[2] += pos[2];
-    }
-    const n = this.vertexSelection.length;
-    return [sum[0] / n, sum[1] / n, sum[2] / n];
+    return getEditorVertexSelectionCenter(this);
   }
 
   // ── Patch control point editing ──
