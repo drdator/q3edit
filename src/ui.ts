@@ -1,11 +1,13 @@
 import { Editor, Tool, InvisibleMode } from './editor';
 import { Entity, ENTITY_CATEGORIES } from './entity';
 import { TextureManager } from './textures';
-import { Vec3 } from './math';
 import { PropertiesPanel } from './properties-panel';
 import { Brush } from './brush';
 import { Patch } from './patch';
 import { compileMap } from './q3map';
+import { buildMenuBar as buildMenuBarUI } from './ui-menu';
+import { buildToolbar as buildToolbarUI } from './ui-toolbar';
+import { setupKeyboard as setupKeyboardUI } from './ui-keyboard';
 import '@phosphor-icons/web/regular';
 
 const COMMON_TEXTURES = [
@@ -50,129 +52,18 @@ export class UI {
   // ── Menu Bar ──
 
   private buildMenuBar(): void {
-    const bar = document.getElementById('menubar')!;
-
-    type MenuItem = { label: string; shortcut?: string; action?: () => void; separator?: boolean } | { separator: true; label?: undefined; shortcut?: undefined; action?: undefined };
-    const menus: Record<string, MenuItem[]> = {
-      'File': [
-        { label: 'New', shortcut: 'Ctrl+N', action: () => { this.editor.newMap(); this.editor.createDefaultMap(); } },
-        { separator: true },
-        { label: 'Open...', shortcut: 'Ctrl+O', action: () => this.editor.openMapFromFile() },
-        { label: 'Save', shortcut: 'Ctrl+S', action: () => this.editor.saveMapToFile() },
-        { separator: true },
-        { label: 'Export .map to Console', action: () => console.log(this.editor.serializeMap()) },
-        { separator: true },
-        { label: 'Compile BSP...', action: () => this.compileBSP() },
-      ],
-      'Edit': [
-        { label: 'Undo', shortcut: 'Ctrl+Z', action: () => this.editor.undo() },
-        { label: 'Redo', shortcut: 'Ctrl+Y', action: () => this.editor.redo() },
-        { separator: true },
-        { label: 'Select All', shortcut: 'Ctrl+A', action: () => this.editor.selectAll() },
-        { label: 'Deselect', shortcut: 'Esc', action: () => this.editor.clearSelection() },
-        { label: 'Hide Selected', shortcut: 'H', action: () => this.editor.hideSelected() },
-        { label: 'Show Hidden', shortcut: 'Shift+H', action: () => this.editor.showHidden() },
-        { separator: true },
-        { label: 'Make Detail', action: () => this.editor.makeDetail() },
-        { label: 'Make Structural', action: () => this.editor.makeStructural() },
-        { separator: true },
-        { label: 'Duplicate', shortcut: 'Ctrl+D', action: () => this.editor.duplicateSelection() },
-        { label: 'Delete', shortcut: 'Del', action: () => this.editor.deleteSelection() },
-        { separator: true },
-        { label: 'Rotate 90°', shortcut: 'R', action: () => this.editor.rotateSelection(90) },
-        { label: 'Rotate 15°', shortcut: 'Shift+R', action: () => this.editor.rotateSelection(15) },
-        { label: 'Flip X', shortcut: 'Shift+X', action: () => this.editor.flipSelection(0) },
-        { label: 'Flip Y', shortcut: 'Shift+Y', action: () => this.editor.flipSelection(1) },
-        { label: 'Flip Z', shortcut: 'Shift+Z', action: () => this.editor.flipSelection(2) },
-      ],
-      'View': [
-        { label: 'Texture Lock', shortcut: 'T', action: () => this.editor.toggleTextureLock() },
-        { label: 'Cycle Invisible Mode', shortcut: 'I', action: () => this.cycleInvisibleMode() },
-        { label: 'Render Selected Only', action: () => {
-          this.editor.renderSelectedOnly = !this.editor.renderSelectedOnly;
-          this.editor.dirty = true;
-        }},
-      ],
-      'Tools': [
-        { label: 'Select', shortcut: '1', action: () => this.setTool('select') },
-        { label: 'Create Brush', shortcut: '2', action: () => this.setTool('create') },
-        { label: 'Place Entity', shortcut: '3', action: () => this.setTool('entity') },
-        { label: 'Clip', shortcut: '4', action: () => this.setTool('clip') },
-        { label: 'Rotate', shortcut: '5', action: () => this.setTool('rotate') },
-      ],
-      'CSG': [
-        { label: 'CSG Subtract', shortcut: 'Shift+Ctrl+S', action: () => this.editor.csgSubtract() },
-        { label: 'Make Hollow', shortcut: 'Shift+Ctrl+H', action: () => this.editor.csgHollow() },
-        { label: 'Merge Brushes', shortcut: 'Shift+Ctrl+M', action: () => this.editor.csgMerge() },
-      ],
-      'Grid': [
-        { label: 'Grid 1', action: () => this.setGrid(1) },
-        { label: 'Grid 2', action: () => this.setGrid(2) },
-        { label: 'Grid 4', action: () => this.setGrid(4) },
-        { label: 'Grid 8', action: () => this.setGrid(8) },
-        { label: 'Grid 16', action: () => this.setGrid(16) },
-        { label: 'Grid 32', action: () => this.setGrid(32) },
-        { label: 'Grid 64', action: () => this.setGrid(64) },
-        { separator: true },
-        { label: 'Smaller Grid', shortcut: '[', action: () => this.decreaseGrid() },
-        { label: 'Larger Grid', shortcut: ']', action: () => this.increaseGrid() },
-      ],
-    };
-
-    for (const [name, items] of Object.entries(menus)) {
-      const menuItem = document.createElement('div');
-      menuItem.className = 'menu-item';
-      menuItem.textContent = name;
-
-      const dropdown = document.createElement('div');
-      dropdown.className = 'menu-dropdown';
-
-      for (const item of items) {
-        if (item.separator) {
-          const sep = document.createElement('div');
-          sep.className = 'menu-separator';
-          dropdown.appendChild(sep);
-          continue;
-        }
-
-        const action = document.createElement('div');
-        action.className = 'menu-action';
-        action.innerHTML = `<span>${item.label}</span>` +
-          (item.shortcut ? `<span class="shortcut">${item.shortcut}</span>` : '');
-        action.addEventListener('mousedown', (e) => {
-          e.stopPropagation();
-          this.closeMenus();
-          item.action?.();
-        });
-        dropdown.appendChild(action);
-      }
-
-      menuItem.appendChild(dropdown);
-
-      menuItem.addEventListener('mouseenter', () => {
-        if (this.openMenu && this.openMenu !== menuItem) {
-          this.openMenu.classList.remove('open');
-          menuItem.classList.add('open');
-          this.openMenu = menuItem;
-        }
-      });
-
-      menuItem.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-        if (this.openMenu === menuItem) {
-          this.closeMenus();
-        } else {
-          this.closeMenus();
-          menuItem.classList.add('open');
-          this.openMenu = menuItem;
-        }
-      });
-
-      bar.appendChild(menuItem);
-    }
-
-    // Close menus when clicking elsewhere
-    document.addEventListener('mousedown', () => this.closeMenus());
+    buildMenuBarUI({
+      editor: this.editor,
+      getOpenMenu: () => this.openMenu,
+      setOpenMenu: (menu) => { this.openMenu = menu; },
+      closeMenus: () => this.closeMenus(),
+      compileBSP: () => this.compileBSP(),
+      cycleInvisibleMode: () => this.cycleInvisibleMode(),
+      setTool: (tool) => this.setTool(tool),
+      setGrid: (size) => this.setGrid(size),
+      increaseGrid: () => this.increaseGrid(),
+      decreaseGrid: () => this.decreaseGrid(),
+    });
   }
 
   private closeMenus(): void {
@@ -185,161 +76,14 @@ export class UI {
   // ── Toolbar ──
 
   private buildToolbar(): void {
-    const bar = document.getElementById('toolbar')!;
-
-    const icon = (name: string, weight: string = 'regular'): string =>
-      `<i class="ph${weight === 'regular' ? '' : '-' + weight} ph-${name}"></i>`;
-
-    const addBtn = (opts: {
-      id?: string;
-      icon: string;
-      title: string;
-      active?: boolean;
-      dataset?: Record<string, string>;
-      onClick: () => void;
-    }) => {
-      const btn = document.createElement('div');
-      btn.className = 'tool-btn' + (opts.active ? ' active' : '');
-      if (opts.id) btn.id = opts.id;
-      btn.innerHTML = opts.icon;
-      btn.title = opts.title;
-      if (opts.dataset) for (const [k, v] of Object.entries(opts.dataset)) btn.dataset[k] = v;
-      btn.addEventListener('mousedown', () => opts.onClick());
-      bar.appendChild(btn);
-      return btn;
-    };
-
-    // ── Tools ──
-    const tools: { id: Tool; icon: string; title: string }[] = [
-      { id: 'select', icon: icon('cursor'),             title: 'Select (1)' },
-      { id: 'create', icon: icon('cube'),               title: 'Create Brush (2)' },
-      { id: 'entity', icon: icon('map-pin'),            title: 'Place Entity (3)' },
-      { id: 'clip',   icon: icon('scissors'),           title: 'Clip (4)' },
-      { id: 'rotate', icon: icon('arrows-clockwise'),   title: 'Rotate (5)' },
-    ];
-
-    for (const tool of tools) {
-      addBtn({
-        icon: tool.icon,
-        title: tool.title,
-        active: tool.id === this.editor.activeTool,
-        dataset: { tool: tool.id },
-        onClick: () => this.setTool(tool.id),
-      });
-    }
-
-    bar.appendChild(this.createSeparator());
-
-    // ── Gizmo modes ──
-    addBtn({
-      id: 'gizmo-move',
-      icon: icon('arrows-out-cardinal'),
-      title: 'Move mode (W)',
-      active: this.editor.gizmoMode === 'move',
-      onClick: () => { this.editor.gizmoMode = 'move'; this.editor.dirty = true; },
+    buildToolbarUI({
+      editor: this.editor,
+      setTool: (tool) => this.setTool(tool),
+      increaseGrid: () => this.increaseGrid(),
+      toggleSnap: () => this.toggleSnap(),
+      toggleGeoSnap: () => this.toggleGeoSnap(),
+      cycleInvisibleMode: () => this.cycleInvisibleMode(),
     });
-    addBtn({
-      id: 'gizmo-scale',
-      icon: icon('resize'),
-      title: 'Scale mode (E)',
-      active: this.editor.gizmoMode === 'scale',
-      onClick: () => { this.editor.gizmoMode = 'scale'; this.editor.dirty = true; },
-    });
-
-    bar.appendChild(this.createSeparator());
-
-    // ── Grid / Snap ──
-    const gridBtn = addBtn({
-      id: 'grid-label',
-      icon: `<span class="tool-label">G:${this.editor.gridSize}</span>`,
-      title: 'Grid size (click to increase, [ / ])',
-      onClick: () => this.increaseGrid(),
-    });
-
-    addBtn({
-      id: 'snap-toggle',
-      icon: icon('magnet-straight'),
-      title: 'Cycle grid snap: off / absolute / relative',
-      active: true,
-      onClick: () => this.toggleSnap(),
-    });
-
-    addBtn({
-      id: 'geosnap-toggle',
-      icon: icon('polygon'),
-      title: 'Geometry snap (G)',
-      onClick: () => this.toggleGeoSnap(),
-    });
-
-    addBtn({
-      id: 'texlock-toggle',
-      icon: `<span class="tool-label">TL</span>`,
-      title: 'Texture lock (T)',
-      active: this.editor.textureLock,
-      onClick: () => this.editor.toggleTextureLock(),
-    });
-
-    bar.appendChild(this.createSeparator());
-
-    // ── View ──
-    addBtn({
-      id: 'invis-toggle',
-      icon: icon('eye'),
-      title: 'Invisible geometry: show / dim / hide (I)',
-      onClick: () => this.cycleInvisibleMode(),
-    });
-
-    bar.appendChild(this.createSeparator());
-
-    // ── CSG ──
-    addBtn({
-      icon: icon('selection'),
-      title: 'Make Hollow (Ctrl+Shift+H)',
-      onClick: () => this.editor.csgHollow(),
-    });
-    addBtn({
-      icon: icon('subtract'),
-      title: 'CSG Subtract (Ctrl+Shift+S)',
-      onClick: () => this.editor.csgSubtract(),
-    });
-    addBtn({
-      icon: icon('unite'),
-      title: 'Merge Brushes (Ctrl+Shift+M)',
-      onClick: () => this.editor.csgMerge(),
-    });
-
-    bar.appendChild(this.createSeparator());
-
-    // ── Actions ──
-    addBtn({
-      icon: icon('trash'),
-      title: 'Delete (Del)',
-      onClick: () => this.editor.deleteSelection(),
-    });
-    addBtn({
-      icon: icon('copy'),
-      title: 'Duplicate (Ctrl+D)',
-      onClick: () => this.editor.duplicateSelection(),
-    });
-
-    bar.appendChild(this.createSeparator());
-
-    addBtn({
-      icon: icon('arrow-counter-clockwise'),
-      title: 'Undo (Ctrl+Z)',
-      onClick: () => this.editor.undo(),
-    });
-    addBtn({
-      icon: icon('arrow-clockwise'),
-      title: 'Redo (Ctrl+Y)',
-      onClick: () => this.editor.redo(),
-    });
-  }
-
-  private createSeparator(): HTMLElement {
-    const sep = document.createElement('div');
-    sep.className = 'tool-separator';
-    return sep;
   }
 
   // ── Side Panel ──
@@ -562,161 +306,14 @@ export class UI {
   // ── Keyboard shortcuts ──
 
   private setupKeyboard(): void {
-    document.addEventListener('keydown', (e) => {
-      // Don't handle shortcuts in fullscreen 3D mode
-      if (this.editor.fullscreen3d) return;
-      // Don't handle shortcuts when typing in inputs
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-
-      const ctrl = e.ctrlKey || e.metaKey;
-
-      if (ctrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); this.editor.redo(); return; }
-      if (ctrl && e.key === 'z') { e.preventDefault(); this.editor.undo(); return; }
-      if (ctrl && e.key === 'y') { e.preventDefault(); this.editor.redo(); return; }
-      if (ctrl && e.key === 's') { e.preventDefault(); this.editor.saveMapToFile(); return; }
-      if (ctrl && e.key === 'o') { e.preventDefault(); this.editor.openMapFromFile(); return; }
-      if (ctrl && e.key === 'a') { e.preventDefault(); this.editor.selectAll(); return; }
-      if (ctrl && e.key === 'd') { e.preventDefault(); this.editor.duplicateSelection(); return; }
-      if (ctrl && e.key === 'g') { e.preventDefault(); this.editor.snapSelectionToGrid(); return; }
-
-      // CSG operations
-      if (ctrl && e.shiftKey && e.key === 'S') { e.preventDefault(); this.editor.csgSubtract(); return; }
-      if (ctrl && e.shiftKey && e.key === 'H') { e.preventDefault(); this.editor.csgHollow(); return; }
-      if (ctrl && e.shiftKey && e.key === 'M') { e.preventDefault(); this.editor.csgMerge(); return; }
-
-      if (e.key === 'Escape') {
-        if (this.editor.vertexMode) {
-          this.handleExitVertexMode();
-        } else if (this.editor.patchEditMode) {
-          this.editor.exitPatchEditMode();
-        } else if (this.editor.activeTool === 'clip' && this.editor.clipPoints.length > 0) {
-          this.editor.cancelClip();
-        } else if (this.editor.activeTool === 'rotate' && this.editor.rotateAnchor) {
-          this.editor.rotateAnchor = null;
-          this.editor.dirty = true;
-        } else {
-          this.editor.clearSelection();
-        }
-        return;
-      }
-      if (e.key === 'Delete' || e.key === 'Backspace') { this.editor.deleteSelection(); return; }
-
-      if (e.key === '1') { this.setTool('select'); return; }
-      if (e.key === '2') { this.setTool('create'); return; }
-      if (e.key === '3') { this.setTool('entity'); return; }
-      if (e.key === '4') { this.setTool('clip'); return; }
-      if (e.key === '5') { this.setTool('rotate'); return; }
-
-      // Toggle vertex editing mode (V for brushes, V for patches if patches selected)
-      if (e.key === 'v' && !ctrl) {
-        if (this.editor.vertexMode) {
-          this.handleExitVertexMode();
-        } else if (this.editor.patchEditMode) {
-          this.editor.exitPatchEditMode();
-        } else if (this.editor.selection.some(s => s.type === 'patch')) {
-          this.editor.enterPatchEditMode();
-        } else if (this.editor.selection.length > 0) {
-          this.editor.enterVertexMode();
-        }
-        return;
-      }
-
-      if (e.key === '[') { this.decreaseGrid(); return; }
-      if (e.key === ']') { this.increaseGrid(); return; }
-
-      // Patch creation: P = flat, Shift+P = cylinder, Ctrl+P = cone, Ctrl+Shift+P = bevel
-      if (e.key === 'p' && !ctrl && this.editor.selection.length > 0) {
-        this.editor.createPatch('flat'); return;
-      }
-      if (e.key === 'P' && !ctrl && this.editor.selection.length > 0) {
-        this.editor.createPatch('cylinder'); return;
-      }
-      if (e.key === 'p' && ctrl && !e.shiftKey && this.editor.selection.length > 0) {
-        e.preventDefault(); this.editor.createPatch('cone'); return;
-      }
-      if (e.key === 'p' && ctrl && e.shiftKey && this.editor.selection.length > 0) {
-        e.preventDefault(); this.editor.createPatch('bevel'); return;
-      }
-
-      // Patch subdivision: +/- to increase/decrease tessellation
-      if ((e.key === '+' || e.key === '=') && this.editor.selection.some(s => s.type === 'patch')) {
-        this.editor.changeSubdivisions(1); return;
-      }
-      if ((e.key === '-' || e.key === '_') && this.editor.selection.some(s => s.type === 'patch')) {
-        this.editor.changeSubdivisions(-1); return;
-      }
-
-      // Clip tool: Enter to execute, Tab to cycle mode
-      if (e.key === 'Enter' && this.editor.activeTool === 'clip') { this.editor.executeClip(); return; }
-      if (e.key === 'Tab' && this.editor.activeTool === 'clip') { e.preventDefault(); this.editor.cycleClipMode(); return; }
-
-      // Toggle invisible geometry
-      if (e.key === 'i' && !ctrl) { this.cycleInvisibleMode(); return; }
-      if (e.key === 't' && !ctrl) { this.editor.toggleTextureLock(); return; }
-
-      // Hide/show hidden items
-      if (e.key === 'h' && !ctrl) { this.editor.hideSelected(); return; }
-      if (e.key === 'H' && !ctrl) { this.editor.showHidden(); return; }
-
-      // Toggle geometry snap
-      if (e.key === 'g' && !ctrl) { this.toggleGeoSnap(); return; }
-
-      // Focus on selection
-      if (e.key === 'f' && !ctrl) { this.editor.centerOnSelection(); return; }
-
-      // Gizmo mode: W = move, E = scale
-      if (e.key === 'w' && !ctrl) { this.editor.gizmoMode = 'move'; this.editor.dirty = true; return; }
-      if (e.key === 'e' && !ctrl) { this.editor.gizmoMode = 'scale'; this.editor.dirty = true; return; }
-
-      // Rotation: R = 90°, Shift+R = 15°
-      if (e.key === 'r' && !ctrl) { this.editor.rotateSelection(90); return; }
-      if (e.key === 'R' && !ctrl) { this.editor.rotateSelection(15); return; }
-      if (e.key === 'X' && !ctrl) { e.preventDefault(); this.editor.flipSelection(0); return; }
-      if (e.key === 'Y' && !ctrl) { e.preventDefault(); this.editor.flipSelection(1); return; }
-      if (e.key === 'Z' && !ctrl) { e.preventDefault(); this.editor.flipSelection(2); return; }
-
-      // Texture shortcuts: Shift+Arrow = shift texture, Ctrl+Shift+Arrow = fine shift
-      if (e.key.startsWith('Arrow') && e.shiftKey && this.editor.selectedFaces.length > 0) {
-        e.preventDefault();
-        const step = ctrl ? 1 : 8;
-        const du = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
-        const dv = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
-        this.editor.shiftTexture(du, dv);
-        return;
-      }
-
-      // Texture fit: Ctrl+Shift+F
-      if (e.key === 'F' && ctrl && e.shiftKey) { e.preventDefault(); this.editor.fitTexture(); return; }
-      // Texture reset: Ctrl+Shift+N
-      if (e.key === 'N' && ctrl && e.shiftKey) { e.preventDefault(); this.editor.resetTextureAlignment(); return; }
-      // Texture rotate: Shift+PgUp/PgDn
-      if (e.key === 'PageUp' && e.shiftKey) { this.editor.rotateTexture(e.ctrlKey ? 1 : 15); return; }
-      if (e.key === 'PageDown' && e.shiftKey) { this.editor.rotateTexture(e.ctrlKey ? -1 : -15); return; }
-      // Texture scale: Ctrl+PgUp/PgDn (no Shift)
-      if (e.key === 'PageUp' && ctrl && !e.shiftKey) { this.editor.scaleTexture(0.05); return; }
-      if (e.key === 'PageDown' && ctrl && !e.shiftKey) { this.editor.scaleTexture(-0.05); return; }
-
-      // Arrow keys: nudge selection (or vertices in vertex mode)
-      if (e.key.startsWith('Arrow') && this.editor.selection.length > 0) {
-        e.preventDefault();
-        const grid = e.ctrlKey ? 1 : e.shiftKey ? this.editor.gridSize * 4 : this.editor.gridSize;
-        const delta: Vec3 = [0, 0, 0];
-        const h = this.editor.nudgeAxisH;
-        const v = this.editor.nudgeAxisV;
-        if (e.key === 'ArrowRight') delta[h] = grid;
-        else if (e.key === 'ArrowLeft') delta[h] = -grid;
-        else if (e.key === 'ArrowUp') delta[v] = grid;
-        else if (e.key === 'ArrowDown') delta[v] = -grid;
-        this.editor.snapshot();
-        if (this.editor.vertexMode && this.editor.vertexSelection.length > 0) {
-          this.editor.moveSelectedVertices(delta);
-        } else if (this.editor.patchEditMode && this.editor.patchControlSelection.length > 0) {
-          this.editor.moveSelectedControlPoints(delta);
-        } else {
-          this.editor.moveSelection(delta);
-        }
-        return;
-      }
+    setupKeyboardUI({
+      editor: this.editor,
+      handleExitVertexMode: () => this.handleExitVertexMode(),
+      setTool: (tool) => this.setTool(tool),
+      increaseGrid: () => this.increaseGrid(),
+      decreaseGrid: () => this.decreaseGrid(),
+      toggleGeoSnap: () => this.toggleGeoSnap(),
+      cycleInvisibleMode: () => this.cycleInvisibleMode(),
     });
   }
 

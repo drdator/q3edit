@@ -1,0 +1,145 @@
+import { Editor, Tool } from './editor';
+
+type MenuItem =
+  | { label: string; shortcut?: string; action?: () => void | Promise<void>; separator?: boolean }
+  | { separator: true; label?: undefined; shortcut?: undefined; action?: undefined };
+
+export interface MenuBarContext {
+  editor: Editor;
+  getOpenMenu: () => HTMLElement | null;
+  setOpenMenu: (menu: HTMLElement | null) => void;
+  closeMenus: () => void;
+  compileBSP: () => void | Promise<void>;
+  cycleInvisibleMode: () => void;
+  setTool: (tool: Tool) => void;
+  setGrid: (size: number) => void;
+  increaseGrid: () => void;
+  decreaseGrid: () => void;
+}
+
+export function buildMenuBar(ctx: MenuBarContext): void {
+  const bar = document.getElementById('menubar')!;
+  const menus: Record<string, MenuItem[]> = {
+    'File': [
+      { label: 'New', shortcut: 'Ctrl+N', action: () => { ctx.editor.newMap(); ctx.editor.createDefaultMap(); } },
+      { separator: true },
+      { label: 'Open...', shortcut: 'Ctrl+O', action: () => ctx.editor.openMapFromFile() },
+      { label: 'Save', shortcut: 'Ctrl+S', action: () => ctx.editor.saveMapToFile() },
+      { separator: true },
+      { label: 'Export .map to Console', action: () => console.log(ctx.editor.serializeMap()) },
+      { separator: true },
+      { label: 'Compile BSP...', action: () => ctx.compileBSP() },
+    ],
+    'Edit': [
+      { label: 'Undo', shortcut: 'Ctrl+Z', action: () => ctx.editor.undo() },
+      { label: 'Redo', shortcut: 'Ctrl+Y', action: () => ctx.editor.redo() },
+      { separator: true },
+      { label: 'Select All', shortcut: 'Ctrl+A', action: () => ctx.editor.selectAll() },
+      { label: 'Deselect', shortcut: 'Esc', action: () => ctx.editor.clearSelection() },
+      { label: 'Hide Selected', shortcut: 'H', action: () => ctx.editor.hideSelected() },
+      { label: 'Show Hidden', shortcut: 'Shift+H', action: () => ctx.editor.showHidden() },
+      { separator: true },
+      { label: 'Make Detail', action: () => ctx.editor.makeDetail() },
+      { label: 'Make Structural', action: () => ctx.editor.makeStructural() },
+      { separator: true },
+      { label: 'Duplicate', shortcut: 'Ctrl+D', action: () => ctx.editor.duplicateSelection() },
+      { label: 'Delete', shortcut: 'Del', action: () => ctx.editor.deleteSelection() },
+      { separator: true },
+      { label: 'Rotate 90°', shortcut: 'R', action: () => ctx.editor.rotateSelection(90) },
+      { label: 'Rotate 15°', shortcut: 'Shift+R', action: () => ctx.editor.rotateSelection(15) },
+      { label: 'Flip X', shortcut: 'Shift+X', action: () => ctx.editor.flipSelection(0) },
+      { label: 'Flip Y', shortcut: 'Shift+Y', action: () => ctx.editor.flipSelection(1) },
+      { label: 'Flip Z', shortcut: 'Shift+Z', action: () => ctx.editor.flipSelection(2) },
+    ],
+    'View': [
+      { label: 'Texture Lock', shortcut: 'T', action: () => ctx.editor.toggleTextureLock() },
+      { label: 'Cycle Invisible Mode', shortcut: 'I', action: () => ctx.cycleInvisibleMode() },
+      {
+        label: 'Render Selected Only',
+        action: () => {
+          ctx.editor.renderSelectedOnly = !ctx.editor.renderSelectedOnly;
+          ctx.editor.dirty = true;
+        },
+      },
+    ],
+    'Tools': [
+      { label: 'Select', shortcut: '1', action: () => ctx.setTool('select') },
+      { label: 'Create Brush', shortcut: '2', action: () => ctx.setTool('create') },
+      { label: 'Place Entity', shortcut: '3', action: () => ctx.setTool('entity') },
+      { label: 'Clip', shortcut: '4', action: () => ctx.setTool('clip') },
+      { label: 'Rotate', shortcut: '5', action: () => ctx.setTool('rotate') },
+    ],
+    'CSG': [
+      { label: 'CSG Subtract', shortcut: 'Shift+Ctrl+S', action: () => ctx.editor.csgSubtract() },
+      { label: 'Make Hollow', shortcut: 'Shift+Ctrl+H', action: () => ctx.editor.csgHollow() },
+      { label: 'Merge Brushes', shortcut: 'Shift+Ctrl+M', action: () => ctx.editor.csgMerge() },
+    ],
+    'Grid': [
+      { label: 'Grid 1', action: () => ctx.setGrid(1) },
+      { label: 'Grid 2', action: () => ctx.setGrid(2) },
+      { label: 'Grid 4', action: () => ctx.setGrid(4) },
+      { label: 'Grid 8', action: () => ctx.setGrid(8) },
+      { label: 'Grid 16', action: () => ctx.setGrid(16) },
+      { label: 'Grid 32', action: () => ctx.setGrid(32) },
+      { label: 'Grid 64', action: () => ctx.setGrid(64) },
+      { separator: true },
+      { label: 'Smaller Grid', shortcut: '[', action: () => ctx.decreaseGrid() },
+      { label: 'Larger Grid', shortcut: ']', action: () => ctx.increaseGrid() },
+    ],
+  };
+
+  for (const [name, items] of Object.entries(menus)) {
+    const menuItem = document.createElement('div');
+    menuItem.className = 'menu-item';
+    menuItem.textContent = name;
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'menu-dropdown';
+
+    for (const item of items) {
+      if (item.separator) {
+        const sep = document.createElement('div');
+        sep.className = 'menu-separator';
+        dropdown.appendChild(sep);
+        continue;
+      }
+
+      const action = document.createElement('div');
+      action.className = 'menu-action';
+      action.innerHTML = `<span>${item.label}</span>` +
+        (item.shortcut ? `<span class="shortcut">${item.shortcut}</span>` : '');
+      action.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        ctx.closeMenus();
+        item.action?.();
+      });
+      dropdown.appendChild(action);
+    }
+
+    menuItem.appendChild(dropdown);
+
+    menuItem.addEventListener('mouseenter', () => {
+      const openMenu = ctx.getOpenMenu();
+      if (openMenu && openMenu !== menuItem) {
+        openMenu.classList.remove('open');
+        menuItem.classList.add('open');
+        ctx.setOpenMenu(menuItem);
+      }
+    });
+
+    menuItem.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      if (ctx.getOpenMenu() === menuItem) {
+        ctx.closeMenus();
+      } else {
+        ctx.closeMenus();
+        menuItem.classList.add('open');
+        ctx.setOpenMenu(menuItem);
+      }
+    });
+
+    bar.appendChild(menuItem);
+  }
+
+  document.addEventListener('mousedown', () => ctx.closeMenus());
+}
