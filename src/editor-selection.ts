@@ -2,7 +2,7 @@ import type { Brush, BrushFace } from './brush';
 import type { Entity } from './entity';
 import type { Patch } from './patch';
 import type { Editor } from './editor';
-import { allBrushes, allPatches, pointEntities } from './editor-queries';
+import { nonWorldspawnEntities } from './editor-queries';
 
 export function clearSelection(editor: Editor): void {
   editor.selection = [];
@@ -36,8 +36,11 @@ export function selectEntity(editor: Editor, entity: Entity, additive = false): 
   editor.dirty = true;
 }
 
-export function isBrushSelected(editor: Editor, brush: Brush): boolean {
-  return editor.selection.some(s => s.type === 'brush' && s.brush === brush);
+export function isBrushSelected(editor: Editor, brush: Brush, entity?: Entity): boolean {
+  return editor.selection.some(s =>
+    (s.type === 'brush' && s.brush === brush) ||
+    (!!entity && s.type === 'entity' && s.entity === entity)
+  );
 }
 
 export function isEntitySelected(editor: Editor, entity: Entity): boolean {
@@ -45,7 +48,7 @@ export function isEntitySelected(editor: Editor, entity: Entity): boolean {
 }
 
 export function addBrushToSelection(editor: Editor, entity: Entity, brush: Brush): void {
-  if (isBrushSelected(editor, brush)) return;
+  if (isBrushSelected(editor, brush, entity)) return;
   editor.selection.push({ type: 'brush', entity, brush });
   editor.dirty = true;
 }
@@ -69,12 +72,15 @@ export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additi
   editor.dirty = true;
 }
 
-export function isPatchSelected(editor: Editor, patch: Patch): boolean {
-  return editor.selection.some(s => s.type === 'patch' && s.patch === patch);
+export function isPatchSelected(editor: Editor, patch: Patch, entity?: Entity): boolean {
+  return editor.selection.some(s =>
+    (s.type === 'patch' && s.patch === patch) ||
+    (!!entity && s.type === 'entity' && s.entity === entity)
+  );
 }
 
 export function addPatchToSelection(editor: Editor, entity: Entity, patch: Patch): void {
-  if (isPatchSelected(editor, patch)) return;
+  if (isPatchSelected(editor, patch, entity)) return;
   editor.selection.push({ type: 'patch', entity, patch });
   editor.dirty = true;
 }
@@ -141,13 +147,16 @@ export function getSelectedBrushItems(editor: Editor): { entity: Entity; brush: 
 
 export function selectAll(editor: Editor): void {
   editor.selection = [];
-  for (const { entity, brush } of allBrushes(editor)) {
-    editor.selection.push({ type: 'brush', entity, brush });
+  const worldspawn = editor.entities[0];
+  if (worldspawn) {
+    for (const brush of worldspawn.brushes) {
+      editor.selection.push({ type: 'brush', entity: worldspawn, brush });
+    }
+    for (const patch of worldspawn.patches) {
+      editor.selection.push({ type: 'patch', entity: worldspawn, patch });
+    }
   }
-  for (const { entity, patch } of allPatches(editor)) {
-    editor.selection.push({ type: 'patch', entity, patch });
-  }
-  for (const entity of pointEntities(editor)) {
+  for (const entity of nonWorldspawnEntities(editor)) {
     editor.selection.push({ type: 'entity', entity });
   }
   editor.dirty = true;

@@ -1,4 +1,5 @@
 import type { Brush } from './brush';
+import type { Entity } from './entity';
 import type { Patch } from './patch';
 import type { Editor } from './editor';
 
@@ -8,18 +9,32 @@ export const INVISIBLE_TEXTURES = new Set([
   'common/areaportal', 'common/donotenter', 'common/caulk',
 ]);
 
-export function isBrushVisible(editor: Editor, brush: Brush): boolean {
+export function isBrushVisible(editor: Editor, brush: Brush, entity?: Entity): boolean {
   if (editor.invisibleMode === 'hide' && brush.faces.length > 0 &&
       brush.faces.every(face => INVISIBLE_TEXTURES.has(face.texture.toLowerCase()))) {
     return false;
   }
   if (!editor.renderSelectedOnly || editor.selection.length === 0) return true;
   return editor.selection.some(item =>
-    (item.type === 'brush' || item.type === 'face') && item.brush === brush
+    ((item.type === 'brush' || item.type === 'face') && item.brush === brush) ||
+    (!!entity && item.type === 'entity' && item.entity === entity)
   );
 }
 
-export function isPatchVisible(editor: Editor, patch: Patch): boolean {
+export function isPatchVisible(editor: Editor, patch: Patch, entity?: Entity): boolean {
   if (!editor.renderSelectedOnly || editor.selection.length === 0) return true;
-  return editor.selection.some(item => item.type === 'patch' && item.patch === patch);
+  return editor.selection.some(item =>
+    (item.type === 'patch' && item.patch === patch) ||
+    (!!entity && item.type === 'entity' && item.entity === entity)
+  );
+}
+
+export function isEntityVisible(editor: Editor, entity: Entity): boolean {
+  if (!editor.renderSelectedOnly || editor.selection.length === 0) return true;
+  return editor.selection.some(item =>
+    (item.type === 'entity' && item.entity === entity) ||
+    (item.type === 'brush' && item.entity === entity) ||
+    (item.type === 'face' && item.entity === entity) ||
+    (item.type === 'patch' && item.entity === entity)
+  );
 }

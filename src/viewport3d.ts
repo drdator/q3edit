@@ -328,8 +328,8 @@ export class Viewport3D {
     };
 
     for (const { entity, brush } of this.editor.allBrushes()) {
-      if (!this.editor.isBrushVisible(brush)) continue;
-      const brushSelected = this.editor.isSelected(brush);
+      if (!this.editor.isBrushVisible(brush, entity)) continue;
+      const brushSelected = this.editor.isSelected(brush, entity);
       for (const face of brush.faces) {
         const fsel = this.editor.isFaceSelected(face);
         // In 'hide' mode, skip invisible faces on mixed brushes (unless selected)
@@ -341,8 +341,8 @@ export class Viewport3D {
 
     // Patch tessellation triangles — same VBO format as brush faces
     for (const { entity, patch } of this.editor.allPatches()) {
-      if (!this.editor.isPatchVisible(patch)) continue;
-      const patchSelected = this.editor.isPatchSelected(patch);
+      if (!this.editor.isPatchVisible(patch, entity)) continue;
+      const patchSelected = this.editor.isPatchSelected(patch, entity);
       const suffix = patchSelected ? '|sel' : '';
       const texName = patch.texture.toLowerCase();
       const key = texName + suffix;
@@ -370,8 +370,9 @@ export class Viewport3D {
 
     // Build entity marker geometry grouped by category color
     const entityVertsByColor = new Map<string, number[]>();
-    for (const entity of this.editor.pointEntities()) {
-      const origin = entityOrigin(entity);
+    for (const entity of this.editor.nonWorldspawnEntities()) {
+      if (!this.editor.isEntityVisible(entity)) continue;
+      const origin = this.editor.entityDisplayOrigin(entity);
       if (!origin) continue;
       const color = entityColor(entity.classname);
       let verts = entityVertsByColor.get(color);
@@ -445,8 +446,8 @@ export class Viewport3D {
     const faceSelLineVerts: number[] = [];
 
     for (const { entity, brush } of this.editor.allBrushes()) {
-      if (!this.editor.isBrushVisible(brush)) continue;
-      const brushSelected = this.editor.isSelected(brush);
+      if (!this.editor.isBrushVisible(brush, entity)) continue;
+      const brushSelected = this.editor.isSelected(brush, entity);
       for (const face of brush.faces) {
         if (face.polygon.length < 3) continue;
         const fsel = this.editor.isFaceSelected(face);
@@ -466,8 +467,8 @@ export class Viewport3D {
 
     // Patch wireframe: boundary edges of the tessellation grid
     for (const { entity, patch } of this.editor.allPatches()) {
-      if (!this.editor.isPatchVisible(patch)) continue;
-      const patchSel = this.editor.isPatchSelected(patch);
+      if (!this.editor.isPatchVisible(patch, entity)) continue;
+      const patchSel = this.editor.isPatchSelected(patch, entity);
       const arr = patchSel ? selLineVerts : wireVerts;
       const n = patch.subdivisions + 1;
       const subCols = (patch.width - 1) / 2;
@@ -497,22 +498,42 @@ export class Viewport3D {
     }
 
     // Entity selection wireframe
-    for (const entity of this.editor.pointEntities()) {
+    for (const entity of this.editor.nonWorldspawnEntities()) {
       if (!this.editor.isEntitySelected(entity)) continue;
-      const origin = entityOrigin(entity);
-      if (!origin) continue;
-      const s = 8;
-      const pts: Vec3[] = [
-        [origin[0], origin[1], origin[2]+s],
-        [origin[0], origin[1]+s, origin[2]],
-        [origin[0]+s, origin[1], origin[2]],
-        [origin[0], origin[1]-s, origin[2]],
-        [origin[0]-s, origin[1], origin[2]],
-        [origin[0], origin[1], origin[2]-s],
+      if (this.editor.isPointEntity(entity)) {
+        const origin = this.editor.entityDisplayOrigin(entity);
+        if (!origin) continue;
+        const s = 8;
+        const pts: Vec3[] = [
+          [origin[0], origin[1], origin[2] + s],
+          [origin[0], origin[1] + s, origin[2]],
+          [origin[0] + s, origin[1], origin[2]],
+          [origin[0], origin[1] - s, origin[2]],
+          [origin[0] - s, origin[1], origin[2]],
+          [origin[0], origin[1], origin[2] - s],
+        ];
+        const edges = [[0, 1], [0, 2], [0, 3], [0, 4], [5, 1], [5, 2], [5, 3], [5, 4], [1, 2], [2, 3], [3, 4], [4, 1]];
+        for (const [a, b] of edges) {
+          selLineVerts.push(pts[a][0], pts[a][1], pts[a][2], pts[b][0], pts[b][1], pts[b][2]);
+        }
+        continue;
+      }
+
+      const bounds = this.editor.entityBounds(entity);
+      if (!bounds) continue;
+      const corners: Vec3[] = [
+        [bounds.mins[0], bounds.mins[1], bounds.mins[2]],
+        [bounds.maxs[0], bounds.mins[1], bounds.mins[2]],
+        [bounds.maxs[0], bounds.maxs[1], bounds.mins[2]],
+        [bounds.mins[0], bounds.maxs[1], bounds.mins[2]],
+        [bounds.mins[0], bounds.mins[1], bounds.maxs[2]],
+        [bounds.maxs[0], bounds.mins[1], bounds.maxs[2]],
+        [bounds.maxs[0], bounds.maxs[1], bounds.maxs[2]],
+        [bounds.mins[0], bounds.maxs[1], bounds.maxs[2]],
       ];
-      const edges = [[0,1],[0,2],[0,3],[0,4],[5,1],[5,2],[5,3],[5,4],[1,2],[2,3],[3,4],[4,1]];
+      const edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
       for (const [a, b] of edges) {
-        selLineVerts.push(pts[a][0], pts[a][1], pts[a][2], pts[b][0], pts[b][1], pts[b][2]);
+        selLineVerts.push(corners[a][0], corners[a][1], corners[a][2], corners[b][0], corners[b][1], corners[b][2]);
       }
     }
 
@@ -520,7 +541,7 @@ export class Viewport3D {
     const lightRadiusVerts: number[] = [];
     this.lightRadiusDraws = [];
     const CIRCLE_SEGMENTS = 48;
-    for (const entity of this.editor.pointEntities()) {
+    for (const entity of this.editor.nonWorldspawnEntities()) {
       if (entity.classname !== 'light' || !entity.properties['light']) continue;
       if (!this.editor.isEntitySelected(entity)) continue;
       const radius = parseFloat(entity.properties['light']);
@@ -1031,7 +1052,7 @@ export class Viewport3D {
     let bestHit: { entity: Entity; brush: Brush; face: BrushFace } | null = null;
 
     for (const { entity, brush } of this.editor.allBrushes()) {
-      if (!this.editor.isBrushVisible(brush)) continue;
+      if (!this.editor.isBrushVisible(brush, entity)) continue;
       for (const face of brush.faces) {
         if (face.polygon.length < 3) continue;
         for (let i = 1; i < face.polygon.length - 1; i++) {
@@ -1057,7 +1078,7 @@ export class Viewport3D {
     let bestHit: { entity: Entity; patch: Patch; dist: number } | null = null;
 
     for (const { entity, patch } of this.editor.allPatches()) {
-      if (!this.editor.isPatchVisible(patch)) continue;
+      if (!this.editor.isPatchVisible(patch, entity)) continue;
       for (let ti = 0; ti < patch.tessIndices.length; ti += 3) {
         const v0 = patch.tessVerts[patch.tessIndices[ti]].position;
         const v1 = patch.tessVerts[patch.tessIndices[ti + 1]].position;
@@ -1067,6 +1088,37 @@ export class Viewport3D {
           bestDist = t;
           bestHit = { entity, patch, dist: t };
         }
+      }
+    }
+
+    return bestHit;
+  }
+
+  pickEntityAt(screenX: number, screenY: number): { entity: Entity; dist: number } | null {
+    const { rayOrigin, rayDir } = this.getRay(screenX, screenY);
+
+    let bestDist = Infinity;
+    let bestHit: { entity: Entity; dist: number } | null = null;
+
+    for (const entity of this.editor.nonWorldspawnEntities()) {
+      if (!this.editor.isEntityVisible(entity)) continue;
+
+      let bounds = this.editor.entityBounds(entity);
+      if (this.editor.isPointEntity(entity)) {
+        const origin = this.editor.entityDisplayOrigin(entity);
+        if (!origin) continue;
+        const size = 8;
+        bounds = {
+          mins: [origin[0] - size, origin[1] - size, origin[2] - size],
+          maxs: [origin[0] + size, origin[1] + size, origin[2] + size],
+        };
+      }
+      if (!bounds) continue;
+
+      const dist = rayAabbIntersect(rayOrigin, rayDir, bounds.mins, bounds.maxs);
+      if (dist !== null && dist < bestDist) {
+        bestDist = dist;
+        bestHit = { entity, dist };
       }
     }
 
@@ -1122,6 +1174,17 @@ export class Viewport3D {
       const filter = this.editor.selectionFilter;
       const brushHit = (filter === 'all' || filter === 'brushes') ? this.pickBrushAt(sx, sy) : null;
       const patchHit = (filter === 'all' || filter === 'patches') ? this.pickPatchAt(sx, sy) : null;
+      const entityHit = (filter === 'all' || filter === 'entities') ? this.pickEntityAt(sx, sy) : null;
+
+      if (filter === 'entities') {
+        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+        if (entityHit) {
+          this.editor.selectEntity(entityHit.entity, additive);
+        } else if (!additive) {
+          this.editor.clearSelection();
+        }
+        return;
+      }
 
       let usePatch = false;
       if (patchHit && brushHit) {
@@ -1151,6 +1214,9 @@ export class Viewport3D {
           if (!additive) this.editor.clearSelection();
           this.editor.selectBrush(brushHit.entity, brushHit.brush, additive);
         }
+      } else if (entityHit) {
+        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+        this.editor.selectEntity(entityHit.entity, additive);
       } else {
         if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();
       }
@@ -1310,4 +1376,28 @@ export class Viewport3D {
       this.keys.delete(e.key.toLowerCase());
     });
   }
+}
+
+function rayAabbIntersect(origin: Vec3, dir: Vec3, mins: Vec3, maxs: Vec3): number | null {
+  let tMin = -Infinity;
+  let tMax = Infinity;
+
+  for (let axis = 0; axis < 3; axis++) {
+    const invDir = Math.abs(dir[axis]) < 1e-8 ? Infinity : 1 / dir[axis];
+    let t0 = (mins[axis] - origin[axis]) * invDir;
+    let t1 = (maxs[axis] - origin[axis]) * invDir;
+
+    if (t0 > t1) {
+      const temp = t0;
+      t0 = t1;
+      t1 = temp;
+    }
+
+    tMin = Math.max(tMin, t0);
+    tMax = Math.min(tMax, t1);
+    if (tMax < tMin) return null;
+  }
+
+  if (tMax < 0) return null;
+  return tMin >= 0 ? tMin : tMax;
 }

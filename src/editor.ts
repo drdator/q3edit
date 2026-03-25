@@ -26,6 +26,12 @@ import {
   allBrushes as iterateAllBrushes,
   allPatches as iterateAllPatches,
   collectSnapTargets as collectEditorSnapTargets,
+  entityBounds as getEntityBounds,
+  entityCenter as getEntityCenter,
+  entityDisplayOrigin as getEntityDisplayOrigin,
+  hasEntityGeometry as entityHasGeometry,
+  isPointEntity as checkPointEntity,
+  nonWorldspawnEntities as iterateNonWorldspawnEntities,
   pointEntities as iteratePointEntities,
   selectionBounds as getSelectionBounds,
   selectionCenter as getSelectionCenter,
@@ -95,6 +101,7 @@ import {
 import {
   INVISIBLE_TEXTURES,
   isBrushVisible as isEditorBrushVisible,
+  isEntityVisible as isEditorEntityVisible,
   isPatchVisible as isEditorPatchVisible,
 } from './editor-visibility';
 
@@ -218,12 +225,12 @@ export class Editor {
     selectEditorEntity(this, entity, additive);
   }
 
-  isBrushVisible(brush: Brush): boolean {
-    return isEditorBrushVisible(this, brush);
+  isBrushVisible(brush: Brush, entity?: Entity): boolean {
+    return isEditorBrushVisible(this, brush, entity);
   }
 
-  isSelected(brush: Brush): boolean {
-    return isBrushSelected(this, brush);
+  isSelected(brush: Brush, entity?: Entity): boolean {
+    return isBrushSelected(this, brush, entity);
   }
 
   isEntitySelected(entity: Entity): boolean {
@@ -242,16 +249,20 @@ export class Editor {
     selectEditorPatch(this, entity, patch, additive);
   }
 
-  isPatchSelected(patch: Patch): boolean {
-    return isEditorPatchSelected(this, patch);
+  isPatchSelected(patch: Patch, entity?: Entity): boolean {
+    return isEditorPatchSelected(this, patch, entity);
   }
 
   addPatchToSelection(entity: Entity, patch: Patch): void {
     addPatchSelectionItem(this, entity, patch);
   }
 
-  isPatchVisible(patch: Patch): boolean {
-    return isEditorPatchVisible(this, patch);
+  isPatchVisible(patch: Patch, entity?: Entity): boolean {
+    return isEditorPatchVisible(this, patch, entity);
+  }
+
+  isEntityVisible(entity: Entity): boolean {
+    return isEditorEntityVisible(this, entity);
   }
 
   selectFace(entity: Entity, brush: Brush, face: BrushFace, additive = false): void {
@@ -419,10 +430,34 @@ export class Editor {
     yield* iterateAllPatches(this);
   }
 
+  *nonWorldspawnEntities(): Iterable<Entity> {
+    yield* iterateNonWorldspawnEntities(this);
+  }
+
   // ── Point entities (non-worldspawn, no brushes/patches) ──
 
   *pointEntities(): Iterable<Entity> {
     yield* iteratePointEntities(this);
+  }
+
+  isPointEntity(entity: Entity): boolean {
+    return checkPointEntity(entity);
+  }
+
+  hasEntityGeometry(entity: Entity): boolean {
+    return entityHasGeometry(entity);
+  }
+
+  entityBounds(entity: Entity): { mins: Vec3; maxs: Vec3 } | null {
+    return getEntityBounds(entity);
+  }
+
+  entityCenter(entity: Entity): Vec3 | null {
+    return getEntityCenter(entity);
+  }
+
+  entityDisplayOrigin(entity: Entity): Vec3 | null {
+    return getEntityDisplayOrigin(entity);
   }
 
   // ── Select all ──

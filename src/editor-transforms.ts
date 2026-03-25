@@ -1,8 +1,17 @@
 import { cloneBrush, createBoxBrush, rotateBrush, translateBrush, type Brush } from './brush';
-import { cloneEntity, createEntity, entityDefaults, entityOrigin, setEntityOrigin, translateEntity, type Entity } from './entity';
+import { cloneEntity, createEntity, entityDefaults, entityOrigin, rotateEntity, translateEntity, type Entity } from './entity';
 import { vec3Snap, type Vec3 } from './math';
 import { clonePatch, rotatePatch, translatePatch } from './patch';
+import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
+
+function selectedEntitySet(editor: Editor): Set<Entity> {
+  return new Set(
+    editor.selection
+      .filter((item): item is Extract<SelectionItem, { type: 'entity' }> => item.type === 'entity')
+      .map(item => item.entity)
+  );
+}
 
 export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, ctrlKey = false): Brush {
   const grid = editor.effectiveGrid(ctrlKey);
@@ -35,8 +44,10 @@ export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, ctrlKey = false
 export function deleteSelection(editor: Editor): void {
   if (editor.selection.length === 0) return;
   editor.snapshot();
+  const selectedEntities = selectedEntitySet(editor);
 
   for (const item of editor.selection) {
+    if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
       const idx = item.entity.brushes.indexOf(item.brush);
       if (idx >= 0) item.entity.brushes.splice(idx, 1);
@@ -56,8 +67,10 @@ export function deleteSelection(editor: Editor): void {
 
 export function moveSelection(editor: Editor, delta: Vec3): void {
   if (delta[0] === 0 && delta[1] === 0 && delta[2] === 0) return;
+  const selectedEntities = selectedEntitySet(editor);
 
   for (const item of editor.selection) {
+    if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
       translateBrush(item.brush, delta);
     } else if (item.type === 'patch') {
@@ -76,27 +89,23 @@ export function rotateSelection(editor: Editor, angleDeg: number): void {
   const angle = (angleDeg / 180) * Math.PI;
   const axis = editor.rotationAxis;
 
-  let mins: Vec3 = [Infinity, Infinity, Infinity];
-  let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const item of editor.selection) {
-    if (item.type === 'entity') continue;
-    const boundsItem = item.type === 'patch' ? item.patch : item.brush;
-    for (let i = 0; i < 3; i++) {
-      if (boundsItem.mins[i] < mins[i]) mins[i] = boundsItem.mins[i];
-      if (boundsItem.maxs[i] > maxs[i]) maxs[i] = boundsItem.maxs[i];
-    }
-  }
+  const bounds = editor.selectionBounds();
+  if (!bounds) return;
   const center: Vec3 = [
-    (mins[0] + maxs[0]) / 2,
-    (mins[1] + maxs[1]) / 2,
-    (mins[2] + maxs[2]) / 2,
+    (bounds.mins[0] + bounds.maxs[0]) / 2,
+    (bounds.mins[1] + bounds.maxs[1]) / 2,
+    (bounds.mins[2] + bounds.maxs[2]) / 2,
   ];
+  const selectedEntities = selectedEntitySet(editor);
 
   for (const item of editor.selection) {
+    if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
       rotateBrush(item.brush, center, axis, angle);
     } else if (item.type === 'patch') {
       rotatePatch(item.patch, center, axis, angle);
+    } else {
+      rotateEntity(item.entity, center, axis, angle);
     }
   }
 
@@ -111,8 +120,10 @@ export function duplicateSelection(editor: Editor): void {
 
   const newSelection: SelectionItem[] = [];
   const offset: Vec3 = [editor.gridSize, editor.gridSize, 0];
+  const selectedEntities = selectedEntitySet(editor);
 
   for (const item of editor.selection) {
+    if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
       const newBrush = cloneBrush(item.brush);
       translateBrush(newBrush, offset);
@@ -139,7 +150,9 @@ export function duplicateSelection(editor: Editor): void {
 export function snapSelectionToGrid(editor: Editor): void {
   if (editor.selection.length === 0) return;
   editor.snapshot();
+  const selectedEntities = selectedEntitySet(editor);
   for (const item of editor.selection) {
+    if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
       const snapped = vec3Snap(item.brush.mins, editor.gridSize);
       const delta: Vec3 = [
@@ -162,9 +175,29 @@ export function snapSelectionToGrid(editor: Editor): void {
       }
     } else {
       const origin = entityOrigin(item.entity);
-      if (!origin) continue;
-      const snapped = vec3Snap(origin, editor.gridSize);
-      setEntityOrigin(item.entity, snapped);
+      if (origin) {
+        const snapped = vec3Snap(origin, editor.gridSize);
+        const delta: Vec3 = [
+          snapped[0] - origin[0],
+          snapped[1] - origin[1],
+          snapped[2] - origin[2],
+        ];
+        if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
+          translateEntity(item.entity, delta);
+        }
+        continue;
+      }
+      const bounds = entityBounds(item.entity);
+      if (!bounds) continue;
+      const snapped = vec3Snap(bounds.mins, editor.gridSize);
+      const delta: Vec3 = [
+        snapped[0] - bounds.mins[0],
+        snapped[1] - bounds.mins[1],
+        snapped[2] - bounds.mins[2],
+      ];
+      if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
+        translateEntity(item.entity, delta);
+      }
     }
   }
   editor.dirty = true;
@@ -174,7 +207,9 @@ export function snapSelectionToGrid(editor: Editor): void {
 export function duplicateSelectionInPlace(editor: Editor): void {
   if (editor.selection.length === 0) return;
   const newSelection: SelectionItem[] = [];
+  const selectedEntities = selectedEntitySet(editor);
   for (const item of editor.selection) {
+    if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
     if (item.type === 'brush' || item.type === 'face') {
       const newBrush = cloneBrush(item.brush);
       item.entity.brushes.push(newBrush);

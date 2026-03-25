@@ -20,19 +20,72 @@ export function* allPatches(editor: Editor): Iterable<{ entity: Entity; patch: P
   }
 }
 
-export function* pointEntities(editor: Editor): Iterable<Entity> {
+export function* nonWorldspawnEntities(editor: Editor): Iterable<Entity> {
   for (let i = 1; i < editor.entities.length; i++) {
-    if (editor.entities[i].brushes.length === 0 && editor.entities[i].patches.length === 0) {
-      yield editor.entities[i];
+    yield editor.entities[i];
+  }
+}
+
+export function hasEntityGeometry(entity: Entity): boolean {
+  return entity.brushes.length > 0 || entity.patches.length > 0;
+}
+
+export function isPointEntity(entity: Entity): boolean {
+  return !hasEntityGeometry(entity);
+}
+
+export function* pointEntities(editor: Editor): Iterable<Entity> {
+  for (const entity of nonWorldspawnEntities(editor)) {
+    if (isPointEntity(entity)) {
+      yield entity;
     }
   }
+}
+
+export function entityBounds(entity: Entity): { mins: Vec3; maxs: Vec3 } | null {
+  let mins: Vec3 = [Infinity, Infinity, Infinity];
+  let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+  let hasBounds = false;
+
+  for (const brush of entity.brushes) {
+    mins = vec3Min(mins, brush.mins);
+    maxs = vec3Max(maxs, brush.maxs);
+    hasBounds = true;
+  }
+
+  for (const patch of entity.patches) {
+    mins = vec3Min(mins, patch.mins);
+    maxs = vec3Max(maxs, patch.maxs);
+    hasBounds = true;
+  }
+
+  if (hasBounds) {
+    return { mins, maxs };
+  }
+
+  const origin = entityOrigin(entity);
+  if (!origin) return null;
+  return { mins: origin, maxs: origin };
+}
+
+export function entityCenter(entity: Entity): Vec3 | null {
+  const bounds = entityBounds(entity);
+  if (!bounds) return null;
+  return vec3Scale(vec3Add(bounds.mins, bounds.maxs), 0.5);
+}
+
+export function entityDisplayOrigin(entity: Entity): Vec3 | null {
+  return entityOrigin(entity) ?? entityCenter(entity);
 }
 
 export function collectSnapTargets(editor: Editor, includeSelected = false): [number[], number[], number[]] {
   const sets: [Set<number>, Set<number>, Set<number>] = [new Set(), new Set(), new Set()];
 
-  for (const { brush } of allBrushes(editor)) {
-    if (!includeSelected && editor.selection.some(s => s.type === 'brush' && s.brush === brush)) continue;
+  for (const { entity, brush } of allBrushes(editor)) {
+    if (!includeSelected && editor.selection.some(item =>
+      (item.type === 'brush' && item.brush === brush) ||
+      (item.type === 'entity' && item.entity === entity)
+    )) continue;
     for (const face of brush.faces) {
       for (const v of face.polygon) {
         sets[0].add(v[0]);
@@ -42,8 +95,11 @@ export function collectSnapTargets(editor: Editor, includeSelected = false): [nu
     }
   }
 
-  for (const { patch } of allPatches(editor)) {
-    if (!includeSelected && editor.selection.some(s => s.type === 'patch' && s.patch === patch)) continue;
+  for (const { entity, patch } of allPatches(editor)) {
+    if (!includeSelected && editor.selection.some(item =>
+      (item.type === 'patch' && item.patch === patch) ||
+      (item.type === 'entity' && item.entity === entity)
+    )) continue;
     for (const row of patch.ctrl) {
       for (const cp of row) {
         sets[0].add(cp.xyz[0]);
@@ -53,8 +109,8 @@ export function collectSnapTargets(editor: Editor, includeSelected = false): [nu
     }
   }
 
-  for (const entity of pointEntities(editor)) {
-    if (!includeSelected && editor.selection.some(s => s.type === 'entity' && s.entity === entity)) continue;
+  for (const entity of nonWorldspawnEntities(editor)) {
+    if (!includeSelected && editor.selection.some(item => item.type === 'entity' && item.entity === entity)) continue;
     const origin = entityOrigin(entity);
     if (!origin) continue;
     sets[0].add(origin[0]);
@@ -77,10 +133,10 @@ export function selectionBounds(editor: Editor): { mins: Vec3; maxs: Vec3 } | nu
 
   for (const item of editor.selection) {
     if (item.type === 'entity') {
-      const origin = entityOrigin(item.entity);
-      if (!origin) continue;
-      mins = vec3Min(mins, origin);
-      maxs = vec3Max(maxs, origin);
+      const bounds = entityBounds(item.entity);
+      if (!bounds) continue;
+      mins = vec3Min(mins, bounds.mins);
+      maxs = vec3Max(maxs, bounds.maxs);
       continue;
     }
 
