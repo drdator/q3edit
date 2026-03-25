@@ -1,0 +1,104 @@
+import { entityOrigin, type Entity } from './entity';
+import { vec3Add, vec3Max, vec3Min, vec3Scale, type Vec3 } from './math';
+import type { Brush } from './brush';
+import type { Patch } from './patch';
+import type { Editor } from './editor';
+
+export function* allBrushes(editor: Editor): Iterable<{ entity: Entity; brush: Brush }> {
+  for (const entity of editor.entities) {
+    for (const brush of entity.brushes) {
+      yield { entity, brush };
+    }
+  }
+}
+
+export function* allPatches(editor: Editor): Iterable<{ entity: Entity; patch: Patch }> {
+  for (const entity of editor.entities) {
+    for (const patch of entity.patches) {
+      yield { entity, patch };
+    }
+  }
+}
+
+export function* pointEntities(editor: Editor): Iterable<Entity> {
+  for (let i = 1; i < editor.entities.length; i++) {
+    if (editor.entities[i].brushes.length === 0 && editor.entities[i].patches.length === 0) {
+      yield editor.entities[i];
+    }
+  }
+}
+
+export function collectSnapTargets(editor: Editor, includeSelected = false): [number[], number[], number[]] {
+  const sets: [Set<number>, Set<number>, Set<number>] = [new Set(), new Set(), new Set()];
+
+  for (const { brush } of allBrushes(editor)) {
+    if (!includeSelected && editor.selection.some(s => s.type === 'brush' && s.brush === brush)) continue;
+    for (const face of brush.faces) {
+      for (const v of face.polygon) {
+        sets[0].add(v[0]);
+        sets[1].add(v[1]);
+        sets[2].add(v[2]);
+      }
+    }
+  }
+
+  for (const { patch } of allPatches(editor)) {
+    if (!includeSelected && editor.selection.some(s => s.type === 'patch' && s.patch === patch)) continue;
+    for (const row of patch.ctrl) {
+      for (const cp of row) {
+        sets[0].add(cp.xyz[0]);
+        sets[1].add(cp.xyz[1]);
+        sets[2].add(cp.xyz[2]);
+      }
+    }
+  }
+
+  for (const entity of pointEntities(editor)) {
+    if (!includeSelected && editor.selection.some(s => s.type === 'entity' && s.entity === entity)) continue;
+    const origin = entityOrigin(entity);
+    if (!origin) continue;
+    sets[0].add(origin[0]);
+    sets[1].add(origin[1]);
+    sets[2].add(origin[2]);
+  }
+
+  return [
+    [...sets[0]].sort((a, b) => a - b),
+    [...sets[1]].sort((a, b) => a - b),
+    [...sets[2]].sort((a, b) => a - b),
+  ];
+}
+
+export function selectionBounds(editor: Editor): { mins: Vec3; maxs: Vec3 } | null {
+  if (editor.selection.length === 0) return null;
+
+  let mins: Vec3 = [Infinity, Infinity, Infinity];
+  let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+
+  for (const item of editor.selection) {
+    if (item.type === 'entity') {
+      const origin = entityOrigin(item.entity);
+      if (!origin) continue;
+      mins = vec3Min(mins, origin);
+      maxs = vec3Max(maxs, origin);
+      continue;
+    }
+
+    if (item.type === 'patch') {
+      mins = vec3Min(mins, item.patch.mins);
+      maxs = vec3Max(maxs, item.patch.maxs);
+      continue;
+    }
+
+    mins = vec3Min(mins, item.brush.mins);
+    maxs = vec3Max(maxs, item.brush.maxs);
+  }
+
+  return { mins, maxs };
+}
+
+export function selectionCenter(editor: Editor): Vec3 | null {
+  const bounds = selectionBounds(editor);
+  if (!bounds) return null;
+  return vec3Scale(vec3Add(bounds.mins, bounds.maxs), 0.5);
+}

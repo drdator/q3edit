@@ -7,6 +7,32 @@ import { serializeMap, parseMap } from './mapfile';
 import { TextureManager } from './textures';
 import { BrushVertex, collectBrushVertices, moveVertices } from './vertex';
 import { subtractBrush, hollowBrush, mergeBrushes } from './csg';
+import {
+  addBrushToSelection as addBrushSelectionItem,
+  addEntityToSelection as addEntitySelectionItem,
+  addPatchToSelection as addPatchSelectionItem,
+  clearSelection as clearEditorSelection,
+  getSelectedBrushItems,
+  getSelectedFace,
+  getSelectedFaces,
+  isBrushSelected,
+  isEntitySelected as isEditorEntitySelected,
+  isFaceSelected as isEditorFaceSelected,
+  isPatchSelected as isEditorPatchSelected,
+  selectAll as selectAllItems,
+  selectBrush as selectEditorBrush,
+  selectEntity as selectEditorEntity,
+  selectFace as selectEditorFace,
+  selectPatch as selectEditorPatch,
+} from './editor-selection';
+import {
+  allBrushes as iterateAllBrushes,
+  allPatches as iterateAllPatches,
+  collectSnapTargets as collectEditorSnapTargets,
+  pointEntities as iteratePointEntities,
+  selectionBounds as getSelectionBounds,
+  selectionCenter as getSelectionCenter,
+} from './editor-queries';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -121,36 +147,15 @@ export class Editor {
   // ── Selection ──
 
   clearSelection(): void {
-    this.selection = [];
-    this.exitVertexMode();
-    this.dirty = true;
+    clearEditorSelection(this);
   }
 
   selectBrush(entity: Entity, brush: Brush, additive = false): void {
-    if (!additive) this.selection = [];
-    // Check if already selected
-    const idx = this.selection.findIndex(
-      s => s.type === 'brush' && s.brush === brush
-    );
-    if (idx >= 0) {
-      if (additive) this.selection.splice(idx, 1); // toggle off
-      return;
-    }
-    this.selection.push({ type: 'brush', entity, brush });
-    this.dirty = true;
+    selectEditorBrush(this, entity, brush, additive);
   }
 
   selectEntity(entity: Entity, additive = false): void {
-    if (!additive) this.selection = [];
-    const idx = this.selection.findIndex(
-      s => s.type === 'entity' && s.entity === entity
-    );
-    if (idx >= 0) {
-      if (additive) this.selection.splice(idx, 1);
-      return;
-    }
-    this.selection.push({ type: 'entity', entity });
-    this.dirty = true;
+    selectEditorEntity(this, entity, additive);
   }
 
   isBrushVisible(brush: Brush): boolean {
@@ -164,46 +169,31 @@ export class Editor {
   }
 
   isSelected(brush: Brush): boolean {
-    return this.selection.some(s => s.type === 'brush' && s.brush === brush);
+    return isBrushSelected(this, brush);
   }
 
   isEntitySelected(entity: Entity): boolean {
-    return this.selection.some(s => s.type === 'entity' && s.entity === entity);
+    return isEditorEntitySelected(this, entity);
   }
 
   addBrushToSelection(entity: Entity, brush: Brush): void {
-    if (this.isSelected(brush)) return;
-    this.selection.push({ type: 'brush', entity, brush });
-    this.dirty = true;
+    addBrushSelectionItem(this, entity, brush);
   }
 
   addEntityToSelection(entity: Entity): void {
-    if (this.isEntitySelected(entity)) return;
-    this.selection.push({ type: 'entity', entity });
-    this.dirty = true;
+    addEntitySelectionItem(this, entity);
   }
 
   selectPatch(entity: Entity, patch: Patch, additive = false): void {
-    if (!additive) this.selection = [];
-    const idx = this.selection.findIndex(
-      s => s.type === 'patch' && s.patch === patch
-    );
-    if (idx >= 0) {
-      if (additive) this.selection.splice(idx, 1);
-      return;
-    }
-    this.selection.push({ type: 'patch', entity, patch });
-    this.dirty = true;
+    selectEditorPatch(this, entity, patch, additive);
   }
 
   isPatchSelected(patch: Patch): boolean {
-    return this.selection.some(s => s.type === 'patch' && s.patch === patch);
+    return isEditorPatchSelected(this, patch);
   }
 
   addPatchToSelection(entity: Entity, patch: Patch): void {
-    if (this.isPatchSelected(patch)) return;
-    this.selection.push({ type: 'patch', entity, patch });
-    this.dirty = true;
+    addPatchSelectionItem(this, entity, patch);
   }
 
   isPatchVisible(patch: Patch): boolean {
@@ -212,53 +202,23 @@ export class Editor {
   }
 
   selectFace(entity: Entity, brush: Brush, face: BrushFace, additive = false): void {
-    if (additive) {
-      // Only allow additive if existing selection is all faces
-      const allFaces = this.selection.every(s => s.type === 'face');
-      if (allFaces && this.selection.length > 0) {
-        // Toggle: deselect if already selected, otherwise add
-        const idx = this.selection.findIndex(s => s.type === 'face' && s.face === face);
-        if (idx >= 0) {
-          this.selection.splice(idx, 1);
-        } else {
-          this.selection.push({ type: 'face', entity, brush, face });
-        }
-      } else {
-        // Switch from brush/entity selection to face selection
-        this.selection = [{ type: 'face', entity, brush, face }];
-      }
-    } else {
-      this.selection = [{ type: 'face', entity, brush, face }];
-    }
-    this.dirty = true;
+    selectEditorFace(this, entity, brush, face, additive);
   }
 
   isFaceSelected(face: BrushFace): boolean {
-    return this.selection.some(s => s.type === 'face' && s.face === face);
+    return isEditorFaceSelected(this, face);
   }
 
   get selectedFaces(): BrushFace[] {
-    return this.selection.filter(s => s.type === 'face').map(s => (s as any).face as BrushFace);
+    return getSelectedFaces(this);
   }
 
   get selectedFace(): BrushFace | null {
-    const s = this.selection[0];
-    return s?.type === 'face' ? s.face : null;
+    return getSelectedFace(this);
   }
 
   private selectedBrushItems(): { entity: Entity; brush: Brush }[] {
-    const items = this.selection.filter(
-      s => s.type === 'brush' || s.type === 'face'
-    ) as ({ type: 'brush'; entity: Entity; brush: Brush } | { type: 'face'; entity: Entity; brush: Brush; face: BrushFace })[];
-
-    const unique: { entity: Entity; brush: Brush }[] = [];
-    const seen = new Set<Brush>();
-    for (const item of items) {
-      if (seen.has(item.brush)) continue;
-      seen.add(item.brush);
-      unique.push({ entity: item.entity, brush: item.brush });
-    }
-    return unique;
+    return getSelectedBrushItems(this);
   }
 
   /** Returns effective grid size: 1 when snapping is off (toggle or Ctrl held), gridSize otherwise */
@@ -274,37 +234,7 @@ export class Editor {
   /** Collect sorted snap target values per axis from geometry.
    *  When includeSelected is true, includes selected geometry (useful for rotation anchor). */
   collectSnapTargets(includeSelected = false): [number[], number[], number[]] {
-    const sets: [Set<number>, Set<number>, Set<number>] = [new Set(), new Set(), new Set()];
-
-    for (const { brush } of this.allBrushes()) {
-      if (!includeSelected && this.isSelected(brush)) continue;
-      for (const face of brush.faces) {
-        for (const v of face.polygon) {
-          sets[0].add(v[0]); sets[1].add(v[1]); sets[2].add(v[2]);
-        }
-      }
-    }
-
-    for (const { patch } of this.allPatches()) {
-      if (!includeSelected && this.isPatchSelected(patch)) continue;
-      for (const row of patch.ctrl) {
-        for (const cp of row) {
-          sets[0].add(cp.xyz[0]); sets[1].add(cp.xyz[1]); sets[2].add(cp.xyz[2]);
-        }
-      }
-    }
-
-    for (const entity of this.pointEntities()) {
-      if (!includeSelected && this.isEntitySelected(entity)) continue;
-      const o = entityOrigin(entity);
-      if (o) { sets[0].add(o[0]); sets[1].add(o[1]); sets[2].add(o[2]); }
-    }
-
-    return [
-      [...sets[0]].sort((a, b) => a - b),
-      [...sets[1]].sort((a, b) => a - b),
-      [...sets[2]].sort((a, b) => a - b),
-    ];
+    return collectEditorSnapTargets(this, includeSelected);
   }
 
   // ── Brush operations ──
@@ -862,73 +792,33 @@ export class Editor {
   // ── Get all brushes across all entities ──
 
   *allBrushes(): Iterable<{ entity: Entity; brush: Brush }> {
-    for (const entity of this.entities) {
-      for (const brush of entity.brushes) {
-        yield { entity, brush };
-      }
-    }
+    yield* iterateAllBrushes(this);
   }
 
   // ── Get all patches across all entities ──
 
   *allPatches(): Iterable<{ entity: Entity; patch: Patch }> {
-    for (const entity of this.entities) {
-      for (const patch of entity.patches) {
-        yield { entity, patch };
-      }
-    }
+    yield* iterateAllPatches(this);
   }
 
   // ── Point entities (non-worldspawn, no brushes/patches) ──
 
   *pointEntities(): Iterable<Entity> {
-    for (let i = 1; i < this.entities.length; i++) {
-      if (this.entities[i].brushes.length === 0 && this.entities[i].patches.length === 0) {
-        yield this.entities[i];
-      }
-    }
+    yield* iteratePointEntities(this);
   }
 
   // ── Select all ──
 
   selectAll(): void {
-    this.selection = [];
-    for (const { entity, brush } of this.allBrushes()) {
-      this.selection.push({ type: 'brush', entity, brush });
-    }
-    for (const { entity, patch } of this.allPatches()) {
-      this.selection.push({ type: 'patch', entity, patch });
-    }
-    for (const entity of this.pointEntities()) {
-      this.selection.push({ type: 'entity', entity });
-    }
-    this.dirty = true;
+    selectAllItems(this);
   }
 
   selectionBounds(): { mins: Vec3; maxs: Vec3 } | null {
-    if (this.selection.length === 0) return null;
-    let mins: Vec3 = [Infinity, Infinity, Infinity];
-    let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
-    for (const item of this.selection) {
-      if (item.type === 'entity') {
-        const o = entityOrigin(item.entity);
-        if (o) { mins = vec3Min(mins, o); maxs = vec3Max(maxs, o); }
-      } else if (item.type === 'patch') {
-        mins = vec3Min(mins, item.patch.mins);
-        maxs = vec3Max(maxs, item.patch.maxs);
-      } else {
-        const b = item.brush;
-        mins = vec3Min(mins, b.mins);
-        maxs = vec3Max(maxs, b.maxs);
-      }
-    }
-    return { mins, maxs };
+    return getSelectionBounds(this);
   }
 
   selectionCenter(): Vec3 | null {
-    const bounds = this.selectionBounds();
-    if (!bounds) return null;
-    return vec3Scale(vec3Add(bounds.mins, bounds.maxs), 0.5);
+    return getSelectionCenter(this);
   }
 
   onCenterOnSelection(callback: () => void): void {
