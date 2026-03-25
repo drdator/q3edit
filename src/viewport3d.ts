@@ -1,6 +1,6 @@
 import {
   Vec3, vec3Add, vec3Sub, vec3Scale, vec3Cross, vec3Dot,
-  vec3Normalize, vec3Length,
+  vec3Normalize, vec3Length, vec3Copy,
   Mat4, mat4Perspective, mat4LookAt, mat4Multiply, mat4Identity,
   rayTriangleIntersect,
 } from './math';
@@ -96,6 +96,23 @@ export class Viewport3D {
   private lastTime = 0;
   private lastPV: Mat4 = mat4Identity();
 
+  // Fullscreen walkthrough mode
+  private fullscreen = false;
+  private fullscreenMode: 'walk' | 'fly' | 'edit' = 'walk';
+  private savedCamera: { position: Vec3; yaw: number; pitch: number } | null = null;
+  private fullscreenBtn!: HTMLButtonElement;
+  private fullscreenOverlay!: HTMLDivElement;
+  private hudModeEl!: HTMLSpanElement;
+
+  // Walk physics
+  private velocityZ = 0;          // vertical velocity (units/sec)
+  private onGround = false;
+  private static readonly GRAVITY = -800;       // units/sec²
+  private static readonly JUMP_SPEED = 270;     // units/sec
+  private static readonly EYE_HEIGHT = 50;      // eye above feet
+  private static readonly PLAYER_HALF_W = 14;   // half-width of player AABB
+  private static readonly STEP_HEIGHT = 18;     // max step-up height
+
   constructor(canvas: HTMLCanvasElement, editor: Editor) {
     this.canvas = canvas;
     this.gl = canvas.getContext('webgl2', { antialias: true, alpha: false })!;
@@ -103,8 +120,93 @@ export class Viewport3D {
     this.initGL();
     this.gizmo = new Gizmo(this.gl, editor);
     this.buildGrid();
+    this.createFullscreenUI();
     this.setupEvents();
     this.editor.onCenterOnSelection(() => this.centerOnSelection());
+  }
+
+  private createFullscreenUI(): void {
+    const container = this.canvas.parentElement!;
+
+    // Fullscreen button (top-right corner of 3D viewport)
+    this.fullscreenBtn = document.createElement('button');
+    this.fullscreenBtn.className = 'vp-fullscreen-btn';
+    this.fullscreenBtn.title = 'Fullscreen walkthrough';
+    this.fullscreenBtn.innerHTML = '<i class="ph ph-arrows-out"></i>';
+    this.fullscreenBtn.addEventListener('mousedown', (e) => {
+      e.stopPropagation(); // prevent viewport3d from grabbing pointer lock
+    });
+    this.fullscreenBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.enterFullscreen();
+    });
+    container.appendChild(this.fullscreenBtn);
+
+    // Fullscreen overlay (crosshair + HUD, visible only in fullscreen)
+    this.fullscreenOverlay = document.createElement('div');
+    this.fullscreenOverlay.className = 'vp-fullscreen-overlay';
+    this.fullscreenOverlay.innerHTML = `
+      <div class="fullscreen-crosshair"></div>
+      <div class="fullscreen-hud">
+        <span class="hud-mode">WALK</span>
+        <span class="hud-sep"></span>
+        <span>WASD move</span>
+        <span class="hud-sep"></span>
+        <span>V cycle mode</span>
+        <span class="hud-sep"></span>
+        <span>ESC exit</span>
+      </div>
+    `;
+    this.hudModeEl = this.fullscreenOverlay.querySelector('.hud-mode')!;
+    container.appendChild(this.fullscreenOverlay);
+  }
+
+  enterFullscreen(): void {
+    this.fullscreen = true;
+    this.savedCamera = { position: vec3Copy(this.position), yaw: this.yaw, pitch: this.pitch };
+    this.setFullscreenMode('walk');
+    this.editor.fullscreen3d = true;
+    document.getElementById('app')!.classList.add('fullscreen-3d');
+    this.fullscreenBtn.style.display = 'none';
+    this.canvas.requestPointerLock();
+    this.keys.clear();
+    this.editor.dirty = true;
+  }
+
+  private setFullscreenMode(mode: 'walk' | 'fly' | 'edit'): void {
+    this.fullscreenMode = mode;
+    this.hudModeEl.textContent = mode.toUpperCase();
+    this.velocityZ = 0;
+    this.onGround = false;
+
+    if (mode === 'edit') {
+      // Release pointer lock so the cursor is visible for clicking
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.fullscreenOverlay.classList.add('edit-mode');
+    } else {
+      this.fullscreenOverlay.classList.remove('edit-mode');
+      // Re-acquire pointer lock for walk/fly
+      if (!document.pointerLockElement) this.canvas.requestPointerLock();
+    }
+  }
+
+  exitFullscreen(): void {
+    if (!this.fullscreen) return;
+    // Restore camera if exiting from walk/fly (not edit)
+    if (this.fullscreenMode !== 'edit' && this.savedCamera) {
+      this.position = this.savedCamera.position;
+      this.yaw = this.savedCamera.yaw;
+      this.pitch = this.savedCamera.pitch;
+    }
+    this.savedCamera = null;
+    this.fullscreen = false;
+    this.editor.fullscreen3d = false;
+    this.fullscreenOverlay.classList.remove('edit-mode');
+    document.getElementById('app')!.classList.remove('fullscreen-3d');
+    this.fullscreenBtn.style.display = '';
+    this.keys.clear();
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.editor.dirty = true;
   }
 
   centerOnSelection(): void {
@@ -536,12 +638,15 @@ export class Viewport3D {
     const pv = mat4Multiply(proj, view);
     this.lastPV = pv;
 
-    // Draw grid
-    gl.useProgram(this.lineProg);
-    gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-    gl.uniform3f(this.lineColorLoc, 0.2, 0.2, 0.22);
-    gl.bindVertexArray(this.gridVAO);
-    gl.drawArrays(gl.LINES, 0, this.gridCount);
+    // Draw grid (hidden in fullscreen walk/fly for clean game-like view)
+    const isGameView = this.fullscreen && this.fullscreenMode !== 'edit';
+    if (!isGameView) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
+      gl.uniform3f(this.lineColorLoc, 0.2, 0.2, 0.22);
+      gl.bindVertexArray(this.gridVAO);
+      gl.drawArrays(gl.LINES, 0, this.gridCount);
+    }
 
     // Draw textured geometry by group (two-pass: opaque first, then transparent)
     if (this.drawGroups.length > 0) {
@@ -557,8 +662,9 @@ export class Viewport3D {
           const texInfo = tm.get(group.textureName);
           gl.bindTexture(gl.TEXTURE_2D, texInfo.glTexture);
         }
-        gl.uniform1f(this.solidSelLoc, group.selected ? 1.0 : 0.0);
-        gl.uniform1f(this.solidFaceSelLoc, group.faceSelected ? 1.0 : 0.0);
+        const hideSelection = this.fullscreen && this.fullscreenMode !== 'edit';
+        gl.uniform1f(this.solidSelLoc, !hideSelection && group.selected ? 1.0 : 0.0);
+        gl.uniform1f(this.solidFaceSelLoc, !hideSelection && group.faceSelected ? 1.0 : 0.0);
         const isDimInvis = group.invisible && this.editor.invisibleMode === 'dim';
         gl.uniform1f(this.solidAlphaOverrideLoc, isDimInvis ? 0.3 : 0.0);
         gl.uniform1f(this.solidSolidOverrideLoc, group.solidOverride ? 1.0 : 0.0);
@@ -599,8 +705,8 @@ export class Viewport3D {
       }
     }
 
-    // Draw unselected wireframe
-    if (this.wireCount > 0) {
+    // Draw unselected wireframe (hidden in fullscreen walk/fly)
+    if (!isGameView && this.wireCount > 0) {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.linePVLoc, false, pv);
       gl.uniform3f(this.lineColorLoc, 0.0, 0.0, 0.0);
@@ -608,8 +714,8 @@ export class Viewport3D {
       gl.drawArrays(gl.LINES, 0, this.wireCount);
     }
 
-    // Draw light radius circles (per-light color)
-    if (this.lightRadiusDraws.length > 0) {
+    // Draw light radius circles (per-light color, hidden in walk/fly)
+    if (!isGameView && this.lightRadiusDraws.length > 0) {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.linePVLoc, false, pv);
       gl.bindVertexArray(this.lightRadiusVAO);
@@ -619,8 +725,11 @@ export class Viewport3D {
       }
     }
 
+    // Skip selection overlays and gizmo in fullscreen walk/fly
+    const showSelection = !this.fullscreen || this.fullscreenMode === 'edit';
+
     // Draw selected wireframe overlay (no depth test)
-    if (this.lineCount > 0) {
+    if (showSelection && this.lineCount > 0) {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.linePVLoc, false, pv);
       gl.uniform3f(this.lineColorLoc, 1.0, 0.5, 0.0);
@@ -631,7 +740,7 @@ export class Viewport3D {
     }
 
     // Draw face-selected wireframe overlay (cyan, no depth test)
-    if (this.faceSelCount > 0) {
+    if (showSelection && this.faceSelCount > 0) {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.linePVLoc, false, pv);
       gl.uniform3f(this.lineColorLoc, 0.2, 0.8, 1.0);
@@ -644,7 +753,7 @@ export class Viewport3D {
     }
 
     // Draw vertex handles (no depth test, on top)
-    if (this.vtxHandleCount > 0 || this.vtxHandleSelCount > 0) {
+    if (showSelection && (this.vtxHandleCount > 0 || this.vtxHandleSelCount > 0)) {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.linePVLoc, false, pv);
       gl.disable(gl.DEPTH_TEST);
@@ -662,7 +771,7 @@ export class Viewport3D {
     }
 
     // Draw gizmo (on top of everything)
-    if (this.gizmo.segments.length > 0) {
+    if (showSelection && this.gizmo.segments.length > 0) {
       gl.useProgram(this.lineProg);
       gl.uniformMatrix4fv(this.linePVLoc, false, pv);
       gl.disable(gl.DEPTH_TEST);
@@ -695,19 +804,263 @@ export class Viewport3D {
     ];
   }
 
+  // ── Walk-mode collision ──
+
+  /**
+   * Trace an AABB from `start` along `delta` against all brush geometry.
+   * Returns the clipped end position using slide-move (up to 3 clip planes).
+   * The AABB is defined by the player half-width and height below the eye.
+   *
+   * `start` and return value are the eye position (top-center of AABB).
+   */
+  private clipMove(start: Vec3, delta: Vec3): Vec3 {
+    const hw = Viewport3D.PLAYER_HALF_W;
+    const eyeH = Viewport3D.EYE_HEIGHT;
+
+    // Expand each brush face plane by the player AABB half-extents projected onto the face normal.
+    // Then do a point trace against the expanded planes.
+    let remaining: Vec3 = vec3Copy(delta);
+    let pos: Vec3 = vec3Copy(start);
+
+    for (let bounce = 0; bounce < 4; bounce++) {
+      const moveLen = vec3Length(remaining);
+      if (moveLen < 0.001) break;
+
+      // Find the earliest collision along `remaining`
+      let bestFrac = 1.0;
+      let hitNormal: Vec3 | null = null;
+
+      for (const { brush } of this.editor.allBrushes()) {
+        // Quick AABB reject: skip brush if it's nowhere near the sweep
+        const endPos = vec3Add(pos, remaining);
+        const sweepMins: Vec3 = [
+          Math.min(pos[0], endPos[0]) - hw,
+          Math.min(pos[1], endPos[1]) - hw,
+          Math.min(pos[2], endPos[2]) - eyeH,
+        ];
+        const sweepMaxs: Vec3 = [
+          Math.max(pos[0], endPos[0]) + hw,
+          Math.max(pos[1], endPos[1]) + hw,
+          Math.max(pos[2], endPos[2]),
+        ];
+        if (brush.maxs[0] < sweepMins[0] || brush.mins[0] > sweepMaxs[0] ||
+            brush.maxs[1] < sweepMins[1] || brush.mins[1] > sweepMaxs[1] ||
+            brush.maxs[2] < sweepMins[2] || brush.mins[2] > sweepMaxs[2]) continue;
+
+        // Trace against expanded brush using Minkowski-expanded half-space intersection
+        let enterFrac = -1.0;
+        let leaveFrac = 1.0;
+        let enterNormal: Vec3 | null = null;
+        let startsOut = false;
+
+        for (const face of brush.faces) {
+          const n = face.plane.normal;
+          // AABB half-extent projection onto plane normal
+          const expand = hw * Math.abs(n[0]) + hw * Math.abs(n[1]) + eyeH * Math.abs(n[2]);
+          // Offset for eye being at top of AABB: shift by (eyeH/2 - eyeH) in Z = -eyeH/2
+          // Actually, eye is at top of AABB, feet at (pos - [0,0,eyeH]).
+          // Center of AABB = pos - [0,0, eyeH/2]. The half-extent in Z is eyeH/2.
+          // So we trace from the AABB center, with half-extents [hw, hw, eyeH/2].
+          const centerOffset = n[2] * (-eyeH / 2);  // dot(n, [0,0,-eyeH/2])
+          const halfH = eyeH / 2;
+          const expandFull = hw * Math.abs(n[0]) + hw * Math.abs(n[1]) + halfH * Math.abs(n[2]);
+
+          const d1 = vec3Dot(n, pos) + centerOffset - face.plane.dist - expandFull;
+          const d2 = vec3Dot(n, vec3Add(pos, remaining)) + centerOffset - face.plane.dist - expandFull;
+
+          if (d1 > 0) startsOut = true;
+
+          // Both in front → outside this plane, can skip
+          if (d1 > 0 && d2 > 0) { enterFrac = 2; break; }
+          // Both behind → inside this plane, continue
+          if (d1 <= 0 && d2 <= 0) continue;
+
+          const f = d1 / (d1 - d2);
+          if (d1 > 0) {
+            // Entering the brush
+            if (f > enterFrac) {
+              enterFrac = f;
+              enterNormal = n;
+            }
+          } else {
+            // Leaving the brush
+            if (f < leaveFrac) leaveFrac = f;
+          }
+        }
+
+        if (!startsOut) continue;  // started inside brush, ignore
+        if (enterFrac < leaveFrac && enterFrac >= -0.01 && enterFrac < bestFrac) {
+          bestFrac = Math.max(0, enterFrac - 0.03 / moveLen); // pull back slightly
+          hitNormal = enterNormal;
+        }
+      }
+
+      if (bestFrac >= 1.0) {
+        // No collision, apply full remaining move
+        pos = vec3Add(pos, remaining);
+        break;
+      }
+
+      // Move to collision point
+      pos = vec3Add(pos, vec3Scale(remaining, bestFrac));
+
+      if (!hitNormal) break;
+
+      // Slide: remove the component of remaining velocity along the hit normal
+      const leftover = vec3Scale(remaining, 1 - bestFrac);
+      const backoff = vec3Dot(leftover, hitNormal);
+      remaining = vec3Sub(leftover, vec3Scale(hitNormal, backoff));
+    }
+
+    return pos;
+  }
+
+  /**
+   * Trace downward from `eyePos` to find the ground height.
+   * Returns the Z of the eye if standing on ground, or null if no ground within range.
+   */
+  private traceGround(eyePos: Vec3): number | null {
+    const hw = Viewport3D.PLAYER_HALF_W;
+    const eyeH = Viewport3D.EYE_HEIGHT;
+    const halfH = eyeH / 2;
+    const probeDepth = 4; // how far below feet to check
+
+    // Trace the AABB downward by probeDepth
+    const delta: Vec3 = [0, 0, -(probeDepth)];
+
+    let bestFrac = 1.0;
+
+    for (const { brush } of this.editor.allBrushes()) {
+      // Quick AABB reject
+      if (brush.maxs[0] < eyePos[0] - hw || brush.mins[0] > eyePos[0] + hw ||
+          brush.maxs[1] < eyePos[1] - hw || brush.mins[1] > eyePos[1] + hw ||
+          brush.maxs[2] < eyePos[2] - eyeH - probeDepth || brush.mins[2] > eyePos[2]) continue;
+
+      let enterFrac = -1.0;
+      let leaveFrac = 1.0;
+      let enterNormal: Vec3 | null = null;
+      let startsOut = false;
+
+      for (const face of brush.faces) {
+        const n = face.plane.normal;
+        const centerOffset = n[2] * (-halfH);
+        const expandFull = hw * Math.abs(n[0]) + hw * Math.abs(n[1]) + halfH * Math.abs(n[2]);
+
+        const d1 = vec3Dot(n, eyePos) + centerOffset - face.plane.dist - expandFull;
+        const d2 = vec3Dot(n, vec3Add(eyePos, delta)) + centerOffset - face.plane.dist - expandFull;
+
+        if (d1 > 0) startsOut = true;
+        if (d1 > 0 && d2 > 0) { enterFrac = 2; break; }
+        if (d1 <= 0 && d2 <= 0) continue;
+
+        const f = d1 / (d1 - d2);
+        if (d1 > 0) {
+          if (f > enterFrac) { enterFrac = f; enterNormal = n; }
+        } else {
+          if (f < leaveFrac) leaveFrac = f;
+        }
+      }
+
+      if (!startsOut) continue;
+      if (enterFrac < leaveFrac && enterFrac >= -0.01 && enterFrac < bestFrac) {
+        // Only count as ground if the hit surface is mostly horizontal (walkable)
+        if (enterNormal && enterNormal[2] > 0.7) {
+          bestFrac = Math.max(0, enterFrac);
+        }
+      }
+    }
+
+    if (bestFrac < 1.0) {
+      // Ground hit: return the eye Z at that contact point
+      return eyePos[2] + delta[2] * bestFrac;
+    }
+    return null;
+  }
+
   private updateCamera(dt: number): void {
-    if (!this.looking && this.keys.size === 0) return;
+    const isWalkMode = this.fullscreen && this.fullscreenMode === 'walk';
 
-    const speed = this.moveSpeed * dt * (this.keys.has('control') || this.keys.has('meta') ? 3 : 1);
-    const forward = this.getForward();
-    const right = this.getRight();
+    // In walk mode, always run physics (gravity) even without key input
+    if (!isWalkMode) {
+      if (!this.looking && !this.fullscreen && this.keys.size === 0) return;
+      if (this.keys.size === 0) return;
+    }
 
-    if (this.keys.has('w')) this.position = vec3Add(this.position, vec3Scale(forward, speed));
-    if (this.keys.has('s')) this.position = vec3Add(this.position, vec3Scale(forward, -speed));
-    if (this.keys.has('d')) this.position = vec3Add(this.position, vec3Scale(right, speed));
-    if (this.keys.has('a')) this.position = vec3Add(this.position, vec3Scale(right, -speed));
-    if (this.keys.has('q') || this.keys.has(' ')) this.position[2] += speed;
-    if (this.keys.has('e') || this.keys.has('shift') || this.keys.has('c')) this.position[2] -= speed;
+    const sprint = this.keys.has('shift') ? 2.5 : 1;
+    const speed = this.moveSpeed * dt * sprint;
+
+    if (isWalkMode) {
+      // Walk mode: movement on horizontal plane, gravity, collision
+      const flatForward: Vec3 = [Math.cos(this.yaw), Math.sin(this.yaw), 0];
+      const flatRight: Vec3 = [Math.cos(this.yaw - Math.PI / 2), Math.sin(this.yaw - Math.PI / 2), 0];
+
+      // Build horizontal move delta
+      let moveH: Vec3 = [0, 0, 0];
+      if (this.keys.has('w')) moveH = vec3Add(moveH, vec3Scale(flatForward, speed));
+      if (this.keys.has('s')) moveH = vec3Add(moveH, vec3Scale(flatForward, -speed));
+      if (this.keys.has('d')) moveH = vec3Add(moveH, vec3Scale(flatRight, speed));
+      if (this.keys.has('a')) moveH = vec3Add(moveH, vec3Scale(flatRight, -speed));
+
+      // Try step-up: move upward by STEP_HEIGHT, do horizontal move, then settle down
+      const stepH = Viewport3D.STEP_HEIGHT;
+      const steppedUp = this.clipMove(this.position, [0, 0, stepH]);
+      const actualStep = steppedUp[2] - this.position[2];
+
+      // Horizontal move (at stepped-up height)
+      const afterH = this.clipMove(steppedUp, moveH);
+
+      // Step back down
+      const afterDown = this.clipMove(afterH, [0, 0, -actualStep]);
+      this.position = afterDown;
+
+      // Apply gravity
+      this.velocityZ += Viewport3D.GRAVITY * dt;
+      // Clamp terminal velocity
+      if (this.velocityZ < -1200) this.velocityZ = -1200;
+
+      const gravityDelta: Vec3 = [0, 0, this.velocityZ * dt];
+      const afterGrav = this.clipMove(this.position, gravityDelta);
+
+      // If we didn't move the full gravity amount, we hit something
+      const actualDz = afterGrav[2] - this.position[2];
+      if (Math.abs(actualDz - gravityDelta[2]) > 0.01) {
+        if (this.velocityZ < 0) {
+          // Hit ground
+          this.onGround = true;
+        }
+        this.velocityZ = 0;
+      } else {
+        this.onGround = false;
+      }
+
+      this.position = afterGrav;
+
+      // Ground snapping: if we think we're on ground, do a small trace to stay attached
+      if (this.onGround) {
+        const groundZ = this.traceGround(this.position);
+        if (groundZ !== null) {
+          this.position[2] = groundZ;
+        }
+      }
+
+      // Jump
+      if (this.keys.has(' ') && this.onGround) {
+        this.velocityZ = Viewport3D.JUMP_SPEED;
+        this.onGround = false;
+      }
+    } else {
+      // Fly mode (or normal editor camera): movement follows look direction
+      const forward = this.getForward();
+      const right = this.getRight();
+      const boostSpeed = !this.fullscreen && (this.keys.has('control') || this.keys.has('meta')) ? speed * 3 / sprint : speed;
+
+      if (this.keys.has('w')) this.position = vec3Add(this.position, vec3Scale(forward, boostSpeed));
+      if (this.keys.has('s')) this.position = vec3Add(this.position, vec3Scale(forward, -boostSpeed));
+      if (this.keys.has('d')) this.position = vec3Add(this.position, vec3Scale(right, boostSpeed));
+      if (this.keys.has('a')) this.position = vec3Add(this.position, vec3Scale(right, -boostSpeed));
+      if (this.keys.has('q') || this.keys.has(' ')) this.position[2] += boostSpeed;
+      if (this.keys.has('e') || this.keys.has('c') || (!this.fullscreen && this.keys.has('shift'))) this.position[2] -= boostSpeed;
+    }
 
     this.editor.dirty = true;
   }
@@ -783,12 +1136,98 @@ export class Viewport3D {
     return bestHit;
   }
 
+  // ── Picking / selection on click ──
+
+  private handlePick(e: MouseEvent): void {
+    const sx = this.dragStart[0], sy = this.dragStart[1];
+    if (this.editor.vertexMode) {
+      const { rayOrigin, rayDir } = this.getRay(sx, sy);
+      const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+      let hitDi = -1, hitVi = -1;
+      for (let di = 0; di < this.editor.vertexData.length; di++) {
+        const vi = pickVertex3D(this.editor.vertexData[di].vertices, rayOrigin, rayDir, 8);
+        if (vi >= 0) { hitDi = di; hitVi = vi; break; }
+      }
+      if (hitDi >= 0) {
+        this.editor.selectVertex(hitDi, hitVi, additive);
+      } else {
+        if (!additive) this.editor.clearVertexSelection();
+      }
+    } else if (this.editor.patchEditMode) {
+      const { rayOrigin, rayDir } = this.getRay(sx, sy);
+      const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+      let hitDi = -1, hitR = -1, hitC = -1;
+      let bestDistSq = 64;
+      for (let di = 0; di < this.editor.patchEditData.length; di++) {
+        const patch = this.editor.patchEditData[di].patch;
+        for (let r = 0; r < patch.height; r++) {
+          for (let c = 0; c < patch.width; c++) {
+            const p = patch.ctrl[r][c].xyz;
+            const toP = vec3Sub(p, rayOrigin);
+            const t = vec3Dot(toP, rayDir);
+            if (t < 0) continue;
+            const proj = vec3Add(rayOrigin, vec3Scale(rayDir, t));
+            const d = vec3Sub(p, proj);
+            const distSq = d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
+            if (distSq < bestDistSq) {
+              bestDistSq = distSq;
+              hitDi = di; hitR = r; hitC = c;
+            }
+          }
+        }
+      }
+      if (hitDi >= 0) {
+        this.editor.selectControlPoint(hitDi, hitR, hitC, additive);
+      } else {
+        if (!additive) this.editor.clearControlPointSelection();
+      }
+    } else {
+      const filter = this.editor.selectionFilter;
+      const brushHit = (filter === 'all' || filter === 'brushes') ? this.pickBrushAt(sx, sy) : null;
+      const patchHit = (filter === 'all' || filter === 'patches') ? this.pickPatchAt(sx, sy) : null;
+
+      let usePatch = false;
+      if (patchHit && brushHit) {
+        const { rayOrigin, rayDir: dir } = this.getRay(sx, sy);
+        let brushDist = Infinity;
+        for (const face of brushHit.brush.faces) {
+          if (face.polygon.length < 3) continue;
+          for (let ii = 1; ii < face.polygon.length - 1; ii++) {
+            const t = rayTriangleIntersect(rayOrigin, dir, face.polygon[0], face.polygon[ii], face.polygon[ii + 1]);
+            if (t !== null && t < brushDist) brushDist = t;
+          }
+        }
+        usePatch = patchHit.dist < brushDist;
+      } else if (patchHit && !brushHit) {
+        usePatch = true;
+      }
+
+      if (usePatch && patchHit) {
+        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+        this.editor.selectPatch(patchHit.entity, patchHit.patch, additive);
+      } else if (brushHit) {
+        if (e.altKey) {
+          const additive = e.shiftKey;
+          this.editor.selectFace(brushHit.entity, brushHit.brush, brushHit.face, additive);
+        } else {
+          const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+          if (!additive) this.editor.clearSelection();
+          this.editor.selectBrush(brushHit.entity, brushHit.brush, additive);
+        }
+      } else {
+        if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();
+      }
+    }
+  }
+
   // ── Input ──
 
   private setupEvents(): void {
     const el = this.canvas.parentElement!;
 
     el.addEventListener('mousedown', (e) => {
+      // In fullscreen walk/fly, pointer is locked — no click interaction
+      if (this.fullscreen && this.fullscreenMode !== 'edit') return;
       // Left click: check gizmo first
       if (e.button === 0 && this.editor.selection.length > 0) {
         const rect = this.canvas.getBoundingClientRect();
@@ -799,12 +1238,17 @@ export class Viewport3D {
           return;
         }
       }
-      if (e.button === 0 || e.button === 2) {
+      if (e.button === 2 || (e.button === 0 && !this.fullscreen)) {
+        // Right-click look (always), or left-click look (only outside fullscreen edit)
         this.looking = true;
         this.didDrag = false;
         this.dragStart = [e.clientX, e.clientY];
         this.lastMouse = [e.clientX, e.clientY];
         el.requestPointerLock();
+      } else if (e.button === 0 && this.fullscreen && this.fullscreenMode === 'edit') {
+        // Left click in fullscreen edit: start potential selection click
+        this.didDrag = false;
+        this.dragStart = [e.clientX, e.clientY];
       }
     });
 
@@ -813,7 +1257,13 @@ export class Viewport3D {
         this.gizmo.handleDrag(e);
         return;
       }
-      if (!this.looking) return;
+      // In fullscreen edit mode, only rotate camera while right-click looking
+      if (this.fullscreen && this.fullscreenMode === 'edit') {
+        if (!this.looking) return;
+      } else if (!this.looking && !this.fullscreen) {
+        return;
+      }
+      if (this.fullscreen && this.fullscreenMode !== 'edit' && !document.pointerLockElement) return;
       const dx = e.movementX;
       const dy = e.movementY;
       if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
@@ -827,100 +1277,45 @@ export class Viewport3D {
       this.editor.dirty = true;
     });
 
+    // Detect pointer lock loss in fullscreen → exit fullscreen (but not in edit mode)
+    document.addEventListener('pointerlockchange', () => {
+      if (this.fullscreen && !document.pointerLockElement) {
+        if (this.fullscreenMode === 'edit') {
+          // In edit mode, pointer lock release is from ending right-click look — stay fullscreen
+          if (this.looking) {
+            this.looking = false;
+            this.keys.clear();
+          }
+        } else {
+          this.exitFullscreen();
+        }
+      }
+    });
+
     document.addEventListener('mouseup', (e) => {
+      if (this.fullscreen && this.fullscreenMode !== 'edit') return;
       if (this.gizmo.dragging && e.button === 0) {
         this.gizmo.endDrag();
         return;
       }
-      if ((e.button === 0 || e.button === 2) && this.looking) {
+
+      const isEditMode = this.fullscreen && this.fullscreenMode === 'edit';
+
+      // Right-click look release (both regular and edit mode)
+      if (this.looking && (e.button === 2 || (e.button === 0 && !isEditMode))) {
         this.looking = false;
         this.keys.clear();
         document.exitPointerLock();
-        if (!this.didDrag && e.button === 0) {
-          if (this.editor.vertexMode) {
-            // Vertex picking in 3D
-            const { rayOrigin, rayDir } = this.getRay(this.dragStart[0], this.dragStart[1]);
-            const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-            let hitDi = -1, hitVi = -1;
-            for (let di = 0; di < this.editor.vertexData.length; di++) {
-              const vi = pickVertex3D(this.editor.vertexData[di].vertices, rayOrigin, rayDir, 8);
-              if (vi >= 0) { hitDi = di; hitVi = vi; break; }
-            }
-            if (hitDi >= 0) {
-              this.editor.selectVertex(hitDi, hitVi, additive);
-            } else {
-              if (!additive) this.editor.clearVertexSelection();
-            }
-          } else if (this.editor.patchEditMode) {
-            // Patch control point picking in 3D
-            const { rayOrigin, rayDir } = this.getRay(this.dragStart[0], this.dragStart[1]);
-            const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-            let hitDi = -1, hitR = -1, hitC = -1;
-            let bestDistSq = 64; // pick threshold squared (8 world units)
-            for (let di = 0; di < this.editor.patchEditData.length; di++) {
-              const patch = this.editor.patchEditData[di].patch;
-              for (let r = 0; r < patch.height; r++) {
-                for (let c = 0; c < patch.width; c++) {
-                  const p = patch.ctrl[r][c].xyz;
-                  // Distance from point to ray
-                  const toP = vec3Sub(p, rayOrigin);
-                  const t = vec3Dot(toP, rayDir);
-                  if (t < 0) continue;
-                  const proj = vec3Add(rayOrigin, vec3Scale(rayDir, t));
-                  const d = vec3Sub(p, proj);
-                  const distSq = d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
-                  if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    hitDi = di; hitR = r; hitC = c;
-                  }
-                }
-              }
-            }
-            if (hitDi >= 0) {
-              this.editor.selectControlPoint(hitDi, hitR, hitC, additive);
-            } else {
-              if (!additive) this.editor.clearControlPointSelection();
-            }
-          } else {
-            const filter = this.editor.selectionFilter;
-            const brushHit = (filter === 'all' || filter === 'brushes') ? this.pickBrushAt(this.dragStart[0], this.dragStart[1]) : null;
-            const patchHit = (filter === 'all' || filter === 'patches') ? this.pickPatchAt(this.dragStart[0], this.dragStart[1]) : null;
-
-            // Compare distances — brushHit doesn't expose distance, so re-check
-            let usePatch = false;
-            if (patchHit && brushHit) {
-              // Recompute brush hit distance for comparison
-              const { rayOrigin, rayDir: dir } = this.getRay(this.dragStart[0], this.dragStart[1]);
-              let brushDist = Infinity;
-              for (const face of brushHit.brush.faces) {
-                if (face.polygon.length < 3) continue;
-                for (let ii = 1; ii < face.polygon.length - 1; ii++) {
-                  const t = rayTriangleIntersect(rayOrigin, dir, face.polygon[0], face.polygon[ii], face.polygon[ii + 1]);
-                  if (t !== null && t < brushDist) brushDist = t;
-                }
-              }
-              usePatch = patchHit.dist < brushDist;
-            } else if (patchHit && !brushHit) {
-              usePatch = true;
-            }
-
-            if (usePatch && patchHit) {
-              const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-              this.editor.selectPatch(patchHit.entity, patchHit.patch, additive);
-            } else if (brushHit) {
-              if (e.altKey) {
-                const additive = e.shiftKey;
-                this.editor.selectFace(brushHit.entity, brushHit.brush, brushHit.face, additive);
-              } else {
-                const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-                if (!additive) this.editor.clearSelection();
-                this.editor.selectBrush(brushHit.entity, brushHit.brush, additive);
-              }
-            } else {
-              if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();
-            }
-          }
+        // In regular mode, left-click non-drag selects geometry
+        if (!isEditMode && !this.didDrag && e.button === 0) {
+          this.handlePick(e);
         }
+        return;
+      }
+
+      // Edit mode: left-click selects geometry directly (no pointer lock involved)
+      if (isEditMode && e.button === 0 && !this.didDrag) {
+        this.handlePick(e);
       }
     });
 
@@ -943,6 +1338,31 @@ export class Viewport3D {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
 
     document.addEventListener('keydown', (e) => {
+      if (this.fullscreen) {
+        if (this.fullscreenMode === 'edit') {
+          // In edit mode, only capture V to cycle mode, ESC to exit, and movement keys while looking
+          if (e.key.toLowerCase() === 'v' && !this.looking) {
+            this.setFullscreenMode('walk');
+            e.preventDefault();
+          } else if (e.key === 'Escape') {
+            this.exitFullscreen();
+            e.preventDefault();
+          } else if (this.looking) {
+            this.keys.add(e.key.toLowerCase());
+            e.preventDefault();
+          }
+          return;
+        }
+        // Walk/fly mode: capture all keys for movement
+        this.keys.add(e.key.toLowerCase());
+        if (e.key.toLowerCase() === 'v') {
+          const next = this.fullscreenMode === 'walk' ? 'fly'
+                     : this.fullscreenMode === 'fly' ? 'edit' : 'walk';
+          this.setFullscreenMode(next);
+        }
+        e.preventDefault();
+        return;
+      }
       if (this.looking) {
         this.keys.add(e.key.toLowerCase());
         e.preventDefault();

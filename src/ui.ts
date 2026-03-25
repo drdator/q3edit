@@ -546,6 +546,8 @@ export class UI {
 
   private setupKeyboard(): void {
     document.addEventListener('keydown', (e) => {
+      // Don't handle shortcuts in fullscreen 3D mode
+      if (this.editor.fullscreen3d) return;
       // Don't handle shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
 

@@ -93,6 +93,9 @@ export class Editor {
     position: [80, 80, 120], yaw: Math.PI * 0.25, pitch: -0.2,
   };
 
+  // Fullscreen 3D walkthrough mode (set by Viewport3D)
+  fullscreen3d = false;
+
   /** Textures considered invisible (tool brushes) */
   static readonly INVISIBLE_TEXTURES = new Set([
     'common/clip', 'common/weapclip', 'common/trigger',
