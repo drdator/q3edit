@@ -1,7 +1,7 @@
 import {
   Vec3, vec3Add, vec3Sub, vec3Scale, vec3Cross, vec3Dot,
   vec3Normalize, vec3Length, vec3Copy,
-  Mat4, mat4Perspective, mat4LookAt, mat4Multiply, mat4Identity,
+  Mat4, mat4Identity,
   rayTriangleIntersect,
 } from './math';
 import { Editor } from './editor';
@@ -9,7 +9,6 @@ import { Brush, BrushFace, computeFaceUV } from './brush';
 import { Entity, entityOrigin, entityColor, parseLightColor } from './entity';
 import { Patch } from './patch';
 import { pickVertex3D } from './vertex';
-import { TextureManager, TextureInfo, BlendMode } from './textures';
 import {
   VERT_SRC, FRAG_SRC, LINE_VERT_SRC, LINE_FRAG_SRC,
   createProgram, createLineBuffer, createSolidBuffer,
@@ -25,19 +24,7 @@ import {
   pickEntityAt3D,
   pickPatchAt3D,
 } from './viewport3d-picking';
-
-// ── Texture draw group ──
-
-interface DrawGroup {
-  textureName: string;
-  start: number;
-  count: number;
-  selected: boolean;
-  faceSelected: boolean;
-  blendMode: BlendMode;
-  invisible: boolean;
-  solidOverride: boolean; // render as solid color (no texture)
-}
+import { DrawGroup, LightRadiusDraw, renderViewport3D } from './viewport3d-render';
 
 export class Viewport3D {
   canvas: HTMLCanvasElement;
@@ -92,7 +79,7 @@ export class Viewport3D {
 
   private lightRadiusVAO!: WebGLVertexArrayObject;
   private lightRadiusVBO!: WebGLBuffer;
-  private lightRadiusDraws: { start: number; count: number; color: [number, number, number] }[] = [];
+  private lightRadiusDraws: LightRadiusDraw[] = [];
 
   // Gizmo
   private gizmo!: Gizmo;
@@ -665,171 +652,48 @@ export class Viewport3D {
       this.buildGeometry();
     }
     this.gizmo.build(this.position);
-
-    const { gl, canvas } = this;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    const aspect = canvas.width / canvas.height || 1;
-    const proj = mat4Perspective(Math.PI / 3, aspect, 1, 16384);
-    const forward = this.getForward();
-    const target = vec3Add(this.position, forward);
-    const view = mat4LookAt(this.position, target, [0, 0, 1]);
-    const pv = mat4Multiply(proj, view);
-    this.lastPV = pv;
-
-    // Draw grid (hidden in fullscreen walk/fly for clean game-like view)
-    const isGameView = this.fullscreen && this.fullscreenMode !== 'edit';
-    if (!isGameView) {
-      gl.useProgram(this.lineProg);
-      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.uniform3f(this.lineColorLoc, 0.2, 0.2, 0.22);
-      gl.bindVertexArray(this.gridVAO);
-      gl.drawArrays(gl.LINES, 0, this.gridCount);
-    }
-
-    // Draw textured geometry by group (two-pass: opaque first, then transparent)
-    if (this.drawGroups.length > 0) {
-      gl.useProgram(this.solidProg);
-      gl.uniformMatrix4fv(this.solidPVLoc, false, pv);
-      gl.uniform1i(this.solidTexLoc, 0);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindVertexArray(this.solidVAO);
-
-      const drawGroup = (group: DrawGroup) => {
-        const tm = this.editor.textureManager;
-        if (tm) {
-          const texInfo = tm.get(group.textureName);
-          gl.bindTexture(gl.TEXTURE_2D, texInfo.glTexture);
-        }
-        const hideSelection = this.fullscreen && this.fullscreenMode !== 'edit';
-        gl.uniform1f(this.solidSelLoc, !hideSelection && group.selected ? 1.0 : 0.0);
-        gl.uniform1f(this.solidFaceSelLoc, !hideSelection && group.faceSelected ? 1.0 : 0.0);
-        const isDimInvis = group.invisible && this.editor.invisibleMode === 'dim';
-        gl.uniform1f(this.solidAlphaOverrideLoc, isDimInvis ? 0.3 : 0.0);
-        gl.uniform1f(this.solidSolidOverrideLoc, group.solidOverride ? 1.0 : 0.0);
-        gl.drawArrays(gl.TRIANGLES, group.start, group.count);
-      };
-
-      // Pass 1: opaque
-      gl.uniform1f(this.solidUseAlphaLoc, 0.0);
-      gl.uniform1f(this.solidAlphaOverrideLoc, 0.0);
-      for (const group of this.drawGroups) {
-        if (group.blendMode !== 'opaque') continue;
-        drawGroup(group);
-      }
-
-      // Pass 2: transparent (blended)
-      let hasTransparent = false;
-      for (const group of this.drawGroups) {
-        if (group.blendMode === 'opaque') continue;
-        if (!hasTransparent) {
-          gl.enable(gl.BLEND);
-          hasTransparent = true;
-        }
-        // Dimmed invisible faces keep depth writes so back faces are occluded
-        const isDimInvis = group.invisible && this.editor.invisibleMode === 'dim';
-        gl.depthMask(isDimInvis);
-        if (group.blendMode === 'add') {
-          gl.blendFunc(gl.ONE, gl.ONE);
-          gl.uniform1f(this.solidUseAlphaLoc, 0.0);
-        } else {
-          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-          gl.uniform1f(this.solidUseAlphaLoc, 1.0);
-        }
-        drawGroup(group);
-      }
-      if (hasTransparent) {
-        gl.disable(gl.BLEND);
-        gl.depthMask(true);
-      }
-    }
-
-    // Draw unselected wireframe (hidden in fullscreen walk/fly)
-    if (!isGameView && this.wireCount > 0) {
-      gl.useProgram(this.lineProg);
-      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.uniform3f(this.lineColorLoc, 0.0, 0.0, 0.0);
-      gl.bindVertexArray(this.wireVAO);
-      gl.drawArrays(gl.LINES, 0, this.wireCount);
-    }
-
-    // Draw light radius circles (per-light color, hidden in walk/fly)
-    if (!isGameView && this.lightRadiusDraws.length > 0) {
-      gl.useProgram(this.lineProg);
-      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.bindVertexArray(this.lightRadiusVAO);
-      for (const draw of this.lightRadiusDraws) {
-        gl.uniform3f(this.lineColorLoc, draw.color[0], draw.color[1], draw.color[2]);
-        gl.drawArrays(gl.LINES, draw.start, draw.count);
-      }
-    }
-
-    // Skip selection overlays and gizmo in fullscreen walk/fly
-    const showSelection = !this.fullscreen || this.fullscreenMode === 'edit';
-
-    // Draw selected wireframe overlay (no depth test)
-    if (showSelection && this.lineCount > 0) {
-      gl.useProgram(this.lineProg);
-      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.uniform3f(this.lineColorLoc, 1.0, 0.5, 0.0);
-      gl.disable(gl.DEPTH_TEST);
-      gl.bindVertexArray(this.lineVAO);
-      gl.drawArrays(gl.LINES, 0, this.lineCount);
-      gl.enable(gl.DEPTH_TEST);
-    }
-
-    // Draw face-selected wireframe overlay (cyan, no depth test)
-    if (showSelection && this.faceSelCount > 0) {
-      gl.useProgram(this.lineProg);
-      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.uniform3f(this.lineColorLoc, 0.2, 0.8, 1.0);
-      gl.disable(gl.DEPTH_TEST);
-      gl.lineWidth(2);
-      gl.bindVertexArray(this.faceSelVAO);
-      gl.drawArrays(gl.LINES, 0, this.faceSelCount);
-      gl.lineWidth(1);
-      gl.enable(gl.DEPTH_TEST);
-    }
-
-    // Draw vertex handles (no depth test, on top)
-    if (showSelection && (this.vtxHandleCount > 0 || this.vtxHandleSelCount > 0)) {
-      gl.useProgram(this.lineProg);
-      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.disable(gl.DEPTH_TEST);
-      if (this.vtxHandleCount > 0) {
-        gl.uniform3f(this.lineColorLoc, 0.2, 0.9, 0.2);
-        gl.bindVertexArray(this.vtxHandleVAO);
-        gl.drawArrays(gl.LINES, 0, this.vtxHandleCount);
-      }
-      if (this.vtxHandleSelCount > 0) {
-        gl.uniform3f(this.lineColorLoc, 1.0, 1.0, 1.0);
-        gl.bindVertexArray(this.vtxHandleSelVAO);
-        gl.drawArrays(gl.LINES, 0, this.vtxHandleSelCount);
-      }
-      gl.enable(gl.DEPTH_TEST);
-    }
-
-    // Draw gizmo (on top of everything)
-    if (showSelection && this.gizmo.segments.length > 0) {
-      gl.useProgram(this.lineProg);
-      gl.uniformMatrix4fv(this.linePVLoc, false, pv);
-      gl.disable(gl.DEPTH_TEST);
-      gl.bindVertexArray(this.gizmo.vao);
-      for (const seg of this.gizmo.segments) {
-        const c = seg.color;
-        const bright = this.gizmo.dragging && this.gizmo.axis === this.gizmo.segments.indexOf(seg) ? 1.5 : 1.0;
-        gl.uniform3f(this.lineColorLoc, c[0] * bright, c[1] * bright, c[2] * bright);
-        gl.drawArrays(gl.LINES, seg.start, seg.count);
-      }
-      gl.enable(gl.DEPTH_TEST);
-    }
-
-    gl.bindVertexArray(null);
+    this.lastPV = renderViewport3D({
+      gl: this.gl,
+      canvas: this.canvas,
+      editor: this.editor,
+      fullscreen: this.fullscreen,
+      fullscreenMode: this.fullscreenMode,
+      position: this.position,
+      getForward: () => this.getForward(),
+      solidProg: this.solidProg,
+      solidPVLoc: this.solidPVLoc,
+      solidTexLoc: this.solidTexLoc,
+      solidSelLoc: this.solidSelLoc,
+      solidFaceSelLoc: this.solidFaceSelLoc,
+      solidUseAlphaLoc: this.solidUseAlphaLoc,
+      solidAlphaOverrideLoc: this.solidAlphaOverrideLoc,
+      solidSolidOverrideLoc: this.solidSolidOverrideLoc,
+      lineProg: this.lineProg,
+      linePVLoc: this.linePVLoc,
+      lineColorLoc: this.lineColorLoc,
+      solidVAO: this.solidVAO,
+      drawGroups: this.drawGroups,
+      lineVAO: this.lineVAO,
+      lineCount: this.lineCount,
+      wireVAO: this.wireVAO,
+      wireCount: this.wireCount,
+      faceSelVAO: this.faceSelVAO,
+      faceSelCount: this.faceSelCount,
+      vtxHandleVAO: this.vtxHandleVAO,
+      vtxHandleCount: this.vtxHandleCount,
+      vtxHandleSelVAO: this.vtxHandleSelVAO,
+      vtxHandleSelCount: this.vtxHandleSelCount,
+      gridVAO: this.gridVAO,
+      gridCount: this.gridCount,
+      lightRadiusVAO: this.lightRadiusVAO,
+      lightRadiusDraws: this.lightRadiusDraws,
+      gizmo: {
+        vao: this.gizmo.vao,
+        segments: this.gizmo.segments,
+        dragging: this.gizmo.dragging,
+        axis: this.gizmo.axis,
+      },
+    });
   }
 
   private getForward(): Vec3 {
