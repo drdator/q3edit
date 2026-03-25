@@ -1,22 +1,17 @@
 import {
-  Vec3, vec3Add, vec3Sub, vec3Scale, vec3Dot,
-  vec3Copy,
+  Vec3, vec3Add, vec3Scale,
   Mat4, mat4Identity,
-  rayTriangleIntersect,
 } from './math';
 import { Editor } from './editor';
 import { Brush, BrushFace } from './brush';
 import { Entity } from './entity';
 import { Patch } from './patch';
-import { pickVertex3D } from './vertex';
 import {
   VERT_SRC, FRAG_SRC, LINE_VERT_SRC, LINE_FRAG_SRC,
   createProgram, createLineBuffer, createSolidBuffer,
 } from './gl-utils';
 import { Gizmo } from './gizmo';
-import {
-  WalkState, createWalkState, VIEWHEIGHT,
-} from './q3-movement';
+import { WalkState, VIEWHEIGHT } from './q3-movement';
 import {
   getRay3D,
   pickBrushAt3D,
@@ -31,6 +26,14 @@ import {
   getViewport3DRight,
   updateViewport3DCamera,
 } from './viewport3d-navigation';
+import { handleViewport3DPick } from './viewport3d-selection';
+import {
+  createViewport3DFullscreenUI,
+  enterViewport3DFullscreen,
+  exitViewport3DFullscreen,
+  setViewport3DFullscreenMode,
+  Viewport3DFullscreenMode,
+} from './viewport3d-fullscreen';
 
 export class Viewport3D {
   canvas: HTMLCanvasElement;
@@ -101,7 +104,7 @@ export class Viewport3D {
 
   // Fullscreen walkthrough mode
   private fullscreen = false;
-  private fullscreenMode: 'walk' | 'fly' | 'edit' = 'walk';
+  private fullscreenMode: Viewport3DFullscreenMode = 'walk';
   private savedCamera: { position: Vec3; yaw: number; pitch: number } | null = null;
   private fullscreenBtn!: HTMLButtonElement;
   private fullscreenOverlay!: HTMLDivElement;
@@ -129,99 +132,62 @@ export class Viewport3D {
   }
 
   private createFullscreenUI(): void {
-    const container = this.canvas.parentElement!;
-
-    // Fullscreen button (top-right corner of 3D viewport)
-    this.fullscreenBtn = document.createElement('button');
-    this.fullscreenBtn.className = 'vp-fullscreen-btn';
-    this.fullscreenBtn.title = 'Fullscreen walkthrough';
-    this.fullscreenBtn.innerHTML = '<i class="ph ph-arrows-out"></i>';
-    this.fullscreenBtn.addEventListener('mousedown', (e) => {
-      e.stopPropagation(); // prevent viewport3d from grabbing pointer lock
-    });
-    this.fullscreenBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.enterFullscreen();
-    });
-    container.appendChild(this.fullscreenBtn);
-
-    // Fullscreen overlay (crosshair + HUD, visible only in fullscreen)
-    this.fullscreenOverlay = document.createElement('div');
-    this.fullscreenOverlay.className = 'vp-fullscreen-overlay';
-    this.fullscreenOverlay.innerHTML = `
-      <div class="fullscreen-crosshair"></div>
-      <div class="fullscreen-hud">
-        <span class="hud-mode">WALK</span>
-        <span class="hud-sep"></span>
-        <span>WASD</span>
-        <span class="hud-sep"></span>
-        <span>Space jump</span>
-        <span class="hud-sep"></span>
-        <span>C crouch</span>
-        <span class="hud-sep"></span>
-        <span>V mode</span>
-        <span class="hud-sep"></span>
-        <span>Esc exit</span>
-      </div>
-    `;
-    this.hudModeEl = this.fullscreenOverlay.querySelector('.hud-mode')!;
-    container.appendChild(this.fullscreenOverlay);
+    const ui = createViewport3DFullscreenUI(this.canvas.parentElement!, () => this.enterFullscreen());
+    this.fullscreenBtn = ui.fullscreenBtn;
+    this.fullscreenOverlay = ui.fullscreenOverlay;
+    this.hudModeEl = ui.hudModeEl;
   }
 
   enterFullscreen(): void {
-    this.fullscreen = true;
-    this.savedCamera = { position: vec3Copy(this.position), yaw: this.yaw, pitch: this.pitch };
+    const enterState = enterViewport3DFullscreen({
+      position: this.position,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      editor: this.editor,
+      fullscreenBtn: this.fullscreenBtn,
+      canvas: this.canvas,
+      keys: this.keys,
+    });
+    this.fullscreen = enterState.fullscreen;
+    this.savedCamera = enterState.savedCamera;
     this.setFullscreenMode('walk');
-    this.editor.fullscreen3d = true;
-    document.getElementById('app')!.classList.add('fullscreen-3d');
-    this.fullscreenBtn.style.display = 'none';
-    this.canvas.requestPointerLock();
-    this.keys.clear();
-    this.physicsAccum = 0;
+    this.physicsAccum = enterState.physicsAccum;
     this.editor.dirty = true;
   }
 
-  private setFullscreenMode(mode: 'walk' | 'fly' | 'edit'): void {
-    this.fullscreenMode = mode;
-    this.hudModeEl.textContent = mode.toUpperCase();
-
-    if (mode === 'walk') {
-      // Create Q3 walk state from current eye position
-      this.walkState = createWalkState(this.position);
-      this.walkStepSmooth = 0;
-      this.walkViewH = VIEWHEIGHT;
-      this.physicsAccum = 0;
-    } else {
-      this.walkState = null;
-    }
-
-    if (mode === 'edit') {
-      // Release pointer lock so the cursor is visible for clicking
-      if (document.pointerLockElement) document.exitPointerLock();
-      this.fullscreenOverlay.classList.add('edit-mode');
-    } else {
-      this.fullscreenOverlay.classList.remove('edit-mode');
-      // Re-acquire pointer lock for walk/fly
-      if (!document.pointerLockElement) this.canvas.requestPointerLock();
-    }
+  private setFullscreenMode(mode: Viewport3DFullscreenMode): void {
+    const modeState = setViewport3DFullscreenMode({
+      mode,
+      position: this.position,
+      canvas: this.canvas,
+      fullscreenOverlay: this.fullscreenOverlay,
+      hudModeEl: this.hudModeEl,
+    });
+    this.fullscreenMode = modeState.fullscreenMode;
+    this.walkState = modeState.walkState;
+    this.walkStepSmooth = modeState.walkStepSmooth;
+    this.walkViewH = modeState.walkViewH;
+    this.physicsAccum = modeState.physicsAccum;
   }
 
   exitFullscreen(): void {
-    if (!this.fullscreen) return;
-    // Restore camera if exiting from walk/fly (not edit)
-    if (this.fullscreenMode !== 'edit' && this.savedCamera) {
-      this.position = this.savedCamera.position;
-      this.yaw = this.savedCamera.yaw;
-      this.pitch = this.savedCamera.pitch;
-    }
-    this.savedCamera = null;
-    this.fullscreen = false;
-    this.editor.fullscreen3d = false;
-    this.fullscreenOverlay.classList.remove('edit-mode');
-    document.getElementById('app')!.classList.remove('fullscreen-3d');
-    this.fullscreenBtn.style.display = '';
-    this.keys.clear();
-    if (document.pointerLockElement) document.exitPointerLock();
+    const exitState = exitViewport3DFullscreen({
+      fullscreen: this.fullscreen,
+      fullscreenMode: this.fullscreenMode,
+      savedCamera: this.savedCamera,
+      position: this.position,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      editor: this.editor,
+      fullscreenOverlay: this.fullscreenOverlay,
+      fullscreenBtn: this.fullscreenBtn,
+      keys: this.keys,
+    });
+    this.position = exitState.position;
+    this.yaw = exitState.yaw;
+    this.pitch = exitState.pitch;
+    this.savedCamera = exitState.savedCamera;
+    this.fullscreen = exitState.fullscreen;
     this.editor.dirty = true;
   }
 
@@ -441,99 +407,14 @@ export class Viewport3D {
   // ── Picking / selection on click ──
 
   private handlePick(e: MouseEvent): void {
-    const sx = this.dragStart[0], sy = this.dragStart[1];
-    if (this.editor.vertexMode) {
-      const { rayOrigin, rayDir } = this.getRay(sx, sy);
-      const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-      let hitDi = -1, hitVi = -1;
-      for (let di = 0; di < this.editor.vertexData.length; di++) {
-        const vi = pickVertex3D(this.editor.vertexData[di].vertices, rayOrigin, rayDir, 8);
-        if (vi >= 0) { hitDi = di; hitVi = vi; break; }
-      }
-      if (hitDi >= 0) {
-        this.editor.selectVertex(hitDi, hitVi, additive);
-      } else {
-        if (!additive) this.editor.clearVertexSelection();
-      }
-    } else if (this.editor.patchEditMode) {
-      const { rayOrigin, rayDir } = this.getRay(sx, sy);
-      const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-      let hitDi = -1, hitR = -1, hitC = -1;
-      let bestDistSq = 64;
-      for (let di = 0; di < this.editor.patchEditData.length; di++) {
-        const patch = this.editor.patchEditData[di].patch;
-        for (let r = 0; r < patch.height; r++) {
-          for (let c = 0; c < patch.width; c++) {
-            const p = patch.ctrl[r][c].xyz;
-            const toP = vec3Sub(p, rayOrigin);
-            const t = vec3Dot(toP, rayDir);
-            if (t < 0) continue;
-            const proj = vec3Add(rayOrigin, vec3Scale(rayDir, t));
-            const d = vec3Sub(p, proj);
-            const distSq = d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
-            if (distSq < bestDistSq) {
-              bestDistSq = distSq;
-              hitDi = di; hitR = r; hitC = c;
-            }
-          }
-        }
-      }
-      if (hitDi >= 0) {
-        this.editor.selectControlPoint(hitDi, hitR, hitC, additive);
-      } else {
-        if (!additive) this.editor.clearControlPointSelection();
-      }
-    } else {
-      const filter = this.editor.selectionFilter;
-      const brushHit = (filter === 'all' || filter === 'brushes') ? this.pickBrushAt(sx, sy) : null;
-      const patchHit = (filter === 'all' || filter === 'patches') ? this.pickPatchAt(sx, sy) : null;
-      const entityHit = (filter === 'all' || filter === 'entities') ? this.pickEntityAt(sx, sy) : null;
-
-      if (filter === 'entities') {
-        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-        if (entityHit) {
-          this.editor.selectEntity(entityHit.entity, additive);
-        } else if (!additive) {
-          this.editor.clearSelection();
-        }
-        return;
-      }
-
-      let usePatch = false;
-      if (patchHit && brushHit) {
-        const { rayOrigin, rayDir: dir } = this.getRay(sx, sy);
-        let brushDist = Infinity;
-        for (const face of brushHit.brush.faces) {
-          if (face.polygon.length < 3) continue;
-          for (let ii = 1; ii < face.polygon.length - 1; ii++) {
-            const t = rayTriangleIntersect(rayOrigin, dir, face.polygon[0], face.polygon[ii], face.polygon[ii + 1]);
-            if (t !== null && t < brushDist) brushDist = t;
-          }
-        }
-        usePatch = patchHit.dist < brushDist;
-      } else if (patchHit && !brushHit) {
-        usePatch = true;
-      }
-
-      if (usePatch && patchHit) {
-        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-        this.editor.selectPatch(patchHit.entity, patchHit.patch, additive);
-      } else if (brushHit) {
-        if (e.altKey) {
-          const additive = e.shiftKey;
-          this.editor.selectFace(brushHit.entity, brushHit.brush, brushHit.face, additive);
-        } else {
-          const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-          if (!additive) this.editor.clearSelection();
-          this.editor.selectBrush(brushHit.entity, brushHit.brush, additive);
-        }
-      } else if (entityHit) {
-        const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-        this.editor.selectEntity(entityHit.entity, additive);
-      } else {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey) this.editor.clearSelection();
-      }
-    }
+    handleViewport3DPick({
+      editor: this.editor,
+      dragStart: this.dragStart,
+      getRay: (screenX, screenY) => this.getRay(screenX, screenY),
+      pickBrushAt: (screenX, screenY) => this.pickBrushAt(screenX, screenY),
+      pickPatchAt: (screenX, screenY) => this.pickPatchAt(screenX, screenY),
+      pickEntityAt: (screenX, screenY) => this.pickEntityAt(screenX, screenY),
+    }, e);
   }
 
   // ── Input ──
