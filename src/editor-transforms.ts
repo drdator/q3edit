@@ -1,7 +1,7 @@
-import { cloneBrush, createBoxBrush, rotateBrush, translateBrush, type Brush } from './brush';
-import { cloneEntity, createEntity, entityDefaults, entityOrigin, rotateEntity, translateEntity, type Entity } from './entity';
+import { cloneBrush, createBoxBrush, mirrorBrush, rotateBrush, translateBrush, type Brush } from './brush';
+import { cloneEntity, createEntity, entityDefaults, entityOrigin, mirrorEntity, rotateEntity, translateEntity, type Entity } from './entity';
 import { vec3Snap, type Vec3 } from './math';
-import { clonePatch, rotatePatch, translatePatch } from './patch';
+import { clonePatch, mirrorPatch, rotatePatch, translatePatch } from './patch';
 import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
 
@@ -113,6 +113,31 @@ export function rotateSelection(editor: Editor, angleDeg: number): void {
   editor.dirty = true;
   const axisName = ['X', 'Y', 'Z'][axis];
   editor.statusMessage = `Rotated ${angleDeg}° around ${axisName}`;
+}
+
+export function flipSelection(editor: Editor, axis: number): void {
+  if (editor.selection.length === 0) return;
+
+  const center = editor.selectionCenter();
+  if (!center) return;
+
+  editor.snapshot();
+  const selectedEntities = selectedEntitySet(editor);
+
+  for (const item of editor.selection) {
+    if (item.type !== 'entity' && selectedEntities.has(item.entity)) continue;
+    if (item.type === 'brush' || item.type === 'face') {
+      mirrorBrush(item.brush, center, axis);
+    } else if (item.type === 'patch') {
+      mirrorPatch(item.patch, center, axis);
+    } else {
+      mirrorEntity(item.entity, center, axis);
+    }
+  }
+
+  editor.dirty = true;
+  const axisName = ['X', 'Y', 'Z'][axis];
+  editor.statusMessage = `Flipped along ${axisName}`;
 }
 
 export function duplicateSelection(editor: Editor): void {

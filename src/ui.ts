@@ -78,6 +78,9 @@ export class UI {
         { separator: true },
         { label: 'Rotate 90°', shortcut: 'R', action: () => this.editor.rotateSelection(90) },
         { label: 'Rotate 15°', shortcut: 'Shift+R', action: () => this.editor.rotateSelection(15) },
+        { label: 'Flip X', shortcut: 'Shift+X', action: () => this.editor.flipSelection(0) },
+        { label: 'Flip Y', shortcut: 'Shift+Y', action: () => this.editor.flipSelection(1) },
+        { label: 'Flip Z', shortcut: 'Shift+Z', action: () => this.editor.flipSelection(2) },
       ],
       'View': [
         { label: 'Cycle Invisible Mode', shortcut: 'I', action: () => this.cycleInvisibleMode() },
@@ -655,6 +658,9 @@ export class UI {
       // Rotation: R = 90°, Shift+R = 15°
       if (e.key === 'r' && !ctrl) { this.editor.rotateSelection(90); return; }
       if (e.key === 'R' && !ctrl) { this.editor.rotateSelection(15); return; }
+      if (e.key === 'X' && !ctrl) { e.preventDefault(); this.editor.flipSelection(0); return; }
+      if (e.key === 'Y' && !ctrl) { e.preventDefault(); this.editor.flipSelection(1); return; }
+      if (e.key === 'Z' && !ctrl) { e.preventDefault(); this.editor.flipSelection(2); return; }
 
       // Texture shortcuts: Shift+Arrow = shift texture, Ctrl+Shift+Arrow = fine shift
       if (e.key.startsWith('Arrow') && e.shiftKey && this.editor.selectedFaces.length > 0) {

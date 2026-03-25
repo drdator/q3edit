@@ -85,6 +85,7 @@ import {
   deleteSelection as deleteEditorSelection,
   duplicateSelection as duplicateEditorSelection,
   duplicateSelectionInPlace as duplicateEditorSelectionInPlace,
+  flipSelection as flipEditorSelection,
   moveSelection as moveEditorSelection,
   rotateSelection as rotateEditorSelection,
   snapSelectionToGrid as snapEditorSelectionToGrid,
@@ -361,6 +362,10 @@ export class Editor {
 
   rotateSelection(angleDeg: number): void {
     rotateEditorSelection(this, angleDeg);
+  }
+
+  flipSelection(axis: number): void {
+    flipEditorSelection(this, axis);
   }
 
   // ── Clip tool ──

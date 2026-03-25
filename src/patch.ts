@@ -1,4 +1,4 @@
-import { Vec3, vec3, vec3Add, vec3Sub, vec3Cross, vec3Normalize, vec3Copy, vec3RotateAxis } from './math';
+import { Vec3, vec3, vec3Add, vec3Sub, vec3Cross, vec3Normalize, vec3Copy, vec3RotateAxis, vec3MirrorAxis } from './math';
 
 // ── Data structures ──
 
@@ -218,6 +218,16 @@ export function rotatePatch(patch: Patch, center: Vec3, axis: number, angle: num
     for (const cp of row) {
       cp.xyz = vec3RotateAxis(cp.xyz, center, axis, angle);
     }
+  }
+  tessellatePatch(patch);
+}
+
+export function mirrorPatch(patch: Patch, center: Vec3, axis: number): void {
+  for (const row of patch.ctrl) {
+    for (const cp of row) {
+      cp.xyz = vec3MirrorAxis(cp.xyz, center, axis);
+    }
+    row.reverse();
   }
   tessellatePatch(patch);
 }

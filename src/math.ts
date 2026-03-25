@@ -54,6 +54,12 @@ export function vec3RotateAxis(p: Vec3, center: Vec3, axis: number, angle: numbe
   return out;
 }
 
+export function vec3MirrorAxis(p: Vec3, center: Vec3, axis: number): Vec3 {
+  const out: Vec3 = [p[0], p[1], p[2]];
+  out[axis] = center[axis] - (p[axis] - center[axis]);
+  return out;
+}
+
 // ── Plane ──
 
 export interface Plane {

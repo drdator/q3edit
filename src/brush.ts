@@ -1,7 +1,7 @@
 import {
   Vec3, Plane, vec3, vec3Add, vec3Sub, vec3Scale, vec3Cross, vec3Dot,
   vec3Normalize, vec3Copy, vec3Lerp, vec3Min, vec3Max, vec3Snap,
-  vec3RotateAxis, vec3Length, planeFromPoints, planePointDistance
+  vec3RotateAxis, vec3MirrorAxis, vec3Length, planeFromPoints, planePointDistance
 } from './math';
 
 export interface BrushFace {
@@ -191,6 +191,30 @@ export function rotateBrush(brush: Brush, center: Vec3, axis: number, angle: num
       maxs = vec3Max(maxs, v);
     }
   }
+  brush.mins = mins;
+  brush.maxs = maxs;
+}
+
+export function mirrorBrush(brush: Brush, center: Vec3, axis: number): void {
+  let mins: Vec3 = [Infinity, Infinity, Infinity];
+  let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+
+  for (const face of brush.faces) {
+    const mirroredPoints = face.points.map(point => vec3MirrorAxis(point, center, axis)) as [Vec3, Vec3, Vec3];
+    face.points = [mirroredPoints[2], mirroredPoints[1], mirroredPoints[0]];
+    face.plane = planeFromPoints(face.points[0], face.points[1], face.points[2]);
+
+    const mirroredPolygon = face.polygon.map(v => vec3MirrorAxis(v, center, axis));
+    mirroredPolygon.reverse();
+    face.polygon = mirroredPolygon;
+
+    const boundsVerts = face.polygon.length > 0 ? face.polygon : face.points;
+    for (const v of boundsVerts) {
+      mins = vec3Min(mins, v);
+      maxs = vec3Max(maxs, v);
+    }
+  }
+
   brush.mins = mins;
   brush.maxs = maxs;
 }

@@ -1,6 +1,6 @@
-import { Vec3, vec3, vec3Copy, vec3Add, vec3RotateAxis } from './math';
-import { Brush, cloneBrush, rotateBrush, translateBrush } from './brush';
-import { Patch, clonePatch, rotatePatch, translatePatch } from './patch';
+import { Vec3, vec3, vec3Copy, vec3Add, vec3RotateAxis, vec3MirrorAxis } from './math';
+import { Brush, cloneBrush, mirrorBrush, rotateBrush, translateBrush } from './brush';
+import { Patch, clonePatch, mirrorPatch, rotatePatch, translatePatch } from './patch';
 
 export interface Entity {
   classname: string;
@@ -63,6 +63,19 @@ export function rotateEntity(entity: Entity, center: Vec3, axis: number, angle: 
   }
   for (const patch of entity.patches) {
     rotatePatch(patch, center, axis, angle);
+  }
+}
+
+export function mirrorEntity(entity: Entity, center: Vec3, axis: number): void {
+  const origin = entityOrigin(entity);
+  if (origin) {
+    setEntityOrigin(entity, vec3MirrorAxis(origin, center, axis));
+  }
+  for (const brush of entity.brushes) {
+    mirrorBrush(brush, center, axis);
+  }
+  for (const patch of entity.patches) {
+    mirrorPatch(patch, center, axis);
   }
 }
 
