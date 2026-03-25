@@ -1,17 +1,15 @@
-import { Vec3, vec3, vec3Add, vec3Sub, vec3Snap, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
-import { Brush, BrushFace, createBoxBrush, translateBrush, rotateBrush, cloneBrush, clipBrush, computeBrushGeometry, brushCenter, BrushValidationResult } from './brush';
-import { Entity, createEntity, entityOrigin, translateEntity, cloneEntity, setEntityOrigin, entityDefaults } from './entity';
-import { Patch, clonePatch, translatePatch, rotatePatch } from './patch';
+import { Vec3, vec3, vec3Add, vec3Sub, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
+import { Brush, BrushFace, computeBrushGeometry, brushCenter, BrushValidationResult } from './brush';
+import { Entity, createEntity } from './entity';
+import { Patch } from './patch';
 import { History } from './history';
 import { TextureManager } from './textures';
 import { BrushVertex } from './vertex';
-import { subtractBrush, hollowBrush, mergeBrushes } from './csg';
 import {
   addBrushToSelection as addBrushSelectionItem,
   addEntityToSelection as addEntitySelectionItem,
   addPatchToSelection as addPatchSelectionItem,
   clearSelection as clearEditorSelection,
-  getSelectedBrushItems,
   getSelectedFace,
   getSelectedFaces,
   isBrushSelected,
@@ -75,6 +73,25 @@ import {
   patchControlSelectionCenter as getEditorPatchControlSelectionCenter,
   selectControlPoint as selectEditorControlPoint,
 } from './editor-patch';
+import {
+  addBrush as addEditorBrush,
+  addEntity as addEditorEntity,
+  deleteSelection as deleteEditorSelection,
+  duplicateSelection as duplicateEditorSelection,
+  duplicateSelectionInPlace as duplicateEditorSelectionInPlace,
+  moveSelection as moveEditorSelection,
+  rotateSelection as rotateEditorSelection,
+  snapSelectionToGrid as snapEditorSelectionToGrid,
+} from './editor-transforms';
+import {
+  addClipPoint as addEditorClipPoint,
+  cancelClip as cancelEditorClip,
+  csgHollow as hollowEditorBrushes,
+  csgMerge as mergeEditorBrushes,
+  csgSubtract as subtractEditorBrushes,
+  cycleClipMode as cycleEditorClipMode,
+  executeClip as executeEditorClip,
+} from './editor-clip-csg';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -259,10 +276,6 @@ export class Editor {
     return getSelectedFace(this);
   }
 
-  private selectedBrushItems(): { entity: Entity; brush: Brush }[] {
-    return getSelectedBrushItems(this);
-  }
-
   /** Returns effective grid size: 1 when snapping is off (toggle or Ctrl held), gridSize otherwise */
   effectiveGrid(ctrlKey = false): number {
     return (this.gridSnapMode === 'off' || ctrlKey) ? 1 : this.gridSize;
@@ -282,33 +295,7 @@ export class Editor {
   // ── Brush operations ──
 
   addBrush(mins: Vec3, maxs: Vec3, ctrlKey = false): Brush {
-    const grid = this.effectiveGrid(ctrlKey);
-    const snapped_mins = vec3Snap(mins, grid);
-    const snapped_maxs = vec3Snap(maxs, grid);
-
-    // Ensure mins < maxs
-    const realMins: Vec3 = [
-      Math.min(snapped_mins[0], snapped_maxs[0]),
-      Math.min(snapped_mins[1], snapped_maxs[1]),
-      Math.min(snapped_mins[2], snapped_maxs[2]),
-    ];
-    const realMaxs: Vec3 = [
-      Math.max(snapped_mins[0], snapped_maxs[0]),
-      Math.max(snapped_mins[1], snapped_maxs[1]),
-      Math.max(snapped_mins[2], snapped_maxs[2]),
-    ];
-
-    // Minimum brush size
-    for (let i = 0; i < 3; i++) {
-      if (realMaxs[i] - realMins[i] < grid) {
-        realMaxs[i] = realMins[i] + grid;
-      }
-    }
-
-    const brush = createBoxBrush(realMins, realMaxs, this.currentTexture);
-    this.worldspawn.brushes.push(brush);
-    this.dirty = true;
-    return brush;
+    return addEditorBrush(this, mins, maxs, ctrlKey);
   }
 
   // ── Patch creation ──
@@ -322,367 +309,66 @@ export class Editor {
   }
 
   deleteSelection(): void {
-    if (this.selection.length === 0) return;
-    this.snapshot();
-
-    for (const item of this.selection) {
-      if (item.type === 'brush' || item.type === 'face') {
-        const brush = item.brush;
-        const idx = item.entity.brushes.indexOf(brush);
-        if (idx >= 0) item.entity.brushes.splice(idx, 1);
-      } else if (item.type === 'patch') {
-        const idx = item.entity.patches.indexOf(item.patch);
-        if (idx >= 0) item.entity.patches.splice(idx, 1);
-      } else {
-        const idx = this.entities.indexOf(item.entity);
-        // Don't delete worldspawn
-        if (idx > 0) this.entities.splice(idx, 1);
-      }
-    }
-
-    this.selection = [];
-    this.dirty = true;
-    this.statusMessage = 'Deleted';
+    deleteEditorSelection(this);
   }
 
   moveSelection(delta: Vec3): void {
-    if (delta[0] === 0 && delta[1] === 0 && delta[2] === 0) return;
-
-    for (const item of this.selection) {
-      if (item.type === 'brush' || item.type === 'face') {
-        translateBrush(item.brush, delta);
-      } else if (item.type === 'patch') {
-        translatePatch(item.patch, delta);
-      } else {
-        translateEntity(item.entity, delta);
-      }
-    }
-    this.dirty = true;
+    moveEditorSelection(this, delta);
   }
 
   rotateSelection(angleDeg: number): void {
-    if (this.selection.length === 0) return;
-    this.snapshot();
-
-    const angle = (angleDeg / 180) * Math.PI;
-    const axis = this.rotationAxis;
-
-    // Compute selection center
-    let mins: Vec3 = [Infinity, Infinity, Infinity];
-    let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
-    for (const item of this.selection) {
-      if (item.type === 'entity') continue;
-      const b = item.type === 'patch' ? item.patch : item.brush;
-      for (let i = 0; i < 3; i++) {
-        if (b.mins[i] < mins[i]) mins[i] = b.mins[i];
-        if (b.maxs[i] > maxs[i]) maxs[i] = b.maxs[i];
-      }
-    }
-    const center: Vec3 = [
-      (mins[0] + maxs[0]) / 2,
-      (mins[1] + maxs[1]) / 2,
-      (mins[2] + maxs[2]) / 2,
-    ];
-
-    for (const item of this.selection) {
-      if (item.type === 'brush' || item.type === 'face') {
-        rotateBrush(item.brush, center, axis, angle);
-      } else if (item.type === 'patch') {
-        rotatePatch(item.patch, center, axis, angle);
-      }
-    }
-
-    this.dirty = true;
-    const axisName = ['X', 'Y', 'Z'][axis];
-    this.statusMessage = `Rotated ${angleDeg}° around ${axisName}`;
+    rotateEditorSelection(this, angleDeg);
   }
 
   // ── Clip tool ──
 
   addClipPoint(point: Vec3, depthAxis: number): void {
-    if (this.clipPoints.length >= 2) this.clipPoints = [];
-    this.clipPoints.push(point);
-    this.clipDepthAxis = depthAxis;
-    this.dirty = true;
+    addEditorClipPoint(this, point, depthAxis);
   }
 
   cycleClipMode(): void {
-    const modes: ClipMode[] = ['front', 'back', 'both'];
-    this.clipMode = modes[(modes.indexOf(this.clipMode) + 1) % 3];
-    this.dirty = true;
-    this.statusMessage = `Clip: ${this.clipMode}`;
+    cycleEditorClipMode(this);
   }
 
   cancelClip(): void {
-    this.clipPoints = [];
-    this.dirty = true;
-    this.statusMessage = 'Clip cancelled';
+    cancelEditorClip(this);
   }
 
   executeClip(): void {
-    if (this.clipPoints.length < 2 || this.selection.length === 0) return;
-
-    const p1 = this.clipPoints[0];
-    const p2 = this.clipPoints[1];
-    const depthAxis = this.clipDepthAxis;
-
-    // Third point offset along depth axis to define the plane
-    const p3: Vec3 = [p1[0], p1[1], p1[2]];
-    p3[depthAxis] += 1;
-
-    // Front clip points: p1, p2, p3 → normal points to the "front"
-    // Back clip points: reversed winding → p2, p1, p3
-    const frontPoints: [Vec3, Vec3, Vec3] = [p1, p2, p3];
-    const backPoints: [Vec3, Vec3, Vec3] = [p2, p1, p3];
-
-    this.snapshot();
-    const newSelection: SelectionItem[] = [];
-
-    for (const item of this.selection) {
-      if (item.type === 'entity' || item.type === 'patch') continue;
-      const brush = item.brush;
-      const entity = item.entity;
-      const idx = entity.brushes.indexOf(brush);
-      if (idx < 0) continue;
-
-      const front = clipBrush(brush, frontPoints);
-      const back = clipBrush(brush, backPoints);
-
-      // Remove the original brush
-      entity.brushes.splice(idx, 1);
-
-      if (this.clipMode === 'front' || this.clipMode === 'both') {
-        if (front) {
-          entity.brushes.push(front);
-          newSelection.push({ type: 'brush', entity, brush: front });
-        }
-      }
-      if (this.clipMode === 'back' || this.clipMode === 'both') {
-        if (back) {
-          entity.brushes.push(back);
-          newSelection.push({ type: 'brush', entity, brush: back });
-        }
-      }
-    }
-
-    this.selection = newSelection;
-    this.clipPoints = [];
-    this.dirty = true;
-    this.statusMessage = `Clipped (${this.clipMode})`;
+    executeEditorClip(this);
   }
 
   // ── CSG operations ──
 
   csgSubtract(): void {
-    const brushItems = this.selectedBrushItems();
-    if (brushItems.length === 0) {
-      this.statusMessage = 'CSG Subtract: select brushes to carve with';
-      return;
-    }
-
-    this.snapshot();
-    const carverSet = new Set(brushItems.map(s => s.brush));
-    const newSelection: SelectionItem[] = [];
-    let totalFragments = 0;
-
-    for (const entity of this.entities) {
-      const newBrushes: Brush[] = [];
-      for (const brush of entity.brushes) {
-        if (carverSet.has(brush)) continue; // carvers are removed
-
-        let pieces: Brush[] = [brush];
-        for (const carverBrush of carverSet) {
-          const next: Brush[] = [];
-          for (const piece of pieces) {
-            const frags = subtractBrush(piece, carverBrush);
-            if (frags !== null) {
-              next.push(...frags);
-            } else {
-              next.push(piece); // no overlap, keep as-is
-            }
-          }
-          pieces = next;
-        }
-        newBrushes.push(...pieces);
-        if (pieces.length > 1 || (pieces.length === 1 && pieces[0] !== brush)) {
-          totalFragments += pieces.length;
-          for (const p of pieces) {
-            newSelection.push({ type: 'brush', entity, brush: p });
-          }
-        }
-      }
-      entity.brushes = newBrushes;
-    }
-
-    this.selection = newSelection;
-    this.dirty = true;
-    this.statusMessage = totalFragments > 0
-      ? `CSG Subtract: ${totalFragments} fragments created`
-      : 'CSG Subtract: no intersections found';
+    subtractEditorBrushes(this);
   }
 
   csgHollow(): void {
-    const brushItems = this.selectedBrushItems();
-    if (brushItems.length === 0) {
-      this.statusMessage = 'CSG Hollow: select brushes first';
-      return;
-    }
-
-    this.snapshot();
-    const newSelection: SelectionItem[] = [];
-
-    for (const item of brushItems) {
-      const shells = hollowBrush(item.brush, this.gridSize);
-      if (shells.length === 0) continue;
-
-      // Remove original
-      const idx = item.entity.brushes.indexOf(item.brush);
-      if (idx >= 0) item.entity.brushes.splice(idx, 1);
-
-      // Add shell pieces
-      for (const shell of shells) {
-        item.entity.brushes.push(shell);
-        newSelection.push({ type: 'brush', entity: item.entity, brush: shell });
-      }
-    }
-
-    this.selection = newSelection;
-    this.dirty = true;
-    this.statusMessage = `CSG Hollow: ${newSelection.length} shell pieces (wall thickness: ${this.gridSize})`;
+    hollowEditorBrushes(this);
   }
 
   csgMerge(): void {
-    const brushItems = this.selectedBrushItems();
-    if (brushItems.length < 2) {
-      this.statusMessage = 'CSG Merge: select 2+ brushes';
-      return;
-    }
-
-    // All brushes must belong to the same entity
-    const entity = brushItems[0].entity;
-    if (!brushItems.every(s => s.entity === entity)) {
-      this.statusMessage = 'CSG Merge: brushes must be in the same entity';
-      return;
-    }
-
-    const merged = mergeBrushes(brushItems.map(s => s.brush));
-    if (!merged) {
-      this.statusMessage = 'CSG Merge: result is not convex — cannot merge';
-      return;
-    }
-
-    this.snapshot();
-
-    // Remove originals
-    for (const item of brushItems) {
-      const idx = entity.brushes.indexOf(item.brush);
-      if (idx >= 0) entity.brushes.splice(idx, 1);
-    }
-
-    // Add merged brush
-    entity.brushes.push(merged);
-    this.selection = [{ type: 'brush', entity, brush: merged }];
-    this.dirty = true;
-    this.statusMessage = `CSG Merge: ${brushItems.length} brushes merged into 1`;
+    mergeEditorBrushes(this);
   }
 
   duplicateSelection(): void {
-    if (this.selection.length === 0) return;
-    this.snapshot();
-
-    const newSelection: SelectionItem[] = [];
-    const offset: Vec3 = [this.gridSize, this.gridSize, 0];
-
-    for (const item of this.selection) {
-      if (item.type === 'brush' || item.type === 'face') {
-        const newBrush = cloneBrush(item.brush);
-        translateBrush(newBrush, offset);
-        item.entity.brushes.push(newBrush);
-        newSelection.push({ type: 'brush', entity: item.entity, brush: newBrush });
-      } else if (item.type === 'patch') {
-        const newPatch = clonePatch(item.patch);
-        translatePatch(newPatch, offset);
-        item.entity.patches.push(newPatch);
-        newSelection.push({ type: 'patch', entity: item.entity, patch: newPatch });
-      } else {
-        const newEntity = cloneEntity(item.entity);
-        translateEntity(newEntity, offset);
-        this.entities.push(newEntity);
-        newSelection.push({ type: 'entity', entity: newEntity });
-      }
-    }
-
-    this.selection = newSelection;
-    this.dirty = true;
-    this.statusMessage = 'Duplicated';
+    duplicateEditorSelection(this);
   }
 
   snapSelectionToGrid(): void {
-    if (this.selection.length === 0) return;
-    this.snapshot();
-    for (const item of this.selection) {
-      if (item.type === 'brush' || item.type === 'face') {
-        const snapped = vec3Snap(item.brush.mins, this.gridSize);
-        const delta: Vec3 = [snapped[0] - item.brush.mins[0], snapped[1] - item.brush.mins[1], snapped[2] - item.brush.mins[2]];
-        if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
-          translateBrush(item.brush, delta);
-        }
-      } else if (item.type === 'patch') {
-        const snapped = vec3Snap(item.patch.mins, this.gridSize);
-        const delta: Vec3 = [snapped[0] - item.patch.mins[0], snapped[1] - item.patch.mins[1], snapped[2] - item.patch.mins[2]];
-        if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) {
-          translatePatch(item.patch, delta);
-        }
-      } else {
-        const origin = entityOrigin(item.entity);
-        if (origin) {
-          const snapped = vec3Snap(origin, this.gridSize);
-          setEntityOrigin(item.entity, snapped);
-        }
-      }
-    }
-    this.dirty = true;
-    this.statusMessage = 'Snapped to grid';
+    snapEditorSelectionToGrid(this);
   }
 
   /** Clone the current selection in-place (no offset). Used for Option-drag duplication. */
   duplicateSelectionInPlace(): void {
-    if (this.selection.length === 0) return;
-    const newSelection: SelectionItem[] = [];
-    for (const item of this.selection) {
-      if (item.type === 'brush' || item.type === 'face') {
-        const newBrush = cloneBrush(item.brush);
-        item.entity.brushes.push(newBrush);
-        newSelection.push({ type: 'brush', entity: item.entity, brush: newBrush });
-      } else if (item.type === 'patch') {
-        const newPatch = clonePatch(item.patch);
-        item.entity.patches.push(newPatch);
-        newSelection.push({ type: 'patch', entity: item.entity, patch: newPatch });
-      } else {
-        const newEntity = cloneEntity(item.entity);
-        this.entities.push(newEntity);
-        newSelection.push({ type: 'entity', entity: newEntity });
-      }
-    }
-    this.selection = newSelection;
-    this.dirty = true;
+    duplicateEditorSelectionInPlace(this);
   }
 
   // ── Entity operations ──
 
   addEntity(classname: string, origin: Vec3, ctrlKey = false): Entity {
-    const snapped = vec3Snap(origin, this.effectiveGrid(ctrlKey));
-    const entity = createEntity(classname, snapped);
-    // Apply default properties for this entity class
-    const defaults = entityDefaults(classname);
-    for (const [key, value] of Object.entries(defaults)) {
-      if (!(key in entity.properties)) {
-        entity.properties[key] = value;
-      }
-    }
-    this.entities.push(entity);
-    this.dirty = true;
-    return entity;
+    return addEditorEntity(this, classname, origin, ctrlKey);
   }
 
   // ── History ──
