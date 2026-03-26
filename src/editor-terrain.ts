@@ -1,7 +1,11 @@
 import type { Editor } from './editor';
+import { getSelectedPatchItems } from './editor-selection';
 import { createGridPatch, tessellatePatch, type Patch } from './patch';
 
 export type TerrainFalloff = 'smooth' | 'linear';
+export type TerrainBrushMode = 'height' | 'texture';
+
+let nextTerrainGroupId = 1;
 
 function terrainSubPatchesForExtent(extent: number, gridSize: number): number {
   const cellSize = Math.max(gridSize * 4, 32);
@@ -40,6 +44,14 @@ function terrainBrushWeight(distance: number, radius: number, falloff: TerrainFa
   const t = distance / radius;
   if (falloff === 'linear') return 1 - t;
   return 1 - t * t * (3 - 2 * t);
+}
+
+function canonicalTerrainTexture(texture: string): string {
+  return texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '');
+}
+
+function createTerrainGroupId(): string {
+  return `terrain-${nextTerrainGroupId++}`;
 }
 
 type SelectedTerrainCenter = {
@@ -122,6 +134,39 @@ function ensureTerrainAnchors(editor: Editor): TerrainBrushAnchor[] | null {
   return null;
 }
 
+function terrainPatchDistanceToPoint(patch: Patch, point: [number, number, number]): number {
+  const [axisA, axisB] = terrainPlanarAxes(terrainHeightAxis(patch));
+  const clampedA = Math.max(patch.mins[axisA], Math.min(point[axisA], patch.maxs[axisA]));
+  const clampedB = Math.max(patch.mins[axisB], Math.min(point[axisB], patch.maxs[axisB]));
+  return Math.hypot(point[axisA] - clampedA, point[axisB] - clampedB);
+}
+
+function createTerrainTilePatch(source: Patch, startRow: number, startCol: number): Patch {
+  const ctrl = source.ctrl.slice(startRow, startRow + 3).map(row =>
+    row.slice(startCol, startCol + 3).map(cp => ({
+      xyz: [...cp.xyz] as [number, number, number],
+      uv: [cp.uv[0], cp.uv[1]] as [number, number],
+    }))
+  );
+  const patch: Patch = {
+    width: 3,
+    height: 3,
+    texture: source.texture,
+    terrainGroupId: source.terrainGroupId,
+    contentFlags: source.contentFlags,
+    surfaceFlags: source.surfaceFlags,
+    value: source.value,
+    ctrl,
+    subdivisions: source.subdivisions,
+    mins: [0, 0, 0],
+    maxs: [0, 0, 0],
+    tessVerts: [],
+    tessIndices: [],
+  };
+  tessellatePatch(patch);
+  return patch;
+}
+
 export function createTerrainPatch(editor: Editor): void {
   const bounds = editor.selectionBounds();
   if (!bounds) {
@@ -137,6 +182,7 @@ export function createTerrainPatch(editor: Editor): void {
 
   editor.snapshot();
   const patch = createGridPatch(bounds.mins, bounds.maxs, editor.currentTexture, width, height, axisH, axisV, axisDepth);
+  patch.terrainGroupId = createTerrainGroupId();
   editor.worldspawn.patches.push(patch);
   editor.selection = [{ type: 'patch', entity: editor.worldspawn, patch }];
   editor.enterPatchEditMode();
@@ -147,7 +193,66 @@ export function createTerrainPatch(editor: Editor): void {
   editor.terrainBrushCenter = null;
   editor.terrainBrushAxes = null;
   editor.dirty = true;
-  editor.statusMessage = `Created terrain patch ${width}x${height} (Alt drag sculpt, Alt+Shift/Ctrl+Alt paint)`;
+  editor.statusMessage = `Created terrain patch ${width}x${height} (Use Prepare Terrain For Texture Paint for local texture painting)`;
+}
+
+export function splitTerrainIntoPaintTiles(editor: Editor): void {
+  const patchItems = getSelectedPatchItems(editor);
+  if (patchItems.length === 0) {
+    editor.statusMessage = 'Select a terrain patch to prepare for texture paint';
+    return;
+  }
+
+  const wasPatchEditMode = editor.patchEditMode;
+  if (wasPatchEditMode) editor.exitPatchEditMode();
+
+  let snapshotTaken = false;
+  let tileCount = 0;
+  const nextSelection: { type: 'patch'; entity: typeof patchItems[number]['entity']; patch: Patch }[] = [];
+
+  for (const item of patchItems) {
+    const subPatchCols = (item.patch.width - 1) / 2;
+    const subPatchRows = (item.patch.height - 1) / 2;
+    if (subPatchCols < 2 && subPatchRows < 2) {
+      nextSelection.push({ type: 'patch', entity: item.entity, patch: item.patch });
+      continue;
+    }
+
+    const tiles: Patch[] = [];
+    for (let row = 0; row <= item.patch.height - 3; row += 2) {
+      for (let col = 0; col <= item.patch.width - 3; col += 2) {
+        tiles.push(createTerrainTilePatch(item.patch, row, col));
+      }
+    }
+    if (tiles.length <= 1) {
+      nextSelection.push({ type: 'patch', entity: item.entity, patch: item.patch });
+      continue;
+    }
+
+    if (!snapshotTaken) {
+      editor.snapshot();
+      snapshotTaken = true;
+    }
+
+    const patchIndex = item.entity.patches.indexOf(item.patch);
+    if (patchIndex >= 0) {
+      item.entity.patches.splice(patchIndex, 1, ...tiles);
+    }
+    nextSelection.push(...tiles.map(patch => ({ type: 'patch' as const, entity: item.entity, patch })));
+    tileCount += tiles.length;
+  }
+
+  if (!snapshotTaken) {
+    if (wasPatchEditMode) editor.enterPatchEditMode();
+    editor.statusMessage = 'Selected terrain is already ready for texture paint';
+    return;
+  }
+
+  editor.selection = nextSelection;
+  editor.enterPatchEditMode();
+  editor.patchControlSelection = [];
+  editor.dirty = true;
+  editor.statusMessage = `Prepared terrain for texture paint (${tileCount} tiles, click any tile to work on the whole set)`;
 }
 
 export function raiseTerrain(editor: Editor): void {
@@ -204,6 +309,48 @@ export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = tru
 
   editor.dirty = true;
   editor.statusMessage = `${amount > 0 ? 'Raised' : 'Lowered'} terrain (${Math.abs(amount).toFixed(1)}, r=${radius}, s=${terrainStrength(editor)}, ${falloff})`;
+}
+
+export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number {
+  if (!editor.patchEditMode || editor.patchEditData.length === 0) {
+    editor.statusMessage = 'Enter patch edit mode to paint terrain';
+    return 0;
+  }
+
+  const anchors = cursorTerrainAnchors(editor);
+  if (anchors.length === 0) {
+    editor.statusMessage = 'Hover terrain in a matching 2D view to paint';
+    return 0;
+  }
+
+  const texture = canonicalTerrainTexture(editor.currentTexture);
+  if (!texture) return 0;
+
+  const radius = terrainRadius(editor);
+  let painted = 0;
+  let snapshotTaken = false;
+
+  for (const anchor of anchors) {
+    const data = editor.patchEditData[anchor.dataIndex];
+    if (!data) continue;
+    if (terrainPatchDistanceToPoint(data.patch, anchor.point) > radius) continue;
+    if (data.patch.texture === texture) continue;
+    if (takeSnapshot && !snapshotTaken) {
+      editor.snapshot();
+      snapshotTaken = true;
+    }
+    data.patch.texture = texture;
+    painted++;
+  }
+
+  if (painted === 0) {
+    editor.statusMessage = 'No terrain patches changed';
+    return 0;
+  }
+
+  editor.dirty = true;
+  editor.statusMessage = `Painted ${painted} terrain ${painted === 1 ? 'patch' : 'patches'} with ${texture}`;
+  return painted;
 }
 
 export function smoothTerrain(editor: Editor): void {
@@ -291,4 +438,10 @@ export function cycleTerrainFalloff(editor: Editor): void {
   editor.terrainFalloff = editor.terrainFalloff === 'smooth' ? 'linear' : 'smooth';
   editor.dirty = true;
   editor.statusMessage = `Terrain falloff: ${editor.terrainFalloff}`;
+}
+
+export function toggleTerrainBrushMode(editor: Editor): void {
+  editor.terrainBrushMode = editor.terrainBrushMode === 'height' ? 'texture' : 'height';
+  editor.dirty = true;
+  editor.statusMessage = `Terrain brush mode: ${editor.terrainBrushMode}`;
 }

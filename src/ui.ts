@@ -707,7 +707,9 @@ export class UI {
     if (e.vertexMode) {
       toolLabel = 'Tool: vertex';
     } else if (e.patchEditMode) {
-      toolLabel = `Tool: patch edit (brush r${e.currentTerrainRadius()} s${e.currentTerrainStrength()} ${e.terrainFalloff})`;
+      toolLabel = e.terrainBrushMode === 'texture'
+        ? `Tool: patch edit (texture r${e.currentTerrainRadius()})`
+        : `Tool: patch edit (height r${e.currentTerrainRadius()} s${e.currentTerrainStrength()} ${e.terrainFalloff})`;
     } else if (e.activeTool === 'clip') {
       toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`;
     } else if (e.activeTool === 'create') {
@@ -726,7 +728,9 @@ export class UI {
       selLabel = `Sel: ${vc} vtx (drag verts/edges, V to exit)`;
     } else if (e.patchEditMode) {
       const pc = e.patchControlSelection.length;
-      selLabel = `Sel: ${pc} cp (Alt drag sculpt, Alt+Shift paint up, Ctrl+Alt paint down, V to exit)`;
+      selLabel = e.terrainBrushMode === 'texture'
+        ? `Sel: ${pc} cp (Alt drag paint current texture, split terrain for local paint, V to exit)`
+        : `Sel: ${pc} cp (Alt drag sculpt, Alt+Shift paint up, Ctrl+Alt paint down, V to exit)`;
     } else {
       const faceCount = e.selection.filter(s => s.type === 'face').length;
       selLabel = faceCount > 0

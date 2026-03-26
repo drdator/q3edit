@@ -57,12 +57,13 @@ Implemented:
 - Terrain patch creation from the current selection bounds
 - Terrain brush-based raise / lower / smooth operations at the 2D cursor, with selected control points as fallback anchors
 - Live `Alt`-drag sculpting in 2D patch edit mode
+- Terrain texture painting onto terrain paint tiles with the current texture
 - Adjustable terrain brush radius, strength, and smooth / linear falloff
 - Terrain patch density derived from the current grid size during creation
 
 Still missing:
 - Dedicated terrain map serialization and import/export parity with Radiant terrainDef
-- Terrain texture painting, noise / erosion tools, and terrain stitching workflows
+- Noise / erosion tools and terrain stitching workflows
 - Richer terrain-specific UX beyond the current patch-edit + menu workflow
 
 ### Display Filters

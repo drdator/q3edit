@@ -115,9 +115,13 @@ import {
   currentTerrainStrength as getEditorTerrainStrength,
   cycleTerrainFalloff as cycleEditorTerrainFalloff,
   lowerTerrain as lowerEditorTerrain,
+  paintTerrainTexture as paintEditorTerrainTexture,
   raiseTerrain as raiseEditorTerrain,
   sculptTerrain as sculptEditorTerrain,
+  splitTerrainIntoPaintTiles as splitEditorTerrainIntoPaintTiles,
   smoothTerrain as smoothEditorTerrain,
+  toggleTerrainBrushMode as toggleEditorTerrainBrushMode,
+  type TerrainBrushMode,
   type TerrainFalloff,
 } from './editor-terrain';
 import {
@@ -235,6 +239,7 @@ export class Editor {
   terrainBrushRadius = 64;
   terrainBrushStrength = 16;
   terrainFalloff: TerrainFalloff = 'smooth';
+  terrainBrushMode: TerrainBrushMode = 'height';
   terrainBrushCenter: Vec3 | null = null;
   terrainBrushAxes: [number, number] | null = null;
   pointfilePoints: Vec3[] = [];
@@ -537,6 +542,10 @@ export class Editor {
 
   createTerrainPatch(): void {
     createEditorTerrainPatch(this);
+  }
+
+  splitTerrainIntoPaintTiles(): void {
+    splitEditorTerrainIntoPaintTiles(this);
   }
 
   changeSubdivisions(delta: number): void {
@@ -976,6 +985,10 @@ export class Editor {
     smoothEditorTerrain(this);
   }
 
+  paintTerrainTexture(takeSnapshot = true): number {
+    return paintEditorTerrainTexture(this, takeSnapshot);
+  }
+
   sculptTerrain(amount: number, takeSnapshot = true, selectedOnly = false): void {
     sculptEditorTerrain(this, amount, takeSnapshot, selectedOnly);
   }
@@ -990,6 +1003,10 @@ export class Editor {
 
   cycleTerrainFalloff(): void {
     cycleEditorTerrainFalloff(this);
+  }
+
+  toggleTerrainBrushMode(): void {
+    toggleEditorTerrainBrushMode(this);
   }
 
   currentTerrainRadius(): number {

@@ -96,6 +96,11 @@ export function setTexture(editor: Editor, texture: string): void {
   if (!nextTexture) return;
 
   editor.currentTexture = nextTexture;
+  if (editor.patchEditMode && editor.terrainBrushMode === 'texture') {
+    editor.dirty = true;
+    editor.statusMessage = `Terrain paint texture: ${nextTexture}`;
+    return;
+  }
   const targets = collectSelectedTextureTargets(editor);
   let snapshotTaken = false;
 

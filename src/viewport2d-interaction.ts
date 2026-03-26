@@ -31,7 +31,7 @@ interface RotatePatchOriginal {
   ctrl: { xyz: Vec3; uv: [number, number] }[][];
 }
 
-type TerrainSculptMode = 'locked' | 'paintRaise' | 'paintLower';
+type TerrainSculptMode = 'locked' | 'paintRaise' | 'paintLower' | 'paintTexture';
 
 export interface Viewport2DInteractionState {
   spaceDown: boolean;
@@ -418,9 +418,12 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
     }
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     if (e.altKey) {
-      const paintLower = e.ctrlKey || e.metaKey;
-      const paintRaise = e.shiftKey && !paintLower;
-      state.terrainSculptMode = paintLower ? 'paintLower' : paintRaise ? 'paintRaise' : 'locked';
+      const texturePaint = ctx.editor.terrainBrushMode === 'texture';
+      const paintLower = !texturePaint && (e.ctrlKey || e.metaKey);
+      const paintRaise = !texturePaint && e.shiftKey && !paintLower;
+      state.terrainSculptMode = texturePaint
+        ? 'paintTexture'
+        : paintLower ? 'paintLower' : paintRaise ? 'paintRaise' : 'locked';
       if (state.terrainSculptMode === 'locked' && ctx.editor.patchControlSelection.length > 0) {
         ctx.editor.terrainBrushCenter = null;
         ctx.editor.terrainBrushAxes = null;
@@ -431,6 +434,11 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       state.terrainSculptLastWorld = [wx, wy];
       state.dragging = true;
       state.hasDragged = false;
+      if (state.terrainSculptMode === 'paintTexture') {
+        const painted = ctx.editor.paintTerrainTexture(true);
+        state.terrainSculptSnapshotTaken = painted > 0;
+        state.hasDragged = painted > 0;
+      }
       return;
     }
 
@@ -901,6 +909,19 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
   }
 
   if (state.terrainSculpting) {
+    if (state.terrainSculptMode === 'paintTexture') {
+      const moved = wx !== state.terrainSculptLastWorld[0] || wy !== state.terrainSculptLastWorld[1];
+      if (moved) {
+        const painted = ctx.editor.paintTerrainTexture(!state.terrainSculptSnapshotTaken);
+        if (painted > 0) {
+          state.terrainSculptSnapshotTaken = true;
+          state.hasDragged = true;
+        }
+        state.terrainSculptLastWorld = [wx, wy];
+      }
+      return;
+    }
+
     let amount = 0;
     let selectedOnly = false;
     if (state.terrainSculptMode === 'locked') {

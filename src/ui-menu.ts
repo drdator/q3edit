@@ -116,6 +116,12 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
     ],
     'Terrain': [
       { label: 'Create Terrain Patch', action: () => ctx.editor.createTerrainPatch() },
+      { label: 'Prepare Terrain For Texture Paint', action: () => ctx.editor.splitTerrainIntoPaintTiles() },
+      { separator: true },
+      {
+        label: () => `Brush Mode: ${ctx.editor.terrainBrushMode === 'texture' ? 'Texture' : 'Height'}`,
+        action: () => ctx.editor.toggleTerrainBrushMode(),
+      },
       { separator: true },
       { label: 'Raise Terrain', shortcut: 'PgUp', action: () => ctx.editor.raiseTerrain() },
       { label: 'Lower Terrain', shortcut: 'PgDn', action: () => ctx.editor.lowerTerrain() },

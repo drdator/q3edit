@@ -17,6 +17,7 @@ export interface Patch {
   width: number;          // columns of control points (always odd: 3, 5, 7...)
   height: number;         // rows of control points (always odd)
   texture: string;
+  terrainGroupId?: string;
   contentFlags: number;
   surfaceFlags: number;
   value: number;
@@ -182,6 +183,7 @@ export function clonePatch(patch: Patch): Patch {
     width: patch.width,
     height: patch.height,
     texture: patch.texture,
+    terrainGroupId: patch.terrainGroupId,
     contentFlags: patch.contentFlags,
     surfaceFlags: patch.surfaceFlags,
     value: patch.value,

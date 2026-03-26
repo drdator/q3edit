@@ -8,6 +8,13 @@ function selectsWholeEntity(editor: Editor, entity: Entity): boolean {
   return entity !== editor.worldspawn && (entity.brushes.length > 0 || entity.patches.length > 0);
 }
 
+function terrainPatchGroup(entity: Entity, patch: Patch): Patch[] | null {
+  const groupId = patch.terrainGroupId;
+  if (!groupId) return null;
+  const grouped = entity.patches.filter(candidate => candidate.terrainGroupId === groupId);
+  return grouped.length > 1 ? grouped : null;
+}
+
 export function hasDirectGeometrySelection(editor: Editor, entity: Entity): boolean {
   return editor.selection.some(item =>
     item.entity === entity && (item.type === 'brush' || item.type === 'patch' || item.type === 'face')
@@ -101,6 +108,22 @@ export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additi
     selectEntity(editor, entity, additive);
     return;
   }
+  const grouped = terrainPatchGroup(entity, patch);
+  if (grouped) {
+    if (!additive) editor.selection = [];
+    const selected = new Set(editor.selection.filter(item => item.type === 'patch').map(item => item.patch));
+    const allSelected = grouped.every(item => selected.has(item));
+    if (additive && allSelected) {
+      editor.selection = editor.selection.filter(item => item.type !== 'patch' || !grouped.includes(item.patch));
+    } else {
+      for (const groupedPatch of grouped) {
+        if (selected.has(groupedPatch)) continue;
+        editor.selection.push({ type: 'patch', entity, patch: groupedPatch });
+      }
+    }
+    editor.dirty = true;
+    return;
+  }
   selectPatchDirect(editor, entity, patch, additive);
 }
 
@@ -127,6 +150,13 @@ export function isPatchSelected(editor: Editor, patch: Patch, entity?: Entity): 
 export function addPatchToSelection(editor: Editor, entity: Entity, patch: Patch): void {
   if (selectsWholeEntity(editor, entity) && !hasDirectGeometrySelection(editor, entity)) {
     addEntityToSelection(editor, entity);
+    return;
+  }
+  const grouped = terrainPatchGroup(entity, patch);
+  if (grouped) {
+    for (const groupedPatch of grouped) {
+      addPatchDirectToSelection(editor, entity, groupedPatch);
+    }
     return;
   }
   addPatchDirectToSelection(editor, entity, patch);
