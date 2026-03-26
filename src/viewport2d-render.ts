@@ -3,6 +3,7 @@ import { Brush } from './brush';
 import { Entity, entityColor, entityOrigin, lightColorCSS } from './entity';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { Patch } from './patch';
+import { collectBrushEdges } from './vertex';
 
 interface GeoSnapLine {
   axis: 'h' | 'v';
@@ -420,6 +421,27 @@ function drawSelectionBox(ctx: Viewport2DRenderContext): void {
 
 function drawVertexHandles(ctx: Viewport2DRenderContext): void {
   const handles: { sx: number; sy: number; selected: boolean; depth: number }[] = [];
+  ctx.ctx.save();
+  ctx.ctx.strokeStyle = '#ffe066';
+  ctx.ctx.lineWidth = 3;
+  for (let di = 0; di < ctx.editor.vertexData.length; di++) {
+    const data = ctx.editor.vertexData[di];
+    for (const edge of collectBrushEdges(data.brush, data.vertices)) {
+      const [aIndex, bIndex] = edge.vertexIndices;
+      if (!ctx.editor.isVertexSelected(di, aIndex) || !ctx.editor.isVertexSelected(di, bIndex)) continue;
+      const a = data.vertices[aIndex]?.position;
+      const b = data.vertices[bIndex]?.position;
+      if (!a || !b) continue;
+      const [ax, ay] = ctx.worldToScreen(a[ctx.axisH], a[ctx.axisV]);
+      const [bx, by] = ctx.worldToScreen(b[ctx.axisH], b[ctx.axisV]);
+      ctx.ctx.beginPath();
+      ctx.ctx.moveTo(ax, ay);
+      ctx.ctx.lineTo(bx, by);
+      ctx.ctx.stroke();
+    }
+  }
+  ctx.ctx.restore();
+
   for (let di = 0; di < ctx.editor.vertexData.length; di++) {
     const data = ctx.editor.vertexData[di];
     for (let vi = 0; vi < data.vertices.length; vi++) {

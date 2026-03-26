@@ -2,7 +2,7 @@ import { Vec3, vec3Copy, snapAxisDelta, findNearestSnap } from './math';
 import { Editor } from './editor';
 import { Brush, scaleBrushFaces, rotateBrush } from './brush';
 import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from './patch';
-import { pickVertex2D } from './vertex';
+import { pickEdge2D, pickVertex2D } from './vertex';
 import { rotateBrushLocked } from './texture-lock';
 import {
   getSelectedBrushItems,
@@ -184,6 +184,21 @@ function snapPlanarPoint(
   return point;
 }
 
+function setVertexSelectionPair(
+  ctx: Viewport2DInteractionContext,
+  dataIndex: number,
+  vertexIndices: [number, number],
+  additive: boolean,
+): void {
+  if (!additive) {
+    ctx.editor.clearVertexSelection();
+  }
+  for (const vertexIndex of vertexIndices) {
+    if (ctx.editor.isVertexSelected(dataIndex, vertexIndex)) continue;
+    ctx.editor.selectVertex(dataIndex, vertexIndex, true);
+  }
+}
+
 export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: MouseEvent): void {
   const state = ctx.interaction;
   ctx.editor.rotationAxis = ctx.axisDepth;
@@ -282,12 +297,25 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
     const threshold = 8 / ctx.zoom;
     let hitDi = -1;
     let hitVi = -1;
+    let hitEdgeDi = -1;
+    let hitEdge: [number, number] | null = null;
+    let hitEdgeDistSq = Infinity;
+    let hitEdgeDepth = -Infinity;
     for (let di = 0; di < ctx.editor.vertexData.length; di++) {
-      const vi = pickVertex2D(ctx.editor.vertexData[di].vertices, wx, wy, ctx.axisH, ctx.axisV, ctx.axisDepth, threshold);
+      const data = ctx.editor.vertexData[di];
+      const vi = pickVertex2D(data.vertices, wx, wy, ctx.axisH, ctx.axisV, ctx.axisDepth, threshold);
       if (vi >= 0) {
         hitDi = di;
         hitVi = vi;
         break;
+      }
+      const edgeHit = pickEdge2D(data.brush, data.vertices, wx, wy, ctx.axisH, ctx.axisV, ctx.axisDepth, threshold);
+      if (!edgeHit) continue;
+      if (edgeHit.distSq < hitEdgeDistSq - 0.01 || (Math.abs(edgeHit.distSq - hitEdgeDistSq) < 0.01 && edgeHit.depth > hitEdgeDepth)) {
+        hitEdgeDi = di;
+        hitEdge = edgeHit.vertexIndices;
+        hitEdgeDistSq = edgeHit.distSq;
+        hitEdgeDepth = edgeHit.depth;
       }
     }
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -296,6 +324,22 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       const preserveSelection = wasSelected && !additive;
       if (!preserveSelection) {
         ctx.editor.selectVertex(hitDi, hitVi, additive);
+      }
+      if (!additive) {
+        state.vertexDragging = true;
+        state.vertexDragSnapshotTaken = false;
+        state.dragging = true;
+        state.hasDragged = false;
+        state.dragWorldStart = [wx, wy];
+        state.geoSnapTargets = ctx.editor.snapToGeometry ? ctx.editor.collectSnapTargets() : null;
+        state.geoSnapLines = [];
+      }
+    } else if (hitEdgeDi >= 0 && hitEdge) {
+      const [v0, v1] = hitEdge;
+      const edgeAlreadySelected = ctx.editor.isVertexSelected(hitEdgeDi, v0) && ctx.editor.isVertexSelected(hitEdgeDi, v1);
+      const preserveSelection = edgeAlreadySelected && !additive;
+      if (!preserveSelection) {
+        setVertexSelectionPair(ctx, hitEdgeDi, hitEdge, additive);
       }
       if (!additive) {
         state.vertexDragging = true;
@@ -547,6 +591,21 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
   if (!state.panning && !state.dragging && !state.resizing) {
     if (state.spaceDown) {
       ctx.canvas.parentElement!.style.cursor = 'grab';
+    } else if (ctx.editor.vertexMode) {
+      const threshold = 8 / ctx.zoom;
+      let hoverVertex = false;
+      let hoverEdge = false;
+      for (let di = 0; di < ctx.editor.vertexData.length; di++) {
+        const data = ctx.editor.vertexData[di];
+        if (pickVertex2D(data.vertices, wx, wy, ctx.axisH, ctx.axisV, ctx.axisDepth, threshold) >= 0) {
+          hoverVertex = true;
+          break;
+        }
+        if (pickEdge2D(data.brush, data.vertices, wx, wy, ctx.axisH, ctx.axisV, ctx.axisDepth, threshold)) {
+          hoverEdge = true;
+        }
+      }
+      ctx.canvas.parentElement!.style.cursor = (hoverVertex || hoverEdge) ? 'move' : '';
     } else {
       const canResize = ctx.editor.activeTool === 'select' && ctx.editor.gizmoMode === 'scale' && ctx.editor.selection.length > 0
         && !ctx.editor.vertexMode && !ctx.editor.patchEditMode

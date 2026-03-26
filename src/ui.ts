@@ -723,7 +723,7 @@ export class UI {
     let selLabel: string;
     if (e.vertexMode) {
       const vc = e.vertexSelection.length;
-      selLabel = `Sel: ${vc} vtx (V to exit)`;
+      selLabel = `Sel: ${vc} vtx (drag verts/edges, V to exit)`;
     } else if (e.patchEditMode) {
       const pc = e.patchControlSelection.length;
       selLabel = `Sel: ${pc} cp (Alt-drag sculpt, PgUp/PgDn/Home, V to exit)`;

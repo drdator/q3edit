@@ -105,16 +105,12 @@ Still missing:
 
 ## Missing
 
-### 1. Edge Dragging
-Radiant can drag edges, not just vertices, in vertex editing mode.
-
-### 2. Plugin System
+### 1. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Edge dragging
-2. Plugin system
-3. Terrain system follow-up
-4. Splines / paths follow-up
-5. Cubic clipping follow-up
+1. Plugin system
+2. Terrain system follow-up
+3. Splines / paths follow-up
+4. Cubic clipping follow-up
