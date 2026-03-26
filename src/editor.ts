@@ -150,6 +150,7 @@ import {
   makeStructural as makeEditorStructural,
   patchDetailState as getPatchDetailState,
 } from './editor-contents';
+import type { BrushPrimitive } from './brush-primitives';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -184,6 +185,8 @@ export class Editor {
   currentTexture = 'common/caulk';
   currentEntityClass = 'info_player_deathmatch';
   currentBrushEntityClass = 'func_group';
+  currentBrushPrimitive: BrushPrimitive = 'box';
+  currentBrushSides = 8;
   dirty = true;
   textureManager: TextureManager | null = null;
   history = new History();
@@ -434,8 +437,8 @@ export class Editor {
 
   // ── Brush operations ──
 
-  addBrush(mins: Vec3, maxs: Vec3, ctrlKey = false): Brush {
-    return addEditorBrush(this, mins, maxs, ctrlKey);
+  addBrush(mins: Vec3, maxs: Vec3, axis: number, ctrlKey = false): Brush {
+    return addEditorBrush(this, mins, maxs, axis, ctrlKey);
   }
 
   // ── Patch creation ──

@@ -897,10 +897,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     const grid = ctx.editor.effectiveGrid(e.ctrlKey);
     if (maxs[ctx.axisH] - mins[ctx.axisH] >= grid &&
         maxs[ctx.axisV] - mins[ctx.axisV] >= grid) {
-      const brush = ctx.editor.addBrush(mins, maxs, e.ctrlKey);
+      const brush = ctx.editor.addBrush(mins, maxs, ctx.axisDepth, e.ctrlKey);
       ctx.editor.clearSelection();
       ctx.editor.selectBrush(ctx.editor.worldspawn, brush);
-      ctx.editor.statusMessage = 'Brush created';
+      ctx.editor.statusMessage = `${ctx.editor.currentBrushPrimitive} brush created`;
     }
   }
   state.dragging = false;

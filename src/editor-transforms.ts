@@ -1,4 +1,5 @@
-import { cloneBrush, createBoxBrush, mirrorBrush, rotateBrush, translateBrush, type Brush } from './brush';
+import { cloneBrush, mirrorBrush, rotateBrush, translateBrush, type Brush } from './brush';
+import { createBrushPrimitive } from './brush-primitives';
 import {
   cloneEntity,
   createEntity,
@@ -102,7 +103,7 @@ function mirrorEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: 
   }
 }
 
-export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, ctrlKey = false): Brush {
+export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, axis: number, ctrlKey = false): Brush {
   const grid = editor.effectiveGrid(ctrlKey);
   const snappedMins = vec3Snap(mins, grid);
   const snappedMaxs = vec3Snap(maxs, grid);
@@ -124,7 +125,14 @@ export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, ctrlKey = false
     }
   }
 
-  const brush = createBoxBrush(realMins, realMaxs, editor.currentTexture);
+  const brush = createBrushPrimitive(
+    editor.currentBrushPrimitive,
+    realMins,
+    realMaxs,
+    editor.currentTexture,
+    axis,
+    editor.currentBrushSides,
+  );
   editor.worldspawn.brushes.push(brush);
   editor.dirty = true;
   return brush;

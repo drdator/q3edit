@@ -8,6 +8,8 @@ import { compileMap } from './q3map';
 import { buildMenuBar as buildMenuBarUI } from './ui-menu';
 import { buildToolbar as buildToolbarUI } from './ui-toolbar';
 import { setupKeyboard as setupKeyboardUI } from './ui-keyboard';
+import { brushPrimitiveUsesSides } from './brush-primitives';
+import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
 import '@phosphor-icons/web/regular';
 
 const COMMON_TEXTURES = [
@@ -700,6 +702,10 @@ export class UI {
       toolLabel = 'Tool: patch edit';
     } else if (e.activeTool === 'clip') {
       toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`;
+    } else if (e.activeTool === 'create') {
+      toolLabel = brushPrimitiveUsesSides(e.currentBrushPrimitive)
+        ? `Tool: create (${e.currentBrushPrimitive} ${e.currentBrushSides})`
+        : `Tool: create (${e.currentBrushPrimitive})`;
     } else {
       toolLabel = `Tool: ${e.activeTool}`;
     }
@@ -753,6 +759,7 @@ export class UI {
     snapBtn.classList.toggle('snap-abs', e.gridSnapMode === 'abs');
     document.getElementById('geosnap-toggle')!.classList.toggle('active', e.snapToGeometry);
     document.getElementById('texlock-toggle')!.classList.toggle('active', e.textureLock);
+    applyBrushPrimitiveToolbarIcon(document.getElementById('tool-create') as HTMLElement | null, e.currentBrushPrimitive);
     const invisBtn = document.getElementById('invis-toggle')!;
     const invisIcons: Record<InvisibleMode, string> = {
       show: 'ph ph-eye',
@@ -771,6 +778,12 @@ export class UI {
     const gizmoEl = document.getElementById('status-gizmo');
     if (gizmoEl) {
       gizmoEl.textContent = e.selection.length > 0 ? `${e.gizmoMode} (W/E)` : '';
+    }
+
+    const createPanel = document.getElementById('create-tool-panel');
+    if (e.activeTool !== 'create') {
+      createPanel?.classList.remove('open');
+      document.getElementById('tool-create')?.classList.remove('active-panel');
     }
 
     // Update panels

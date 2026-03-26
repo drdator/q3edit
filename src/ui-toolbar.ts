@@ -1,4 +1,6 @@
 import { Editor, Tool } from './editor';
+import { BRUSH_PRIMITIVES, brushPrimitiveUsesSides } from './brush-primitives';
+import { applyBrushPrimitiveToolbarIcon, brushPrimitiveToolbarIconMarkup } from './brush-primitive-icons';
 
 export interface ToolbarContext {
   editor: Editor;
@@ -14,6 +16,10 @@ export function buildToolbar(ctx: ToolbarContext): void {
 
   const icon = (name: string, weight: string = 'regular'): string =>
     `<i class="ph${weight === 'regular' ? '' : '-' + weight} ph-${name}"></i>`;
+
+  const setCreateToolButtonIcon = () => {
+    applyBrushPrimitiveToolbarIcon(createToolButton, ctx.editor.currentBrushPrimitive);
+  };
 
   const createSeparator = (): HTMLElement => {
     const sep = document.createElement('div');
@@ -42,22 +48,140 @@ export function buildToolbar(ctx: ToolbarContext): void {
     return btn;
   };
 
+  const createToolPanel = document.createElement('div');
+  createToolPanel.className = 'tool-popover';
+  createToolPanel.id = 'create-tool-panel';
+
+  const primitiveLabel = document.createElement('label');
+  primitiveLabel.textContent = 'Primitive';
+  createToolPanel.appendChild(primitiveLabel);
+
+  const primitiveSelect = document.createElement('select');
+  primitiveSelect.id = 'toolbar-brush-primitive';
+  for (const option of BRUSH_PRIMITIVES) {
+    const opt = document.createElement('option');
+    opt.value = option.value;
+    opt.textContent = option.label;
+    primitiveSelect.appendChild(opt);
+  }
+  createToolPanel.appendChild(primitiveSelect);
+
+  const sidesLabel = document.createElement('label');
+  sidesLabel.textContent = 'Sides';
+  createToolPanel.appendChild(sidesLabel);
+
+  const sidesSelect = document.createElement('select');
+  sidesSelect.id = 'toolbar-brush-sides';
+  for (let sides = 3; sides <= 9; sides++) {
+    const opt = document.createElement('option');
+    opt.value = String(sides);
+    opt.textContent = String(sides);
+    sidesSelect.appendChild(opt);
+  }
+  createToolPanel.appendChild(sidesSelect);
+
+  document.body.appendChild(createToolPanel);
+
+  let createToolButton: HTMLElement | null = null;
+
+  const syncCreateToolPanel = () => {
+    primitiveSelect.value = ctx.editor.currentBrushPrimitive;
+    for (const option of Array.from(sidesSelect.options)) {
+      option.disabled = ctx.editor.currentBrushPrimitive === 'sphere' && Number(option.value) < 4;
+    }
+    if (ctx.editor.currentBrushPrimitive === 'sphere' && ctx.editor.currentBrushSides < 4) {
+      ctx.editor.currentBrushSides = 4;
+    }
+    sidesSelect.value = String(ctx.editor.currentBrushSides);
+    const usesSides = brushPrimitiveUsesSides(ctx.editor.currentBrushPrimitive);
+    sidesSelect.disabled = !usesSides;
+    sidesLabel.style.opacity = usesSides ? '1' : '0.5';
+  };
+
+  const positionCreateToolPanel = () => {
+    if (!createToolButton) return;
+    const rect = createToolButton.getBoundingClientRect();
+    createToolPanel.style.left = `${rect.right + 8}px`;
+    const maxTop = Math.max(8, window.innerHeight - createToolPanel.offsetHeight - 8);
+    createToolPanel.style.top = `${Math.min(maxTop, Math.max(8, rect.top))}px`;
+  };
+
+  const closeCreateToolPanel = () => {
+    createToolPanel.classList.remove('open');
+    createToolButton?.classList.remove('active-panel');
+  };
+
+  const openCreateToolPanel = () => {
+    if (!createToolButton) return;
+    syncCreateToolPanel();
+    setCreateToolButtonIcon();
+    createToolPanel.classList.add('open');
+    createToolButton.classList.add('active-panel');
+    positionCreateToolPanel();
+  };
+
+  primitiveSelect.addEventListener('change', () => {
+    ctx.editor.currentBrushPrimitive = primitiveSelect.value as typeof ctx.editor.currentBrushPrimitive;
+    syncCreateToolPanel();
+    setCreateToolButtonIcon();
+    ctx.editor.dirty = true;
+  });
+  sidesSelect.addEventListener('change', () => {
+    ctx.editor.currentBrushSides = Number(sidesSelect.value);
+    ctx.editor.dirty = true;
+  });
+
+  document.addEventListener('mousedown', (event) => {
+    const target = event.target as Node | null;
+    if (!createToolPanel.classList.contains('open')) return;
+    if (target && (createToolPanel.contains(target) || createToolButton?.contains(target))) return;
+    closeCreateToolPanel();
+  });
+  window.addEventListener('resize', () => {
+    if (createToolPanel.classList.contains('open')) positionCreateToolPanel();
+  });
+  window.addEventListener('scroll', () => {
+    if (createToolPanel.classList.contains('open')) positionCreateToolPanel();
+  }, true);
+
   const tools: { id: Tool; icon: string; title: string }[] = [
     { id: 'select', icon: icon('cursor'), title: 'Select (1)' },
-    { id: 'create', icon: icon('cube'), title: 'Create Brush (2)' },
+    { id: 'create', icon: brushPrimitiveToolbarIconMarkup(ctx.editor.currentBrushPrimitive), title: 'Create Brush (2)' },
     { id: 'entity', icon: icon('map-pin'), title: 'Place Entity (3)' },
     { id: 'clip', icon: icon('scissors'), title: 'Clip (4)' },
     { id: 'rotate', icon: icon('arrows-clockwise'), title: 'Rotate (5)' },
   ];
 
   for (const tool of tools) {
-    addBtn({
+    const btn = addBtn({
+      id: tool.id === 'create' ? 'tool-create' : undefined,
       icon: tool.icon,
       title: tool.title,
       active: tool.id === ctx.editor.activeTool,
       dataset: { tool: tool.id },
-      onClick: () => ctx.setTool(tool.id),
+      onClick: () => {
+        if (tool.id === 'create') {
+          if (ctx.editor.activeTool !== 'create') {
+            ctx.setTool('create');
+            openCreateToolPanel();
+            return;
+          }
+          if (createToolPanel.classList.contains('open')) {
+            closeCreateToolPanel();
+          } else {
+            openCreateToolPanel();
+          }
+          return;
+        }
+
+        closeCreateToolPanel();
+        ctx.setTool(tool.id);
+      },
     });
+    if (tool.id === 'create') {
+      createToolButton = btn;
+      setCreateToolButtonIcon();
+    }
   }
 
   bar.appendChild(createSeparator());

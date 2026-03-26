@@ -62,42 +62,48 @@ Still missing:
 - Additional Radiant region commands like current-XY, single-brush, and tall-brush regioning
 - Save / load region workflows
 
+### Brush Primitives Beyond Boxes
+Implemented:
+- The Create tool can now make box, cylinder, cone, sphere, and pyramid brushes
+- Cylinder, cone, and sphere creation support sidedness control in the 3-9 range where applicable
+
+Still missing:
+- Torus creation
+- More dedicated primitive-creation UX beyond the current Create-tool selector
+
 ## Missing
 
-### 1. Brush Primitives Beyond Boxes
-Radiant can create cylinders (3-9 sided), cones, spheres, torus, and pyramids. We only have box brushes.
-
-### 2. Terrain System
+### 1. Terrain System
 Radiant has a full terrain editor with raise/lower sculpting and vertex-level terrain mesh editing.
 
-### 3. Prefabs
+### 2. Prefabs
 Radiant can save / load prefabs (reusable grouped brush assemblies).
 
-### 4. Connect Entities (target / targetname)
+### 3. Connect Entities (target / targetname)
 Radiant can auto-wire target / targetname links between selected entities and draw path lines.
 
-### 5. Pointfile / Leak Navigation
+### 4. Pointfile / Leak Navigation
 Radiant loads pointfiles from the compiler and lets you navigate leak paths.
 
-### 6. Splines / Paths
+### 5. Splines / Paths
 Radiant has spline path tools for camera paths and entity movement.
 
-### 7. Cubic Clipping (View Distance)
+### 6. Cubic Clipping (View Distance)
 Radiant can clip the 3D view at a configurable distance for large-map performance.
 
-### 8. Arbitrary Rotation / Scale Dialogs
+### 7. Arbitrary Rotation / Scale Dialogs
 Radiant has precise numeric input dialogs for rotation and scaling. We only have direct manipulation plus fixed-angle rotation shortcuts.
 
-### 9. Edge Dragging
+### 8. Edge Dragging
 Radiant can drag edges, not just vertices, in vertex editing mode.
 
-### 10. Plugin System
+### 9. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Brush primitives beyond boxes
-2. Prefabs
-3. Connect entities
-4. Terrain system
-5. Pointfile / leak navigation
+1. Prefabs
+2. Connect entities
+3. Terrain system
+4. Pointfile / leak navigation
+5. Splines / paths

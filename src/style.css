@@ -34,6 +34,33 @@ html, body {
   background: var(--bg);
 }
 
+button,
+input,
+select,
+textarea {
+  outline: none;
+}
+
+button:focus,
+button:focus-visible,
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none;
+}
+
+input[type="text"]:focus,
+input[type="text"]:focus-visible,
+input[type="number"]:focus,
+input[type="number"]:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: 1px solid var(--accent-dim);
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -166,6 +193,11 @@ html, body {
   color: var(--accent);
 }
 
+.tool-btn.active-panel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(255, 102, 0, 0.2);
+}
+
 .tool-btn.active.snap-abs {
   border-color: #c44;
   color: #e55;
@@ -179,6 +211,18 @@ html, body {
   font-size: 8px;
   font-weight: bold;
   letter-spacing: 0.3px;
+}
+
+.tool-btn i,
+.tool-btn .tool-icon-svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  pointer-events: none;
+}
+
+.tool-btn .tool-icon-svg * {
+  pointer-events: none;
 }
 
 /* Tooltip on hover */
@@ -205,6 +249,44 @@ html, body {
   background: var(--border-dark);
   margin: 3px 0;
   flex-shrink: 0;
+}
+
+.tool-popover {
+  position: fixed;
+  display: none;
+  min-width: 150px;
+  padding: 8px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 1500;
+}
+
+.tool-popover.open {
+  display: block;
+}
+
+.tool-popover label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.tool-popover select {
+  width: 100%;
+  margin-bottom: 6px;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  color: var(--text);
+  padding: 3px 4px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.tool-popover select:last-child {
+  margin-bottom: 0;
 }
 
 /* ── Viewport Container ── */
@@ -360,12 +442,6 @@ html, body {
 .kv-row input[type="text"],
 .kv-row input[type="number"] {
   margin-bottom: 0;
-}
-
-.panel-body input[type="text"]:focus,
-.panel-body input[type="number"]:focus,
-.panel-body select:focus {
-  outline: 1px solid var(--accent-dim);
 }
 
 .panel-body .btn {
