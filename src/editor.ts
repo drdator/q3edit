@@ -101,6 +101,19 @@ import {
   selectControlPoint as selectEditorControlPoint,
 } from './editor-patch';
 import {
+  adjustTerrainRadius as adjustEditorTerrainRadius,
+  adjustTerrainStrength as adjustEditorTerrainStrength,
+  createTerrainPatch as createEditorTerrainPatch,
+  currentTerrainRadius as getEditorTerrainRadius,
+  currentTerrainStrength as getEditorTerrainStrength,
+  cycleTerrainFalloff as cycleEditorTerrainFalloff,
+  lowerTerrain as lowerEditorTerrain,
+  raiseTerrain as raiseEditorTerrain,
+  sculptTerrain as sculptEditorTerrain,
+  smoothTerrain as smoothEditorTerrain,
+  type TerrainFalloff,
+} from './editor-terrain';
+import {
   addBrush as addEditorBrush,
   addEntity as addEditorEntity,
   deleteSelection as deleteEditorSelection,
@@ -115,6 +128,11 @@ import {
   groupSelectionIntoEntity as groupEditorSelectionIntoEntity,
   moveSelectionToWorldspawn as moveEditorSelectionToWorldspawn,
 } from './editor-grouping';
+import {
+  collectEntityLinks as collectEditorEntityLinks,
+  connectSelectedEntities as connectEditorSelectedEntities,
+  type EntityLink,
+} from './editor-connections';
 import {
   addClipPoint as addEditorClipPoint,
   cancelClip as cancelEditorClip,
@@ -191,6 +209,9 @@ export class Editor {
   currentBrushEntityClass = 'func_group';
   currentBrushPrimitive: BrushPrimitive = 'box';
   currentBrushSides = 8;
+  terrainBrushRadius = 64;
+  terrainBrushStrength = 16;
+  terrainFalloff: TerrainFalloff = 'smooth';
   dirty = true;
   textureManager: TextureManager | null = null;
   history = new History();
@@ -240,6 +261,7 @@ export class Editor {
 
   // UI callback for locating a texture in the texture panel
   onLocateTexture: ((texture: string) => void) | null = null;
+  onRequestExitVertexMode: (() => void) | null = null;
   // Selection filter — constrains what types can be picked in viewports
   selectionFilter: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
   invisibleMode: InvisibleMode = 'show';
@@ -451,6 +473,10 @@ export class Editor {
     createEditorPatch(this, preset);
   }
 
+  createTerrainPatch(): void {
+    createEditorTerrainPatch(this);
+  }
+
   changeSubdivisions(delta: number): void {
     changeEditorPatchSubdivisions(this, delta);
   }
@@ -528,6 +554,14 @@ export class Editor {
 
   moveSelectionToWorldspawn(): void {
     moveEditorSelectionToWorldspawn(this);
+  }
+
+  connectSelectedEntities(): void {
+    connectEditorSelectedEntities(this);
+  }
+
+  collectEntityLinks(): EntityLink[] {
+    return collectEditorEntityLinks(this);
   }
 
   // ── History ──
@@ -751,6 +785,14 @@ export class Editor {
     return exitEditorVertexMode(this);
   }
 
+  requestExitVertexMode(): void {
+    if (this.onRequestExitVertexMode) {
+      this.onRequestExitVertexMode();
+      return;
+    }
+    this.exitVertexMode();
+  }
+
   /** Rebuild invalid brushes from their face planes (reconvexifies). */
   rebuildBrushes(brushes: Brush[]): void {
     rebuildEditorBrushes(this, brushes);
@@ -813,5 +855,41 @@ export class Editor {
 
   patchControlSelectionCenter(): Vec3 | null {
     return getEditorPatchControlSelectionCenter(this);
+  }
+
+  raiseTerrain(): void {
+    raiseEditorTerrain(this);
+  }
+
+  lowerTerrain(): void {
+    lowerEditorTerrain(this);
+  }
+
+  smoothTerrain(): void {
+    smoothEditorTerrain(this);
+  }
+
+  sculptTerrain(amount: number, takeSnapshot = true): void {
+    sculptEditorTerrain(this, amount, takeSnapshot);
+  }
+
+  adjustTerrainRadius(delta: number): void {
+    adjustEditorTerrainRadius(this, delta);
+  }
+
+  adjustTerrainStrength(delta: number): void {
+    adjustEditorTerrainStrength(this, delta);
+  }
+
+  cycleTerrainFalloff(): void {
+    cycleEditorTerrainFalloff(this);
+  }
+
+  currentTerrainRadius(): number {
+    return getEditorTerrainRadius(this);
+  }
+
+  currentTerrainStrength(): number {
+    return getEditorTerrainStrength(this);
   }
 }

@@ -13,7 +13,6 @@ Basic brush-entity support is now in place:
 What is still missing:
 - Dedicated group management UX
 - Named groups
-- Entity-link visualization and target wiring tools
 
 ### Detail / Structural Brushes
 Supported via content flags, with UI actions to mark selected brushes or patches as detail or structural.
@@ -33,6 +32,9 @@ Supported for selected brushes, patches, and entities, with browser clipboard in
 ### Prefabs
 Supported via saving the current selection as a prefab `.map` fragment and importing prefab files back into the current map.
 
+### Connect Entities
+Supported for selected entities with Radiant-style `target` / `targetname` wiring plus live path-line visualization in 2D and 3D.
+
 ### Find / Replace Textures
 Supported for exact or partial texture-name replacement across the current selection or the whole map.
 
@@ -46,6 +48,19 @@ Supported:
 - Invert selection
 
 ## Partial
+
+### Terrain System
+Implemented:
+- Terrain patch creation from the current selection bounds
+- Terrain brush-based raise / lower / smooth operations around selected control points
+- Live `Alt`-drag sculpting in 2D patch edit mode
+- Adjustable terrain brush radius, strength, and smooth / linear falloff
+- Terrain patch density derived from the current grid size during creation
+
+Still missing:
+- Dedicated terrain map serialization and import/export parity with Radiant terrainDef
+- Terrain texture painting, noise / erosion tools, and terrain stitching workflows
+- Richer terrain-specific UX beyond the current patch-edit + menu workflow
 
 ### Display Filters
 Implemented:
@@ -76,34 +91,28 @@ Still missing:
 
 ## Missing
 
-### 1. Terrain System
-Radiant has a full terrain editor with raise/lower sculpting and vertex-level terrain mesh editing.
-
-### 2. Connect Entities (target / targetname)
-Radiant can auto-wire target / targetname links between selected entities and draw path lines.
-
-### 3. Pointfile / Leak Navigation
+### 1. Pointfile / Leak Navigation
 Radiant loads pointfiles from the compiler and lets you navigate leak paths.
 
-### 4. Splines / Paths
+### 2. Splines / Paths
 Radiant has spline path tools for camera paths and entity movement.
 
-### 5. Cubic Clipping (View Distance)
+### 3. Cubic Clipping (View Distance)
 Radiant can clip the 3D view at a configurable distance for large-map performance.
 
-### 6. Arbitrary Rotation / Scale Dialogs
+### 4. Arbitrary Rotation / Scale Dialogs
 Radiant has precise numeric input dialogs for rotation and scaling. We only have direct manipulation plus fixed-angle rotation shortcuts.
 
-### 7. Edge Dragging
+### 5. Edge Dragging
 Radiant can drag edges, not just vertices, in vertex editing mode.
 
-### 8. Plugin System
+### 6. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Connect entities
-2. Terrain system
-3. Pointfile / leak navigation
-4. Splines / paths
-5. Cubic clipping
+1. Pointfile / leak navigation
+2. Splines / paths
+3. Cubic clipping
+4. Arbitrary rotation / scale dialogs
+5. Edge dragging

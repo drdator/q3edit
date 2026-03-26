@@ -53,6 +53,10 @@ export interface Viewport3DRenderContext {
   lineColorLoc: WebGLUniformLocation;
   solidVAO: WebGLVertexArrayObject;
   drawGroups: DrawGroup[];
+  pathLineVAO: WebGLVertexArrayObject;
+  pathLineCount: number;
+  pathLineSelVAO: WebGLVertexArrayObject;
+  pathLineSelCount: number;
   lineVAO: WebGLVertexArrayObject;
   lineCount: number;
   wireVAO: WebGLVertexArrayObject;
@@ -153,6 +157,23 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.uniform3f(ctx.lineColorLoc, 0.0, 0.0, 0.0);
     ctx.gl.bindVertexArray(ctx.wireVAO);
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.wireCount);
+  }
+
+  if (!isGameView && (ctx.pathLineCount > 0 || ctx.pathLineSelCount > 0)) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    if (ctx.pathLineCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 0.45, 0.76, 1.0);
+      ctx.gl.bindVertexArray(ctx.pathLineVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pathLineCount);
+    }
+    if (ctx.pathLineSelCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.67, 0.0);
+      ctx.gl.bindVertexArray(ctx.pathLineSelVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pathLineSelCount);
+    }
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }
 
   if (!isGameView && ctx.lightRadiusDraws.length > 0) {

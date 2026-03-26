@@ -292,6 +292,45 @@ export function createFlatPatch(mins: Vec3, maxs: Vec3, texture: string): Patch 
   return makePatch(3, 3, ctrl, texture);
 }
 
+/** Create a flat grid patch aligned to the given axes at the max depth of the selection bounds. */
+export function createGridPatch(
+  mins: Vec3,
+  maxs: Vec3,
+  texture: string,
+  width: number,
+  height: number,
+  axisH: number,
+  axisV: number,
+  axisDepth: number,
+): Patch {
+  const clampedWidth = Math.max(3, width | 1);
+  const clampedHeight = Math.max(3, height | 1);
+  const hMin = mins[axisH];
+  const hMax = maxs[axisH];
+  const vMin = mins[axisV];
+  const vMax = maxs[axisV];
+  const depth = maxs[axisDepth];
+  const ctrl: PatchControlPoint[][] = [];
+
+  for (let row = 0; row < clampedHeight; row++) {
+    const tv = clampedHeight === 1 ? 0 : row / (clampedHeight - 1);
+    const v = vMax + (vMin - vMax) * tv;
+    const ctrlRow: PatchControlPoint[] = [];
+    for (let col = 0; col < clampedWidth; col++) {
+      const tu = clampedWidth === 1 ? 0 : col / (clampedWidth - 1);
+      const h = hMin + (hMax - hMin) * tu;
+      const point: Vec3 = [0, 0, 0];
+      point[axisH] = h;
+      point[axisV] = v;
+      point[axisDepth] = depth;
+      ctrlRow.push({ xyz: point, uv: [tu, tv] });
+    }
+    ctrl.push(ctrlRow);
+  }
+
+  return makePatch(clampedWidth, clampedHeight, ctrl, texture);
+}
+
 /** Create a half-cylinder patch. The cylinder curves from mins to maxs in X, extruded along Z. */
 export function createCylinderPatch(mins: Vec3, maxs: Vec3, texture: string): Patch {
   const [x0, y0, z0] = mins;

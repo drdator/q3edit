@@ -26,6 +26,7 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if (ctrl && e.key === 'o') { e.preventDefault(); ctx.editor.openMapFromFile(); return; }
     if (ctrl && e.key === 'c') { e.preventDefault(); void ctx.editor.copySelection(); return; }
     if (ctrl && e.key === 'v') { e.preventDefault(); void ctx.editor.pasteClipboard(); return; }
+    if (ctrl && e.key === 'k') { e.preventDefault(); ctx.editor.connectSelectedEntities(); return; }
     if (ctrl && e.key === 'a') { e.preventDefault(); ctx.editor.selectAll(); return; }
     if (ctrl && e.shiftKey && e.key === 'I') { e.preventDefault(); ctx.editor.invertSelection(); return; }
     if (ctrl && e.key === 'd') { e.preventDefault(); ctx.editor.duplicateSelection(); return; }
@@ -103,6 +104,12 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if ((e.key === '-' || e.key === '_') && getSelectedPatchItems(ctx.editor).length > 0) {
       ctx.editor.changeSubdivisions(-1);
       return;
+    }
+
+    if (ctx.editor.patchEditMode && ctx.editor.patchControlSelection.length > 0) {
+      if (e.key === 'PageUp' && !ctrl && !e.shiftKey) { e.preventDefault(); ctx.editor.raiseTerrain(); return; }
+      if (e.key === 'PageDown' && !ctrl && !e.shiftKey) { e.preventDefault(); ctx.editor.lowerTerrain(); return; }
+      if (e.key === 'Home' && !ctrl && !e.shiftKey) { e.preventDefault(); ctx.editor.smoothTerrain(); return; }
     }
 
     if (e.key === 'Enter' && ctx.editor.activeTool === 'clip') { ctx.editor.executeClip(); return; }

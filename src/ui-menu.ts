@@ -1,7 +1,7 @@
 import { Editor, Tool } from './editor';
 
 type MenuItem =
-  | { label: string; shortcut?: string; action?: () => void | Promise<void>; separator?: boolean }
+  | { label: string | (() => string); shortcut?: string; action?: () => void | Promise<void>; separator?: boolean }
   | { separator: true; label?: undefined; shortcut?: undefined; action?: undefined };
 
 export interface MenuBarContext {
@@ -17,8 +17,9 @@ export interface MenuBarContext {
   decreaseGrid: () => void;
 }
 
-export function buildMenuBar(ctx: MenuBarContext): void {
+export function buildMenuBar(ctx: MenuBarContext): () => void {
   const bar = document.getElementById('menubar')!;
+  const refreshLabels: (() => void)[] = [];
   const menus: Record<string, MenuItem[]> = {
     'File': [
       { label: 'New', shortcut: 'Ctrl+N', action: () => { ctx.editor.newMap(); ctx.editor.createDefaultMap(); } },
@@ -57,6 +58,7 @@ export function buildMenuBar(ctx: MenuBarContext): void {
       { separator: true },
       { label: 'Group Selection', shortcut: 'Ctrl+Shift+G', action: () => ctx.editor.groupSelectionIntoEntity() },
       { label: 'Move to Worldspawn', shortcut: 'Ctrl+Shift+U', action: () => ctx.editor.moveSelectionToWorldspawn() },
+      { label: 'Connect Entities', shortcut: 'Ctrl+K', action: () => ctx.editor.connectSelectedEntities() },
       { separator: true },
       { label: 'Duplicate', shortcut: 'Ctrl+D', action: () => ctx.editor.duplicateSelection() },
       { label: 'Delete', shortcut: 'Del', action: () => ctx.editor.deleteSelection() },
@@ -81,6 +83,22 @@ export function buildMenuBar(ctx: MenuBarContext): void {
     'Region': [
       { label: 'Set From Selection', action: () => ctx.editor.setRegionFromSelection() },
       { label: 'Region Off', action: () => ctx.editor.clearRegion() },
+    ],
+    'Terrain': [
+      { label: 'Create Terrain Patch', action: () => ctx.editor.createTerrainPatch() },
+      { separator: true },
+      { label: 'Raise Terrain', shortcut: 'PgUp', action: () => ctx.editor.raiseTerrain() },
+      { label: 'Lower Terrain', shortcut: 'PgDn', action: () => ctx.editor.lowerTerrain() },
+      { label: 'Smooth Terrain', shortcut: 'Home', action: () => ctx.editor.smoothTerrain() },
+      { separator: true },
+      { label: 'Smaller Radius', action: () => ctx.editor.adjustTerrainRadius(-8) },
+      { label: 'Larger Radius', action: () => ctx.editor.adjustTerrainRadius(8) },
+      { label: 'Weaker Brush', action: () => ctx.editor.adjustTerrainStrength(-2) },
+      { label: 'Stronger Brush', action: () => ctx.editor.adjustTerrainStrength(2) },
+      {
+        label: () => `Falloff: ${ctx.editor.terrainFalloff === 'smooth' ? 'Smooth' : 'Linear'}`,
+        action: () => ctx.editor.cycleTerrainFalloff(),
+      },
     ],
     'Tools': [
       { label: 'Select', shortcut: '1', action: () => ctx.setTool('select') },
@@ -126,8 +144,19 @@ export function buildMenuBar(ctx: MenuBarContext): void {
 
       const action = document.createElement('div');
       action.className = 'menu-action';
-      action.innerHTML = `<span>${item.label}</span>` +
-        (item.shortcut ? `<span class="shortcut">${item.shortcut}</span>` : '');
+      const label = document.createElement('span');
+      const refreshLabel = () => {
+        label.textContent = typeof item.label === 'function' ? item.label() : item.label;
+      };
+      refreshLabel();
+      refreshLabels.push(refreshLabel);
+      action.appendChild(label);
+      if (item.shortcut) {
+        const shortcut = document.createElement('span');
+        shortcut.className = 'shortcut';
+        shortcut.textContent = item.shortcut;
+        action.appendChild(shortcut);
+      }
       action.addEventListener('mousedown', (e) => {
         e.stopPropagation();
         ctx.closeMenus();
@@ -141,6 +170,7 @@ export function buildMenuBar(ctx: MenuBarContext): void {
     menuItem.addEventListener('mouseenter', () => {
       const openMenu = ctx.getOpenMenu();
       if (openMenu && openMenu !== menuItem) {
+        for (const refreshLabel of refreshLabels) refreshLabel();
         openMenu.classList.remove('open');
         menuItem.classList.add('open');
         ctx.setOpenMenu(menuItem);
@@ -152,6 +182,7 @@ export function buildMenuBar(ctx: MenuBarContext): void {
       if (ctx.getOpenMenu() === menuItem) {
         ctx.closeMenus();
       } else {
+        for (const refreshLabel of refreshLabels) refreshLabel();
         ctx.closeMenus();
         menuItem.classList.add('open');
         ctx.setOpenMenu(menuItem);
@@ -162,4 +193,7 @@ export function buildMenuBar(ctx: MenuBarContext): void {
   }
 
   document.addEventListener('mousedown', () => ctx.closeMenus());
+  return () => {
+    for (const refreshLabel of refreshLabels) refreshLabel();
+  };
 }

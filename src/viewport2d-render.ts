@@ -54,7 +54,10 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
     drawPatch(ctx, patch, ctx.editor.isPatchSelected(patch, entity));
   }
 
+  drawPathLines(ctx);
+
   if (ctx.editor.patchEditMode) {
+    drawTerrainBrushPreview(ctx);
     drawPatchControlPoints(ctx);
   }
 
@@ -241,6 +244,32 @@ function drawPatch(ctx: Viewport2DRenderContext, patch: Patch, selected: boolean
   }
 }
 
+function drawTerrainBrushPreview(ctx: Viewport2DRenderContext): void {
+  if (ctx.editor.patchControlSelection.length === 0) return;
+  const screenRadius = ctx.editor.currentTerrainRadius() * ctx.zoom;
+  if (screenRadius < 4) return;
+
+  ctx.ctx.save();
+  ctx.ctx.strokeStyle = 'rgba(255, 170, 0, 0.8)';
+  ctx.ctx.fillStyle = 'rgba(255, 170, 0, 0.08)';
+  ctx.ctx.lineWidth = 1;
+  ctx.ctx.setLineDash([6, 4]);
+
+  for (const cp of ctx.editor.patchControlSelection) {
+    const data = ctx.editor.patchEditData[cp.dataIndex];
+    if (!data) continue;
+    const point = data.patch.ctrl[cp.row]?.[cp.col]?.xyz;
+    if (!point) continue;
+    const [sx, sy] = ctx.worldToScreen(point[ctx.axisH], point[ctx.axisV]);
+    ctx.ctx.beginPath();
+    ctx.ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
+    ctx.ctx.fill();
+    ctx.ctx.stroke();
+  }
+
+  ctx.ctx.restore();
+}
+
 function drawPatchControlPoints(ctx: Viewport2DRenderContext): void {
   for (let di = 0; di < ctx.editor.patchEditData.length; di++) {
     const patch = ctx.editor.patchEditData[di].patch;
@@ -253,6 +282,55 @@ function drawPatchControlPoints(ctx: Viewport2DRenderContext): void {
         ctx.ctx.fillRect(sx - 3, sy - 3, 6, 6);
       }
     }
+  }
+}
+
+function drawPathLines(ctx: Viewport2DRenderContext): void {
+  const links = ctx.editor.collectEntityLinks();
+  if (links.length === 0) return;
+
+  for (const link of links) {
+    const [sx0, sy0] = ctx.worldToScreen(link.from[ctx.axisH], link.from[ctx.axisV]);
+    const [sx1, sy1] = ctx.worldToScreen(link.to[ctx.axisH], link.to[ctx.axisV]);
+    const dx = sx1 - sx0;
+    const dy = sy1 - sy0;
+    const len = Math.hypot(dx, dy);
+    if (len < 8) continue;
+
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy;
+    const ny = ux;
+    const startInset = 10;
+    const tipInset = 10;
+    const arrowLength = link.highlighted ? 9 : 8;
+    const arrowWidth = link.highlighted ? 4 : 3;
+
+    if (len <= startInset + tipInset + arrowLength) continue;
+
+    const startX = sx0 + ux * startInset;
+    const startY = sy0 + uy * startInset;
+    const tipX = sx1 - ux * tipInset;
+    const tipY = sy1 - uy * tipInset;
+    const baseX = tipX - ux * arrowLength;
+    const baseY = tipY - uy * arrowLength;
+    const color = link.highlighted ? '#ffaa00' : '#7dc8ff';
+
+    ctx.ctx.strokeStyle = color;
+    ctx.ctx.fillStyle = color;
+    ctx.ctx.lineWidth = link.highlighted ? 1.5 : 1;
+
+    ctx.ctx.beginPath();
+    ctx.ctx.moveTo(startX, startY);
+    ctx.ctx.lineTo(baseX, baseY);
+    ctx.ctx.stroke();
+
+    ctx.ctx.beginPath();
+    ctx.ctx.moveTo(tipX, tipY);
+    ctx.ctx.lineTo(baseX + nx * arrowWidth, baseY + ny * arrowWidth);
+    ctx.ctx.lineTo(baseX - nx * arrowWidth, baseY - ny * arrowWidth);
+    ctx.ctx.closePath();
+    ctx.ctx.fill();
   }
 }
 

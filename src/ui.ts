@@ -35,6 +35,7 @@ const COMMON_TEXTURES = [
 export class UI {
   editor: Editor;
   private openMenu: HTMLElement | null = null;
+  private refreshMenuBarLabels: () => void = () => {};
   private propertiesPanel: PropertiesPanel;
   private texMgr: TextureManager | null = null;
   private showTextureThumbnails = false;
@@ -56,12 +57,13 @@ export class UI {
     this.setupKeyboard();
 
     this.editor.onLocateTexture = (texture: string) => this.locateTexture(texture);
+    this.editor.onRequestExitVertexMode = () => this.handleExitVertexMode();
   }
 
   // ── Menu Bar ──
 
   private buildMenuBar(): void {
-    buildMenuBarUI({
+    this.refreshMenuBarLabels = buildMenuBarUI({
       editor: this.editor,
       getOpenMenu: () => this.openMenu,
       setOpenMenu: (menu) => { this.openMenu = menu; },
@@ -693,13 +695,14 @@ export class UI {
 
   update(): void {
     const e = this.editor;
+    this.refreshMenuBarLabels();
 
     document.getElementById('status-msg')!.textContent = e.statusMessage;
     let toolLabel: string;
     if (e.vertexMode) {
       toolLabel = 'Tool: vertex';
     } else if (e.patchEditMode) {
-      toolLabel = 'Tool: patch edit';
+      toolLabel = `Tool: patch edit (brush r${e.currentTerrainRadius()} s${e.currentTerrainStrength()} ${e.terrainFalloff})`;
     } else if (e.activeTool === 'clip') {
       toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`;
     } else if (e.activeTool === 'create') {
@@ -718,7 +721,7 @@ export class UI {
       selLabel = `Sel: ${vc} vtx (V to exit)`;
     } else if (e.patchEditMode) {
       const pc = e.patchControlSelection.length;
-      selLabel = `Sel: ${pc} cp (V to exit)`;
+      selLabel = `Sel: ${pc} cp (Alt-drag sculpt, PgUp/PgDn/Home, V to exit)`;
     } else {
       const faceCount = e.selection.filter(s => s.type === 'face').length;
       selLabel = faceCount > 0

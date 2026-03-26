@@ -63,6 +63,13 @@ export class Viewport3D {
   private solidVBO!: WebGLBuffer;
   private drawGroups: DrawGroup[] = [];
 
+  private pathLineVAO!: WebGLVertexArrayObject;
+  private pathLineVBO!: WebGLBuffer;
+  private pathLineCount = 0;
+  private pathLineSelVAO!: WebGLVertexArrayObject;
+  private pathLineSelVBO!: WebGLBuffer;
+  private pathLineSelCount = 0;
+
   private lineVAO!: WebGLVertexArrayObject;
   private lineVBO!: WebGLBuffer;
   private lineCount = 0;
@@ -217,6 +224,10 @@ export class Viewport3D {
     const solid = createSolidBuffer(gl);
     this.solidVAO = solid.vao; this.solidVBO = solid.vbo;
 
+    const path = createLineBuffer(gl);
+    this.pathLineVAO = path.vao; this.pathLineVBO = path.vbo;
+    const pathSel = createLineBuffer(gl);
+    this.pathLineSelVAO = pathSel.vao; this.pathLineSelVBO = pathSel.vbo;
     const line = createLineBuffer(gl);
     this.lineVAO = line.vao; this.lineVBO = line.vbo;
     const wire = createLineBuffer(gl);
@@ -254,6 +265,8 @@ export class Viewport3D {
       gl: this.gl,
       editor: this.editor,
       solidVBO: this.solidVBO,
+      pathLineVBO: this.pathLineVBO,
+      pathLineSelVBO: this.pathLineSelVBO,
       lineVBO: this.lineVBO,
       wireVBO: this.wireVBO,
       faceSelVBO: this.faceSelVBO,
@@ -262,6 +275,8 @@ export class Viewport3D {
       lightRadiusVBO: this.lightRadiusVBO,
     });
     this.drawGroups = result.drawGroups;
+    this.pathLineCount = result.pathLineCount;
+    this.pathLineSelCount = result.pathLineSelCount;
     this.lineCount = result.lineCount;
     this.wireCount = result.wireCount;
     this.faceSelCount = result.faceSelCount;
@@ -305,6 +320,10 @@ export class Viewport3D {
       lineColorLoc: this.lineColorLoc,
       solidVAO: this.solidVAO,
       drawGroups: this.drawGroups,
+      pathLineVAO: this.pathLineVAO,
+      pathLineCount: this.pathLineCount,
+      pathLineSelVAO: this.pathLineSelVAO,
+      pathLineSelCount: this.pathLineSelCount,
       lineVAO: this.lineVAO,
       lineCount: this.lineCount,
       wireVAO: this.wireVAO,

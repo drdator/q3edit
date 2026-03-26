@@ -54,6 +54,9 @@ export interface Viewport2DInteractionState {
   rubberBandAdditive: boolean;
   vertexDragging: boolean;
   vertexDragSnapshotTaken: boolean;
+  terrainSculpting: boolean;
+  terrainSculptSnapshotTaken: boolean;
+  terrainSculptLastY: number;
   geoSnapTargets: [number[], number[], number[]] | null;
   geoSnapLines: { axis: 'h' | 'v'; value: number }[];
   rotating: boolean;
@@ -103,6 +106,9 @@ export function createViewport2DInteractionState(): Viewport2DInteractionState {
     rubberBandAdditive: false,
     vertexDragging: false,
     vertexDragSnapshotTaken: false,
+    terrainSculpting: false,
+    terrainSculptSnapshotTaken: false,
+    terrainSculptLastY: 0,
     geoSnapTargets: null,
     geoSnapLines: [],
     rotating: false,
@@ -287,8 +293,11 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     if (hitDi >= 0) {
       const wasSelected = ctx.editor.isVertexSelected(hitDi, hitVi);
-      ctx.editor.selectVertex(hitDi, hitVi, additive);
-      if (wasSelected || !additive) {
+      const preserveSelection = wasSelected && !additive;
+      if (!preserveSelection) {
+        ctx.editor.selectVertex(hitDi, hitVi, additive);
+      }
+      if (!additive) {
         state.vertexDragging = true;
         state.vertexDragSnapshotTaken = false;
         state.dragging = true;
@@ -297,8 +306,14 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
         state.geoSnapTargets = ctx.editor.snapToGeometry ? ctx.editor.collectSnapTargets() : null;
         state.geoSnapLines = [];
       }
-    } else if (!additive) {
-      ctx.editor.clearVertexSelection();
+    } else {
+      state.rubberBanding = true;
+      state.rubberBandStart = [mx, my];
+      state.rubberBandEnd = [mx, my];
+      state.rubberBandAdditive = additive;
+      if (!additive) {
+        ctx.editor.clearVertexSelection();
+      }
     }
     return;
   }
@@ -327,10 +342,27 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       }
     }
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+    if (e.altKey) {
+      if (ctx.editor.patchControlSelection.length === 0) {
+        ctx.editor.statusMessage = 'Select terrain control points first';
+        return;
+      }
+
+      state.terrainSculpting = true;
+      state.terrainSculptSnapshotTaken = false;
+      state.terrainSculptLastY = my;
+      state.dragging = true;
+      state.hasDragged = false;
+      return;
+    }
+
     if (hitDi >= 0) {
       const wasSelected = ctx.editor.isControlPointSelected(hitDi, hitR, hitC);
-      ctx.editor.selectControlPoint(hitDi, hitR, hitC, additive);
-      if (wasSelected || !additive) {
+      const preserveSelection = wasSelected && !additive;
+      if (!preserveSelection) {
+        ctx.editor.selectControlPoint(hitDi, hitR, hitC, additive);
+      }
+      if (!additive) {
         state.vertexDragging = true;
         state.vertexDragSnapshotTaken = false;
         state.dragging = true;
@@ -339,8 +371,14 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
         state.geoSnapTargets = ctx.editor.snapToGeometry ? ctx.editor.collectSnapTargets() : null;
         state.geoSnapLines = [];
       }
-    } else if (!additive) {
-      ctx.editor.clearControlPointSelection();
+    } else {
+      state.rubberBanding = true;
+      state.rubberBandStart = [mx, my];
+      state.rubberBandEnd = [mx, my];
+      state.rubberBandAdditive = additive;
+      if (!additive) {
+        ctx.editor.clearControlPointSelection();
+      }
     }
     return;
   }
@@ -425,10 +463,42 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
 
 export function handleViewport2DDoubleClick(ctx: Viewport2DInteractionContext, e: MouseEvent): void {
   if (e.button !== 0 || ctx.editor.activeTool !== 'select') return;
-  if (ctx.editor.vertexMode || ctx.editor.patchEditMode) return;
 
   const [mx, my] = getLocalPos(ctx, e);
   const [wx, wy] = ctx.screenToWorld(mx, my);
+
+  if (ctx.editor.vertexMode) {
+    const threshold = 8 / ctx.zoom;
+    for (let di = 0; di < ctx.editor.vertexData.length; di++) {
+      if (pickVertex2D(ctx.editor.vertexData[di].vertices, wx, wy, ctx.axisH, ctx.axisV, ctx.axisDepth, threshold) >= 0) {
+        return;
+      }
+    }
+    ctx.editor.requestExitVertexMode();
+    return;
+  }
+
+  if (ctx.editor.patchEditMode) {
+    const threshold = 8 / ctx.zoom;
+    let bestDist = threshold;
+    for (let di = 0; di < ctx.editor.patchEditData.length; di++) {
+      const patch = ctx.editor.patchEditData[di].patch;
+      for (let r = 0; r < patch.height; r++) {
+        for (let c = 0; c < patch.width; c++) {
+          const p = patch.ctrl[r][c].xyz;
+          const dx = Math.abs(wx - p[ctx.axisH]);
+          const dy = Math.abs(wy - p[ctx.axisV]);
+          const dist = Math.max(dx, dy);
+          if (dist < bestDist) {
+            return;
+          }
+        }
+      }
+    }
+    ctx.editor.exitPatchEditMode();
+    return;
+  }
+
   const picked = pickAt2D(ctx, wx, wy);
   if (!picked) return;
 
@@ -736,6 +806,21 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     return;
   }
 
+  if (state.terrainSculpting) {
+    const deltaY = state.terrainSculptLastY - my;
+    const amount = deltaY * (ctx.editor.currentTerrainStrength() / 24);
+    if (amount !== 0) {
+      if (!state.terrainSculptSnapshotTaken) {
+        ctx.editor.snapshot();
+        state.terrainSculptSnapshotTaken = true;
+      }
+      state.hasDragged = true;
+      ctx.editor.sculptTerrain(amount, false);
+      state.terrainSculptLastY = my;
+    }
+    return;
+  }
+
   if (ctx.editor.selection.length === 0) return;
 
   const dx = wx - state.dragWorldStart[0];
@@ -803,33 +888,59 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     const dx = state.rubberBandEnd[0] - state.rubberBandStart[0];
     const dy = state.rubberBandEnd[1] - state.rubberBandStart[1];
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-      const filter = ctx.editor.selectionFilter;
-      if (filter === 'all' || filter === 'brushes') {
-        for (const { entity, brush } of ctx.editor.allBrushes()) {
-          if (!ctx.editor.isBrushVisible(brush, entity)) continue;
-          if (brush.maxs[ctx.axisH] >= minH && brush.mins[ctx.axisH] <= maxH &&
-              brush.maxs[ctx.axisV] >= minV && brush.mins[ctx.axisV] <= maxV) {
-            ctx.editor.addBrushToSelection(entity, brush);
+      if (ctx.editor.vertexMode) {
+        for (let di = 0; di < ctx.editor.vertexData.length; di++) {
+          const vertices = ctx.editor.vertexData[di].vertices;
+          for (let vi = 0; vi < vertices.length; vi++) {
+            const position = vertices[vi].position;
+            if (position[ctx.axisH] >= minH && position[ctx.axisH] <= maxH &&
+                position[ctx.axisV] >= minV && position[ctx.axisV] <= maxV) {
+              ctx.editor.selectVertex(di, vi, true);
+            }
           }
         }
-      }
-      if (filter === 'all' || filter === 'patches') {
-        for (const { entity, patch } of ctx.editor.allPatches()) {
-          if (!ctx.editor.isPatchVisible(patch, entity)) continue;
-          if (patch.maxs[ctx.axisH] >= minH && patch.mins[ctx.axisH] <= maxH &&
-              patch.maxs[ctx.axisV] >= minV && patch.mins[ctx.axisV] <= maxV) {
-            ctx.editor.addPatchToSelection(entity, patch);
+      } else if (ctx.editor.patchEditMode) {
+        for (let di = 0; di < ctx.editor.patchEditData.length; di++) {
+          const patch = ctx.editor.patchEditData[di].patch;
+          for (let r = 0; r < patch.height; r++) {
+            for (let c = 0; c < patch.width; c++) {
+              const point = patch.ctrl[r][c].xyz;
+              if (point[ctx.axisH] >= minH && point[ctx.axisH] <= maxH &&
+                  point[ctx.axisV] >= minV && point[ctx.axisV] <= maxV) {
+                ctx.editor.selectControlPoint(di, r, c, true);
+              }
+            }
           }
         }
-      }
-      if (filter === 'all' || filter === 'entities') {
-        for (const entity of ctx.editor.nonWorldspawnEntities()) {
-          if (!ctx.editor.isEntityVisible(entity)) continue;
-          const bounds = ctx.editor.entityBounds(entity);
-          if (!bounds) continue;
-          if (bounds.maxs[ctx.axisH] >= minH && bounds.mins[ctx.axisH] <= maxH &&
-              bounds.maxs[ctx.axisV] >= minV && bounds.mins[ctx.axisV] <= maxV) {
-            ctx.editor.addEntityToSelection(entity);
+      } else {
+        const filter = ctx.editor.selectionFilter;
+        if (filter === 'all' || filter === 'brushes') {
+          for (const { entity, brush } of ctx.editor.allBrushes()) {
+            if (!ctx.editor.isBrushVisible(brush, entity)) continue;
+            if (brush.maxs[ctx.axisH] >= minH && brush.mins[ctx.axisH] <= maxH &&
+                brush.maxs[ctx.axisV] >= minV && brush.mins[ctx.axisV] <= maxV) {
+              ctx.editor.addBrushToSelection(entity, brush);
+            }
+          }
+        }
+        if (filter === 'all' || filter === 'patches') {
+          for (const { entity, patch } of ctx.editor.allPatches()) {
+            if (!ctx.editor.isPatchVisible(patch, entity)) continue;
+            if (patch.maxs[ctx.axisH] >= minH && patch.mins[ctx.axisH] <= maxH &&
+                patch.maxs[ctx.axisV] >= minV && patch.mins[ctx.axisV] <= maxV) {
+              ctx.editor.addPatchToSelection(entity, patch);
+            }
+          }
+        }
+        if (filter === 'all' || filter === 'entities') {
+          for (const entity of ctx.editor.nonWorldspawnEntities()) {
+            if (!ctx.editor.isEntityVisible(entity)) continue;
+            const bounds = ctx.editor.entityBounds(entity);
+            if (!bounds) continue;
+            if (bounds.maxs[ctx.axisH] >= minH && bounds.mins[ctx.axisH] <= maxH &&
+                bounds.maxs[ctx.axisV] >= minV && bounds.mins[ctx.axisV] <= maxV) {
+              ctx.editor.addEntityToSelection(entity);
+            }
           }
         }
       }
@@ -880,6 +991,11 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     state.vertexDragging = false;
     state.dragging = false;
     if (state.hasDragged) ctx.editor.statusMessage = 'Vertex moved';
+    return;
+  }
+  if (state.terrainSculpting) {
+    state.terrainSculpting = false;
+    state.dragging = false;
     return;
   }
   if (ctx.editor.creating) {

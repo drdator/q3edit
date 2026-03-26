@@ -8,6 +8,8 @@ export interface Viewport3DGeometryContext {
   gl: WebGL2RenderingContext;
   editor: Editor;
   solidVBO: WebGLBuffer;
+  pathLineVBO: WebGLBuffer;
+  pathLineSelVBO: WebGLBuffer;
   lineVBO: WebGLBuffer;
   wireVBO: WebGLBuffer;
   faceSelVBO: WebGLBuffer;
@@ -18,6 +20,8 @@ export interface Viewport3DGeometryContext {
 
 export interface Viewport3DGeometryBuild {
   drawGroups: DrawGroup[];
+  pathLineCount: number;
+  pathLineSelCount: number;
   lineCount: number;
   wireCount: number;
   faceSelCount: number;
@@ -171,6 +175,24 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.solidVBO);
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(allVerts), ctx.gl.DYNAMIC_DRAW);
+
+  const pathLineVerts: number[] = [];
+  const pathSelLineVerts: number[] = [];
+  for (const link of ctx.editor.collectEntityLinks()) {
+    const arr = link.highlighted ? pathSelLineVerts : pathLineVerts;
+    arr.push(
+      link.from[0], link.from[1], link.from[2],
+      link.to[0], link.to[1], link.to[2],
+    );
+  }
+
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.pathLineVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pathLineVerts), ctx.gl.DYNAMIC_DRAW);
+  const pathLineCount = pathLineVerts.length / 3;
+
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.pathLineSelVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pathSelLineVerts), ctx.gl.DYNAMIC_DRAW);
+  const pathLineSelCount = pathSelLineVerts.length / 3;
 
   const selLineVerts: number[] = [];
   const wireVerts: number[] = [];
@@ -366,6 +388,8 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   return {
     drawGroups,
+    pathLineCount,
+    pathLineSelCount,
     lineCount,
     wireCount,
     faceSelCount,

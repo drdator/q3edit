@@ -163,9 +163,42 @@ export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEv
 }
 
 export function handleViewport3DDoublePick(ctx: Viewport3DSelectionContext, e: MouseEvent): void {
-  if (ctx.editor.vertexMode || ctx.editor.patchEditMode) return;
-
   const [sx, sy] = ctx.dragStart;
+  if (ctx.editor.vertexMode) {
+    const { rayOrigin, rayDir } = ctx.getRay(sx, sy);
+    for (let di = 0; di < ctx.editor.vertexData.length; di++) {
+      if (pickVertex3D(ctx.editor.vertexData[di].vertices, rayOrigin, rayDir, 8) >= 0) {
+        return;
+      }
+    }
+    ctx.editor.requestExitVertexMode();
+    return;
+  }
+
+  if (ctx.editor.patchEditMode) {
+    const { rayOrigin, rayDir } = ctx.getRay(sx, sy);
+    let bestDistSq = 64;
+    for (let di = 0; di < ctx.editor.patchEditData.length; di++) {
+      const patch = ctx.editor.patchEditData[di].patch;
+      for (let r = 0; r < patch.height; r++) {
+        for (let c = 0; c < patch.width; c++) {
+          const p = patch.ctrl[r][c].xyz;
+          const toP = vec3Sub(p, rayOrigin);
+          const t = vec3Dot(toP, rayDir);
+          if (t < 0) continue;
+          const proj = vec3Add(rayOrigin, vec3Scale(rayDir, t));
+          const d = vec3Sub(p, proj);
+          const distSq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+          if (distSq < bestDistSq) {
+            return;
+          }
+        }
+      }
+    }
+    ctx.editor.exitPatchEditMode();
+    return;
+  }
+
   const surfaceHit = pickPrimarySurface(ctx, sx, sy);
   if (!surfaceHit) return;
 
