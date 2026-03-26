@@ -1,4 +1,4 @@
-import { cloneBrush, mirrorBrush, rotateBrush, translateBrush, type Brush } from './brush';
+import { cloneBrush, mirrorBrush, rotateBrush, scaleBrushFaces, translateBrush, type Brush } from './brush';
 import { createBrushPrimitive } from './brush-primitives';
 import {
   cloneEntity,
@@ -12,9 +12,10 @@ import {
   type Entity
 } from './entity';
 import { vec3Add, vec3MirrorAxis, vec3RotateAxis, vec3Snap, type Vec3 } from './math';
-import { clonePatch, mirrorPatch, rotatePatch, translatePatch } from './patch';
+import { clonePatch, mirrorPatch, PatchControlPoint, rotatePatch, scalePatchControlPoints, translatePatch } from './patch';
 import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
+import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { mirrorBrushLocked, rotateBrushLocked, translateBrushLocked } from './texture-lock';
 
 function selectedEntitySet(editor: Editor): Set<Entity> {
@@ -101,6 +102,14 @@ function mirrorEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: 
   for (const patch of entity.patches) {
     mirrorPatch(patch, center, axis);
   }
+}
+
+function scalePoint(point: Vec3, center: Vec3, scale: Vec3): Vec3 {
+  return [
+    center[0] + (point[0] - center[0]) * scale[0],
+    center[1] + (point[1] - center[1]) * scale[1],
+    center[2] + (point[2] - center[2]) * scale[2],
+  ];
 }
 
 export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, axis: number, ctrlKey = false): Brush {
@@ -235,6 +244,63 @@ export function flipSelection(editor: Editor, axis: number): void {
   editor.dirty = true;
   const axisName = ['X', 'Y', 'Z'][axis];
   editor.statusMessage = `Flipped along ${axisName}`;
+}
+
+export function scaleSelection(editor: Editor, scale: Vec3): void {
+  if (editor.selection.length === 0) return;
+  if (scale.some(value => !isFinite(value) || value <= 0.001)) {
+    editor.statusMessage = 'Scale factors must be greater than zero';
+    return;
+  }
+  if (scale.every(value => Math.abs(value - 1) < 1e-6)) {
+    editor.statusMessage = 'Scale unchanged';
+    return;
+  }
+
+  const center = editor.selectionCenter();
+  if (!center) return;
+
+  editor.snapshot();
+
+  const brushItems = getSelectedBrushItems(editor);
+  const patchItems = getSelectedPatchItems(editor);
+  const brushOriginals = brushItems.map(({ brush }) =>
+    brush.faces.map(face => [
+      [...face.points[0]] as Vec3,
+      [...face.points[1]] as Vec3,
+      [...face.points[2]] as Vec3,
+    ] as [Vec3, Vec3, Vec3])
+  );
+  const patchOriginals = patchItems.map(({ patch }) =>
+    patch.ctrl.map(row =>
+      row.map(cp => ({ xyz: [...cp.xyz] as Vec3, uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
+    )
+  );
+
+  for (let i = 0; i < brushItems.length; i++) {
+    const origPoints = brushOriginals[i];
+    if (!origPoints) continue;
+    scaleBrushFaces(brushItems[i].brush, origPoints, center, scale);
+  }
+
+  for (let i = 0; i < patchItems.length; i++) {
+    const origCtrl = patchOriginals[i] as PatchControlPoint[][] | undefined;
+    if (!origCtrl) continue;
+    scalePatchControlPoints(patchItems[i].patch, origCtrl, center, scale);
+  }
+
+  const scaledEntities = new Set<Entity>();
+  for (const item of editor.selection) {
+    if (item.type !== 'entity' || scaledEntities.has(item.entity)) continue;
+    scaledEntities.add(item.entity);
+    const origin = entityOrigin(item.entity);
+    if (origin) {
+      setEntityOrigin(item.entity, scalePoint(origin, center, scale));
+    }
+  }
+
+  editor.dirty = true;
+  editor.statusMessage = `Scaled x${scale[0].toFixed(2)} y${scale[1].toFixed(2)} z${scale[2].toFixed(2)}`;
 }
 
 export function duplicateSelection(editor: Editor): void {

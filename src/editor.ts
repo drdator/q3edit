@@ -129,6 +129,7 @@ import {
   flipSelection as flipEditorSelection,
   moveSelection as moveEditorSelection,
   rotateSelection as rotateEditorSelection,
+  scaleSelection as scaleEditorSelection,
   snapSelectionToGrid as snapEditorSelectionToGrid,
 } from './editor-transforms';
 import {
@@ -550,6 +551,10 @@ export class Editor {
 
   rotateSelection(angleDeg: number): void {
     rotateEditorSelection(this, angleDeg);
+  }
+
+  scaleSelection(scale: Vec3): void {
+    scaleEditorSelection(this, scale);
   }
 
   flipSelection(axis: number): void {

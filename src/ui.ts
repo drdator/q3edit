@@ -68,6 +68,8 @@ export class UI {
       getOpenMenu: () => this.openMenu,
       setOpenMenu: (menu) => { this.openMenu = menu; },
       closeMenus: () => this.closeMenus(),
+      openRotateDialog: () => this.openRotateDialog(),
+      openScaleDialog: () => this.openScaleDialog(),
       compileBSP: () => this.compileBSP(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: (tool) => this.setTool(tool),
@@ -623,6 +625,8 @@ export class UI {
     setupKeyboardUI({
       editor: this.editor,
       handleExitVertexMode: () => this.handleExitVertexMode(),
+      openRotateDialog: () => this.openRotateDialog(),
+      openScaleDialog: () => this.openScaleDialog(),
       setTool: (tool) => this.setTool(tool),
       increaseGrid: () => this.increaseGrid(),
       decreaseGrid: () => this.decreaseGrid(),
@@ -947,6 +951,229 @@ export class UI {
         }
       }
     });
+  }
+
+  private openRotateDialog(): void {
+    if (this.editor.selection.length === 0) {
+      this.editor.statusMessage = 'Nothing selected to rotate';
+      return;
+    }
+
+    document.getElementById('transform-dialog')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'transform-dialog';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#2a2a2a;border:1px solid #08a;border-radius:6px;padding:16px 20px;width:360px;max-width:90vw;color:#eee;font:13px/1.5 monospace';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:14px;font-weight:bold;color:#08a;margin-bottom:8px';
+    title.textContent = 'Rotate Selection';
+    dialog.appendChild(title);
+
+    const hint = document.createElement('div');
+    hint.style.cssText = 'margin-bottom:12px;color:#aaa';
+    hint.textContent = 'Axis defaults to the last active 2D view.';
+    dialog.appendChild(hint);
+
+    const form = document.createElement('div');
+    form.style.cssText = 'display:grid;grid-template-columns:80px 1fr;gap:8px 10px;align-items:center;margin-bottom:12px';
+
+    const axisLabel = document.createElement('label');
+    axisLabel.textContent = 'Axis';
+    const axisSelect = document.createElement('select');
+    axisSelect.style.cssText = 'background:#1a1a1a;color:#eee;border:1px solid #555;border-radius:4px;padding:4px 8px;font:13px monospace';
+    for (const [value, label] of [['0', 'X'], ['1', 'Y'], ['2', 'Z']] as const) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      if (Number(value) === this.editor.rotationAxis) option.selected = true;
+      axisSelect.appendChild(option);
+    }
+
+    const angleLabel = document.createElement('label');
+    angleLabel.textContent = 'Angle';
+    const angleInput = document.createElement('input');
+    angleInput.type = 'number';
+    angleInput.step = '0.1';
+    angleInput.value = '45';
+    angleInput.style.cssText = 'background:#1a1a1a;color:#eee;border:1px solid #555;border-radius:4px;padding:4px 8px;font:13px monospace';
+
+    form.appendChild(axisLabel);
+    form.appendChild(axisSelect);
+    form.appendChild(angleLabel);
+    form.appendChild(angleInput);
+    dialog.appendChild(form);
+
+    const error = document.createElement('div');
+    error.style.cssText = 'min-height:18px;margin-bottom:12px;color:#f80';
+    dialog.appendChild(error);
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.textContent = 'Apply';
+    applyBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding:6px 14px;background:#555;color:#eee;border:none;border-radius:4px;cursor:pointer;font:13px monospace';
+
+    const close = () => overlay.remove();
+    const apply = () => {
+      const angle = parseFloat(angleInput.value);
+      if (!isFinite(angle) || Math.abs(angle) < 1e-6) {
+        error.textContent = 'Enter a non-zero angle.';
+        angleInput.focus();
+        angleInput.select();
+        return;
+      }
+      this.editor.rotationAxis = Math.max(0, Math.min(2, Number(axisSelect.value) || 0));
+      this.editor.rotateSelection(angle);
+      close();
+    };
+
+    applyBtn.onclick = apply;
+    cancelBtn.onclick = close;
+    buttons.appendChild(applyBtn);
+    buttons.appendChild(cancelBtn);
+    dialog.appendChild(buttons);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        close();
+        e.stopPropagation();
+      } else if (e.key === 'Enter') {
+        apply();
+        e.stopPropagation();
+      }
+    });
+
+    overlay.tabIndex = 0;
+    angleInput.focus();
+    angleInput.select();
+  }
+
+  private openScaleDialog(): void {
+    if (this.editor.selection.length === 0) {
+      this.editor.statusMessage = 'Nothing selected to scale';
+      return;
+    }
+
+    document.getElementById('transform-dialog')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'transform-dialog';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#2a2a2a;border:1px solid #08a;border-radius:6px;padding:16px 20px;width:380px;max-width:90vw;color:#eee;font:13px/1.5 monospace';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:14px;font-weight:bold;color:#08a;margin-bottom:8px';
+    title.textContent = 'Scale Selection';
+    dialog.appendChild(title);
+
+    const hint = document.createElement('div');
+    hint.style.cssText = 'margin-bottom:12px;color:#aaa';
+    hint.textContent = 'Scale factors are relative. 1 leaves size unchanged, 2 doubles it, 0.5 halves it.';
+    dialog.appendChild(hint);
+
+    const form = document.createElement('div');
+    form.style.cssText = 'display:grid;grid-template-columns:80px 1fr;gap:8px 10px;align-items:center;margin-bottom:8px';
+
+    const inputs: HTMLInputElement[] = [];
+    for (const labelText of ['X Factor', 'Y Factor', 'Z Factor']) {
+      const label = document.createElement('label');
+      label.textContent = labelText;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = '0.01';
+      input.min = '0.01';
+      input.value = '1';
+      input.style.cssText = 'background:#1a1a1a;color:#eee;border:1px solid #555;border-radius:4px;padding:4px 8px;font:13px monospace';
+      form.appendChild(label);
+      form.appendChild(input);
+      inputs.push(input);
+    }
+    dialog.appendChild(form);
+
+    const uniformRow = document.createElement('label');
+    uniformRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:12px;color:#ccc';
+
+    const uniformInput = document.createElement('input');
+    uniformInput.type = 'checkbox';
+    uniformInput.checked = false;
+    uniformInput.style.cssText = 'margin:0';
+    uniformRow.appendChild(uniformInput);
+    uniformRow.appendChild(document.createTextNode('Keep factors linked while editing'));
+    dialog.appendChild(uniformRow);
+
+    inputs.forEach((input) => {
+      input.addEventListener('input', () => {
+        if (!uniformInput.checked) return;
+        for (const other of inputs) {
+          if (other === input) continue;
+          other.value = input.value;
+        }
+      });
+    });
+
+    const error = document.createElement('div');
+    error.style.cssText = 'min-height:18px;margin-bottom:12px;color:#f80';
+    dialog.appendChild(error);
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.textContent = 'Apply';
+    applyBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding:6px 14px;background:#555;color:#eee;border:none;border-radius:4px;cursor:pointer;font:13px monospace';
+
+    const close = () => overlay.remove();
+    const apply = () => {
+      const values = inputs.map(input => parseFloat(input.value));
+      if (values.some(value => !isFinite(value) || value <= 0.001)) {
+        error.textContent = 'Enter scale factors greater than zero.';
+        const invalid = inputs.find((_, index) => !isFinite(values[index]) || values[index] <= 0.001);
+        invalid?.focus();
+        invalid?.select();
+        return;
+      }
+      this.editor.scaleSelection([values[0], values[1], values[2]]);
+      close();
+    };
+
+    applyBtn.onclick = apply;
+    cancelBtn.onclick = close;
+    buttons.appendChild(applyBtn);
+    buttons.appendChild(cancelBtn);
+    dialog.appendChild(buttons);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        close();
+        e.stopPropagation();
+      } else if (e.key === 'Enter') {
+        apply();
+        e.stopPropagation();
+      }
+    });
+
+    overlay.tabIndex = 0;
+    inputs[0].focus();
+    inputs[0].select();
   }
 
   /** Show a warning dialog for invalid brush geometry with Rebuild / Split / Revert options. */

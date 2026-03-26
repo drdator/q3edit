@@ -5,6 +5,8 @@ import { getSelectedPatchItems } from './editor-selection';
 export interface KeyboardContext {
   editor: Editor;
   handleExitVertexMode: () => void;
+  openRotateDialog: () => void;
+  openScaleDialog: () => void;
   setTool: (tool: Tool) => void;
   increaseGrid: () => void;
   decreaseGrid: () => void;
@@ -22,6 +24,8 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if (ctrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); ctx.editor.redo(); return; }
     if (ctrl && e.key === 'z') { e.preventDefault(); ctx.editor.undo(); return; }
     if (ctrl && e.key === 'y') { e.preventDefault(); ctx.editor.redo(); return; }
+    if (ctrl && e.shiftKey && e.key === 'R') { e.preventDefault(); ctx.openRotateDialog(); return; }
+    if (ctrl && e.shiftKey && e.key === 'E') { e.preventDefault(); ctx.openScaleDialog(); return; }
     if (ctrl && e.key === 's') { e.preventDefault(); ctx.editor.saveMapToFile(); return; }
     if (ctrl && e.key === 'o') { e.preventDefault(); ctx.editor.openMapFromFile(); return; }
     if (ctrl && e.key === 'c') { e.preventDefault(); void ctx.editor.copySelection(); return; }

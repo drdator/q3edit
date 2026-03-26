@@ -9,6 +9,8 @@ export interface MenuBarContext {
   getOpenMenu: () => HTMLElement | null;
   setOpenMenu: (menu: HTMLElement | null) => void;
   closeMenus: () => void;
+  openRotateDialog: () => void;
+  openScaleDialog: () => void;
   compileBSP: () => void | Promise<void>;
   cycleInvisibleMode: () => void;
   setTool: (tool: Tool) => void;
@@ -65,6 +67,9 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
       { separator: true },
       { label: 'Rotate 90°', shortcut: 'R', action: () => ctx.editor.rotateSelection(90) },
       { label: 'Rotate 15°', shortcut: 'Shift+R', action: () => ctx.editor.rotateSelection(15) },
+      { label: 'Rotate...', shortcut: 'Ctrl+Shift+R', action: () => ctx.openRotateDialog() },
+      { label: 'Scale...', shortcut: 'Ctrl+Shift+E', action: () => ctx.openScaleDialog() },
+      { separator: true },
       { label: 'Flip X', shortcut: 'Shift+X', action: () => ctx.editor.flipSelection(0) },
       { label: 'Flip Y', shortcut: 'Shift+Y', action: () => ctx.editor.flipSelection(1) },
       { label: 'Flip Z', shortcut: 'Shift+Z', action: () => ctx.editor.flipSelection(2) },

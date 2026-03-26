@@ -105,19 +105,16 @@ Still missing:
 
 ## Missing
 
-### 1. Arbitrary Rotation / Scale Dialogs
-Radiant has precise numeric input dialogs for rotation and scaling. We only have direct manipulation plus fixed-angle rotation shortcuts.
-
-### 2. Edge Dragging
+### 1. Edge Dragging
 Radiant can drag edges, not just vertices, in vertex editing mode.
 
-### 3. Plugin System
+### 2. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Arbitrary rotation / scale dialogs
-2. Edge dragging
-3. Plugin system
-4. Terrain system follow-up
-5. Splines / paths follow-up
+1. Edge dragging
+2. Plugin system
+3. Terrain system follow-up
+4. Splines / paths follow-up
+5. Cubic clipping follow-up
