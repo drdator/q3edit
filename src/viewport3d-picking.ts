@@ -49,7 +49,7 @@ export function pickBrushAt3D(
   let bestHit: { entity: Entity; brush: Brush; face: BrushFace } | null = null;
 
   for (const { entity, brush } of ctx.editor.allBrushes()) {
-    if (!ctx.editor.isBrushVisible(brush, entity)) continue;
+    if (!ctx.editor.isBrushVisibleIn3D(brush, entity)) continue;
     for (const face of brush.faces) {
       if (face.polygon.length < 3) continue;
       for (let i = 1; i < face.polygon.length - 1; i++) {
@@ -82,7 +82,7 @@ export function pickPatchAt3D(
   let bestHit: { entity: Entity; patch: Patch; dist: number } | null = null;
 
   for (const { entity, patch } of ctx.editor.allPatches()) {
-    if (!ctx.editor.isPatchVisible(patch, entity)) continue;
+    if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
     for (let ti = 0; ti < patch.tessIndices.length; ti += 3) {
       const v0 = patch.tessVerts[patch.tessIndices[ti]].position;
       const v1 = patch.tessVerts[patch.tessIndices[ti + 1]].position;
@@ -109,7 +109,7 @@ export function pickEntityAt3D(
   let bestHit: { entity: Entity; dist: number } | null = null;
 
   for (const entity of ctx.editor.nonWorldspawnEntities()) {
-    if (!ctx.editor.isEntityVisible(entity)) continue;
+    if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
 
     let bounds = ctx.editor.entityBounds(entity);
     if (ctx.editor.isPointEntity(entity)) {

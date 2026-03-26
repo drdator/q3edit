@@ -47,6 +47,9 @@ Supported:
 - Select all of type
 - Invert selection
 
+### Pointfile / Leak Navigation
+Supported via automatic pointfile loading from failed BSP compiles, manual `.lin` import, 2D/3D leak-path visualization, and next / previous leak-spot navigation.
+
 ## Partial
 
 ### Terrain System
@@ -89,30 +92,32 @@ Still missing:
 - Torus creation
 - More dedicated primitive-creation UX beyond the current Create-tool selector
 
+### Splines / Paths
+Implemented:
+- `path_corner`, `info_null`, and related path point entities can be placed from the entity browser
+- Selected entities can be connected in order as open or closed path chains
+- Linked path entities render as spline previews in both 2D and 3D
+
+Still missing:
+- Dedicated camera-spline editing and playback workflows like classic Radiant
+- Smart path creation tools beyond connecting already-placed entities
+- Rich per-point path timing / action editing
+
 ## Missing
 
-### 1. Pointfile / Leak Navigation
-Radiant loads pointfiles from the compiler and lets you navigate leak paths.
-
-### 2. Splines / Paths
-Radiant has spline path tools for camera paths and entity movement.
-
-### 3. Cubic Clipping (View Distance)
-Radiant can clip the 3D view at a configurable distance for large-map performance.
-
-### 4. Arbitrary Rotation / Scale Dialogs
+### 1. Arbitrary Rotation / Scale Dialogs
 Radiant has precise numeric input dialogs for rotation and scaling. We only have direct manipulation plus fixed-angle rotation shortcuts.
 
-### 5. Edge Dragging
+### 2. Edge Dragging
 Radiant can drag edges, not just vertices, in vertex editing mode.
 
-### 6. Plugin System
+### 3. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Pointfile / leak navigation
-2. Splines / paths
-3. Cubic clipping
-4. Arbitrary rotation / scale dialogs
-5. Edge dragging
+1. Arbitrary rotation / scale dialogs
+2. Edge dragging
+3. Plugin system
+4. Terrain system follow-up
+5. Splines / paths follow-up

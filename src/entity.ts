@@ -193,6 +193,14 @@ export const ENTITY_CATEGORIES: EntityCategory[] = [
     ],
   },
   {
+    name: 'Paths',
+    color: '#66cc88',
+    classes: [
+      { classname: 'path_corner' },
+      { classname: 'info_null' },
+    ],
+  },
+  {
     name: 'Triggers',
     color: '#888888',
     classes: [
@@ -220,6 +228,7 @@ export const BRUSH_ENTITY_CLASSES = [
   'func_plat',
   'func_rotating',
   'func_bobbing',
+  'func_train',
   'trigger_multiple',
   'trigger_push',
   'trigger_teleport',

@@ -55,6 +55,8 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
   }
 
   drawPathLines(ctx);
+  drawPathCurves(ctx);
+  drawPointfile(ctx);
 
   if (ctx.editor.patchEditMode) {
     drawTerrainBrushPreview(ctx);
@@ -244,6 +246,35 @@ function drawPatch(ctx: Viewport2DRenderContext, patch: Patch, selected: boolean
   }
 }
 
+function drawPointfile(ctx: Viewport2DRenderContext): void {
+  const points = ctx.editor.pointfilePoints;
+  if (points.length === 0) return;
+
+  ctx.ctx.save();
+  ctx.ctx.strokeStyle = '#ff4040';
+  ctx.ctx.lineWidth = 2;
+  ctx.ctx.beginPath();
+  for (let i = 0; i < points.length; i++) {
+    const [sx, sy] = ctx.worldToScreen(points[i][ctx.axisH], points[i][ctx.axisV]);
+    if (i === 0) ctx.ctx.moveTo(sx, sy);
+    else ctx.ctx.lineTo(sx, sy);
+  }
+  ctx.ctx.stroke();
+
+  const current = points[Math.max(0, Math.min(ctx.editor.pointfileIndex, points.length - 1))];
+  if (current) {
+    const [sx, sy] = ctx.worldToScreen(current[ctx.axisH], current[ctx.axisV]);
+    ctx.ctx.fillStyle = '#ffcc00';
+    ctx.ctx.strokeStyle = '#ff4040';
+    ctx.ctx.lineWidth = 1.5;
+    ctx.ctx.beginPath();
+    ctx.ctx.arc(sx, sy, 5, 0, Math.PI * 2);
+    ctx.ctx.fill();
+    ctx.ctx.stroke();
+  }
+  ctx.ctx.restore();
+}
+
 function drawTerrainBrushPreview(ctx: Viewport2DRenderContext): void {
   if (ctx.editor.patchControlSelection.length === 0) return;
   const screenRadius = ctx.editor.currentTerrainRadius() * ctx.zoom;
@@ -332,6 +363,26 @@ function drawPathLines(ctx: Viewport2DRenderContext): void {
     ctx.ctx.closePath();
     ctx.ctx.fill();
   }
+}
+
+function drawPathCurves(ctx: Viewport2DRenderContext): void {
+  const curves = ctx.editor.collectEntityPathCurves();
+  if (curves.length === 0) return;
+
+  ctx.ctx.save();
+  for (const curve of curves) {
+    if (curve.points.length < 2) continue;
+    ctx.ctx.strokeStyle = curve.highlighted ? '#ffe066' : '#62d88b';
+    ctx.ctx.lineWidth = curve.highlighted ? 2 : 1.5;
+    ctx.ctx.beginPath();
+    for (let i = 0; i < curve.points.length; i++) {
+      const [sx, sy] = ctx.worldToScreen(curve.points[i][ctx.axisH], curve.points[i][ctx.axisV]);
+      if (i === 0) ctx.ctx.moveTo(sx, sy);
+      else ctx.ctx.lineTo(sx, sy);
+    }
+    ctx.ctx.stroke();
+  }
+  ctx.ctx.restore();
 }
 
 function drawSelectionBox(ctx: Viewport2DRenderContext): void {

@@ -108,6 +108,15 @@ function mkdirp(mod: Q3MapModule, path: string) {
   }
 }
 
+function readTextFile(mod: Q3MapModule, path: string): string | null {
+  try {
+    const data = mod.FS.readFile(path);
+    return new TextDecoder().decode(data);
+  } catch {
+    return null;
+  }
+}
+
 // Message handler
 self.onmessage = async (e: MessageEvent) => {
   const { mapText, options } = e.data as {
@@ -131,6 +140,7 @@ self.onmessage = async (e: MessageEvent) => {
 
   const bspPath = '/quake/baseq3/maps/compile.bsp'
   const mapPath = '/quake/baseq3/maps/compile.map'
+  const pointfilePath = '/quake/baseq3/maps/compile.lin'
 
   // Stage 1: BSP
   emit('=== Stage 1: BSP ===')
@@ -141,9 +151,10 @@ self.onmessage = async (e: MessageEvent) => {
 
   let bsp: Uint8Array | null = null
   try { bsp = bspMod.FS.readFile(bspPath) } catch { /* */ }
+  const pointfileText = readTextFile(bspMod, pointfilePath)
 
   if (bspExit !== 0 || !bsp) {
-    self.postMessage({ type: 'done', success: false, bsp: null, output })
+    self.postMessage({ type: 'done', success: false, bsp: null, pointfileText, output })
     return
   }
 
@@ -174,5 +185,5 @@ self.onmessage = async (e: MessageEvent) => {
     if (lightExit !== 0) emit('Warning: light pass failed, using unlit BSP')
   }
 
-  self.postMessage({ type: 'done', success: true, bsp, output })
+  self.postMessage({ type: 'done', success: true, bsp, pointfileText, output })
 }

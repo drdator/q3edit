@@ -25,6 +25,7 @@ export interface CompileOptions {
 export interface CompileResult {
   success: boolean
   bsp: Uint8Array | null
+  pointfileText: string | null
   output: string[]
 }
 
@@ -52,6 +53,7 @@ export function compileMap(
         resolve({
           success: e.data.success,
           bsp: e.data.bsp,
+          pointfileText: e.data.pointfileText ?? null,
           output,
         })
       }
@@ -60,7 +62,7 @@ export function compileMap(
     worker.onerror = (e) => {
       output.push(`Worker error: ${e.message}`)
       worker.terminate()
-      resolve({ success: false, bsp: null, output })
+      resolve({ success: false, bsp: null, pointfileText: null, output })
     }
 
     // Convert Map to array of tuples for structured clone transfer

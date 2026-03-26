@@ -79,10 +79,35 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
           ctx.editor.dirty = true;
         },
       },
+      { separator: true },
+      {
+        label: () => ctx.editor.cubicClipEnabled
+          ? `Cubic Clipping: ${ctx.editor.cubicClipSize} cube`
+          : 'Cubic Clipping: Off',
+        action: () => ctx.editor.toggleCubicClip(),
+      },
+      { label: 'Smaller Clip Cube', action: () => ctx.editor.adjustCubicClipSize(-1) },
+      { label: 'Larger Clip Cube', action: () => ctx.editor.adjustCubicClipSize(1) },
     ],
     'Region': [
       { label: 'Set From Selection', action: () => ctx.editor.setRegionFromSelection() },
       { label: 'Region Off', action: () => ctx.editor.clearRegion() },
+    ],
+    'Pointfile': [
+      { label: 'Open Pointfile...', action: () => ctx.editor.openPointfileFromFile() },
+      {
+        label: () => ctx.editor.pointfilePoints.length > 0
+          ? `Clear Pointfile (${ctx.editor.pointfilePoints.length})`
+          : 'Clear Pointfile',
+        action: () => ctx.editor.clearPointfile(),
+      },
+      { separator: true },
+      { label: 'Previous Leak Spot', action: () => ctx.editor.prevPointfilePoint() },
+      { label: 'Next Leak Spot', action: () => ctx.editor.nextPointfilePoint() },
+    ],
+    'Path': [
+      { label: 'Connect Selection as Path', shortcut: 'Ctrl+Shift+K', action: () => ctx.editor.connectSelectedEntitiesAsPath() },
+      { label: 'Connect Selection as Closed Path', shortcut: 'Ctrl+Alt+K', action: () => ctx.editor.connectSelectedEntitiesAsClosedPath() },
     ],
     'Terrain': [
       { label: 'Create Terrain Patch', action: () => ctx.editor.createTerrainPatch() },

@@ -63,12 +63,27 @@ export class Viewport3D {
   private solidVBO!: WebGLBuffer;
   private drawGroups: DrawGroup[] = [];
 
+  private clipBoxVAO!: WebGLVertexArrayObject;
+  private clipBoxVBO!: WebGLBuffer;
+  private clipBoxCount = 0;
   private pathLineVAO!: WebGLVertexArrayObject;
   private pathLineVBO!: WebGLBuffer;
   private pathLineCount = 0;
   private pathLineSelVAO!: WebGLVertexArrayObject;
   private pathLineSelVBO!: WebGLBuffer;
   private pathLineSelCount = 0;
+  private pathCurveVAO!: WebGLVertexArrayObject;
+  private pathCurveVBO!: WebGLBuffer;
+  private pathCurveCount = 0;
+  private pathCurveSelVAO!: WebGLVertexArrayObject;
+  private pathCurveSelVBO!: WebGLBuffer;
+  private pathCurveSelCount = 0;
+  private pointfileLineVAO!: WebGLVertexArrayObject;
+  private pointfileLineVBO!: WebGLBuffer;
+  private pointfileLineCount = 0;
+  private pointfileMarkerVAO!: WebGLVertexArrayObject;
+  private pointfileMarkerVBO!: WebGLBuffer;
+  private pointfileMarkerCount = 0;
 
   private lineVAO!: WebGLVertexArrayObject;
   private lineVBO!: WebGLBuffer;
@@ -136,6 +151,20 @@ export class Viewport3D {
     this.createFullscreenUI();
     this.setupEvents();
     this.editor.onCenterOnSelection(() => this.centerOnSelection());
+    this.editor.onLocatePoint((point, lookAt) => {
+      this.position = [point[0], point[1], point[2]];
+      if (lookAt) {
+        const dx = lookAt[0] - point[0];
+        const dy = lookAt[1] - point[1];
+        const dz = lookAt[2] - point[2];
+        const len = Math.hypot(dx, dy, dz);
+        if (len > 1e-6) {
+          this.yaw = Math.atan2(dy, dx);
+          this.pitch = Math.asin(Math.max(-1, Math.min(1, dz / len)));
+        }
+      }
+      this.editor.dirty = true;
+    });
   }
 
   private createFullscreenUI(): void {
@@ -200,7 +229,10 @@ export class Viewport3D {
 
   centerOnSelection(): void {
     const position = centerViewport3DOnSelection(this.editor, this.yaw, this.pitch);
-    if (position) this.position = position;
+    if (position) {
+      this.position = position;
+      this.editor.dirty = true;
+    }
   }
 
   private initGL(): void {
@@ -224,10 +256,20 @@ export class Viewport3D {
     const solid = createSolidBuffer(gl);
     this.solidVAO = solid.vao; this.solidVBO = solid.vbo;
 
+    const clipBox = createLineBuffer(gl);
+    this.clipBoxVAO = clipBox.vao; this.clipBoxVBO = clipBox.vbo;
     const path = createLineBuffer(gl);
     this.pathLineVAO = path.vao; this.pathLineVBO = path.vbo;
     const pathSel = createLineBuffer(gl);
     this.pathLineSelVAO = pathSel.vao; this.pathLineSelVBO = pathSel.vbo;
+    const pathCurve = createLineBuffer(gl);
+    this.pathCurveVAO = pathCurve.vao; this.pathCurveVBO = pathCurve.vbo;
+    const pathCurveSel = createLineBuffer(gl);
+    this.pathCurveSelVAO = pathCurveSel.vao; this.pathCurveSelVBO = pathCurveSel.vbo;
+    const pointfile = createLineBuffer(gl);
+    this.pointfileLineVAO = pointfile.vao; this.pointfileLineVBO = pointfile.vbo;
+    const pointfileMarker = createLineBuffer(gl);
+    this.pointfileMarkerVAO = pointfileMarker.vao; this.pointfileMarkerVBO = pointfileMarker.vbo;
     const line = createLineBuffer(gl);
     this.lineVAO = line.vao; this.lineVBO = line.vbo;
     const wire = createLineBuffer(gl);
@@ -265,8 +307,13 @@ export class Viewport3D {
       gl: this.gl,
       editor: this.editor,
       solidVBO: this.solidVBO,
+      clipBoxVBO: this.clipBoxVBO,
       pathLineVBO: this.pathLineVBO,
       pathLineSelVBO: this.pathLineSelVBO,
+      pathCurveVBO: this.pathCurveVBO,
+      pathCurveSelVBO: this.pathCurveSelVBO,
+      pointfileLineVBO: this.pointfileLineVBO,
+      pointfileMarkerVBO: this.pointfileMarkerVBO,
       lineVBO: this.lineVBO,
       wireVBO: this.wireVBO,
       faceSelVBO: this.faceSelVBO,
@@ -275,8 +322,13 @@ export class Viewport3D {
       lightRadiusVBO: this.lightRadiusVBO,
     });
     this.drawGroups = result.drawGroups;
+    this.clipBoxCount = result.clipBoxCount;
     this.pathLineCount = result.pathLineCount;
     this.pathLineSelCount = result.pathLineSelCount;
+    this.pathCurveCount = result.pathCurveCount;
+    this.pathCurveSelCount = result.pathCurveSelCount;
+    this.pointfileLineCount = result.pointfileLineCount;
+    this.pointfileMarkerCount = result.pointfileMarkerCount;
     this.lineCount = result.lineCount;
     this.wireCount = result.wireCount;
     this.faceSelCount = result.faceSelCount;
@@ -320,10 +372,20 @@ export class Viewport3D {
       lineColorLoc: this.lineColorLoc,
       solidVAO: this.solidVAO,
       drawGroups: this.drawGroups,
+      clipBoxVAO: this.clipBoxVAO,
+      clipBoxCount: this.clipBoxCount,
       pathLineVAO: this.pathLineVAO,
       pathLineCount: this.pathLineCount,
       pathLineSelVAO: this.pathLineSelVAO,
       pathLineSelCount: this.pathLineSelCount,
+      pathCurveVAO: this.pathCurveVAO,
+      pathCurveCount: this.pathCurveCount,
+      pathCurveSelVAO: this.pathCurveSelVAO,
+      pathCurveSelCount: this.pathCurveSelCount,
+      pointfileLineVAO: this.pointfileLineVAO,
+      pointfileLineCount: this.pointfileLineCount,
+      pointfileMarkerVAO: this.pointfileMarkerVAO,
+      pointfileMarkerCount: this.pointfileMarkerCount,
       lineVAO: this.lineVAO,
       lineCount: this.lineCount,
       wireVAO: this.wireVAO,

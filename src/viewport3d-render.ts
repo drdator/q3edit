@@ -53,10 +53,20 @@ export interface Viewport3DRenderContext {
   lineColorLoc: WebGLUniformLocation;
   solidVAO: WebGLVertexArrayObject;
   drawGroups: DrawGroup[];
+  clipBoxVAO: WebGLVertexArrayObject;
+  clipBoxCount: number;
   pathLineVAO: WebGLVertexArrayObject;
   pathLineCount: number;
   pathLineSelVAO: WebGLVertexArrayObject;
   pathLineSelCount: number;
+  pathCurveVAO: WebGLVertexArrayObject;
+  pathCurveCount: number;
+  pathCurveSelVAO: WebGLVertexArrayObject;
+  pathCurveSelCount: number;
+  pointfileLineVAO: WebGLVertexArrayObject;
+  pointfileLineCount: number;
+  pointfileMarkerVAO: WebGLVertexArrayObject;
+  pointfileMarkerCount: number;
   lineVAO: WebGLVertexArrayObject;
   lineCount: number;
   wireVAO: WebGLVertexArrayObject;
@@ -159,6 +169,16 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.wireCount);
   }
 
+  if (!isGameView && ctx.clipBoxCount > 0) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.uniform3f(ctx.lineColorLoc, 0.45, 0.7, 1.0);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    ctx.gl.bindVertexArray(ctx.clipBoxVAO);
+    ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.clipBoxCount);
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
   if (!isGameView && (ctx.pathLineCount > 0 || ctx.pathLineSelCount > 0)) {
     ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
@@ -172,6 +192,40 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.67, 0.0);
       ctx.gl.bindVertexArray(ctx.pathLineSelVAO);
       ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pathLineSelCount);
+    }
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
+  if (!isGameView && (ctx.pathCurveCount > 0 || ctx.pathCurveSelCount > 0)) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    if (ctx.pathCurveCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 0.38, 0.85, 0.55);
+      ctx.gl.bindVertexArray(ctx.pathCurveVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pathCurveCount);
+    }
+    if (ctx.pathCurveSelCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.88, 0.3);
+      ctx.gl.bindVertexArray(ctx.pathCurveSelVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pathCurveSelCount);
+    }
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
+  if (!isGameView && (ctx.pointfileLineCount > 0 || ctx.pointfileMarkerCount > 0)) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    if (ctx.pointfileLineCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.25, 0.25);
+      ctx.gl.bindVertexArray(ctx.pointfileLineVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pointfileLineCount);
+    }
+    if (ctx.pointfileMarkerCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.8, 0.1);
+      ctx.gl.bindVertexArray(ctx.pointfileMarkerVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pointfileMarkerCount);
     }
     ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }

@@ -66,6 +66,13 @@ import {
   saveSelectionAsPrefab as saveEditorSelectionAsPrefab,
 } from './editor-prefabs';
 import {
+  clearPointfile as clearEditorPointfile,
+  loadPointfileText as loadEditorPointfileText,
+  nextPointfilePoint as nextEditorPointfilePoint,
+  openPointfileFromFile as openEditorPointfileFromFile,
+  prevPointfilePoint as prevEditorPointfilePoint,
+} from './editor-pointfile';
+import {
   fitTexture as fitEditorTexture,
   getTextureFaces as collectTextureFaces,
   replaceTextures as replaceEditorTextures,
@@ -129,8 +136,12 @@ import {
   moveSelectionToWorldspawn as moveEditorSelectionToWorldspawn,
 } from './editor-grouping';
 import {
+  collectEntityPathCurves as collectEditorEntityPathCurves,
   collectEntityLinks as collectEditorEntityLinks,
+  connectSelectedEntitiesAsClosedPath as connectEditorSelectedEntitiesAsClosedPath,
+  connectSelectedEntitiesAsPath as connectEditorSelectedEntitiesAsPath,
   connectSelectedEntities as connectEditorSelectedEntities,
+  type EntityPathCurve,
   type EntityLink,
 } from './editor-connections';
 import {
@@ -172,6 +183,17 @@ import {
   makeStructural as makeEditorStructural,
   patchDetailState as getPatchDetailState,
 } from './editor-contents';
+import {
+  adjustCubicClipSize as adjustEditorCubicClipSize,
+  cubicClipBounds as getEditorCubicClipBounds,
+  isBrushVisibleIn3D as isEditorBrushVisibleIn3D,
+  isEntityVisibleIn3D as isEditorEntityVisibleIn3D,
+  isPatchVisibleIn3D as isEditorPatchVisibleIn3D,
+  isPointVisibleIn3D as isEditorPointVisibleIn3D,
+  isSegmentVisibleIn3D as isEditorSegmentVisibleIn3D,
+  toggleCubicClip as toggleEditorCubicClip,
+  type CubicClipBounds,
+} from './editor-cubic-clipping';
 import type { BrushPrimitive } from './brush-primitives';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
@@ -212,6 +234,8 @@ export class Editor {
   terrainBrushRadius = 64;
   terrainBrushStrength = 16;
   terrainFalloff: TerrainFalloff = 'smooth';
+  pointfilePoints: Vec3[] = [];
+  pointfileIndex = 0;
   dirty = true;
   textureManager: TextureManager | null = null;
   history = new History();
@@ -274,6 +298,8 @@ export class Editor {
 
   // Fullscreen 3D walkthrough mode (set by Viewport3D)
   fullscreen3d = false;
+  cubicClipEnabled = false;
+  cubicClipSize = 1024;
 
   /** Textures considered invisible (tool brushes) */
   static readonly INVISIBLE_TEXTURES = INVISIBLE_TEXTURES;
@@ -283,6 +309,7 @@ export class Editor {
 
   // Center-on-selection callbacks (registered by viewports)
   private centerOnSelectionCallbacks: (() => void)[] = [];
+  private locatePointCallbacks: ((point: Vec3, lookAt: Vec3 | null) => void)[] = [];
 
   get worldspawn(): Entity {
     if (this.entities.length === 0) {
@@ -313,6 +340,10 @@ export class Editor {
 
   isBrushVisible(brush: Brush, entity?: Entity): boolean {
     return isEditorBrushVisible(this, brush, entity);
+  }
+
+  isBrushVisibleIn3D(brush: Brush, entity?: Entity): boolean {
+    return isEditorBrushVisibleIn3D(this, brush, entity);
   }
 
   isBrushHidden(brush: Brush, entity?: Entity): boolean {
@@ -375,6 +406,10 @@ export class Editor {
     return isEditorPatchVisible(this, patch, entity);
   }
 
+  isPatchVisibleIn3D(patch: Patch, entity?: Entity): boolean {
+    return isEditorPatchVisibleIn3D(this, patch, entity);
+  }
+
   isPatchHidden(patch: Patch, entity?: Entity): boolean {
     return isEditorPatchHidden(this, patch, entity);
   }
@@ -385,6 +420,30 @@ export class Editor {
 
   isEntityVisible(entity: Entity): boolean {
     return isEditorEntityVisible(this, entity);
+  }
+
+  isEntityVisibleIn3D(entity: Entity): boolean {
+    return isEditorEntityVisibleIn3D(this, entity);
+  }
+
+  isPointVisibleIn3D(point: Vec3): boolean {
+    return isEditorPointVisibleIn3D(this, point);
+  }
+
+  isSegmentVisibleIn3D(start: Vec3, end: Vec3): boolean {
+    return isEditorSegmentVisibleIn3D(this, start, end);
+  }
+
+  cubicClipBounds(): CubicClipBounds | null {
+    return getEditorCubicClipBounds(this);
+  }
+
+  toggleCubicClip(): void {
+    toggleEditorCubicClip(this);
+  }
+
+  adjustCubicClipSize(direction: -1 | 1): void {
+    adjustEditorCubicClipSize(this, direction);
   }
 
   isRegionActive(): boolean {
@@ -560,8 +619,20 @@ export class Editor {
     connectEditorSelectedEntities(this);
   }
 
+  connectSelectedEntitiesAsPath(): void {
+    connectEditorSelectedEntitiesAsPath(this);
+  }
+
+  connectSelectedEntitiesAsClosedPath(): void {
+    connectEditorSelectedEntitiesAsClosedPath(this);
+  }
+
   collectEntityLinks(): EntityLink[] {
     return collectEditorEntityLinks(this);
+  }
+
+  collectEntityPathCurves(): EntityPathCurve[] {
+    return collectEditorEntityPathCurves(this);
   }
 
   // ── History ──
@@ -728,6 +799,35 @@ export class Editor {
     if (this.selection.length === 0) return;
     for (const cb of this.centerOnSelectionCallbacks) cb();
     this.dirty = true;
+  }
+
+  onLocatePoint(callback: (point: Vec3, lookAt: Vec3 | null) => void): void {
+    this.locatePointCallbacks.push(callback);
+  }
+
+  locatePoint(point: Vec3, lookAt: Vec3 | null = null): void {
+    for (const cb of this.locatePointCallbacks) cb(point, lookAt);
+    this.dirty = true;
+  }
+
+  loadPointfileText(text: string, statusPrefix?: string): boolean {
+    return loadEditorPointfileText(this, text, { statusPrefix });
+  }
+
+  openPointfileFromFile(): void {
+    openEditorPointfileFromFile(this);
+  }
+
+  clearPointfile(updateStatus = true): void {
+    clearEditorPointfile(this, updateStatus);
+  }
+
+  nextPointfilePoint(): void {
+    nextEditorPointfilePoint(this);
+  }
+
+  prevPointfilePoint(): void {
+    prevEditorPointfilePoint(this);
   }
 
   setTexture(texture: string): void {

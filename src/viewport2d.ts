@@ -39,6 +39,10 @@ export class Viewport2D {
 
     setupViewport2DInteraction(this);
     this.editor.onCenterOnSelection(() => this.centerOnSelection());
+    this.editor.onLocatePoint((point) => {
+      this.centerX = point[this.axisH];
+      this.centerY = point[this.axisV];
+    });
   }
 
   centerOnSelection(): void {

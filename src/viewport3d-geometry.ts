@@ -8,8 +8,13 @@ export interface Viewport3DGeometryContext {
   gl: WebGL2RenderingContext;
   editor: Editor;
   solidVBO: WebGLBuffer;
+  clipBoxVBO: WebGLBuffer;
   pathLineVBO: WebGLBuffer;
   pathLineSelVBO: WebGLBuffer;
+  pathCurveVBO: WebGLBuffer;
+  pathCurveSelVBO: WebGLBuffer;
+  pointfileLineVBO: WebGLBuffer;
+  pointfileMarkerVBO: WebGLBuffer;
   lineVBO: WebGLBuffer;
   wireVBO: WebGLBuffer;
   faceSelVBO: WebGLBuffer;
@@ -20,8 +25,13 @@ export interface Viewport3DGeometryContext {
 
 export interface Viewport3DGeometryBuild {
   drawGroups: DrawGroup[];
+  clipBoxCount: number;
   pathLineCount: number;
   pathLineSelCount: number;
+  pathCurveCount: number;
+  pathCurveSelCount: number;
+  pointfileLineCount: number;
+  pointfileMarkerCount: number;
   lineCount: number;
   wireCount: number;
   faceSelCount: number;
@@ -33,6 +43,22 @@ export interface Viewport3DGeometryBuild {
 export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewport3DGeometryBuild {
   const tm = ctx.editor.textureManager;
   const facesByTex = new Map<string, { verts: number[]; selected: boolean; faceSelected: boolean }[]>();
+  const appendBoundsWireframe = (verts: number[], mins: Vec3, maxs: Vec3) => {
+    const corners: Vec3[] = [
+      [mins[0], mins[1], mins[2]],
+      [maxs[0], mins[1], mins[2]],
+      [maxs[0], maxs[1], mins[2]],
+      [mins[0], maxs[1], mins[2]],
+      [mins[0], mins[1], maxs[2]],
+      [maxs[0], mins[1], maxs[2]],
+      [maxs[0], maxs[1], maxs[2]],
+      [mins[0], maxs[1], maxs[2]],
+    ];
+    const edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+    for (const [a, b] of edges) {
+      verts.push(corners[a][0], corners[a][1], corners[a][2], corners[b][0], corners[b][1], corners[b][2]);
+    }
+  };
 
   const addFace = (face: BrushFace, selected: boolean, faceSelected: boolean) => {
     if (face.polygon.length < 3) return;
@@ -60,8 +86,17 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     group.push({ verts, selected, faceSelected });
   };
 
+  const clipBoxVerts: number[] = [];
+  const cubicClip = ctx.editor.cubicClipBounds();
+  if (cubicClip) {
+    appendBoundsWireframe(clipBoxVerts, cubicClip.mins, cubicClip.maxs);
+  }
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.clipBoxVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(clipBoxVerts), ctx.gl.DYNAMIC_DRAW);
+  const clipBoxCount = clipBoxVerts.length / 3;
+
   for (const { entity, brush } of ctx.editor.allBrushes()) {
-    if (!ctx.editor.isBrushVisible(brush, entity)) continue;
+    if (!ctx.editor.isBrushVisibleIn3D(brush, entity)) continue;
     const brushSelected = ctx.editor.isSelected(brush, entity);
     for (const face of brush.faces) {
       const fsel = ctx.editor.isFaceSelected(face);
@@ -72,7 +107,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   }
 
   for (const { entity, patch } of ctx.editor.allPatches()) {
-    if (!ctx.editor.isPatchVisible(patch, entity)) continue;
+    if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
     const patchSelected = ctx.editor.isPatchSelected(patch, entity);
     const key = patch.texture.toLowerCase() + (patchSelected ? '|sel' : '');
     let group = facesByTex.get(key);
@@ -99,7 +134,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   const entityVertsByColor = new Map<string, number[]>();
   for (const entity of ctx.editor.nonWorldspawnEntities()) {
-    if (!ctx.editor.isEntityVisible(entity)) continue;
+    if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
     const origin = ctx.editor.entityDisplayOrigin(entity);
     if (!origin) continue;
     const color = entityColor(entity.classname);
@@ -179,6 +214,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   const pathLineVerts: number[] = [];
   const pathSelLineVerts: number[] = [];
   for (const link of ctx.editor.collectEntityLinks()) {
+    if (!ctx.editor.isSegmentVisibleIn3D(link.from, link.to)) continue;
     const arr = link.highlighted ? pathSelLineVerts : pathLineVerts;
     arr.push(
       link.from[0], link.from[1], link.from[2],
@@ -194,12 +230,58 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pathSelLineVerts), ctx.gl.DYNAMIC_DRAW);
   const pathLineSelCount = pathSelLineVerts.length / 3;
 
+  const pathCurveVerts: number[] = [];
+  const pathCurveSelVerts: number[] = [];
+  for (const curve of ctx.editor.collectEntityPathCurves()) {
+    const arr = curve.highlighted ? pathCurveSelVerts : pathCurveVerts;
+    for (let i = 0; i < curve.points.length - 1; i++) {
+      const from = curve.points[i];
+      const to = curve.points[i + 1];
+      if (!ctx.editor.isSegmentVisibleIn3D(from, to)) continue;
+      arr.push(from[0], from[1], from[2], to[0], to[1], to[2]);
+    }
+  }
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.pathCurveVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pathCurveVerts), ctx.gl.DYNAMIC_DRAW);
+  const pathCurveCount = pathCurveVerts.length / 3;
+
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.pathCurveSelVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pathCurveSelVerts), ctx.gl.DYNAMIC_DRAW);
+  const pathCurveSelCount = pathCurveSelVerts.length / 3;
+
+  const pointfileLineVerts: number[] = [];
+  for (let i = 0; i < ctx.editor.pointfilePoints.length - 1; i++) {
+    const from = ctx.editor.pointfilePoints[i];
+    const to = ctx.editor.pointfilePoints[i + 1];
+    if (!ctx.editor.isSegmentVisibleIn3D(from, to)) continue;
+    pointfileLineVerts.push(from[0], from[1], from[2], to[0], to[1], to[2]);
+  }
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.pointfileLineVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pointfileLineVerts), ctx.gl.DYNAMIC_DRAW);
+  const pointfileLineCount = pointfileLineVerts.length / 3;
+
+  const pointfileMarkerVerts: number[] = [];
+  if (ctx.editor.pointfilePoints.length > 0) {
+    const point = ctx.editor.pointfilePoints[Math.max(0, Math.min(ctx.editor.pointfileIndex, ctx.editor.pointfilePoints.length - 1))];
+    if (ctx.editor.isPointVisibleIn3D(point)) {
+      const s = 8;
+      pointfileMarkerVerts.push(
+        point[0] - s, point[1], point[2], point[0] + s, point[1], point[2],
+        point[0], point[1] - s, point[2], point[0], point[1] + s, point[2],
+        point[0], point[1], point[2] - s, point[0], point[1], point[2] + s,
+      );
+    }
+  }
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.pointfileMarkerVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pointfileMarkerVerts), ctx.gl.DYNAMIC_DRAW);
+  const pointfileMarkerCount = pointfileMarkerVerts.length / 3;
+
   const selLineVerts: number[] = [];
   const wireVerts: number[] = [];
   const faceSelLineVerts: number[] = [];
 
   for (const { entity, brush } of ctx.editor.allBrushes()) {
-    if (!ctx.editor.isBrushVisible(brush, entity)) continue;
+    if (!ctx.editor.isBrushVisibleIn3D(brush, entity)) continue;
     const brushSelected = ctx.editor.isSelected(brush, entity);
     for (const face of brush.faces) {
       if (face.polygon.length < 3) continue;
@@ -219,7 +301,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   }
 
   for (const { entity, patch } of ctx.editor.allPatches()) {
-    if (!ctx.editor.isPatchVisible(patch, entity)) continue;
+    if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
     const arr = ctx.editor.isPatchSelected(patch, entity) ? selLineVerts : wireVerts;
     const n = patch.subdivisions + 1;
     const subCols = (patch.width - 1) / 2;
@@ -250,7 +332,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     if (!ctx.editor.isEntitySelected(entity)) continue;
     if (ctx.editor.isPointEntity(entity)) {
       const origin = ctx.editor.entityDisplayOrigin(entity);
-      if (!origin) continue;
+      if (!origin || !ctx.editor.isPointVisibleIn3D(origin)) continue;
       const s = 8;
       const pts: Vec3[] = [
         [origin[0], origin[1], origin[2] + s],
@@ -268,21 +350,8 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     }
 
     const bounds = ctx.editor.entityBounds(entity);
-    if (!bounds) continue;
-    const corners: Vec3[] = [
-      [bounds.mins[0], bounds.mins[1], bounds.mins[2]],
-      [bounds.maxs[0], bounds.mins[1], bounds.mins[2]],
-      [bounds.maxs[0], bounds.maxs[1], bounds.mins[2]],
-      [bounds.mins[0], bounds.maxs[1], bounds.mins[2]],
-      [bounds.mins[0], bounds.mins[1], bounds.maxs[2]],
-      [bounds.maxs[0], bounds.mins[1], bounds.maxs[2]],
-      [bounds.maxs[0], bounds.maxs[1], bounds.maxs[2]],
-      [bounds.mins[0], bounds.maxs[1], bounds.maxs[2]],
-    ];
-    const edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
-    for (const [a, b] of edges) {
-      selLineVerts.push(corners[a][0], corners[a][1], corners[a][2], corners[b][0], corners[b][1], corners[b][2]);
-    }
+    if (!bounds || !ctx.editor.isEntityVisibleIn3D(entity)) continue;
+    appendBoundsWireframe(selLineVerts, bounds.mins, bounds.maxs);
   }
 
   const lightRadiusVerts: number[] = [];
@@ -294,7 +363,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     const radius = parseFloat(entity.properties['light']);
     if (!(radius > 0)) continue;
     const origin = entityOrigin(entity);
-    if (!origin) continue;
+    if (!origin || !ctx.editor.isPointVisibleIn3D(origin)) continue;
     const color: [number, number, number] = parseLightColor(entity) ?? [1.0, 1.0, 0.4];
     const start = lightRadiusVerts.length / 3;
     for (let axis = 0; axis < 3; axis++) {
@@ -388,8 +457,13 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   return {
     drawGroups,
+    clipBoxCount,
     pathLineCount,
     pathLineSelCount,
+    pathCurveCount,
+    pathCurveSelCount,
+    pointfileLineCount,
+    pointfileMarkerCount,
     lineCount,
     wireCount,
     faceSelCount,

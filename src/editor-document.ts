@@ -40,6 +40,7 @@ export function loadMap(editor: Editor, text: string): void {
   editor.entities = parseMap(text);
   editor.selection = [];
   editor.regionBounds = null;
+  editor.clearPointfile(false);
   editor.clearHiddenState();
   editor.dirty = true;
   editor.statusMessage = 'Map loaded';
@@ -50,6 +51,7 @@ export function newMap(editor: Editor): void {
   editor.entities = [];
   editor.selection = [];
   editor.regionBounds = null;
+  editor.clearPointfile(false);
   editor.clearHiddenState();
   editor.dirty = true;
   editor.statusMessage = 'New map';
@@ -87,6 +89,7 @@ export function openMapFromFile(editor: Editor): void {
 export function createDefaultMap(editor: Editor): void {
   editor.entities = [];
   editor.regionBounds = null;
+  editor.clearPointfile(false);
   editor.clearHiddenState();
   const worldspawn = editor.worldspawn;
 

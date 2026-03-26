@@ -611,6 +611,7 @@ export class UI {
       <span class="status-item" id="status-grid">Grid: 16</span>
       <span class="status-item" id="status-sel">Sel: 0</span>
       <span class="status-item" id="status-region"></span>
+      <span class="status-item" id="status-clip"></span>
       <span class="status-item" id="status-brushes">Brushes: 0</span>
       <span class="status-item" id="status-gizmo"></span>
     `;
@@ -753,6 +754,10 @@ export class UI {
       } else {
         regionEl.textContent = '';
       }
+    }
+    const clipEl = document.getElementById('status-clip');
+    if (clipEl) {
+      clipEl.textContent = e.cubicClipEnabled ? `Clip: ${e.cubicClipSize}` : '';
     }
     document.getElementById('grid-label')!.innerHTML = `<span class="tool-label">G:${e.gridSize}</span>`;
     const snapBtn = document.getElementById('snap-toggle')!;
@@ -1182,9 +1187,22 @@ export class UI {
       qualitySelect.disabled = false;
 
       if (result.success && result.bsp) {
-        status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
-        status.style.color = '#0c0';
-        title.style.color = '#0c0';
+        const leaked = !!result.pointfileText
+          && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile');
+        if (leaked) {
+          status.textContent = `Compiled with leak (${(result.bsp.length / 1024).toFixed(1)} KB, pointfile loaded)`;
+          status.style.color = '#fa0';
+          title.style.color = '#fa0';
+          log.textContent += (log.textContent ? '\n' : '') + '[editor] Leak pointfile loaded\n';
+          log.scrollTop = log.scrollHeight;
+          this.editor.statusMessage = 'Leak detected: pointfile loaded';
+        } else {
+          this.editor.clearPointfile(false);
+          status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
+          status.style.color = '#0c0';
+          title.style.color = '#0c0';
+          this.editor.statusMessage = 'BSP compiled successfully';
+        }
 
         saveBtn.style.display = '';
         saveBtn.onclick = () => {
@@ -1222,13 +1240,19 @@ export class UI {
           }
           setTimeout(() => { runBtn.textContent = 'Run in ioquake3'; runBtn.disabled = false; }, 2000);
         };
-
-        this.editor.statusMessage = 'BSP compiled successfully';
       } else {
-        status.textContent = 'Compilation failed';
+        if (result.pointfileText && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile')) {
+          status.textContent = 'Compilation failed (leak pointfile loaded)';
+          log.textContent += (log.textContent ? '\n' : '') + '[editor] Leak pointfile loaded\n';
+          log.scrollTop = log.scrollHeight;
+          this.editor.statusMessage = 'Leak detected: pointfile loaded';
+        } else {
+          this.editor.clearPointfile(false);
+          status.textContent = 'Compilation failed';
+          this.editor.statusMessage = 'BSP compilation failed';
+        }
         status.style.color = '#f44';
         title.style.color = '#f44';
-        this.editor.statusMessage = 'BSP compilation failed';
       }
     };
   }
