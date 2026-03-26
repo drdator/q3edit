@@ -112,7 +112,7 @@ export function setupKeyboard(ctx: KeyboardContext): void {
       return;
     }
 
-    if (ctx.editor.patchEditMode && ctx.editor.patchControlSelection.length > 0) {
+    if (ctx.editor.patchEditMode) {
       if (e.key === 'PageUp' && !ctrl && !e.shiftKey) { e.preventDefault(); ctx.editor.raiseTerrain(); return; }
       if (e.key === 'PageDown' && !ctrl && !e.shiftKey) { e.preventDefault(); ctx.editor.lowerTerrain(); return; }
       if (e.key === 'Home' && !ctrl && !e.shiftKey) { e.preventDefault(); ctx.editor.smoothTerrain(); return; }

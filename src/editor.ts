@@ -235,6 +235,8 @@ export class Editor {
   terrainBrushRadius = 64;
   terrainBrushStrength = 16;
   terrainFalloff: TerrainFalloff = 'smooth';
+  terrainBrushCenter: Vec3 | null = null;
+  terrainBrushAxes: [number, number] | null = null;
   pointfilePoints: Vec3[] = [];
   pointfileIndex = 0;
   dirty = true;
@@ -974,8 +976,8 @@ export class Editor {
     smoothEditorTerrain(this);
   }
 
-  sculptTerrain(amount: number, takeSnapshot = true): void {
-    sculptEditorTerrain(this, amount, takeSnapshot);
+  sculptTerrain(amount: number, takeSnapshot = true, selectedOnly = false): void {
+    sculptEditorTerrain(this, amount, takeSnapshot, selectedOnly);
   }
 
   adjustTerrainRadius(delta: number): void {

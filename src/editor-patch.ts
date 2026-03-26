@@ -66,6 +66,8 @@ export function enterPatchEditMode(editor: Editor): void {
 
   editor.patchEditMode = true;
   editor.patchControlSelection = [];
+  editor.terrainBrushCenter = null;
+  editor.terrainBrushAxes = null;
   editor.dirty = true;
   editor.statusMessage = 'Patch edit mode';
 }
@@ -78,6 +80,8 @@ export function exitPatchEditMode(editor: Editor): void {
   editor.patchEditMode = false;
   editor.patchEditData = [];
   editor.patchControlSelection = [];
+  editor.terrainBrushCenter = null;
+  editor.terrainBrushAxes = null;
   editor.dirty = true;
 }
 

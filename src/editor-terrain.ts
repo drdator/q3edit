@@ -48,6 +48,11 @@ type SelectedTerrainCenter = {
   col: number;
 };
 
+type TerrainBrushAnchor = {
+  dataIndex: number;
+  point: [number, number, number];
+};
+
 function selectedTerrainCenters(editor: Editor): SelectedTerrainCenter[] {
   if (!editor.patchEditMode || editor.patchControlSelection.length === 0) return [];
   return editor.patchControlSelection.map(cp => ({
@@ -57,10 +62,63 @@ function selectedTerrainCenters(editor: Editor): SelectedTerrainCenter[] {
   }));
 }
 
-function ensureTerrainCenters(editor: Editor): SelectedTerrainCenter[] | null {
+function cursorTerrainAnchors(editor: Editor): TerrainBrushAnchor[] {
+  if (!editor.patchEditMode || !editor.terrainBrushCenter || !editor.terrainBrushAxes) return [];
+  const [brushAxisH, brushAxisV] = editor.terrainBrushAxes;
+  const point = [...editor.terrainBrushCenter] as [number, number, number];
+  const anchors: TerrainBrushAnchor[] = [];
+
+  for (let dataIndex = 0; dataIndex < editor.patchEditData.length; dataIndex++) {
+    const patch = editor.patchEditData[dataIndex]?.patch;
+    if (!patch) continue;
+    const [axisA, axisB] = terrainPlanarAxes(terrainHeightAxis(patch));
+    const matchesAxes = (brushAxisH === axisA && brushAxisV === axisB)
+      || (brushAxisH === axisB && brushAxisV === axisA);
+    if (!matchesAxes) continue;
+    anchors.push({ dataIndex, point });
+  }
+
+  return anchors;
+}
+
+function selectedTerrainAnchors(editor: Editor): TerrainBrushAnchor[] {
   const centers = selectedTerrainCenters(editor);
-  if (centers.length > 0) return centers;
-  editor.statusMessage = 'Enter patch edit mode and select terrain control points';
+  const anchors: TerrainBrushAnchor[] = [];
+  for (const center of centers) {
+    const patch = editor.patchEditData[center.dataIndex]?.patch;
+    const point = patch?.ctrl[center.row]?.[center.col]?.xyz;
+    if (!point) continue;
+    anchors.push({
+      dataIndex: center.dataIndex,
+      point: [...point] as [number, number, number],
+    });
+  }
+  return anchors;
+}
+
+function selectedTerrainPointSets(editor: Editor): Map<number, Set<string>> {
+  const selected = new Map<number, Set<string>>();
+  for (const center of selectedTerrainCenters(editor)) {
+    const items = selected.get(center.dataIndex) ?? new Set<string>();
+    items.add(`${center.row}:${center.col}`);
+    selected.set(center.dataIndex, items);
+  }
+  return selected;
+}
+
+function ensureTerrainAnchors(editor: Editor): TerrainBrushAnchor[] | null {
+  if (!editor.patchEditMode || editor.patchEditData.length === 0) {
+    editor.statusMessage = 'Enter patch edit mode to sculpt terrain';
+    return null;
+  }
+
+  const cursorAnchors = cursorTerrainAnchors(editor);
+  if (cursorAnchors.length > 0) return cursorAnchors;
+
+  const selectedAnchors = selectedTerrainAnchors(editor);
+  if (selectedAnchors.length > 0) return selectedAnchors;
+
+  editor.statusMessage = 'Hover terrain in a matching 2D view or select terrain control points';
   return null;
 }
 
@@ -86,8 +144,10 @@ export function createTerrainPatch(editor: Editor): void {
   const centerRow = Math.floor(height / 2);
   const centerCol = Math.floor(width / 2);
   editor.patchControlSelection = [{ dataIndex: 0, row: centerRow, col: centerCol }];
+  editor.terrainBrushCenter = null;
+  editor.terrainBrushAxes = null;
   editor.dirty = true;
-  editor.statusMessage = `Created terrain patch ${width}x${height} (Alt-drag, PgUp/PgDn/Home)`;
+  editor.statusMessage = `Created terrain patch ${width}x${height} (Alt drag sculpt, Alt+Shift/Ctrl+Alt paint)`;
 }
 
 export function raiseTerrain(editor: Editor): void {
@@ -98,23 +158,24 @@ export function lowerTerrain(editor: Editor): void {
   sculptTerrain(editor, -terrainStrength(editor));
 }
 
-export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = true): void {
+export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = true, selectedOnly = false): void {
   if (amount === 0) return;
-  const centers = ensureTerrainCenters(editor);
-  if (!centers) return;
+  const anchors = ensureTerrainAnchors(editor);
+  if (!anchors) return;
 
   const radius = terrainRadius(editor);
   const falloff = editor.terrainFalloff;
-  const centersByPatch = new Map<number, SelectedTerrainCenter[]>();
-  for (const center of centers) {
-    const items = centersByPatch.get(center.dataIndex) ?? [];
-    items.push(center);
-    centersByPatch.set(center.dataIndex, items);
+  const anchorsByPatch = new Map<number, TerrainBrushAnchor[]>();
+  for (const anchor of anchors) {
+    const items = anchorsByPatch.get(anchor.dataIndex) ?? [];
+    items.push(anchor);
+    anchorsByPatch.set(anchor.dataIndex, items);
   }
+  const selectedPointsByPatch = selectedOnly ? selectedTerrainPointSets(editor) : null;
 
   if (takeSnapshot) editor.snapshot();
 
-  for (const [dataIndex, patchCenters] of centersByPatch) {
+  for (const [dataIndex, patchAnchors] of anchorsByPatch) {
     const data = editor.patchEditData[dataIndex];
     if (!data) continue;
     const patch = data.patch;
@@ -124,12 +185,13 @@ export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = tru
 
     for (let row = 0; row < patch.height; row++) {
       for (let col = 0; col < patch.width; col++) {
+        const selectedPoints = selectedPointsByPatch?.get(dataIndex);
+        if (selectedPoints && selectedPoints.size > 0 && !selectedPoints.has(`${row}:${col}`)) continue;
         const point = original[row][col];
         let weight = 0;
-        for (const center of patchCenters) {
-          const anchor = original[center.row][center.col];
-          const dx = point[axisA] - anchor[axisA];
-          const dy = point[axisB] - anchor[axisB];
+        for (const anchor of patchAnchors) {
+          const dx = point[axisA] - anchor.point[axisA];
+          const dy = point[axisB] - anchor.point[axisB];
           weight = Math.max(weight, terrainBrushWeight(Math.hypot(dx, dy), radius, falloff));
         }
         if (weight <= 0) continue;
@@ -145,21 +207,21 @@ export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = tru
 }
 
 export function smoothTerrain(editor: Editor): void {
-  const centers = ensureTerrainCenters(editor);
-  if (!centers) return;
+  const anchors = ensureTerrainAnchors(editor);
+  if (!anchors) return;
 
   const radius = terrainRadius(editor);
   const falloff = editor.terrainFalloff;
-  const centersByPatch = new Map<number, SelectedTerrainCenter[]>();
-  for (const center of centers) {
-    const items = centersByPatch.get(center.dataIndex) ?? [];
-    items.push(center);
-    centersByPatch.set(center.dataIndex, items);
+  const anchorsByPatch = new Map<number, TerrainBrushAnchor[]>();
+  for (const anchor of anchors) {
+    const items = anchorsByPatch.get(anchor.dataIndex) ?? [];
+    items.push(anchor);
+    anchorsByPatch.set(anchor.dataIndex, items);
   }
 
   editor.snapshot();
 
-  for (const [dataIndex, patchCenters] of centersByPatch) {
+  for (const [dataIndex, patchAnchors] of anchorsByPatch) {
     const data = editor.patchEditData[dataIndex];
     if (!data) continue;
     const patch = data.patch;
@@ -171,10 +233,9 @@ export function smoothTerrain(editor: Editor): void {
       for (let col = 0; col < patch.width; col++) {
         const point = original[row][col];
         let weight = 0;
-        for (const center of patchCenters) {
-          const anchor = original[center.row][center.col];
-          const dx = point[axisA] - anchor[axisA];
-          const dy = point[axisB] - anchor[axisB];
+        for (const anchor of patchAnchors) {
+          const dx = point[axisA] - anchor.point[axisA];
+          const dy = point[axisB] - anchor.point[axisB];
           weight = Math.max(weight, terrainBrushWeight(Math.hypot(dx, dy), radius, falloff));
         }
         if (weight <= 0) continue;

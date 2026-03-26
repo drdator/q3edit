@@ -31,6 +31,8 @@ interface RotatePatchOriginal {
   ctrl: { xyz: Vec3; uv: [number, number] }[][];
 }
 
+type TerrainSculptMode = 'locked' | 'paintRaise' | 'paintLower';
+
 export interface Viewport2DInteractionState {
   spaceDown: boolean;
   dragging: boolean;
@@ -55,8 +57,10 @@ export interface Viewport2DInteractionState {
   vertexDragging: boolean;
   vertexDragSnapshotTaken: boolean;
   terrainSculpting: boolean;
+  terrainSculptMode: TerrainSculptMode;
   terrainSculptSnapshotTaken: boolean;
   terrainSculptLastY: number;
+  terrainSculptLastWorld: [number, number];
   geoSnapTargets: [number[], number[], number[]] | null;
   geoSnapLines: { axis: 'h' | 'v'; value: number }[];
   rotating: boolean;
@@ -107,8 +111,10 @@ export function createViewport2DInteractionState(): Viewport2DInteractionState {
     vertexDragging: false,
     vertexDragSnapshotTaken: false,
     terrainSculpting: false,
+    terrainSculptMode: 'locked',
     terrainSculptSnapshotTaken: false,
     terrainSculptLastY: 0,
+    terrainSculptLastWorld: [0, 0],
     geoSnapTargets: null,
     geoSnapLines: [],
     rotating: false,
@@ -184,6 +190,30 @@ function snapPlanarPoint(
   return point;
 }
 
+function updateTerrainBrushCursor(
+  ctx: Viewport2DInteractionContext,
+  wx: number,
+  wy: number,
+): void {
+  if (ctx.interaction.terrainSculpting && ctx.interaction.terrainSculptMode === 'locked') {
+    return;
+  }
+
+  if (!ctx.editor.patchEditMode) {
+    ctx.editor.terrainBrushCenter = null;
+    ctx.editor.terrainBrushAxes = null;
+    return;
+  }
+
+  const point: Vec3 = [0, 0, 0];
+  point[ctx.axisH] = wx;
+  point[ctx.axisV] = wy;
+  const selectionCenter = ctx.editor.patchControlSelectionCenter();
+  if (selectionCenter) point[ctx.axisDepth] = selectionCenter[ctx.axisDepth];
+  ctx.editor.terrainBrushCenter = point;
+  ctx.editor.terrainBrushAxes = [ctx.axisH, ctx.axisV];
+}
+
 function setVertexSelectionPair(
   ctx: Viewport2DInteractionContext,
   dataIndex: number,
@@ -217,6 +247,7 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
   if (e.button !== 0) return;
 
   const [wx, wy] = ctx.screenToWorld(mx, my);
+  updateTerrainBrushCursor(ctx, wx, wy);
 
   if (ctx.editor.activeTool === 'create') {
     const snapped = snapPlanarPoint(ctx, wx, wy, e.ctrlKey, false);
@@ -387,14 +418,17 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
     }
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     if (e.altKey) {
-      if (ctx.editor.patchControlSelection.length === 0) {
-        ctx.editor.statusMessage = 'Select terrain control points first';
-        return;
+      const paintLower = e.ctrlKey || e.metaKey;
+      const paintRaise = e.shiftKey && !paintLower;
+      state.terrainSculptMode = paintLower ? 'paintLower' : paintRaise ? 'paintRaise' : 'locked';
+      if (state.terrainSculptMode === 'locked' && ctx.editor.patchControlSelection.length > 0) {
+        ctx.editor.terrainBrushCenter = null;
+        ctx.editor.terrainBrushAxes = null;
       }
-
       state.terrainSculpting = true;
       state.terrainSculptSnapshotTaken = false;
       state.terrainSculptLastY = my;
+      state.terrainSculptLastWorld = [wx, wy];
       state.dragging = true;
       state.hasDragged = false;
       return;
@@ -585,6 +619,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
   const state = ctx.interaction;
   const [mx, my] = getLocalPos(ctx, e);
   const [wx, wy] = ctx.screenToWorld(mx, my);
+  updateTerrainBrushCursor(ctx, wx, wy);
 
   ctx.editor.statusMessage = `${ctx.axisLabels[0]}: ${wx.toFixed(0)}  ${ctx.axisLabels[1]}: ${wy.toFixed(0)}  Grid: ${ctx.editor.gridSize}`;
 
@@ -866,16 +901,28 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
   }
 
   if (state.terrainSculpting) {
-    const deltaY = state.terrainSculptLastY - my;
-    const amount = deltaY * (ctx.editor.currentTerrainStrength() / 24);
+    let amount = 0;
+    let selectedOnly = false;
+    if (state.terrainSculptMode === 'locked') {
+      const deltaY = state.terrainSculptLastY - my;
+      amount = deltaY * (ctx.editor.currentTerrainStrength() / 24);
+      selectedOnly = ctx.editor.patchControlSelection.length > 0;
+    } else {
+      const dx = wx - state.terrainSculptLastWorld[0];
+      const dy = wy - state.terrainSculptLastWorld[1];
+      const distance = Math.hypot(dx, dy);
+      const direction = state.terrainSculptMode === 'paintLower' ? -1 : 1;
+      amount = direction * distance * (ctx.editor.currentTerrainStrength() / 64);
+    }
     if (amount !== 0) {
       if (!state.terrainSculptSnapshotTaken) {
         ctx.editor.snapshot();
         state.terrainSculptSnapshotTaken = true;
       }
       state.hasDragged = true;
-      ctx.editor.sculptTerrain(amount, false);
+      ctx.editor.sculptTerrain(amount, false, selectedOnly);
       state.terrainSculptLastY = my;
+      state.terrainSculptLastWorld = [wx, wy];
     }
     return;
   }
@@ -1054,6 +1101,7 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
   }
   if (state.terrainSculpting) {
     state.terrainSculpting = false;
+    state.terrainSculptMode = 'locked';
     state.dragging = false;
     return;
   }

@@ -277,7 +277,6 @@ function drawPointfile(ctx: Viewport2DRenderContext): void {
 }
 
 function drawTerrainBrushPreview(ctx: Viewport2DRenderContext): void {
-  if (ctx.editor.patchControlSelection.length === 0) return;
   const screenRadius = ctx.editor.currentTerrainRadius() * ctx.zoom;
   if (screenRadius < 4) return;
 
@@ -286,6 +285,18 @@ function drawTerrainBrushPreview(ctx: Viewport2DRenderContext): void {
   ctx.ctx.fillStyle = 'rgba(255, 170, 0, 0.08)';
   ctx.ctx.lineWidth = 1;
   ctx.ctx.setLineDash([6, 4]);
+
+  const brushAxes = ctx.editor.terrainBrushAxes;
+  const brushCenter = ctx.editor.terrainBrushCenter;
+  if (brushAxes && brushCenter && brushAxes[0] === ctx.axisH && brushAxes[1] === ctx.axisV) {
+    const [sx, sy] = ctx.worldToScreen(brushCenter[ctx.axisH], brushCenter[ctx.axisV]);
+    ctx.ctx.beginPath();
+    ctx.ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
+    ctx.ctx.fill();
+    ctx.ctx.stroke();
+    ctx.ctx.restore();
+    return;
+  }
 
   for (const cp of ctx.editor.patchControlSelection) {
     const data = ctx.editor.patchEditData[cp.dataIndex];

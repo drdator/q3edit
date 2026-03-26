@@ -726,7 +726,7 @@ export class UI {
       selLabel = `Sel: ${vc} vtx (drag verts/edges, V to exit)`;
     } else if (e.patchEditMode) {
       const pc = e.patchControlSelection.length;
-      selLabel = `Sel: ${pc} cp (Alt-drag sculpt, PgUp/PgDn/Home, V to exit)`;
+      selLabel = `Sel: ${pc} cp (Alt drag sculpt, Alt+Shift paint up, Ctrl+Alt paint down, V to exit)`;
     } else {
       const faceCount = e.selection.filter(s => s.type === 'face').length;
       selLabel = faceCount > 0
