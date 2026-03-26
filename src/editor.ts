@@ -62,6 +62,10 @@ import {
   pasteClipboard as pasteEditorClipboard,
 } from './editor-clipboard';
 import {
+  importPrefabFromFile as importEditorPrefabFromFile,
+  saveSelectionAsPrefab as saveEditorSelectionAsPrefab,
+} from './editor-prefabs';
+import {
   fitTexture as fitEditorTexture,
   getTextureFaces as collectTextureFaces,
   replaceTextures as replaceEditorTextures,
@@ -578,6 +582,14 @@ export class Editor {
 
   async pasteClipboard(): Promise<void> {
     await pasteEditorClipboard(this);
+  }
+
+  saveSelectionAsPrefab(): void {
+    saveEditorSelectionAsPrefab(this);
+  }
+
+  importPrefabFromFile(): void {
+    importEditorPrefabFromFile(this);
   }
 
   // ── Default map ──

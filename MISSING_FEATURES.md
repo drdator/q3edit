@@ -12,7 +12,7 @@ Basic brush-entity support is now in place:
 
 What is still missing:
 - Dedicated group management UX
-- Named groups / prefab workflows
+- Named groups
 - Entity-link visualization and target wiring tools
 
 ### Detail / Structural Brushes
@@ -29,6 +29,9 @@ Supported on X / Y / Z axes.
 
 ### Copy / Paste
 Supported for selected brushes, patches, and entities, with browser clipboard integration plus an internal fallback.
+
+### Prefabs
+Supported via saving the current selection as a prefab `.map` fragment and importing prefab files back into the current map.
 
 ### Find / Replace Textures
 Supported for exact or partial texture-name replacement across the current selection or the whole map.
@@ -76,34 +79,31 @@ Still missing:
 ### 1. Terrain System
 Radiant has a full terrain editor with raise/lower sculpting and vertex-level terrain mesh editing.
 
-### 2. Prefabs
-Radiant can save / load prefabs (reusable grouped brush assemblies).
-
-### 3. Connect Entities (target / targetname)
+### 2. Connect Entities (target / targetname)
 Radiant can auto-wire target / targetname links between selected entities and draw path lines.
 
-### 4. Pointfile / Leak Navigation
+### 3. Pointfile / Leak Navigation
 Radiant loads pointfiles from the compiler and lets you navigate leak paths.
 
-### 5. Splines / Paths
+### 4. Splines / Paths
 Radiant has spline path tools for camera paths and entity movement.
 
-### 6. Cubic Clipping (View Distance)
+### 5. Cubic Clipping (View Distance)
 Radiant can clip the 3D view at a configurable distance for large-map performance.
 
-### 7. Arbitrary Rotation / Scale Dialogs
+### 6. Arbitrary Rotation / Scale Dialogs
 Radiant has precise numeric input dialogs for rotation and scaling. We only have direct manipulation plus fixed-angle rotation shortcuts.
 
-### 8. Edge Dragging
+### 7. Edge Dragging
 Radiant can drag edges, not just vertices, in vertex editing mode.
 
-### 9. Plugin System
+### 8. Plugin System
 Radiant has a plugin architecture. A web-native equivalent does not exist here yet.
 
 ## Suggested Next Priority
 
-1. Prefabs
-2. Connect entities
-3. Terrain system
-4. Pointfile / leak navigation
-5. Splines / paths
+1. Connect entities
+2. Terrain system
+3. Pointfile / leak navigation
+4. Splines / paths
+5. Cubic clipping
