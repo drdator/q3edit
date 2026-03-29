@@ -5,6 +5,7 @@ import { applyBrushPrimitiveToolbarIcon, brushPrimitiveToolbarIconMarkup } from 
 export interface ToolbarContext {
   editor: Editor;
   setTool: (tool: Tool) => void;
+  openTerrainPanel: () => void;
   increaseGrid: () => void;
   toggleSnap: () => void;
   toggleGeoSnap: () => void;
@@ -49,12 +50,21 @@ export function buildToolbar(ctx: ToolbarContext): void {
   };
 
   const createToolPanel = document.createElement('div');
-  createToolPanel.className = 'tool-popover';
+  createToolPanel.className = 'panel floating-panel tool-popover-panel';
   createToolPanel.id = 'create-tool-panel';
+
+  const createToolHeader = document.createElement('div');
+  createToolHeader.className = 'panel-header';
+  createToolHeader.textContent = 'Create Brush';
+  createToolPanel.appendChild(createToolHeader);
+
+  const createToolBody = document.createElement('div');
+  createToolBody.className = 'panel-body';
+  createToolPanel.appendChild(createToolBody);
 
   const primitiveLabel = document.createElement('label');
   primitiveLabel.textContent = 'Primitive';
-  createToolPanel.appendChild(primitiveLabel);
+  createToolBody.appendChild(primitiveLabel);
 
   const primitiveSelect = document.createElement('select');
   primitiveSelect.id = 'toolbar-brush-primitive';
@@ -64,11 +74,11 @@ export function buildToolbar(ctx: ToolbarContext): void {
     opt.textContent = option.label;
     primitiveSelect.appendChild(opt);
   }
-  createToolPanel.appendChild(primitiveSelect);
+  createToolBody.appendChild(primitiveSelect);
 
   const sidesLabel = document.createElement('label');
   sidesLabel.textContent = 'Sides';
-  createToolPanel.appendChild(sidesLabel);
+  createToolBody.appendChild(sidesLabel);
 
   const sidesSelect = document.createElement('select');
   sidesSelect.id = 'toolbar-brush-sides';
@@ -78,7 +88,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     opt.textContent = String(sides);
     sidesSelect.appendChild(opt);
   }
-  createToolPanel.appendChild(sidesSelect);
+  createToolBody.appendChild(sidesSelect);
 
   document.body.appendChild(createToolPanel);
 
@@ -183,6 +193,15 @@ export function buildToolbar(ctx: ToolbarContext): void {
       setCreateToolButtonIcon();
     }
   }
+
+  bar.appendChild(createSeparator());
+
+  addBtn({
+    id: 'terrain-panel-toggle',
+    icon: icon('mountains'),
+    title: 'Open terrain panel',
+    onClick: () => ctx.openTerrainPanel(),
+  });
 
   bar.appendChild(createSeparator());
 

@@ -5,6 +5,7 @@ import { Vec3, vec3, vec3Add, vec3Sub, vec3Cross, vec3Normalize, vec3Copy, vec3R
 export interface PatchControlPoint {
   xyz: Vec3;
   uv: [number, number];
+  terrainCoord?: [number, number];
 }
 
 export interface PatchTessVertex {
@@ -177,7 +178,11 @@ export function tessellatePatch(patch: Patch, subdivisions?: number): void {
 
 export function clonePatch(patch: Patch): Patch {
   const ctrl: PatchControlPoint[][] = patch.ctrl.map(row =>
-    row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
+    row.map(cp => ({
+      xyz: vec3Copy(cp.xyz),
+      uv: [cp.uv[0], cp.uv[1]] as [number, number],
+      terrainCoord: cp.terrainCoord ? [cp.terrainCoord[0], cp.terrainCoord[1]] as [number, number] : undefined,
+    }))
   );
   const p: Patch = {
     width: patch.width,

@@ -59,6 +59,31 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
       verts.push(corners[a][0], corners[a][1], corners[a][2], corners[b][0], corners[b][1], corners[b][2]);
     }
   };
+  const appendPatchWireframe = (verts: number[], patch: Patch) => {
+    const n = patch.subdivisions + 1;
+    const subCols = (patch.width - 1) / 2;
+    const subRows = (patch.height - 1) / 2;
+    for (let spr = 0; spr < subRows; spr++) {
+      for (let spc = 0; spc < subCols; spc++) {
+        const base = (spr * subCols + spc) * n * n;
+        for (let vi = 0; vi < n; vi++) {
+          for (let ui = 0; ui < n; ui++) {
+            const idx = base + vi * n + ui;
+            const p = patch.tessVerts[idx]?.position;
+            if (!p) continue;
+            if (ui < n - 1) {
+              const q = patch.tessVerts[idx + 1].position;
+              verts.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+            }
+            if (vi < n - 1) {
+              const q = patch.tessVerts[idx + n].position;
+              verts.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+            }
+          }
+        }
+      }
+    }
+  };
 
   const addFace = (face: BrushFace, selected: boolean, faceSelected: boolean) => {
     if (face.polygon.length < 3) return;
@@ -279,6 +304,9 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   const selLineVerts: number[] = [];
   const wireVerts: number[] = [];
   const faceSelLineVerts: number[] = [];
+  const terrainPaintPreview = ctx.editor.patchEditMode && ctx.editor.terrainBrushMode === 'texture'
+    ? new Set(ctx.editor.hoveredTerrainPaintPatches())
+    : null;
 
   for (const { entity, brush } of ctx.editor.allBrushes()) {
     if (!ctx.editor.isBrushVisibleIn3D(brush, entity)) continue;
@@ -302,29 +330,12 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   for (const { entity, patch } of ctx.editor.allPatches()) {
     if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
-    const arr = ctx.editor.isPatchSelected(patch, entity) ? selLineVerts : wireVerts;
-    const n = patch.subdivisions + 1;
-    const subCols = (patch.width - 1) / 2;
-    const subRows = (patch.height - 1) / 2;
-    for (let spr = 0; spr < subRows; spr++) {
-      for (let spc = 0; spc < subCols; spc++) {
-        const base = (spr * subCols + spc) * n * n;
-        for (let vi = 0; vi < n; vi++) {
-          for (let ui = 0; ui < n; ui++) {
-            const idx = base + vi * n + ui;
-            const p = patch.tessVerts[idx]?.position;
-            if (!p) continue;
-            if (ui < n - 1) {
-              const q = patch.tessVerts[idx + 1].position;
-              arr.push(p[0], p[1], p[2], q[0], q[1], q[2]);
-            }
-            if (vi < n - 1) {
-              const q = patch.tessVerts[idx + n].position;
-              arr.push(p[0], p[1], p[2], q[0], q[1], q[2]);
-            }
-          }
-        }
-      }
+    if (ctx.editor.isPatchSelected(patch, entity)) {
+      appendPatchWireframe(selLineVerts, patch);
+      continue;
+    }
+    if (terrainPaintPreview?.has(patch)) {
+      appendPatchWireframe(faceSelLineVerts, patch);
     }
   }
 

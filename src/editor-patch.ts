@@ -11,6 +11,7 @@ import type { Entity } from './entity';
 import type { Vec3 } from './math';
 import { getSelectedPatchItems } from './editor-selection';
 import type { Editor } from './editor';
+import { stitchSelectedTerrainControlSeams } from './editor-terrain';
 
 export function createPatch(
   editor: Editor,
@@ -132,6 +133,7 @@ export function moveSelectedControlPoints(editor: Editor, delta: Vec3): void {
   for (const dataIndex of affectedPatches) {
     tessellatePatch(editor.patchEditData[dataIndex].patch);
   }
+  stitchSelectedTerrainControlSeams(editor);
   editor.dirty = true;
 }
 

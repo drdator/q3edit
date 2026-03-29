@@ -117,6 +117,7 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
     'Terrain': [
       { label: 'Create Terrain Patch', action: () => ctx.editor.createTerrainPatch() },
       { label: 'Prepare Terrain For Texture Paint', action: () => ctx.editor.splitTerrainIntoPaintTiles() },
+      { label: 'Stitch Terrain Seams', action: () => ctx.editor.stitchTerrainSeams() },
       { separator: true },
       {
         label: () => `Brush Mode: ${ctx.editor.terrainBrushMode === 'texture' ? 'Texture' : 'Height'}`,
@@ -126,6 +127,8 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
       { label: 'Raise Terrain', shortcut: 'PgUp', action: () => ctx.editor.raiseTerrain() },
       { label: 'Lower Terrain', shortcut: 'PgDn', action: () => ctx.editor.lowerTerrain() },
       { label: 'Smooth Terrain', shortcut: 'Home', action: () => ctx.editor.smoothTerrain() },
+      { label: 'Noise Terrain', action: () => ctx.editor.noiseTerrain() },
+      { label: 'Erode Terrain', action: () => ctx.editor.erodeTerrain() },
       { separator: true },
       { label: 'Smaller Radius', action: () => ctx.editor.adjustTerrainRadius(-8) },
       { label: 'Larger Radius', action: () => ctx.editor.adjustTerrainRadius(8) },

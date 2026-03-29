@@ -277,6 +277,26 @@ function drawPointfile(ctx: Viewport2DRenderContext): void {
 }
 
 function drawTerrainBrushPreview(ctx: Viewport2DRenderContext): void {
+  if (ctx.editor.terrainBrushMode === 'texture') {
+    const previewPatches = ctx.editor.hoveredTerrainPaintPatches();
+    if (previewPatches.length === 0) return;
+
+    ctx.ctx.save();
+    ctx.ctx.strokeStyle = 'rgba(255, 214, 92, 0.95)';
+    ctx.ctx.fillStyle = 'rgba(255, 214, 92, 0.12)';
+    ctx.ctx.lineWidth = 2;
+
+    for (const patch of previewPatches) {
+      const [x0, y0] = ctx.worldToScreen(patch.mins[ctx.axisH], patch.maxs[ctx.axisV]);
+      const [x1, y1] = ctx.worldToScreen(patch.maxs[ctx.axisH], patch.mins[ctx.axisV]);
+      ctx.ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    ctx.ctx.restore();
+    return;
+  }
+
   const screenRadius = ctx.editor.currentTerrainRadius() * ctx.zoom;
   if (screenRadius < 4) return;
 

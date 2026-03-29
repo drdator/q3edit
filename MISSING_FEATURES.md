@@ -58,13 +58,15 @@ Implemented:
 - Terrain brush-based raise / lower / smooth operations at the 2D cursor, with selected control points as fallback anchors
 - Live `Alt`-drag sculpting in 2D patch edit mode
 - Terrain texture painting onto terrain paint tiles with the current texture
+- Terrain noise and erosion actions using the current brush settings
+- Seam stitching for prepared terrain paint tiles, including automatic stitch-on-edit plus a manual stitch command
 - Adjustable terrain brush radius, strength, and smooth / linear falloff
+- Dedicated terrain controls in a floating terrain panel from the toolbar
 - Terrain patch density derived from the current grid size during creation
 
 Still missing:
 - Dedicated terrain map serialization and import/export parity with Radiant terrainDef
-- Noise / erosion tools and terrain stitching workflows
-- Richer terrain-specific UX beyond the current patch-edit + menu workflow
+- Further terrain-specific UX polish beyond the current patch-edit + terrain panel workflow
 
 ### Display Filters
 Implemented:

@@ -114,11 +114,16 @@ import {
   currentTerrainRadius as getEditorTerrainRadius,
   currentTerrainStrength as getEditorTerrainStrength,
   cycleTerrainFalloff as cycleEditorTerrainFalloff,
+  erodeTerrain as erodeEditorTerrain,
+  hoveredTerrainPaintPatches as hoveredEditorTerrainPaintPatches,
   lowerTerrain as lowerEditorTerrain,
+  noiseTerrain as noiseEditorTerrain,
   paintTerrainTexture as paintEditorTerrainTexture,
   raiseTerrain as raiseEditorTerrain,
   sculptTerrain as sculptEditorTerrain,
+  stitchSelectedTerrainControlSeams as stitchEditorSelectedTerrainControlSeams,
   splitTerrainIntoPaintTiles as splitEditorTerrainIntoPaintTiles,
+  stitchTerrainSeams as stitchEditorTerrainSeams,
   smoothTerrain as smoothEditorTerrain,
   toggleTerrainBrushMode as toggleEditorTerrainBrushMode,
   type TerrainBrushMode,
@@ -985,8 +990,28 @@ export class Editor {
     smoothEditorTerrain(this);
   }
 
+  noiseTerrain(): void {
+    noiseEditorTerrain(this);
+  }
+
+  erodeTerrain(): void {
+    erodeEditorTerrain(this);
+  }
+
+  hoveredTerrainPaintPatches(): Patch[] {
+    return hoveredEditorTerrainPaintPatches(this);
+  }
+
   paintTerrainTexture(takeSnapshot = true): number {
     return paintEditorTerrainTexture(this, takeSnapshot);
+  }
+
+  stitchSelectedTerrainControlSeams(): number {
+    return stitchEditorSelectedTerrainControlSeams(this);
+  }
+
+  stitchTerrainSeams(): number {
+    return stitchEditorTerrainSeams(this);
   }
 
   sculptTerrain(amount: number, takeSnapshot = true, selectedOnly = false): void {

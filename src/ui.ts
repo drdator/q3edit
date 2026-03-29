@@ -46,6 +46,7 @@ export class UI {
   private textureReplaceScope: 'selection' | 'map' = 'selection';
   private textureReplaceMatch: 'exact' | 'contains' = 'exact';
   private collapsedBrushPanelEntities = new WeakSet<Entity>();
+  private collapsedBrushPanelTerrainGroups = new Set<string>();
 
   constructor(editor: Editor) {
     this.editor = editor;
@@ -92,6 +93,7 @@ export class UI {
     buildToolbarUI({
       editor: this.editor,
       setTool: (tool) => this.setTool(tool),
+      openTerrainPanel: () => this.openTerrainPanel(),
       increaseGrid: () => this.increaseGrid(),
       toggleSnap: () => this.toggleSnap(),
       toggleGeoSnap: () => this.toggleGeoSnap(),
@@ -104,20 +106,84 @@ export class UI {
   private buildSidePanel(): void {
     // Add collapse toggles to all panel headers
     for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
+      const panel = header.parentElement as HTMLElement | null;
+      if (panel?.id === 'terrain-panel') continue;
       const toggle = document.createElement('span');
       toggle.className = 'panel-toggle';
       toggle.textContent = '\u2212';
       header.appendChild(toggle);
       header.addEventListener('mousedown', () => {
-        const panel = header.parentElement!;
-        panel.classList.toggle('collapsed');
-        toggle.textContent = panel.classList.contains('collapsed') ? '+' : '\u2212';
+        const owningPanel = header.parentElement!;
+        owningPanel.classList.toggle('collapsed');
+        toggle.textContent = owningPanel.classList.contains('collapsed') ? '+' : '\u2212';
       });
     }
 
     this.buildBrushPanel();
     this.buildEntityPanel();
     this.buildTexturePanel();
+    this.buildTerrainPanel();
+    this.setupTerrainPopover();
+  }
+
+  private setPanelCollapsed(panel: HTMLElement, collapsed: boolean): void {
+    panel.classList.toggle('collapsed', collapsed);
+    const toggle = panel.querySelector('.panel-toggle');
+    if (toggle) toggle.textContent = collapsed ? '+' : '\u2212';
+  }
+
+  private positionTerrainPanel(): void {
+    const panel = document.getElementById('terrain-panel') as HTMLElement | null;
+    const button = document.getElementById('terrain-panel-toggle') as HTMLElement | null;
+    if (!panel || !button) return;
+    const rect = button.getBoundingClientRect();
+    panel.style.left = `${rect.right + 8}px`;
+    const maxTop = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
+    panel.style.top = `${Math.min(maxTop, Math.max(8, rect.top))}px`;
+  }
+
+  private closeTerrainPanel(): void {
+    const panel = document.getElementById('terrain-panel');
+    if (!panel) return;
+    panel.classList.remove('open');
+    this.editor.dirty = true;
+  }
+
+  private openTerrainPanel(): void {
+    const panel = document.getElementById('terrain-panel') as HTMLElement | null;
+    if (!panel) return;
+    if (panel.classList.contains('open')) {
+      this.closeTerrainPanel();
+      return;
+    }
+    this.setPanelCollapsed(panel, false);
+    panel.classList.add('open');
+    this.positionTerrainPanel();
+    this.editor.dirty = true;
+  }
+
+  private setupTerrainPopover(): void {
+    const panel = document.getElementById('terrain-panel') as HTMLElement | null;
+    const button = document.getElementById('terrain-panel-toggle') as HTMLElement | null;
+    if (!panel || !button) return;
+
+    document.body.appendChild(panel);
+
+    document.addEventListener('mousedown', (event) => {
+      if (!panel.classList.contains('open')) return;
+      const target = event.target as Node | null;
+      if (target && (panel.contains(target) || button.contains(target))) return;
+      this.closeTerrainPanel();
+    });
+
+    window.addEventListener('resize', () => {
+      if (!panel.classList.contains('open')) return;
+      this.positionTerrainPanel();
+    });
+    window.addEventListener('scroll', () => {
+      if (!panel.classList.contains('open')) return;
+      this.positionTerrainPanel();
+    }, true);
   }
 
   private brushPanelMode: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
@@ -184,6 +250,18 @@ export class UI {
           collapsed: boolean;
         }
       | {
+          kind: 'terrainGroup';
+          entity: Entity;
+          entityIdx: number;
+          groupId: string;
+          representative: Patch;
+          patches: Array<{ patch: Patch; index: number }>;
+          label: string;
+          meta: string;
+          collapsible: boolean;
+          collapsed: boolean;
+        }
+      | {
           kind: 'brush';
           entity: Entity;
           brush: Brush;
@@ -198,6 +276,7 @@ export class UI {
           index: number;
           entityIdx: number;
           label: string;
+          grouped: boolean;
         };
 
     const items: ListItem[] = [];
@@ -222,16 +301,67 @@ export class UI {
           }))
         : [];
       const patchChildren = (mode === 'all' || mode === 'patches')
-        ? entity.patches
-          .filter(patch => e.isPatchInRegion(patch, entity))
-          .map((patch, index) => ({
-            kind: 'patch' as const,
-            entity,
-            patch,
-            index,
-            entityIdx: ei,
-            label: `patch ${index}`,
-          }))
+        ? (() => {
+          const visiblePatches = entity.patches
+            .map((patch, index) => ({ patch, index }))
+            .filter(item => e.isPatchInRegion(item.patch, entity));
+          const groupedPatches = new Map<string, Array<{ patch: Patch; index: number }>>();
+          for (const item of visiblePatches) {
+            if (!item.patch.terrainGroupId) continue;
+            const group = groupedPatches.get(item.patch.terrainGroupId) ?? [];
+            group.push(item);
+            groupedPatches.set(item.patch.terrainGroupId, group);
+          }
+
+          const patchItems: Array<Extract<ListItem, { kind: 'terrainGroup' | 'patch' }>> = [];
+          const emittedGroups = new Set<string>();
+          for (const item of visiblePatches) {
+            const groupId = item.patch.terrainGroupId;
+            const grouped = groupId ? groupedPatches.get(groupId) : null;
+            if (groupId && grouped && grouped.length > 1) {
+              if (emittedGroups.has(groupId)) continue;
+              emittedGroups.add(groupId);
+              const collapseKey = `${ei}:${groupId}`;
+              const collapsed = this.collapsedBrushPanelTerrainGroups.has(collapseKey);
+              patchItems.push({
+                kind: 'terrainGroup',
+                entity,
+                entityIdx: ei,
+                groupId,
+                representative: grouped[0].patch,
+                patches: grouped,
+                label: 'terrain set',
+                meta: `${grouped.length} patches`,
+                collapsible: true,
+                collapsed,
+              });
+              signatureParts.push(`tg:${collapseKey}:${grouped.length}:${collapsed ? 1 : 0}`);
+              if (!collapsed) {
+                patchItems.push(...grouped.map(groupItem => ({
+                  kind: 'patch' as const,
+                  entity,
+                  patch: groupItem.patch,
+                  index: groupItem.index,
+                  entityIdx: ei,
+                  label: `patch ${groupItem.index}`,
+                  grouped: true,
+                })));
+              }
+              continue;
+            }
+
+            patchItems.push({
+              kind: 'patch',
+              entity,
+              patch: item.patch,
+              index: item.index,
+              entityIdx: ei,
+              label: `patch ${item.index}`,
+              grouped: false,
+            });
+          }
+          return patchItems;
+        })()
         : [];
 
       const includeEntity =
@@ -271,7 +401,11 @@ export class UI {
         const el = document.createElement('div');
         el.className = item.kind === 'entity'
           ? 'brush-item brush-tree-entity'
-          : 'brush-item brush-tree-child';
+          : item.kind === 'terrainGroup'
+            ? 'brush-item brush-tree-child brush-tree-group'
+            : item.grouped
+              ? 'brush-item brush-tree-grandchild'
+              : 'brush-item brush-tree-child';
 
         const row = document.createElement('div');
         row.className = 'brush-tree-row';
@@ -304,6 +438,44 @@ export class UI {
           row.appendChild(toggle);
           row.appendChild(label);
           row.appendChild(meta);
+        } else if (item.kind === 'terrainGroup') {
+          const indent = document.createElement('span');
+          indent.className = 'brush-tree-indent';
+
+          const toggle = document.createElement('span');
+          toggle.className = 'brush-tree-toggle' + (item.collapsible ? '' : ' empty');
+          toggle.textContent = item.collapsible ? (item.collapsed ? '+' : '\u2212') : '';
+          if (item.collapsible) {
+            toggle.addEventListener('mousedown', (ev) => {
+              ev.stopPropagation();
+              const collapseKey = `${item.entityIdx}:${item.groupId}`;
+              if (this.collapsedBrushPanelTerrainGroups.has(collapseKey)) {
+                this.collapsedBrushPanelTerrainGroups.delete(collapseKey);
+              } else {
+                this.collapsedBrushPanelTerrainGroups.add(collapseKey);
+              }
+              this.brushPanelSignature = '';
+              this.editor.dirty = true;
+            });
+          }
+
+          const kind = document.createElement('span');
+          kind.className = 'brush-tree-kind';
+          kind.textContent = 'T';
+
+          const label = document.createElement('span');
+          label.className = 'brush-tree-label';
+          label.textContent = item.label;
+
+          const meta = document.createElement('span');
+          meta.className = 'brush-tree-meta';
+          meta.textContent = item.meta;
+
+          row.appendChild(indent);
+          row.appendChild(toggle);
+          row.appendChild(kind);
+          row.appendChild(label);
+          row.appendChild(meta);
         } else {
           const indent = document.createElement('span');
           indent.className = 'brush-tree-indent';
@@ -328,6 +500,8 @@ export class UI {
             e.selectBrushDirect(item.entity, item.brush, additive);
           } else if (item.kind === 'patch') {
             e.selectPatchDirect(item.entity, item.patch, additive);
+          } else if (item.kind === 'terrainGroup') {
+            e.selectPatch(item.entity, item.representative, additive);
           } else {
             e.selectEntity(item.entity, additive);
           }
@@ -346,6 +520,8 @@ export class UI {
         selected = e.isSelected(item.brush);
       } else if (item.kind === 'patch') {
         selected = e.isPatchSelected(item.patch);
+      } else if (item.kind === 'terrainGroup') {
+        selected = item.patches.every(groupPatch => e.isPatchSelected(groupPatch.patch));
       } else {
         selected = e.isEntitySelected(item.entity);
       }
@@ -603,6 +779,348 @@ export class UI {
     body.appendChild(list);
   }
 
+  private setTerrainRadius(value: number): void {
+    const next = Math.max(8, Math.min(1024, Math.round(value) || 8));
+    if (next === this.editor.terrainBrushRadius) return;
+    this.editor.terrainBrushRadius = next;
+    this.editor.dirty = true;
+    this.editor.statusMessage = `Terrain radius: ${next}`;
+  }
+
+  private setTerrainStrength(value: number): void {
+    const next = Math.max(1, Math.min(256, Math.round(value) || 1));
+    if (next === this.editor.terrainBrushStrength) return;
+    this.editor.terrainBrushStrength = next;
+    this.editor.dirty = true;
+    this.editor.statusMessage = `Terrain strength: ${next}`;
+  }
+
+  private setTerrainBrushMode(mode: 'height' | 'texture'): void {
+    if (mode === this.editor.terrainBrushMode) return;
+    this.editor.terrainBrushMode = mode;
+    this.editor.dirty = true;
+    this.editor.statusMessage = `Terrain brush mode: ${mode}`;
+  }
+
+  private setTerrainFalloff(falloff: 'smooth' | 'linear'): void {
+    if (falloff === this.editor.terrainFalloff) return;
+    this.editor.terrainFalloff = falloff;
+    this.editor.dirty = true;
+    this.editor.statusMessage = `Terrain falloff: ${falloff}`;
+  }
+
+  private buildTerrainPanel(): void {
+    const body = document.getElementById('terrain-body')!;
+    body.innerHTML = '';
+
+    const setupSection = document.createElement('div');
+    setupSection.className = 'terrain-tools';
+
+    const setupTitle = document.createElement('div');
+    setupTitle.className = 'texture-subhead';
+    setupTitle.textContent = 'Setup';
+    setupSection.appendChild(setupTitle);
+
+    const createBtn = document.createElement('div');
+    createBtn.className = 'btn terrain-apply-btn';
+    createBtn.textContent = 'Create Terrain Patch';
+    createBtn.addEventListener('mousedown', () => this.editor.createTerrainPatch());
+    setupSection.appendChild(createBtn);
+
+    const prepareBtn = document.createElement('div');
+    prepareBtn.className = 'btn terrain-apply-btn';
+    prepareBtn.textContent = 'Prepare For Texture Paint';
+    prepareBtn.addEventListener('mousedown', () => this.editor.splitTerrainIntoPaintTiles());
+    setupSection.appendChild(prepareBtn);
+
+    const stitchBtn = document.createElement('div');
+    stitchBtn.className = 'btn terrain-apply-btn';
+    stitchBtn.textContent = 'Stitch Terrain Seams';
+    stitchBtn.addEventListener('mousedown', () => this.editor.stitchTerrainSeams());
+    setupSection.appendChild(stitchBtn);
+
+    body.appendChild(setupSection);
+
+    const brushSection = document.createElement('div');
+    brushSection.className = 'terrain-tools';
+
+    const brushTitle = document.createElement('div');
+    brushTitle.className = 'texture-subhead';
+    brushTitle.textContent = 'Brush';
+    brushSection.appendChild(brushTitle);
+
+    const modeLabel = document.createElement('label');
+    modeLabel.textContent = 'Mode';
+    brushSection.appendChild(modeLabel);
+
+    const modeSelect = document.createElement('select');
+    modeSelect.id = 'terrain-brush-mode';
+    for (const [value, label] of [['height', 'Height'], ['texture', 'Texture']] as const) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      modeSelect.appendChild(opt);
+    }
+    modeSelect.addEventListener('change', () => {
+      this.setTerrainBrushMode(modeSelect.value as 'height' | 'texture');
+    });
+    brushSection.appendChild(modeSelect);
+
+    const radiusLabel = document.createElement('label');
+    radiusLabel.id = 'terrain-radius-label';
+    radiusLabel.textContent = 'Radius';
+    brushSection.appendChild(radiusLabel);
+
+    const radiusInput = document.createElement('input');
+    radiusInput.id = 'terrain-radius-input';
+    radiusInput.className = 'terrain-slider';
+    radiusInput.type = 'range';
+    radiusInput.min = '8';
+    radiusInput.max = '1024';
+    radiusInput.step = '8';
+    radiusInput.addEventListener('input', () => this.setTerrainRadius(Number(radiusInput.value)));
+    brushSection.appendChild(radiusInput);
+
+    const strengthLabel = document.createElement('label');
+    strengthLabel.id = 'terrain-strength-label';
+    strengthLabel.textContent = 'Strength';
+    brushSection.appendChild(strengthLabel);
+
+    const strengthInput = document.createElement('input');
+    strengthInput.id = 'terrain-strength-input';
+    strengthInput.className = 'terrain-slider';
+    strengthInput.type = 'range';
+    strengthInput.min = '1';
+    strengthInput.max = '256';
+    strengthInput.step = '1';
+    strengthInput.addEventListener('input', () => this.setTerrainStrength(Number(strengthInput.value)));
+    brushSection.appendChild(strengthInput);
+
+    const falloffLabel = document.createElement('label');
+    falloffLabel.id = 'terrain-falloff-label';
+    falloffLabel.textContent = 'Falloff';
+    brushSection.appendChild(falloffLabel);
+
+    const falloffSelect = document.createElement('select');
+    falloffSelect.id = 'terrain-falloff-select';
+    for (const [value, label] of [['smooth', 'Smooth'], ['linear', 'Linear']] as const) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      falloffSelect.appendChild(opt);
+    }
+    falloffSelect.addEventListener('change', () => {
+      this.setTerrainFalloff(falloffSelect.value as 'smooth' | 'linear');
+    });
+    brushSection.appendChild(falloffSelect);
+
+    const textureInfo = document.createElement('div');
+    textureInfo.className = 'terrain-current-texture';
+    textureInfo.id = 'terrain-current-texture';
+    textureInfo.title = 'Locate in Texture panel';
+    textureInfo.addEventListener('mousedown', () => this.locateTexture(this.editor.currentTexture));
+
+    const textureThumb = document.createElement('img');
+    textureThumb.className = 'terrain-current-texture-thumb';
+    textureThumb.id = 'terrain-current-texture-thumb';
+    textureThumb.alt = '';
+    textureThumb.draggable = false;
+    textureInfo.appendChild(textureThumb);
+
+    const textureMeta = document.createElement('div');
+    textureMeta.className = 'terrain-current-texture-meta';
+
+    const textureTitle = document.createElement('div');
+    textureTitle.className = 'terrain-current-texture-title';
+    textureTitle.id = 'terrain-current-texture-title';
+    textureMeta.appendChild(textureTitle);
+
+    const textureName = document.createElement('div');
+    textureName.className = 'terrain-current-texture-name';
+    textureName.id = 'terrain-current-texture-name';
+    textureMeta.appendChild(textureName);
+
+    textureInfo.appendChild(textureMeta);
+    brushSection.appendChild(textureInfo);
+
+    const paintTarget = document.createElement('div');
+    paintTarget.className = 'terrain-help terrain-paint-target';
+    paintTarget.id = 'terrain-paint-target';
+    brushSection.appendChild(paintTarget);
+
+    body.appendChild(brushSection);
+
+    const actionSection = document.createElement('div');
+    actionSection.className = 'terrain-tools';
+
+    const actionTitle = document.createElement('div');
+    actionTitle.className = 'texture-subhead';
+    actionTitle.textContent = 'Actions';
+    actionSection.appendChild(actionTitle);
+
+    const actionRow = document.createElement('div');
+    actionRow.className = 'kv-row';
+
+    const raiseBtn = document.createElement('div');
+    raiseBtn.className = 'btn';
+    raiseBtn.id = 'terrain-raise-btn';
+    raiseBtn.textContent = 'Raise';
+    raiseBtn.addEventListener('mousedown', () => this.editor.raiseTerrain());
+    actionRow.appendChild(raiseBtn);
+
+    const lowerBtn = document.createElement('div');
+    lowerBtn.className = 'btn';
+    lowerBtn.id = 'terrain-lower-btn';
+    lowerBtn.textContent = 'Lower';
+    lowerBtn.addEventListener('mousedown', () => this.editor.lowerTerrain());
+    actionRow.appendChild(lowerBtn);
+
+    const smoothBtn = document.createElement('div');
+    smoothBtn.className = 'btn';
+    smoothBtn.id = 'terrain-smooth-btn';
+    smoothBtn.textContent = 'Smooth';
+    smoothBtn.addEventListener('mousedown', () => this.editor.smoothTerrain());
+    actionRow.appendChild(smoothBtn);
+
+    actionSection.appendChild(actionRow);
+
+    const actionRowSecondary = document.createElement('div');
+    actionRowSecondary.className = 'kv-row';
+
+    const noiseBtn = document.createElement('div');
+    noiseBtn.className = 'btn';
+    noiseBtn.id = 'terrain-noise-btn';
+    noiseBtn.textContent = 'Noise';
+    noiseBtn.addEventListener('mousedown', () => this.editor.noiseTerrain());
+    actionRowSecondary.appendChild(noiseBtn);
+
+    const erodeBtn = document.createElement('div');
+    erodeBtn.className = 'btn';
+    erodeBtn.id = 'terrain-erode-btn';
+    erodeBtn.textContent = 'Erode';
+    erodeBtn.addEventListener('mousedown', () => this.editor.erodeTerrain());
+    actionRowSecondary.appendChild(erodeBtn);
+
+    actionSection.appendChild(actionRowSecondary);
+
+    const help = document.createElement('div');
+    help.className = 'terrain-help';
+    help.id = 'terrain-help';
+    actionSection.appendChild(help);
+
+    body.appendChild(actionSection);
+
+    this.updateTerrainPanel();
+  }
+
+  private updateTerrainPanel(): void {
+    const modeSelect = document.getElementById('terrain-brush-mode') as HTMLSelectElement | null;
+    if (!modeSelect) return;
+
+    const radiusInput = document.getElementById('terrain-radius-input') as HTMLInputElement | null;
+    const radiusLabel = document.getElementById('terrain-radius-label') as HTMLLabelElement | null;
+    const strengthInput = document.getElementById('terrain-strength-input') as HTMLInputElement | null;
+    const strengthLabel = document.getElementById('terrain-strength-label') as HTMLLabelElement | null;
+    const falloffSelect = document.getElementById('terrain-falloff-select') as HTMLSelectElement | null;
+    const falloffLabel = document.getElementById('terrain-falloff-label') as HTMLLabelElement | null;
+    const textureThumb = document.getElementById('terrain-current-texture-thumb') as HTMLImageElement | null;
+    const textureTitle = document.getElementById('terrain-current-texture-title');
+    const textureName = document.getElementById('terrain-current-texture-name');
+    const paintTarget = document.getElementById('terrain-paint-target');
+    const help = document.getElementById('terrain-help');
+    const raiseBtn = document.getElementById('terrain-raise-btn') as HTMLElement | null;
+    const lowerBtn = document.getElementById('terrain-lower-btn') as HTMLElement | null;
+    const smoothBtn = document.getElementById('terrain-smooth-btn') as HTMLElement | null;
+    const noiseBtn = document.getElementById('terrain-noise-btn') as HTMLElement | null;
+    const erodeBtn = document.getElementById('terrain-erode-btn') as HTMLElement | null;
+    const terrainPanelToggle = document.getElementById('terrain-panel-toggle');
+    const terrainPanel = document.getElementById('terrain-panel');
+    const textureMode = this.editor.terrainBrushMode === 'texture';
+
+    if (modeSelect.value !== this.editor.terrainBrushMode) {
+      modeSelect.value = this.editor.terrainBrushMode;
+    }
+    const radius = this.editor.currentTerrainRadius();
+    const strength = this.editor.currentTerrainStrength();
+
+    if (radiusInput && radiusInput.value !== String(radius)) {
+      radiusInput.value = String(radius);
+    }
+    if (strengthInput && strengthInput.value !== String(strength)) {
+      strengthInput.value = String(strength);
+    }
+    if (falloffSelect && falloffSelect.value !== this.editor.terrainFalloff) {
+      falloffSelect.value = this.editor.terrainFalloff;
+    }
+
+    if (radiusLabel) radiusLabel.textContent = `Radius ${radius}`;
+    if (strengthLabel) strengthLabel.textContent = `Strength ${strength}`;
+    if (radiusInput) radiusInput.disabled = textureMode;
+    if (radiusLabel) radiusLabel.style.opacity = textureMode ? '0.5' : '1';
+    if (strengthInput) strengthInput.disabled = textureMode;
+    if (strengthLabel) strengthLabel.style.opacity = textureMode ? '0.5' : '1';
+    if (falloffSelect) falloffSelect.disabled = textureMode;
+    if (falloffLabel) falloffLabel.style.opacity = textureMode ? '0.5' : '1';
+    if (raiseBtn) raiseBtn.classList.toggle('disabled', textureMode);
+    if (lowerBtn) lowerBtn.classList.toggle('disabled', textureMode);
+    if (smoothBtn) smoothBtn.classList.toggle('disabled', textureMode);
+    if (noiseBtn) noiseBtn.classList.toggle('disabled', textureMode);
+    if (erodeBtn) erodeBtn.classList.toggle('disabled', textureMode);
+    if (raiseBtn) raiseBtn.style.pointerEvents = textureMode ? 'none' : '';
+    if (lowerBtn) lowerBtn.style.pointerEvents = textureMode ? 'none' : '';
+    if (smoothBtn) smoothBtn.style.pointerEvents = textureMode ? 'none' : '';
+    if (noiseBtn) noiseBtn.style.pointerEvents = textureMode ? 'none' : '';
+    if (erodeBtn) erodeBtn.style.pointerEvents = textureMode ? 'none' : '';
+
+    if (textureTitle) {
+      textureTitle.textContent = textureMode ? 'Paint texture' : 'Current texture';
+    }
+    if (textureName) {
+      textureName.textContent = this.editor.currentTexture;
+    }
+    if (textureThumb) {
+      const url = this.texMgr?.getThumbnailUrl(this.editor.currentTexture) ?? null;
+      if (url) {
+        if (textureThumb.src !== url) textureThumb.src = url;
+        textureThumb.hidden = false;
+      } else {
+        textureThumb.removeAttribute('src');
+        textureThumb.hidden = true;
+      }
+    }
+
+    if (paintTarget) {
+      paintTarget.style.display = textureMode ? '' : 'none';
+      if (textureMode) {
+        const hovered = this.editor.hoveredTerrainPaintPatches();
+        const hoveredCount = hovered.length;
+        const tileLabel = hoveredCount === 1 ? 'tile' : 'tiles';
+        const normalize = (texture: string) => texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '');
+        const activeTexture = normalize(this.editor.currentTexture);
+        const hoveredTextures = new Set(hovered.map(patch => normalize(patch.texture)));
+
+        if (hoveredCount === 0) {
+          paintTarget.textContent = 'Paint target: hover a terrain tile in a 2D view';
+        } else if (hoveredTextures.size === 1) {
+          const [hoveredTexture] = hoveredTextures;
+          paintTarget.textContent = hoveredTexture === activeTexture
+            ? `Paint target: ${hoveredCount} ${tileLabel} already use ${hoveredTexture}`
+            : `Paint target: ${hoveredCount} ${tileLabel} ${hoveredTexture} -> ${activeTexture}`;
+        } else {
+          paintTarget.textContent = `Paint target: ${hoveredCount} ${tileLabel} -> ${activeTexture}`;
+        }
+      }
+    }
+    if (help) {
+      help.textContent = textureMode
+        ? 'Pick a texture in the Texture panel, hover a tile to preview it, then Alt-click or Alt-drag in a 2D view to paint.'
+        : 'Alt-drag sculpts from the anchor, Alt+Shift paints up, Ctrl+Alt paints down, and Noise/Erode use the same brush settings.';
+    }
+    if (terrainPanelToggle && terrainPanel) {
+      terrainPanelToggle.classList.toggle('active-panel', terrainPanel.classList.contains('open'));
+    }
+  }
+
   // ── Status Bar ──
 
   private buildStatusBar(): void {
@@ -701,6 +1219,7 @@ export class UI {
   update(): void {
     const e = this.editor;
     this.refreshMenuBarLabels();
+    this.updateTerrainPanel();
 
     document.getElementById('status-msg')!.textContent = e.statusMessage;
     let toolLabel: string;
@@ -708,7 +1227,7 @@ export class UI {
       toolLabel = 'Tool: vertex';
     } else if (e.patchEditMode) {
       toolLabel = e.terrainBrushMode === 'texture'
-        ? `Tool: patch edit (texture r${e.currentTerrainRadius()})`
+        ? 'Tool: patch edit (texture paint)'
         : `Tool: patch edit (height r${e.currentTerrainRadius()} s${e.currentTerrainStrength()} ${e.terrainFalloff})`;
     } else if (e.activeTool === 'clip') {
       toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`;
@@ -729,8 +1248,8 @@ export class UI {
     } else if (e.patchEditMode) {
       const pc = e.patchControlSelection.length;
       selLabel = e.terrainBrushMode === 'texture'
-        ? `Sel: ${pc} cp (Alt drag paint current texture, split terrain for local paint, V to exit)`
-        : `Sel: ${pc} cp (Alt drag sculpt, Alt+Shift paint up, Ctrl+Alt paint down, V to exit)`;
+        ? `Sel: ${pc} cp (hover highlights paint target, Alt drag paints, prepare terrain for local paint, V to exit)`
+        : `Sel: ${pc} cp (Alt drag sculpt, Alt+Shift paint up, Ctrl+Alt paint down, panel: noise/erode, V to exit)`;
     } else {
       const faceCount = e.selection.filter(s => s.type === 'face').length;
       selLabel = faceCount > 0
