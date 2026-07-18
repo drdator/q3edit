@@ -1,8 +1,14 @@
 import { Editor, Tool } from './editor';
 
 type MenuItem =
-  | { label: string | (() => string); shortcut?: string; action?: () => void | Promise<void>; separator?: boolean }
-  | { separator: true; label?: undefined; shortcut?: undefined; action?: undefined };
+  | {
+      label: string | (() => string);
+      shortcut?: string;
+      action?: () => void | Promise<void>;
+      children?: MenuItem[];
+      separator?: false;
+    }
+  | { separator: true; label?: undefined; shortcut?: undefined; action?: undefined; children?: undefined };
 
 export interface MenuBarContext {
   editor: Editor;
@@ -12,6 +18,7 @@ export interface MenuBarContext {
   openRotateDialog: () => void;
   openScaleDialog: () => void;
   compileBSP: () => void | Promise<void>;
+  quickPlay: (quality: 'fast' | 'normal' | 'full') => void | Promise<void>;
   managePakFiles: () => void | Promise<void>;
   cycleInvisibleMode: () => void;
   setTool: (tool: Tool) => void;
@@ -38,6 +45,14 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
       { label: 'Export .map to Console', action: () => console.log(ctx.editor.serializeMap()) },
       { separator: true },
       { label: 'Compile BSP...', action: () => ctx.compileBSP() },
+      {
+        label: 'Quick Play',
+        children: [
+          { label: 'Fast', shortcut: 'Ctrl+Alt+1', action: () => ctx.quickPlay('fast') },
+          { label: 'Normal', shortcut: 'Ctrl+Alt+2', action: () => ctx.quickPlay('normal') },
+          { label: 'Full', shortcut: 'Ctrl+Alt+3', action: () => ctx.quickPlay('full') },
+        ],
+      },
     ],
     'Edit': [
       { label: 'Undo', shortcut: 'Ctrl+Z', action: () => ctx.editor.undo() },
@@ -168,19 +183,12 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
     ],
   };
 
-  for (const [name, items] of Object.entries(menus)) {
-    const menuItem = document.createElement('div');
-    menuItem.className = 'menu-item';
-    menuItem.textContent = name;
-
-    const dropdown = document.createElement('div');
-    dropdown.className = 'menu-dropdown';
-
+  const appendMenuItems = (container: HTMLElement, items: MenuItem[]): void => {
     for (const item of items) {
       if (item.separator) {
         const sep = document.createElement('div');
         sep.className = 'menu-separator';
-        dropdown.appendChild(sep);
+        container.appendChild(sep);
         continue;
       }
 
@@ -193,19 +201,48 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
       refreshLabel();
       refreshLabels.push(refreshLabel);
       action.appendChild(label);
-      if (item.shortcut) {
+
+      if (item.children) {
+        action.classList.add('has-submenu');
+        action.addEventListener('mouseenter', () => action.classList.add('submenu-open'));
+        action.addEventListener('mouseleave', () => action.classList.remove('submenu-open'));
+        const arrow = document.createElement('span');
+        arrow.className = 'submenu-arrow';
+        arrow.textContent = '\u203a';
+        action.appendChild(arrow);
+
+        const submenu = document.createElement('div');
+        submenu.className = 'menu-dropdown menu-submenu';
+        appendMenuItems(submenu, item.children);
+        action.appendChild(submenu);
+      } else if (item.shortcut) {
         const shortcut = document.createElement('span');
         shortcut.className = 'shortcut';
         shortcut.textContent = item.shortcut;
         action.appendChild(shortcut);
       }
+
       action.addEventListener('mousedown', (e) => {
         e.stopPropagation();
+        if (item.children) {
+          action.classList.toggle('submenu-open');
+          return;
+        }
         ctx.closeMenus();
         item.action?.();
       });
-      dropdown.appendChild(action);
+      container.appendChild(action);
     }
+  };
+
+  for (const [name, items] of Object.entries(menus)) {
+    const menuItem = document.createElement('div');
+    menuItem.className = 'menu-item';
+    menuItem.textContent = name;
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'menu-dropdown';
+    appendMenuItems(dropdown, items);
 
     menuItem.appendChild(dropdown);
 

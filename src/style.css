@@ -471,11 +471,12 @@ textarea:focus-visible {
   padding: 2px 0;
 }
 
-.menu-item.open .menu-dropdown {
+.menu-item.open > .menu-dropdown {
   display: block;
 }
 
 .menu-action {
+  position: relative;
   display: flex;
   justify-content: space-between;
   padding: 3px 20px 3px 8px;
@@ -492,6 +493,23 @@ textarea:focus-visible {
   color: var(--text-dim);
   margin-left: 20px;
   font-size: 10px;
+}
+
+.menu-action .submenu-arrow {
+  margin-left: 20px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 10px;
+}
+
+.menu-submenu {
+  top: -3px;
+  left: 100%;
+}
+
+.menu-action.has-submenu:hover > .menu-submenu,
+.menu-action.has-submenu.submenu-open > .menu-submenu {
+  display: block;
 }
 
 .menu-separator {

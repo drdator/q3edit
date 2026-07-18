@@ -12,6 +12,7 @@ export interface KeyboardContext {
   decreaseGrid: () => void;
   toggleGeoSnap: () => void;
   cycleInvisibleMode: () => void;
+  quickPlay: (quality: 'fast' | 'normal' | 'full') => void | Promise<void>;
 }
 
 export function setupKeyboard(ctx: KeyboardContext): void {
@@ -20,6 +21,10 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
 
     const ctrl = e.ctrlKey || e.metaKey;
+
+    if (ctrl && e.altKey && (e.code === 'Digit1' || e.key === '1')) { e.preventDefault(); void ctx.quickPlay('fast'); return; }
+    if (ctrl && e.altKey && (e.code === 'Digit2' || e.key === '2')) { e.preventDefault(); void ctx.quickPlay('normal'); return; }
+    if (ctrl && e.altKey && (e.code === 'Digit3' || e.key === '3')) { e.preventDefault(); void ctx.quickPlay('full'); return; }
 
     if (ctrl && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); ctx.editor.redo(); return; }
     if (ctrl && e.key === 'z') { e.preventDefault(); ctx.editor.undo(); return; }

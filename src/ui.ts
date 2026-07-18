@@ -91,6 +91,7 @@ export class UI {
       openRotateDialog: () => this.openRotateDialog(),
       openScaleDialog: () => this.openScaleDialog(),
       compileBSP: () => this.compileBSP(),
+      quickPlay: (quality) => this.compileBSP(quality),
       managePakFiles: () => this.onManagePakFiles?.(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: (tool) => this.setTool(tool),
@@ -1636,6 +1637,7 @@ export class UI {
       decreaseGrid: () => this.decreaseGrid(),
       toggleGeoSnap: () => this.toggleGeoSnap(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
+      quickPlay: (quality) => this.compileBSP(quality),
     });
   }
 
@@ -2274,8 +2276,12 @@ export class UI {
     });
   }
 
-  private async compileBSP(): Promise<void> {
+  private async compileBSP(autoPlayQuality: 'fast' | 'normal' | 'full' | null = null): Promise<void> {
     document.getElementById('compile-dialog')?.remove();
+    const autoPlay = autoPlayQuality !== null;
+    const autoPlayLabel = autoPlayQuality
+      ? autoPlayQuality[0].toUpperCase() + autoPlayQuality.slice(1)
+      : '';
 
     const overlay = document.createElement('div');
     overlay.id = 'compile-dialog';
@@ -2290,14 +2296,22 @@ export class UI {
     const title = document.createElement('div');
     title.id = 'compile-dialog-title';
     title.className = 'editor-dialog-title';
-    title.textContent = this.editor.isRegionActive() ? 'Compile BSP (Region)' : 'Compile BSP';
+    title.textContent = autoPlay
+      ? (this.editor.isRegionActive()
+          ? `Quick Play (${autoPlayLabel}, Region)`
+          : `Quick Play (${autoPlayLabel})`)
+      : (this.editor.isRegionActive() ? 'Compile BSP (Region)' : 'Compile BSP');
     dialog.appendChild(title);
 
     const description = document.createElement('div');
     description.className = 'editor-dialog-description';
-    description.textContent = this.editor.isRegionActive()
-      ? 'Compile the active region with the browser-based q3map toolchain.'
-      : 'Compile the current map with the browser-based q3map toolchain.';
+    description.textContent = autoPlay
+      ? (this.editor.isRegionActive()
+          ? `Compile the active region at ${autoPlayQuality} quality, then start it in browser ioquake3.`
+          : `Compile the current map at ${autoPlayQuality} quality, then start it in browser ioquake3.`)
+      : (this.editor.isRegionActive()
+          ? 'Compile the active region with the browser-based q3map toolchain.'
+          : 'Compile the current map with the browser-based q3map toolchain.');
     dialog.appendChild(description);
 
     const qualityRow = document.createElement('div');
@@ -2320,6 +2334,7 @@ export class UI {
     }
     qualityRow.appendChild(qualityLabel);
     qualityRow.appendChild(qualitySelect);
+    qualityRow.hidden = autoPlay;
     dialog.appendChild(qualityRow);
 
     const status = document.createElement('div');
@@ -2342,12 +2357,17 @@ export class UI {
     compileBtn.type = 'button';
     compileBtn.className = 'btn primary';
     compileBtn.textContent = 'Compile';
+    compileBtn.hidden = autoPlay;
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'btn';
     closeBtn.textContent = 'Close';
-    closeBtn.onclick = () => overlay.remove();
+    let dismissed = false;
+    closeBtn.onclick = () => {
+      dismissed = true;
+      overlay.remove();
+    };
 
     const runBtn = document.createElement('button');
     runBtn.type = 'button';
@@ -2368,6 +2388,7 @@ export class UI {
 
     overlay.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        dismissed = true;
         overlay.remove();
         e.stopPropagation();
       }
@@ -2396,7 +2417,7 @@ export class UI {
         }
       }
       const shaderFiles = this.texMgr?.getShaderFiles();
-      const quality = qualitySelect.value;
+      const quality = autoPlayQuality ?? qualitySelect.value;
       compileBtn.disabled = true;
       compileBtn.textContent = 'Compiling...';
       qualitySelect.disabled = true;
@@ -2467,6 +2488,11 @@ export class UI {
         runBtn.onclick = () => {
           this.openBspPreview(baseName, result.bsp!);
         };
+
+        if (autoPlay && !dismissed) {
+          overlay.remove();
+          this.openBspPreview(baseName, result.bsp);
+        }
       } else {
         dialog.classList.add('error');
         if (result.pointfileText && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile')) {
@@ -2481,6 +2507,8 @@ export class UI {
         }
       }
     };
+
+    if (autoPlay) compileBtn.click();
   }
 
   private openBspPreview(mapName: string, bsp: Uint8Array): void {
