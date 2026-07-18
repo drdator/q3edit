@@ -2521,6 +2521,10 @@ export class UI {
     sourceLink.textContent = 'ioquake3 source and license';
     hint.appendChild(sourceLink);
 
+    const header = document.createElement('div');
+    header.className = 'game-preview-header';
+    header.append(title, status, hint);
+
     const frame = document.createElement('iframe');
     frame.className = 'game-preview-frame';
     frame.title = `ioquake3 preview of ${safeMapName}`;
@@ -2564,6 +2568,10 @@ export class UI {
         dialog.classList.add('running');
         status.textContent = `Running ${safeMapName}`;
         this.editor.statusMessage = `Running ${safeMapName} in browser ioquake3`;
+      } else if (message?.type === 'q3edit-player:capture') {
+        const captured = message.captured === true;
+        dialog.classList.toggle('captured', captured);
+        if (!captured) closeBtn.focus();
       } else if (message?.type === 'q3edit-player:error') {
         dialog.classList.add('error');
         status.textContent = `Could not start: ${message.message}`;
@@ -2587,7 +2595,7 @@ export class UI {
     });
 
     actions.append(fullscreenBtn, closeBtn);
-    dialog.append(title, status, hint, frame, actions);
+    dialog.append(frame, header, actions);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
     closeBtn.focus();

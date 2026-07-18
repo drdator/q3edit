@@ -1338,15 +1338,37 @@ textarea:focus-visible {
 
 .game-preview-overlay {
   z-index: 10000;
+  padding: 0;
+  background: #000;
 }
 
 .game-preview-dialog {
-  display: flex;
-  flex-direction: column;
-  width: min(1180px, calc(100vw - 48px));
-  height: min(780px, calc(100dvh - 48px));
-  max-height: calc(100dvh - 16px);
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  max-height: none;
+  padding: 0;
   overflow: hidden;
+  background: #000;
+  border: 0;
+  box-shadow: none;
+}
+
+.game-preview-header {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  max-width: min(620px, calc(100vw - 24px));
+  padding: 9px 11px;
+  background: rgba(24, 24, 24, 0.9);
+  border: 1px solid var(--border-dark);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  transition: opacity 120ms ease;
+}
+
+.game-preview-header .editor-dialog-title {
+  margin-bottom: 2px;
 }
 
 .game-preview-status {
@@ -1356,7 +1378,7 @@ textarea:focus-visible {
 }
 
 .game-preview-hint {
-  margin-bottom: 8px;
+  margin-bottom: 0;
   color: var(--text-dim);
 }
 
@@ -1369,11 +1391,13 @@ textarea:focus-visible {
 }
 
 .game-preview-frame {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-height: 220px;
-  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
   background: #000;
-  border: 1px solid var(--border-dark);
+  border: 0;
 }
 
 .game-preview-frame:focus-visible {
@@ -1392,7 +1416,22 @@ textarea:focus-visible {
 }
 
 .game-preview-actions {
-  flex: 0 0 auto;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  margin: 0;
+  padding: 6px;
+  background: rgba(24, 24, 24, 0.9);
+  border: 1px solid var(--border-dark);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  transition: opacity 120ms ease;
+}
+
+.game-preview-dialog.captured .game-preview-header,
+.game-preview-dialog.captured .game-preview-actions {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .openarena-notice-dialog {

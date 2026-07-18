@@ -25,15 +25,20 @@
       }
 
       body {
-        display: grid;
-        place-items: center;
+        display: block;
       }
 
       canvas {
+        display: block;
         width: 100%;
         height: 100%;
         object-fit: contain;
         outline: 0;
+        cursor: default !important;
+      }
+
+      body.pointer-locked canvas {
+        cursor: none !important;
       }
 
       #loading {
@@ -69,6 +74,43 @@
       const loading = document.getElementById('loading');
       const canvas = document.getElementById('canvas');
       let started = false;
+
+      function updatePointerLockState() {
+        const captured = document.pointerLockElement === canvas;
+        document.body.classList.toggle('pointer-locked', captured);
+        send('q3edit-player:capture', { captured });
+      }
+
+      function blockUncapturedMouseInput(event) {
+        if (document.pointerLockElement === canvas) return;
+        event.stopImmediatePropagation();
+        event.stopPropagation();
+        if (event.type === 'wheel' || event.type === 'contextmenu') event.preventDefault();
+      }
+
+      function blockUncapturedKeyboardInput(event) {
+        if (document.pointerLockElement === canvas) return;
+        event.stopImmediatePropagation();
+        event.stopPropagation();
+      }
+
+      document.addEventListener('pointerlockchange', updatePointerLockState);
+      for (const eventType of [
+        'mousemove', 'mousedown', 'mouseup',
+        'pointermove', 'pointerdown', 'pointerup',
+        'wheel', 'contextmenu',
+      ]) {
+        window.addEventListener(eventType, blockUncapturedMouseInput, { capture: true, passive: false });
+      }
+      for (const eventType of ['keydown', 'keyup', 'keypress']) {
+        window.addEventListener(eventType, blockUncapturedKeyboardInput, true);
+      }
+      canvas.addEventListener('click', () => {
+        canvas.focus();
+        if (document.pointerLockElement === canvas) return;
+        const request = canvas.requestPointerLock();
+        if (request instanceof Promise) void request.catch(() => {});
+      });
 
       function send(type, detail = {}) {
         window.parent.postMessage({ type, ...detail }, window.location.origin);
@@ -186,6 +228,7 @@
             '+set', 'con_notifytime', '0',
             '+set', 'r_mode', '-2',
             '+set', 'r_fullscreen', '0',
+            '+set', 'r_allowResize', '1',
             '+set', 'com_basegame', gameDir,
             '+devmap', launch.mapName,
           ],
@@ -210,7 +253,6 @@
           postRun: [() => {
             window.setTimeout(() => {
               loading.hidden = true;
-              canvas.focus();
               send('q3edit-player:running', { mapName: launch.mapName });
             }, 300);
           }],
