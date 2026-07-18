@@ -301,6 +301,16 @@ body.landing-active #app {
   letter-spacing: 0.04em;
 }
 
+.landing-footer a {
+  color: inherit;
+  text-underline-offset: 2px;
+  transition: color 120ms ease;
+}
+
+.landing-footer a:hover {
+  color: var(--landing-text);
+}
+
 @media (max-width: 900px) {
   .landing-hero {
     grid-template-columns: 1fr;
@@ -376,7 +386,8 @@ body.landing-active #app {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .landing-button {
+  .landing-button,
+  .landing-footer a {
     transition: none;
   }
 }
