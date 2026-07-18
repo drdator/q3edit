@@ -1,10 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: q3edit.com static site on private S3 with CloudFront
+Parameters:
+  DomainName:
+    Type: String
+    Default: q3edit.com
+    Description: Apex domain served by CloudFront
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route 53 hosted zone containing the domain
+  BucketNamePrefix:
+    Type: String
+    Default: q3edit-com
+    AllowedPattern: '[a-z0-9-]+'
+    Description: S3 bucket prefix; the active AWS account ID is appended
 Resources:
   SiteBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: q3edit-com-example
+      BucketName: !Sub '${BucketNamePrefix}-${AWS::AccountId}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         IgnorePublicAcls: true
@@ -13,19 +26,20 @@ Resources:
   Certificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
-      DomainName: q3edit.com
-      SubjectAlternativeNames: [www.q3edit.com]
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub 'www.${DomainName}'
       ValidationMethod: DNS
       DomainValidationOptions:
-        - DomainName: q3edit.com
-          HostedZoneId: Z08905931CIRBY86FY2GV
-        - DomainName: www.q3edit.com
-          HostedZoneId: Z08905931CIRBY86FY2GV
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+        - DomainName: !Sub 'www.${DomainName}'
+          HostedZoneId: !Ref HostedZoneId
   OriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
-        Name: q3edit-s3-oac
+        Name: !Sub '${AWS::StackName}-s3-oac'
         OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
@@ -37,7 +51,9 @@ Resources:
         HttpVersion: http2and3
         IPV6Enabled: true
         DefaultRootObject: index.html
-        Aliases: [q3edit.com, www.q3edit.com]
+        Aliases:
+          - !Ref DomainName
+          - !Sub 'www.${DomainName}'
         Origins:
           - Id: s3-origin
             DomainName: !GetAtt SiteBucket.RegionalDomainName
@@ -82,8 +98,8 @@ Resources:
   ApexRecord:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneId: Z08905931CIRBY86FY2GV
-      Name: q3edit.com
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
       Type: A
       AliasTarget:
         HostedZoneId: Z2FDTNDATAQYW2
@@ -91,8 +107,8 @@ Resources:
   ApexIPv6Record:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneId: Z08905931CIRBY86FY2GV
-      Name: q3edit.com
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
       Type: AAAA
       AliasTarget:
         HostedZoneId: Z2FDTNDATAQYW2
@@ -100,8 +116,8 @@ Resources:
   WwwRecord:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneId: Z08905931CIRBY86FY2GV
-      Name: www.q3edit.com
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub 'www.${DomainName}'
       Type: A
       AliasTarget:
         HostedZoneId: Z2FDTNDATAQYW2
@@ -109,13 +125,15 @@ Resources:
   WwwIPv6Record:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneId: Z08905931CIRBY86FY2GV
-      Name: www.q3edit.com
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub 'www.${DomainName}'
       Type: AAAA
       AliasTarget:
         HostedZoneId: Z2FDTNDATAQYW2
         DNSName: !GetAtt Distribution.DomainName
 Outputs:
+  SiteBucketName:
+    Value: !Ref SiteBucket
   DistributionId:
     Value: !Ref Distribution
   Domain:

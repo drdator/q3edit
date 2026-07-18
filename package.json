@@ -1,12 +1,24 @@
 {
-  "name": "q3-map-editor",
+  "name": "q3edit",
   "version": "0.1.0",
+  "private": true,
+  "description": "Browser-based Quake III Arena map editor with WebGL2 and client-side BSP compilation.",
   "license": "GPL-2.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drdator/q3edit.git"
+  },
+  "homepage": "https://q3edit.com",
+  "bugs": {
+    "url": "https://github.com/drdator/q3edit/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "build:q3map": "cd q3map-compiler && make clean && make",
+    "stage:q3map": "node scripts/stage-q3map-assets.mjs",
+    "build:release": "npm run build:q3map && npm run build && npm run stage:q3map",
     "assets:openarena": "./scripts/prepare-openarena-assets.sh",
     "deploy": "./deploy.sh"
   },

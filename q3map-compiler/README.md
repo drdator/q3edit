@@ -29,6 +29,12 @@ Build it with:
 npm run build:q3map
 ```
 
+To compile q3map and stage it with the complete web application, run:
+
+```sh
+npm run build:release
+```
+
 Generated object files and the `dist/` JavaScript/WebAssembly output are
 excluded from Git.
 
