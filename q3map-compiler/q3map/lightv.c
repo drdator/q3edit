@@ -20,6 +20,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
+/*
+Q3Edit modification, 2026-03-23:
+Updated elapsed-time calculation for portable WebAssembly compilation.
+*/
 
 #include "cmdlib.h"
 #include "mathlib.h"

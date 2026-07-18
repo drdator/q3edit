@@ -20,6 +20,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
+/*
+Q3Edit modifications:
+- 2026-03-23: enabled portable JPEG loading for the WebAssembly build.
+- 2026-07-18: made the shader-file list grow dynamically for larger game data sets.
+*/
+
 #include <string.h>
 #include <math.h>
 #include "cmdlib.h"

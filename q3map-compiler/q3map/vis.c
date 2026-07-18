@@ -19,6 +19,12 @@ along with Foobar; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
+
+/*
+Q3Edit modification, 2026-03-23:
+Updated elapsed-time calculation for portable WebAssembly compilation.
+*/
+
 // vis.c
 
 #include "vis.h"
@@ -1194,4 +1200,3 @@ int VisMain (int argc, char **argv)
 #endif
 	return 0;
 }
-

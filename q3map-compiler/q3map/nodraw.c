@@ -20,6 +20,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
+/*
+Q3Edit modification, 2026-03-23:
+Added stubs for compiler modes excluded from the WebAssembly build.
+*/
+
 #include "qbsp.h"
 
 vec3_t draw_mins, draw_maxs;
