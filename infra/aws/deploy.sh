@@ -43,7 +43,8 @@ fi
 readonly CLOUDFRONT_DISTRIBUTION_ID="$cloudfront_distribution_id"
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-cd "$script_dir"
+project_dir="$(cd -- "${script_dir}/../.." && pwd)"
+cd "$project_dir"
 
 for asset_path in \
   public/openarena/manifest.json \

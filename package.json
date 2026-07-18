@@ -20,7 +20,7 @@
     "stage:q3map": "node scripts/stage-q3map-assets.mjs",
     "build:release": "npm run build:q3map && npm run build && npm run stage:q3map",
     "assets:openarena": "./scripts/prepare-openarena-assets.sh",
-    "deploy": "./deploy.sh"
+    "deploy": "./infra/aws/deploy.sh"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

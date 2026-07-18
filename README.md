@@ -66,9 +66,10 @@ The q3map port and its provenance are documented in
 
 ## AWS deployment
 
-The repository includes a CloudFormation template for a private S3 bucket,
-CloudFront, ACM, and Route 53. The deploy script derives the bucket from the
-active AWS account and discovers the CloudFront distribution by domain alias.
+The repository includes an [AWS CloudFormation template](infra/aws/cloudformation.yaml)
+for a private S3 bucket, CloudFront, ACM, and Route 53. The
+[deploy script](infra/aws/deploy.sh) derives the bucket from the active AWS
+account and discovers the CloudFront distribution by domain alias.
 
 ```sh
 AWS_PROFILE=your-profile npm run deploy
