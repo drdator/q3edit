@@ -2275,29 +2275,38 @@ export class UI {
   }
 
   private async compileBSP(): Promise<void> {
-    // Remove existing dialog if any
     document.getElementById('compile-dialog')?.remove();
 
     const overlay = document.createElement('div');
     overlay.id = 'compile-dialog';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+    overlay.className = 'editor-dialog-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'compile-dialog-title');
 
     const dialog = document.createElement('div');
-    dialog.style.cssText = 'background:#2a2a2a;border:1px solid #08a;border-radius:6px;padding:16px 20px;width:560px;max-width:90vw;color:#eee;font:13px/1.5 monospace';
+    dialog.className = 'editor-dialog compile-dialog';
 
     const title = document.createElement('div');
-    title.style.cssText = 'font-size:14px;font-weight:bold;color:#08a;margin-bottom:8px';
+    title.id = 'compile-dialog-title';
+    title.className = 'editor-dialog-title';
     title.textContent = this.editor.isRegionActive() ? 'Compile BSP (Region)' : 'Compile BSP';
     dialog.appendChild(title);
 
-    // Quality selector
+    const description = document.createElement('div');
+    description.className = 'editor-dialog-description';
+    description.textContent = this.editor.isRegionActive()
+      ? 'Compile the active region with the browser-based q3map toolchain.'
+      : 'Compile the current map with the browser-based q3map toolchain.';
+    dialog.appendChild(description);
+
     const qualityRow = document.createElement('div');
-    qualityRow.style.cssText = 'margin-bottom:10px;display:flex;gap:8px;align-items:center';
-    const qualityLabel = document.createElement('span');
+    qualityRow.className = 'compile-dialog-quality';
+    const qualityLabel = document.createElement('label');
     qualityLabel.textContent = 'Quality:';
-    qualityLabel.style.color = '#aaa';
     const qualitySelect = document.createElement('select');
-    qualitySelect.style.cssText = 'background:#1a1a1a;color:#eee;border:1px solid #555;border-radius:4px;padding:4px 8px;font:13px monospace';
+    qualityLabel.htmlFor = 'compile-dialog-quality';
+    qualitySelect.id = 'compile-dialog-quality';
     for (const [value, label] of [
       ['fast', 'Fast (BSP only, no lighting)'],
       ['normal', 'Normal (BSP + fast vis + light)'],
@@ -2314,39 +2323,45 @@ export class UI {
     dialog.appendChild(qualityRow);
 
     const status = document.createElement('div');
-    status.style.cssText = 'margin-bottom:8px;color:#ccc';
+    status.className = 'compile-dialog-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
     status.textContent = this.editor.isRegionActive() ? 'Active region only' : '';
     dialog.appendChild(status);
 
     const log = document.createElement('pre');
-    log.style.cssText = 'background:#1a1a1a;padding:8px;border-radius:4px;margin-bottom:12px;height:250px;overflow-y:auto;font-size:11px;color:#aaa;white-space:pre-wrap;word-break:break-all';
+    log.className = 'compile-dialog-log';
+    log.setAttribute('aria-label', 'Compiler output');
     log.textContent = '';
     dialog.appendChild(log);
 
     const buttons = document.createElement('div');
-    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    buttons.className = 'editor-dialog-actions compile-dialog-actions';
 
     const compileBtn = document.createElement('button');
+    compileBtn.type = 'button';
+    compileBtn.className = 'btn primary';
     compileBtn.textContent = 'Compile';
-    compileBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold';
 
     const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn';
     closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = 'padding:6px 14px;background:#555;color:#eee;border:none;border-radius:4px;cursor:pointer;font:13px monospace';
     closeBtn.onclick = () => overlay.remove();
 
     const runBtn = document.createElement('button');
-    runBtn.textContent = 'Run in ioquake3';
-    runBtn.style.cssText = 'padding:6px 14px;background:#0a0;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold;display:none';
+    runBtn.type = 'button';
+    runBtn.className = 'btn';
+    runBtn.textContent = 'Play in browser';
+    runBtn.hidden = true;
 
     const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn';
     saveBtn.textContent = 'Save .bsp';
-    saveBtn.style.cssText = 'padding:6px 14px;background:#08a;color:#fff;border:none;border-radius:4px;cursor:pointer;font:13px monospace;font-weight:bold;display:none';
+    saveBtn.hidden = true;
 
-    buttons.appendChild(compileBtn);
-    buttons.appendChild(runBtn);
-    buttons.appendChild(saveBtn);
-    buttons.appendChild(closeBtn);
+    buttons.append(closeBtn, runBtn, saveBtn, compileBtn);
     dialog.appendChild(buttons);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
@@ -2383,13 +2398,12 @@ export class UI {
       const shaderFiles = this.texMgr?.getShaderFiles();
       const quality = qualitySelect.value;
       compileBtn.disabled = true;
-      compileBtn.style.display = 'none';
+      compileBtn.textContent = 'Compiling...';
       qualitySelect.disabled = true;
-      runBtn.style.display = 'none';
-      saveBtn.style.display = 'none';
+      runBtn.hidden = true;
+      saveBtn.hidden = true;
+      dialog.classList.remove('success', 'warning', 'error');
       status.textContent = compileWithRegion ? 'Compiling active region...' : 'Compiling...';
-      status.style.color = '#ccc';
-      title.style.color = '#08a';
       log.textContent = '';
 
       const mapText = compileWithRegion
@@ -2417,30 +2431,27 @@ export class UI {
     compileBtn.onclick = async () => {
       const result = await doCompile();
 
-      // Re-enable compile button for recompilation with different settings
       compileBtn.disabled = false;
-      compileBtn.style.display = '';
+      compileBtn.textContent = 'Compile';
       qualitySelect.disabled = false;
 
       if (result.success && result.bsp) {
         const leaked = !!result.pointfileText
           && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile');
         if (leaked) {
+          dialog.classList.add('warning');
           status.textContent = `Compiled with leak (${(result.bsp.length / 1024).toFixed(1)} KB, pointfile loaded)`;
-          status.style.color = '#fa0';
-          title.style.color = '#fa0';
           log.textContent += (log.textContent ? '\n' : '') + '[editor] Leak pointfile loaded\n';
           log.scrollTop = log.scrollHeight;
           this.editor.statusMessage = 'Leak detected: pointfile loaded';
         } else {
+          dialog.classList.add('success');
           this.editor.clearPointfile(false);
           status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
-          status.style.color = '#0c0';
-          title.style.color = '#0c0';
           this.editor.statusMessage = 'BSP compiled successfully';
         }
 
-        saveBtn.style.display = '';
+        saveBtn.hidden = false;
         saveBtn.onclick = () => {
           const blob = new Blob([new Uint8Array(result.bsp!)], { type: 'application/octet-stream' });
           const url = URL.createObjectURL(blob);
@@ -2452,31 +2463,12 @@ export class UI {
           this.editor.statusMessage = `Saved ${baseName}.bsp`;
         };
 
-        runBtn.style.display = '';
-        runBtn.onclick = async () => {
-          runBtn.textContent = 'Launching...';
-          runBtn.disabled = true;
-          try {
-            const resp = await fetch('/api/run-map', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: baseName, bsp: Array.from(result.bsp!) }),
-            });
-            const data = await resp.json();
-            if (data.ok) {
-              this.editor.statusMessage = `Launched ioquake3 with ${baseName}`;
-              runBtn.textContent = 'Launched!';
-            } else {
-              this.editor.statusMessage = `Launch failed: ${data.error}`;
-              runBtn.textContent = 'Failed';
-            }
-          } catch (e: any) {
-            this.editor.statusMessage = `Launch failed: ${e.message}`;
-            runBtn.textContent = 'Failed';
-          }
-          setTimeout(() => { runBtn.textContent = 'Run in ioquake3'; runBtn.disabled = false; }, 2000);
+        runBtn.hidden = false;
+        runBtn.onclick = () => {
+          this.openBspPreview(baseName, result.bsp!);
         };
       } else {
+        dialog.classList.add('error');
         if (result.pointfileText && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile')) {
           status.textContent = 'Compilation failed (leak pointfile loaded)';
           log.textContent += (log.textContent ? '\n' : '') + '[editor] Leak pointfile loaded\n';
@@ -2487,10 +2479,118 @@ export class UI {
           status.textContent = 'Compilation failed';
           this.editor.statusMessage = 'BSP compilation failed';
         }
-        status.style.color = '#f44';
-        title.style.color = '#f44';
       }
     };
+  }
+
+  private openBspPreview(mapName: string, bsp: Uint8Array): void {
+    document.getElementById('game-preview-overlay')?.remove();
+
+    const safeMapName = mapName.replace(/[^a-zA-Z0-9_-]/g, '') || 'compile';
+    const bspCopy = new Uint8Array(bsp.byteLength);
+    bspCopy.set(bsp);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'game-preview-overlay';
+    overlay.className = 'editor-dialog-overlay game-preview-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'game-preview-title');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'editor-dialog game-preview-dialog';
+
+    const title = document.createElement('div');
+    title.id = 'game-preview-title';
+    title.className = 'editor-dialog-title';
+    title.textContent = `Play ${safeMapName}`;
+
+    const status = document.createElement('div');
+    status.className = 'game-preview-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.textContent = 'Preparing browser-local PK3 files...';
+
+    const hint = document.createElement('div');
+    hint.className = 'game-preview-hint';
+    hint.append('Click the game view to capture the mouse. Press Escape to release it. · ');
+    const sourceLink = document.createElement('a');
+    sourceLink.href = '/ioquake3/SOURCE.md';
+    sourceLink.target = '_blank';
+    sourceLink.rel = 'noopener';
+    sourceLink.textContent = 'ioquake3 source and license';
+    hint.appendChild(sourceLink);
+
+    const frame = document.createElement('iframe');
+    frame.className = 'game-preview-frame';
+    frame.title = `ioquake3 preview of ${safeMapName}`;
+    frame.src = '/ioquake3/player.html';
+    frame.allow = 'autoplay; fullscreen';
+    frame.setAttribute('allowfullscreen', '');
+
+    const actions = document.createElement('div');
+    actions.className = 'editor-dialog-actions game-preview-actions';
+
+    const fullscreenBtn = document.createElement('button');
+    fullscreenBtn.type = 'button';
+    fullscreenBtn.className = 'btn';
+    fullscreenBtn.textContent = 'Fullscreen';
+    fullscreenBtn.onclick = () => {
+      void frame.requestFullscreen().catch(error => {
+        const message = error instanceof Error ? error.message : String(error);
+        status.textContent = `Could not enter fullscreen: ${message}`;
+      });
+    };
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn primary';
+    closeBtn.textContent = 'Close';
+
+    let launchSent = false;
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
+      const message = event.data;
+      if (message?.type === 'q3edit-player:ready' && !launchSent) {
+        launchSent = true;
+        frame.contentWindow?.postMessage({
+          type: 'q3edit-player:launch',
+          mapName: safeMapName,
+          bsp: bspCopy.buffer,
+        }, window.location.origin, [bspCopy.buffer]);
+      } else if (message?.type === 'q3edit-player:status') {
+        status.textContent = message.message;
+      } else if (message?.type === 'q3edit-player:running') {
+        dialog.classList.add('running');
+        status.textContent = `Running ${safeMapName}`;
+        this.editor.statusMessage = `Running ${safeMapName} in browser ioquake3`;
+      } else if (message?.type === 'q3edit-player:error') {
+        dialog.classList.add('error');
+        status.textContent = `Could not start: ${message.message}`;
+        this.editor.statusMessage = `ioquake3 failed: ${message.message}`;
+      }
+    };
+
+    const close = () => {
+      window.removeEventListener('message', onMessage);
+      frame.src = 'about:blank';
+      overlay.remove();
+    };
+    closeBtn.onclick = close;
+
+    window.addEventListener('message', onMessage);
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && event.target !== frame) {
+        close();
+        event.stopPropagation();
+      }
+    });
+
+    actions.append(fullscreenBtn, closeBtn);
+    dialog.append(title, status, hint, frame, actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    closeBtn.focus();
   }
 
   private populateTextureList(list: HTMLElement, textures: string[], selectedDir: string | null): void {

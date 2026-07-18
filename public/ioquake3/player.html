@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Q3Edit Player</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
+        background: #000;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        outline: 0;
+      }
+
+      #loading {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        color: #aaa;
+        background: #111;
+        text-align: center;
+      }
+
+      #loading.error {
+        color: #ff7777;
+      }
+
+      #loading[hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas" tabindex="0" aria-label="ioquake3 game view"></canvas>
+    <div id="loading" role="status" aria-live="polite">Waiting for compiled map...</div>
+
+    <script type="module">
+      const DB_NAME = 'q3edit-assets';
+      const PAK_STORE = 'pk3-files';
+      const SETTINGS_STORE = 'settings';
+      const OPENARENA_KEY = 'openarena-enabled';
+      const loading = document.getElementById('loading');
+      const canvas = document.getElementById('canvas');
+      let started = false;
+
+      function send(type, detail = {}) {
+        window.parent.postMessage({ type, ...detail }, window.location.origin);
+      }
+
+      function setStatus(message) {
+        loading.textContent = message;
+        send('q3edit-player:status', { message });
+      }
+
+      function fail(error) {
+        const message = error instanceof Error ? error.message : String(error);
+        loading.classList.add('error');
+        loading.hidden = false;
+        loading.textContent = `Could not start ioquake3: ${message}`;
+        send('q3edit-player:error', { message });
+        console.error(error);
+      }
+
+      function requestResult(request) {
+        return new Promise((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error ?? new Error('Browser storage request failed'));
+        });
+      }
+
+      function openDatabase() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open(DB_NAME);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error ?? new Error('Could not open Q3Edit asset storage'));
+        });
+      }
+
+      async function loadStoredConfiguration() {
+        const db = await openDatabase();
+        try {
+          if (!db.objectStoreNames.contains(PAK_STORE) || !db.objectStoreNames.contains(SETTINGS_STORE)) {
+            throw new Error('Q3Edit asset storage has not been initialized');
+          }
+          const tx = db.transaction([PAK_STORE, SETTINGS_STORE], 'readonly');
+          const archivesPromise = requestResult(tx.objectStore(PAK_STORE).getAll());
+          const settingPromise = requestResult(tx.objectStore(SETTINGS_STORE).get(OPENARENA_KEY));
+          const [archives, setting] = await Promise.all([archivesPromise, settingPromise]);
+          archives.sort((a, b) => {
+            if (typeof a.order === 'number' && typeof b.order === 'number') return a.order - b.order;
+            if (typeof a.order === 'number') return -1;
+            if (typeof b.order === 'number') return 1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+          });
+          return { archives, openArenaEnabled: setting?.value ?? true };
+        } finally {
+          db.close();
+        }
+      }
+
+      async function loadOpenArenaArchives() {
+        setStatus('Loading OpenArena asset list...');
+        const manifestResponse = await fetch('/openarena/manifest.json');
+        if (!manifestResponse.ok) {
+          throw new Error(`OpenArena asset list returned HTTP ${manifestResponse.status}`);
+        }
+        const manifest = await manifestResponse.json();
+        if (!Array.isArray(manifest.archives) || manifest.archives.length === 0) {
+          throw new Error('OpenArena asset list does not contain any PK3 files');
+        }
+
+        const archives = [];
+        for (let index = 0; index < manifest.archives.length; index++) {
+          const name = manifest.archives[index];
+          setStatus(`Loading ${name} (${index + 1} of ${manifest.archives.length})...`);
+          const response = await fetch(`/openarena/${encodeURIComponent(name)}`);
+          if (!response.ok) throw new Error(`${name} returned HTTP ${response.status}`);
+          archives.push({ name, data: await response.arrayBuffer() });
+        }
+        return archives;
+      }
+
+      function safeFileName(name) {
+        const basename = String(name).split(/[\\/]/).pop() || 'assets.pk3';
+        return basename.replace(/[^a-zA-Z0-9._-]/g, '_');
+      }
+
+      async function installFiles(module, launch) {
+        const stored = await loadStoredConfiguration();
+        const archives = stored.openArenaEnabled ? await loadOpenArenaArchives() : [];
+        archives.push(...stored.archives);
+        if (archives.length === 0) {
+          throw new Error('No PK3 files are enabled. Add PK3 files or enable OpenArena in the editor.');
+        }
+
+        const gameDir = stored.openArenaEnabled ? 'baseoa' : 'baseq3';
+        const root = `/${gameDir}`;
+        module.FS.mkdirTree(`${root}/maps`);
+
+        for (let index = 0; index < archives.length; index++) {
+          const archive = archives[index];
+          const name = safeFileName(archive.name);
+          setStatus(`Installing ${name} (${index + 1} of ${archives.length})...`);
+          module.FS.writeFile(`${root}/${name}`, new Uint8Array(archive.data));
+        }
+        module.FS.writeFile(`${root}/maps/${launch.mapName}.bsp`, new Uint8Array(launch.bsp));
+        return gameDir;
+      }
+
+      async function start(launch) {
+        setStatus('Loading ioquake3 WebAssembly runtime...');
+        const ioquake3 = (await import('./ioquake3.js')).default;
+        let gameDir = 'baseq3';
+        void ioquake3({
+          canvas,
+          arguments: [
+            '+set', 'sv_pure', '0',
+            '+set', 'net_enabled', '0',
+            '+set', 'con_notifytime', '0',
+            '+set', 'r_mode', '-2',
+            '+set', 'r_fullscreen', '0',
+            '+set', 'com_basegame', gameDir,
+            '+devmap', launch.mapName,
+          ],
+          locateFile: (file) => new URL(file, import.meta.url).href,
+          preRun: [async (module) => {
+            module.addRunDependency('q3edit-assets');
+            try {
+              gameDir = await installFiles(module, launch);
+              const basegameIndex = module.arguments.indexOf('com_basegame') + 1;
+              module.arguments[basegameIndex] = gameDir;
+              setStatus(`Starting ${launch.mapName}...`);
+            } catch (error) {
+              fail(error);
+              throw error;
+            } finally {
+              module.removeRunDependency('q3edit-assets');
+            }
+          }],
+          onRuntimeInitialized: () => {
+            setStatus(`Starting ${launch.mapName}...`);
+          },
+          postRun: [() => {
+            window.setTimeout(() => {
+              loading.hidden = true;
+              canvas.focus();
+              send('q3edit-player:running', { mapName: launch.mapName });
+            }, 300);
+          }],
+          print: (message) => console.log(message),
+          printErr: (message) => console.error(message),
+        }).catch(fail);
+      }
+
+      window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin || event.source !== window.parent) return;
+        if (event.data?.type !== 'q3edit-player:launch' || started) return;
+        started = true;
+        const mapName = String(event.data.mapName || 'compile').replace(/[^a-zA-Z0-9_-]/g, '') || 'compile';
+        const bsp = event.data.bsp;
+        if (!(bsp instanceof ArrayBuffer)) {
+          fail(new Error('The compiled BSP data was not provided'));
+          return;
+        }
+        void start({ mapName, bsp });
+      });
+
+      window.addEventListener('error', (event) => fail(event.error ?? event.message));
+      window.addEventListener('unhandledrejection', (event) => fail(event.reason));
+      send('q3edit-player:ready');
+    </script>
+  </body>
+</html>

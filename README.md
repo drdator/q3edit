@@ -17,6 +17,7 @@ geometry, entities, textures, terrain, and client-side BSP compilation.
 - Browser-local PK3 management with ordering and enable/disable controls
 - OpenArena textures by default, with optional retail Quake III PK3 files
 - q3map compiled to WebAssembly for client-side BSP, VIS, and light stages
+- ioquake3 compiled to WebAssembly for playing compiled maps in the editor
 
 Q3Edit is under active development. Save important work frequently and keep
 copies of your source `.map` files.
@@ -28,7 +29,7 @@ Requirements:
 - Node.js 22 or newer
 - A modern browser with WebGL2
 - `curl`, `unzip`, and `shasum` to prepare OpenArena assets
-- Emscripten 5.0.3 to build the q3map WebAssembly compiler
+- Git, CMake, and Emscripten 5.0.3 to build the WebAssembly tools
 
 Install dependencies and prepare the default texture assets:
 
@@ -63,6 +64,14 @@ npm run build:release
 
 The q3map port and its provenance are documented in
 [`q3map-compiler/README.md`](q3map-compiler/README.md).
+The browser player uses a pinned, unmodified ioquake3 revision. Build and
+source details are documented in [`public/ioquake3/SOURCE.md`](public/ioquake3/SOURCE.md).
+
+To build only the browser ioquake3 runtime for local development:
+
+```sh
+npm run build:ioq3
+```
 
 ## AWS deployment
 
@@ -89,10 +98,11 @@ release build before uploading.
 Q3Edit is licensed under GPL-2.0-or-later. See [`LICENSE`](LICENSE) and
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-The q3map compiler is derived from id Software's GPL source release. Quake III
-Arena retail game data is not included. OpenArena default content is prepared
-from the upstream OpenArena 0.8.8 release; its source and license information
-are in [`public/openarena/OPENARENA.md`](public/openarena/OPENARENA.md).
+The q3map compiler is derived from id Software's GPL source release, and the
+browser player is built from ioquake3's GPL source. Quake III Arena retail game
+data is not included. OpenArena default content is prepared from the upstream
+OpenArena 0.8.8 release; its source and license information are in
+[`public/openarena/OPENARENA.md`](public/openarena/OPENARENA.md).
 
 Q3Edit is an independent community project and is not affiliated with or
 endorsed by id Software or Bethesda Softworks.

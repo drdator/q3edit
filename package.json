@@ -17,8 +17,9 @@
     "dev": "vite",
     "build": "vite build",
     "build:q3map": "cd q3map-compiler && make clean && make",
+    "build:ioq3": "./scripts/build-ioq3-web.sh",
     "stage:q3map": "node scripts/stage-q3map-assets.mjs",
-    "build:release": "npm run build:q3map && npm run build && npm run stage:q3map",
+    "build:release": "npm run build:q3map && npm run build:ioq3 && npm run build && npm run stage:q3map",
     "assets:openarena": "./scripts/prepare-openarena-assets.sh",
     "deploy": "./infra/aws/deploy.sh"
   },

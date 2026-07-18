@@ -1245,6 +1245,156 @@ textarea:focus-visible {
   color: var(--text-dim);
 }
 
+.compile-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 92vw);
+  overflow-y: auto;
+}
+
+.compile-dialog-quality {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.compile-dialog-quality label {
+  color: var(--text-dim);
+}
+
+.compile-dialog-quality select {
+  min-width: 0;
+  height: 26px;
+  padding: 2px 7px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  border-top-color: var(--border-light);
+  border-left-color: var(--border-light);
+  border-radius: 0;
+  font: 10px/1 monospace;
+}
+
+.compile-dialog-quality select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.compile-dialog-quality select:disabled {
+  color: #666;
+  background: #343434;
+}
+
+.compile-dialog-status {
+  min-height: 18px;
+  margin-bottom: 6px;
+  color: var(--text-dim);
+}
+
+.compile-dialog-log {
+  flex: 1 1 250px;
+  min-height: 160px;
+  height: min(250px, 35vh);
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  color: var(--text-dim);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  font: 10px/1.45 monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.compile-dialog-log:empty::before {
+  color: #666;
+  content: 'Compiler output will appear here.';
+}
+
+.compile-dialog.success .editor-dialog-title,
+.compile-dialog.success .compile-dialog-status {
+  color: #62b965;
+}
+
+.compile-dialog.warning .editor-dialog-title,
+.compile-dialog.warning .compile-dialog-status {
+  color: var(--accent);
+}
+
+.compile-dialog.error .editor-dialog-title,
+.compile-dialog.error .compile-dialog-status {
+  color: #ff6666;
+}
+
+.compile-dialog-actions {
+  flex: 0 0 auto;
+}
+
+.compile-dialog-actions .btn[hidden] {
+  display: none;
+}
+
+.game-preview-overlay {
+  z-index: 10000;
+}
+
+.game-preview-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, calc(100vw - 48px));
+  height: min(780px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 16px);
+  overflow: hidden;
+}
+
+.game-preview-status {
+  min-height: 18px;
+  color: var(--text-bright);
+  overflow-wrap: anywhere;
+}
+
+.game-preview-hint {
+  margin-bottom: 8px;
+  color: var(--text-dim);
+}
+
+.game-preview-hint a {
+  color: var(--text);
+}
+
+.game-preview-hint a:hover {
+  color: var(--accent);
+}
+
+.game-preview-frame {
+  width: 100%;
+  min-height: 220px;
+  flex: 1 1 auto;
+  background: #000;
+  border: 1px solid var(--border-dark);
+}
+
+.game-preview-frame:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.game-preview-dialog.running .editor-dialog-title,
+.game-preview-dialog.running .game-preview-status {
+  color: #62b965;
+}
+
+.game-preview-dialog.error .editor-dialog-title,
+.game-preview-dialog.error .game-preview-status {
+  color: #ff6666;
+}
+
+.game-preview-actions {
+  flex: 0 0 auto;
+}
+
 .openarena-notice-dialog {
   width: min(500px, 92vw);
   overflow-y: auto;

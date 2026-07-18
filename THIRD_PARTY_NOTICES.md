@@ -18,6 +18,16 @@ inside Q3Edit.
 The Quake III Arena game data is not covered by the source-code release and is
 not included in this repository.
 
+## ioquake3
+
+The in-browser game preview uses an unmodified Emscripten build of ioquake3.
+ioquake3 is Copyright (C) 1999-2005 id Software, Inc. and ioquake3 contributors
+and is licensed under GPL-2.0. Q3Edit pins the exact upstream revision and
+provides a reproducible build script.
+
+- Upstream source: https://github.com/ioquake/ioq3
+- Pinned source and build details: [`public/ioquake3/SOURCE.md`](public/ioquake3/SOURCE.md)
+
 ## RSA Data Security MD4
 
 `q3map-compiler/common/md4.c` contains the RSA Data Security, Inc. MD4
