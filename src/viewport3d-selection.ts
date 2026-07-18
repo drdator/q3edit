@@ -11,13 +11,13 @@ export interface Viewport3DSelectionContext {
   dragStart: [number, number];
   getRay: (screenX: number, screenY: number) => { rayOrigin: Vec3; rayDir: Vec3 };
   pickBrushAt: (screenX: number, screenY: number) => { entity: Entity; brush: Brush; face: BrushFace } | null;
-  pickPatchAt: (screenX: number, screenY: number) => { entity: Entity; patch: Patch; dist: number } | null;
+  pickPatchAt: (screenX: number, screenY: number) => { entity: Entity; patch: Patch; dist: number; point: Vec3 } | null;
   pickEntityAt: (screenX: number, screenY: number) => { entity: Entity; dist: number } | null;
 }
 
 type Viewport3DSurfacePick =
   | { type: 'brush'; entity: Entity; brush: Brush; face: BrushFace }
-  | { type: 'patch'; entity: Entity; patch: Patch; dist: number };
+  | { type: 'patch'; entity: Entity; patch: Patch; dist: number; point: Vec3 };
 
 function pickPrimarySurface(
   ctx: Viewport3DSelectionContext,
@@ -77,6 +77,11 @@ export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEv
   }
 
   if (ctx.editor.patchEditMode) {
+    if (e.altKey && ctx.editor.terrainBrushMode === 'texture') {
+      ctx.editor.paintTerrainTexture(true);
+      return;
+    }
+
     const { rayOrigin, rayDir } = ctx.getRay(sx, sy);
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     let hitDi = -1;

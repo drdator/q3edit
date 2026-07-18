@@ -1,7 +1,13 @@
 import { Vec3 } from './math';
 import { Brush, BrushFace, createFace, computeBrushGeometry } from './brush';
 import { Entity } from './entity';
-import { Patch, PatchControlPoint, tessellatePatch } from './patch';
+import {
+  Patch,
+  PatchControlPoint,
+  type TerrainDefSurface,
+  syncTerrainDefMetadata,
+  tessellatePatch,
+} from './patch';
 
 // ── Serialize to .map format ──
 
@@ -42,8 +48,30 @@ export function serializeMap(entities: Entity[]): string {
     // Patches
     for (let p = 0; p < entity.patches.length; p++) {
       const patch = entity.patches[p];
+      if (patch.terrainDef) syncTerrainDefMetadata(patch);
       lines.push(`// patch ${p}`);
       lines.push('{');
+      if (patch.terrainDef?.serializable) {
+        lines.push('terrainDef');
+        lines.push('{');
+        lines.push(`( ${fmtNum(patch.width)} ${fmtNum(patch.height)} ${fmtNum(patch.terrainDef.scale[0])} ${fmtNum(patch.terrainDef.scale[1])} )`.replace(/[()]/g, '').trim());
+        lines.push(`${fmtNum(patch.terrainDef.origin[0])} ${fmtNum(patch.terrainDef.origin[1])} ${fmtNum(patch.terrainDef.origin[2])}`);
+        for (let r = 0; r < patch.height; r++) {
+          for (let c = 0; c < patch.width; c++) {
+            const cp = patch.ctrl[r][c];
+            const surface = patch.terrainDef.surfaces[r]?.[c] ?? defaultTerrainSurface(patch);
+            const height = cp.xyz[2] - patch.terrainDef.origin[2];
+            lines.push(
+              `${fmtNum(height)} ${surface.texture} ${fmtNum(surface.offsetX)} ${fmtNum(surface.offsetY)} ` +
+              `${fmtNum(surface.rotation)} ${fmtNum(surface.scaleX)} ${fmtNum(surface.scaleY)} ` +
+              `${surface.contentFlags} ${surface.surfaceFlags} ${surface.value}`
+            );
+          }
+        }
+        lines.push('}');
+        lines.push('}');
+        continue;
+      }
       lines.push('patchDef2');
       lines.push('{');
       lines.push(patch.texture);
@@ -72,6 +100,20 @@ function fmtNum(n: number): string {
   // Clean up floating point: use integer if possible
   if (Number.isInteger(n)) return n.toString();
   return n.toFixed(6).replace(/\.?0+$/, '');
+}
+
+function defaultTerrainSurface(patch: Patch): TerrainDefSurface {
+  return {
+    texture: patch.texture,
+    offsetX: 0,
+    offsetY: 0,
+    rotation: 0,
+    scaleX: 0.5,
+    scaleY: 0.5,
+    contentFlags: patch.contentFlags,
+    surfaceFlags: patch.surfaceFlags,
+    value: patch.value,
+  };
 }
 
 // ── Parse .map format ──
@@ -142,7 +184,7 @@ export function parseMap(text: string): Entity[] {
         }
         i++;
 
-        // Peek at first non-blank/comment line to check for patchDef2
+        // Peek at first non-blank/comment line to check for patchDef2 / terrainDef
         let peekIdx = i;
         while (peekIdx < lines.length) {
           const peekLine = lines[peekIdx].trim();
@@ -153,6 +195,12 @@ export function parseMap(text: string): Entity[] {
         if (peekIdx < lines.length && lines[peekIdx].trim() === 'patchDef2') {
           i = peekIdx + 1; // skip past 'patchDef2'
           const patch = parsePatchDef2(lines, () => i, (v) => { i = v; });
+          if (patch) {
+            entity.patches.push(patch);
+          }
+        } else if (peekIdx < lines.length && lines[peekIdx].trim() === 'terrainDef') {
+          i = peekIdx + 1; // skip past 'terrainDef'
+          const patch = parseTerrainDef(lines, () => i, (v) => { i = v; });
           if (patch) {
             entity.patches.push(patch);
           }
@@ -354,4 +402,129 @@ function parsePatchDef2(lines: string[], getI: () => number, setI: (v: number) =
   };
   tessellatePatch(patch);
   return patch;
+}
+
+function parseTerrainDef(lines: string[], getI: () => number, setI: (v: number) => void): Patch | null {
+  function nextLine(): string | null {
+    while (getI() < lines.length) {
+      const line = lines[getI()].trim();
+      setI(getI() + 1);
+      if (line === '' || line.startsWith('//')) continue;
+      return line;
+    }
+    return null;
+  }
+
+  const brace = nextLine();
+  if (brace !== '{') return null;
+
+  const headerLine = nextLine();
+  if (!headerLine) return null;
+  const header = headerLine.trim().replace(/^\(\s*/, '').replace(/\s*\)$/, '');
+  const headerParts = header.split(/\s+/);
+  if (headerParts.length < 4) return null;
+  const width = parseInt(headerParts[0]);
+  const height = parseInt(headerParts[1]);
+  const scaleX = parseFloat(headerParts[2]);
+  const scaleY = parseFloat(headerParts[3]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 2 || height < 2) return null;
+
+  const originLine = nextLine();
+  if (!originLine) return null;
+  const originParts = originLine.trim().replace(/^\(\s*/, '').replace(/\s*\)$/, '').split(/\s+/);
+  if (originParts.length < 3) return null;
+  const origin: Vec3 = [
+    parseFloat(originParts[0]),
+    parseFloat(originParts[1]),
+    parseFloat(originParts[2]),
+  ];
+  if (origin.some(value => !Number.isFinite(value))) return null;
+
+  const ctrl: PatchControlPoint[][] = [];
+  const surfaces: TerrainDefSurface[][] = [];
+  let patchTexture = 'common/caulk';
+  let patchContentFlags = 0;
+  let patchSurfaceFlags = 0;
+  let patchValue = 0;
+
+  for (let row = 0; row < height; row++) {
+    const ctrlRow: PatchControlPoint[] = [];
+    const surfaceRow: TerrainDefSurface[] = [];
+    for (let col = 0; col < width; col++) {
+      const line = nextLine();
+      if (!line) return null;
+      const parts = line.split(/\s+/);
+      if (parts.length < 9) return null;
+      const heightValue = parseFloat(parts[0]);
+      const surface: TerrainDefSurface = {
+        texture: parts[1],
+        offsetX: parseFloat(parts[2]) || 0,
+        offsetY: parseFloat(parts[3]) || 0,
+        rotation: parseFloat(parts[4]) || 0,
+        scaleX: parseFloat(parts[5]) || 0.5,
+        scaleY: parseFloat(parts[6]) || 0.5,
+        contentFlags: parseInt(parts[7]) || 0,
+        surfaceFlags: parseInt(parts[8]) || 0,
+        value: parseInt(parts[9]) || 0,
+      };
+      if (row === 0 && col === 0) {
+        patchTexture = surface.texture;
+        patchContentFlags = surface.contentFlags;
+        patchSurfaceFlags = surface.surfaceFlags;
+        patchValue = surface.value;
+      }
+      const x = origin[0] + col * scaleX;
+      const y = origin[1] + row * scaleY;
+      ctrlRow.push({
+        xyz: [x, y, origin[2] + heightValue],
+        uv: terrainDefUv(surface, x, y),
+      });
+      surfaceRow.push(surface);
+    }
+    ctrl.push(ctrlRow);
+    surfaces.push(surfaceRow);
+  }
+
+  const innerClose = nextLine();
+  if (innerClose !== '}') return null;
+
+  const outerClose = nextLine();
+  if (outerClose !== '}') return null;
+
+  const patch: Patch = {
+    width,
+    height,
+    texture: patchTexture,
+    terrainDef: {
+      origin,
+      scale: [scaleX, scaleY],
+      surfaces,
+      serializable: true,
+    },
+    contentFlags: patchContentFlags,
+    surfaceFlags: patchSurfaceFlags,
+    value: patchValue,
+    ctrl,
+    subdivisions: 1,
+    mins: [0, 0, 0],
+    maxs: [0, 0, 0],
+    tessVerts: [],
+    tessIndices: [],
+  };
+  tessellatePatch(patch);
+  return patch;
+}
+
+function terrainDefUv(surface: TerrainDefSurface, x: number, y: number): [number, number] {
+  const sx = Math.abs(surface.scaleX) > 0.0001 ? surface.scaleX : 0.5;
+  const sy = Math.abs(surface.scaleY) > 0.0001 ? surface.scaleY : 0.5;
+  const angle = surface.rotation * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const rx = x * cos + y * sin;
+  const ry = -x * sin + y * cos;
+  return [
+    rx / (sx * 128) + surface.offsetX / 128,
+    ry / (sy * 128) + surface.offsetY / 128,
+  ];
 }

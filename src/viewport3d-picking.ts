@@ -75,11 +75,11 @@ export function pickPatchAt3D(
   ctx: Viewport3DPickingContext,
   screenX: number,
   screenY: number,
-): { entity: Entity; patch: Patch; dist: number } | null {
+): { entity: Entity; patch: Patch; dist: number; point: Vec3 } | null {
   const { rayOrigin, rayDir: dir } = getRay3D(ctx, screenX, screenY);
 
   let bestDist = Infinity;
-  let bestHit: { entity: Entity; patch: Patch; dist: number } | null = null;
+  let bestHit: { entity: Entity; patch: Patch; dist: number; point: Vec3 } | null = null;
 
   for (const { entity, patch } of ctx.editor.allPatches()) {
     if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
@@ -90,7 +90,12 @@ export function pickPatchAt3D(
       const t = rayTriangleIntersect(rayOrigin, dir, v0, v1, v2);
       if (t !== null && t < bestDist) {
         bestDist = t;
-        bestHit = { entity, patch, dist: t };
+        bestHit = {
+          entity,
+          patch,
+          dist: t,
+          point: vec3Add(rayOrigin, vec3Scale(dir, t)),
+        };
       }
     }
   }

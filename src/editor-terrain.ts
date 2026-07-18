@@ -1,6 +1,15 @@
 import type { Editor } from './editor';
 import { getSelectedPatchItems } from './editor-selection';
-import { createGridPatch, tessellatePatch, type Patch } from './patch';
+import {
+  createGridPatch,
+  createTerrainDefGridPatch,
+  setPatchTexture,
+  terrainDefCellTexture,
+  terrainDefDisplayTexture,
+  terrainPaintNeedsPreparation,
+  tessellatePatch,
+  type Patch,
+} from './patch';
 
 export type TerrainFalloff = 'smooth' | 'linear';
 export type TerrainBrushMode = 'height' | 'texture';
@@ -81,6 +90,17 @@ type TerrainTouchedPoint = {
   dataIndex: number;
   row: number;
   col: number;
+};
+
+export type TerrainPaintTarget = {
+  patch: Patch;
+  type: 'patch' | 'cell';
+  row: number;
+  col: number;
+  mins: [number, number, number];
+  maxs: [number, number, number];
+  texture: string;
+  needsPreparation: boolean;
 };
 
 type TerrainSeamSmoothMode = 'neutral' | 'raise' | 'lower';
@@ -176,6 +196,78 @@ function terrainPatchDistanceToPoint(patch: Patch, point: [number, number, numbe
   return Math.hypot(point[axisA] - clampedA, point[axisB] - clampedB);
 }
 
+function terrainPaintTargetBounds(points: Patch['ctrl'][number][number][]): {
+  mins: [number, number, number];
+  maxs: [number, number, number];
+} {
+  const mins: [number, number, number] = [Infinity, Infinity, Infinity];
+  const maxs: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (const point of points) {
+    for (let axis = 0; axis < 3; axis++) {
+      mins[axis] = Math.min(mins[axis], point.xyz[axis]);
+      maxs[axis] = Math.max(maxs[axis], point.xyz[axis]);
+    }
+  }
+  return { mins, maxs };
+}
+
+function terrainPatchPaintTarget(patch: Patch): TerrainPaintTarget {
+  return {
+    patch,
+    type: 'patch',
+    row: 0,
+    col: 0,
+    mins: [patch.mins[0], patch.mins[1], patch.mins[2]],
+    maxs: [patch.maxs[0], patch.maxs[1], patch.maxs[2]],
+    texture: patch.texture,
+    needsPreparation: terrainPaintNeedsPreparation(patch),
+  };
+}
+
+function terrainDefCellPaintTarget(patch: Patch, row: number, col: number): TerrainPaintTarget {
+  const corners = [
+    patch.ctrl[row][col],
+    patch.ctrl[row][col + 1],
+    patch.ctrl[row + 1][col],
+    patch.ctrl[row + 1][col + 1],
+  ];
+  const bounds = terrainPaintTargetBounds(corners);
+  return {
+    patch,
+    type: 'cell',
+    row,
+    col,
+    mins: bounds.mins,
+    maxs: bounds.maxs,
+    texture: terrainDefCellTexture(patch, row, col),
+    needsPreparation: false,
+  };
+}
+
+function nearestTerrainDefCellPaintTarget(patch: Patch, point: [number, number, number]): TerrainPaintTarget {
+  const [axisA, axisB] = terrainPlanarAxes(terrainHeightAxis(patch));
+  let bestTarget = terrainDefCellPaintTarget(patch, 0, 0);
+  let bestDist = Infinity;
+
+  for (let row = 0; row < patch.height - 1; row++) {
+    for (let col = 0; col < patch.width - 1; col++) {
+      const a = patch.ctrl[row][col].xyz;
+      const b = patch.ctrl[row][col + 1].xyz;
+      const c = patch.ctrl[row + 1][col].xyz;
+      const d = patch.ctrl[row + 1][col + 1].xyz;
+      const centerA = (a[axisA] + b[axisA] + c[axisA] + d[axisA]) * 0.25;
+      const centerB = (a[axisB] + b[axisB] + c[axisB] + d[axisB]) * 0.25;
+      const dist = Math.hypot(point[axisA] - centerA, point[axisB] - centerB);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestTarget = terrainDefCellPaintTarget(patch, row, col);
+      }
+    }
+  }
+
+  return bestTarget;
+}
+
 function createTerrainTilePatch(source: Patch, startRow: number, startCol: number): Patch {
   const ctrl = source.ctrl.slice(startRow, startRow + 3).map(row =>
     row.slice(startCol, startCol + 3).map(cp => ({
@@ -184,11 +276,25 @@ function createTerrainTilePatch(source: Patch, startRow: number, startCol: numbe
       terrainCoord: cp.terrainCoord ? [cp.terrainCoord[0], cp.terrainCoord[1]] as [number, number] : undefined,
     }))
   );
+  const terrainDef = source.terrainDef
+    ? {
+        origin: [...ctrl[0][0].xyz] as [number, number, number],
+        scale: [
+          ctrl[0][1].xyz[0] - ctrl[0][0].xyz[0],
+          ctrl[1][0].xyz[1] - ctrl[0][0].xyz[1],
+        ] as [number, number],
+        surfaces: source.terrainDef.surfaces
+          .slice(startRow, startRow + 3)
+          .map(row => row.slice(startCol, startCol + 3).map(surface => ({ ...surface }))),
+        serializable: true,
+      }
+    : undefined;
   const patch: Patch = {
     width: 3,
     height: 3,
     texture: source.texture,
     terrainGroupId: source.terrainGroupId,
+    terrainDef,
     contentFlags: source.contentFlags,
     surfaceFlags: source.surfaceFlags,
     value: source.value,
@@ -199,6 +305,9 @@ function createTerrainTilePatch(source: Patch, startRow: number, startCol: numbe
     tessVerts: [],
     tessIndices: [],
   };
+  if (terrainDef) {
+    patch.texture = terrainDefDisplayTexture(patch);
+  }
   tessellatePatch(patch);
   return patch;
 }
@@ -475,7 +584,12 @@ export function createTerrainPatch(editor: Editor): void {
   const height = terrainSubPatchesForExtent(bounds.maxs[axisV] - bounds.mins[axisV], editor.gridSize) * 2 + 1;
 
   editor.snapshot();
-  const patch = createGridPatch(bounds.mins, bounds.maxs, editor.currentTexture, width, height, axisH, axisV, axisDepth);
+  const terrainDefCompatible =
+    axisDepth === 2
+    && ((axisH === 0 && axisV === 1) || (axisH === 1 && axisV === 0));
+  const patch = terrainDefCompatible
+    ? createTerrainDefGridPatch(bounds.mins, bounds.maxs, editor.currentTexture, width, height)
+    : createGridPatch(bounds.mins, bounds.maxs, editor.currentTexture, width, height, axisH, axisV, axisDepth);
   patch.terrainGroupId = createTerrainGroupId();
   assignTerrainCoords(patch);
   editor.worldspawn.patches.push(patch);
@@ -488,7 +602,12 @@ export function createTerrainPatch(editor: Editor): void {
   editor.terrainBrushCenter = null;
   editor.terrainBrushAxes = null;
   editor.dirty = true;
-  editor.statusMessage = `Created terrain patch ${width}x${height} (Use Prepare Terrain For Texture Paint for local texture painting)`;
+  const paintHint = terrainPaintNeedsPreparation(patch)
+    ? ' (Use Prepare Terrain For Texture Paint for local texture painting)'
+    : '';
+  editor.statusMessage = terrainDefCompatible
+    ? `Created terrainDef terrain ${width}x${height}${paintHint}`
+    : `Created terrain patch ${width}x${height}${paintHint}`;
 }
 
 export function splitTerrainIntoPaintTiles(editor: Editor): void {
@@ -623,22 +742,56 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
 
   const texture = canonicalTerrainTexture(editor.currentTexture);
   if (!texture) return 0;
-  const candidates = hoveredTerrainPaintPatches(editor);
-  if (candidates.length === 0) {
-    editor.statusMessage = 'Hover terrain in a matching 2D view to paint';
+  const targets = hoveredTerrainPaintTargets(editor);
+  if (targets.length === 0) {
+    editor.statusMessage = 'Hover terrain in a matching 2D or 3D view to paint';
+    return 0;
+  }
+  if (targets.some(target => target.needsPreparation)) {
+    editor.statusMessage = 'Prepare Terrain For Texture Paint before local terrain texture painting';
     return 0;
   }
 
   let painted = 0;
   let snapshotTaken = false;
-  for (const patch of candidates) {
-    if (patch.texture === texture) continue;
-    if (takeSnapshot && !snapshotTaken) {
-      editor.snapshot();
-      snapshotTaken = true;
+  let paintedCells = 0;
+  let paintedPatches = 0;
+  for (const target of targets) {
+    let changed = false;
+
+    if (target.type === 'cell' && target.patch.terrainDef) {
+      const surfaces = [
+        target.patch.terrainDef.surfaces[target.row]?.[target.col],
+        target.patch.terrainDef.surfaces[target.row]?.[target.col + 1],
+        target.patch.terrainDef.surfaces[target.row + 1]?.[target.col],
+        target.patch.terrainDef.surfaces[target.row + 1]?.[target.col + 1],
+      ].filter((surface): surface is NonNullable<typeof surface> => !!surface);
+      changed = surfaces.some(surface => surface.texture !== texture);
+      if (changed) {
+        if (takeSnapshot && !snapshotTaken) {
+          editor.snapshot();
+          snapshotTaken = true;
+        }
+        for (const surface of surfaces) {
+          surface.texture = texture;
+        }
+        tessellatePatch(target.patch);
+        paintedCells++;
+      }
+    } else {
+      changed = target.patch.terrainDef
+        ? target.patch.terrainDef.surfaces.some(row => row.some(surface => surface.texture !== texture))
+        : target.patch.texture !== texture;
+      if (changed) {
+        if (takeSnapshot && !snapshotTaken) {
+          editor.snapshot();
+          snapshotTaken = true;
+        }
+        setPatchTexture(target.patch, texture);
+        paintedPatches++;
+      }
     }
-    patch.texture = texture;
-    painted++;
+    if (changed) painted++;
   }
 
   if (painted === 0) {
@@ -647,37 +800,62 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
   }
 
   editor.dirty = true;
-  editor.statusMessage = `Painted ${painted} hovered terrain ${painted === 1 ? 'patch' : 'patches'} with ${texture}`;
+  const parts: string[] = [];
+  if (paintedCells > 0) parts.push(`${paintedCells} ${paintedCells === 1 ? 'cell' : 'cells'}`);
+  if (paintedPatches > 0) parts.push(`${paintedPatches} ${paintedPatches === 1 ? 'patch' : 'patches'}`);
+  editor.statusMessage = `Painted ${parts.join(' and ')} with ${texture}`;
   return painted;
 }
 
-export function hoveredTerrainPaintPatches(editor: Editor): Patch[] {
+export function hoveredTerrainPaintTargets(editor: Editor): TerrainPaintTarget[] {
   if (!editor.patchEditMode || editor.patchEditData.length === 0) return [];
 
   const anchors = cursorTerrainAnchors(editor);
   if (anchors.length === 0) return [];
 
   let bestDistance = Infinity;
-  const candidates: Patch[] = [];
-  const seen = new Set<Patch>();
+  const targets: TerrainPaintTarget[] = [];
+  const seen = new Set<string>();
+
+  const makeTarget = (patch: Patch, point: [number, number, number]): TerrainPaintTarget =>
+    patch.terrainDef && (patch.width > 3 || patch.height > 3)
+      ? nearestTerrainDefCellPaintTarget(patch, point)
+      : terrainPatchPaintTarget(patch);
 
   for (const anchor of anchors) {
     const data = editor.patchEditData[anchor.dataIndex];
     if (!data) continue;
     const distance = terrainPatchDistanceToPoint(data.patch, anchor.point);
+    const target = makeTarget(data.patch, anchor.point);
+    const key = `${anchor.dataIndex}:${target.type}:${target.row}:${target.col}`;
     if (distance < bestDistance - 0.001) {
       bestDistance = distance;
-      candidates.length = 0;
+      targets.length = 0;
       seen.clear();
-      candidates.push(data.patch);
-      seen.add(data.patch);
-    } else if (Math.abs(distance - bestDistance) <= 0.001 && !seen.has(data.patch)) {
-      candidates.push(data.patch);
-      seen.add(data.patch);
+      targets.push(target);
+      seen.add(key);
+    } else if (Math.abs(distance - bestDistance) <= 0.001 && !seen.has(key)) {
+      targets.push(target);
+      seen.add(key);
     }
   }
 
-  return candidates;
+  return targets;
+}
+
+export function hoveredTerrainPaintPatches(editor: Editor): Patch[] {
+  const seen = new Set<Patch>();
+  const patches: Patch[] = [];
+  for (const target of hoveredTerrainPaintTargets(editor)) {
+    if (seen.has(target.patch)) continue;
+    seen.add(target.patch);
+    patches.push(target.patch);
+  }
+  return patches;
+}
+
+export function hoveredTerrainPaintNeedsPreparation(editor: Editor): boolean {
+  return hoveredTerrainPaintPatches(editor).some(terrainPaintNeedsPreparation);
 }
 
 export function smoothTerrain(editor: Editor): void {

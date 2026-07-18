@@ -1,6 +1,6 @@
 import { type BrushFace, textureAxisFromPlane } from './brush';
 import { vec3Dot } from './math';
-import type { Patch } from './patch';
+import { setPatchTexture, terrainDefDisplayTexture, type Patch, type TerrainDefSurface } from './patch';
 import type { Editor } from './editor';
 
 export type TextureReplaceScope = 'selection' | 'map';
@@ -8,7 +8,8 @@ export type TextureReplaceMatch = 'exact' | 'contains';
 
 type TextureTarget =
   | { kind: 'face'; face: BrushFace }
-  | { kind: 'patch'; patch: Patch };
+  | { kind: 'patch'; patch: Patch }
+  | { kind: 'terrain-surface'; patch: Patch; surface: TerrainDefSurface };
 
 function canonicalTextureName(texture: string): string {
   return texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '');
@@ -22,6 +23,23 @@ function collectSelectedTextureTargets(editor: Editor): TextureTarget[] {
   const targets: TextureTarget[] = [];
   const seenFaces = new Set<BrushFace>();
   const seenPatches = new Set<Patch>();
+  const seenTerrainSurfaces = new Set<TerrainDefSurface>();
+
+  const addPatchTargets = (patch: Patch) => {
+    if (!patch.terrainDef) {
+      if (seenPatches.has(patch)) return;
+      seenPatches.add(patch);
+      targets.push({ kind: 'patch', patch });
+      return;
+    }
+    for (const row of patch.terrainDef.surfaces) {
+      for (const surface of row) {
+        if (seenTerrainSurfaces.has(surface)) continue;
+        seenTerrainSurfaces.add(surface);
+        targets.push({ kind: 'terrain-surface', patch, surface });
+      }
+    }
+  };
 
   for (const item of editor.selection) {
     if (item.type === 'entity') {
@@ -33,9 +51,7 @@ function collectSelectedTextureTargets(editor: Editor): TextureTarget[] {
         }
       }
       for (const patch of item.entity.patches) {
-        if (seenPatches.has(patch)) continue;
-        seenPatches.add(patch);
-        targets.push({ kind: 'patch', patch });
+        addPatchTargets(patch);
       }
       continue;
     }
@@ -56,9 +72,7 @@ function collectSelectedTextureTargets(editor: Editor): TextureTarget[] {
       continue;
     }
 
-    if (seenPatches.has(item.patch)) continue;
-    seenPatches.add(item.patch);
-    targets.push({ kind: 'patch', patch: item.patch });
+    addPatchTargets(item.patch);
   }
 
   return targets;
@@ -73,21 +87,34 @@ function collectMapTextureTargets(editor: Editor): TextureTarget[] {
       }
     }
     for (const patch of entity.patches) {
-      targets.push({ kind: 'patch', patch });
+      if (!patch.terrainDef) {
+        targets.push({ kind: 'patch', patch });
+        continue;
+      }
+      for (const row of patch.terrainDef.surfaces) {
+        for (const surface of row) {
+          targets.push({ kind: 'terrain-surface', patch, surface });
+        }
+      }
     }
   }
   return targets;
 }
 
 function textureTargetTexture(target: TextureTarget): string {
-  return target.kind === 'face' ? target.face.texture : target.patch.texture;
+  if (target.kind === 'face') return target.face.texture;
+  if (target.kind === 'patch') return target.patch.texture;
+  return target.surface.texture;
 }
 
 function setTextureTarget(target: TextureTarget, texture: string): void {
   if (target.kind === 'face') {
     target.face.texture = texture;
+  } else if (target.kind === 'patch') {
+    setPatchTexture(target.patch, texture);
   } else {
-    target.patch.texture = texture;
+    target.surface.texture = texture;
+    target.patch.texture = terrainDefDisplayTexture(target.patch);
   }
 }
 

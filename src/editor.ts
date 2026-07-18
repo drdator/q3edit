@@ -115,7 +115,9 @@ import {
   currentTerrainStrength as getEditorTerrainStrength,
   cycleTerrainFalloff as cycleEditorTerrainFalloff,
   erodeTerrain as erodeEditorTerrain,
+  hoveredTerrainPaintTargets as hoveredEditorTerrainPaintTargets,
   hoveredTerrainPaintPatches as hoveredEditorTerrainPaintPatches,
+  hoveredTerrainPaintNeedsPreparation as hoveredEditorTerrainPaintNeedsPreparation,
   lowerTerrain as lowerEditorTerrain,
   noiseTerrain as noiseEditorTerrain,
   paintTerrainTexture as paintEditorTerrainTexture,
@@ -128,6 +130,7 @@ import {
   toggleTerrainBrushMode as toggleEditorTerrainBrushMode,
   type TerrainBrushMode,
   type TerrainFalloff,
+  type TerrainPaintTarget,
 } from './editor-terrain';
 import {
   addBrush as addEditorBrush,
@@ -1000,6 +1003,14 @@ export class Editor {
 
   hoveredTerrainPaintPatches(): Patch[] {
     return hoveredEditorTerrainPaintPatches(this);
+  }
+
+  hoveredTerrainPaintTargets(): TerrainPaintTarget[] {
+    return hoveredEditorTerrainPaintTargets(this);
+  }
+
+  hoveredTerrainPaintNeedsPreparation(): boolean {
+    return hoveredEditorTerrainPaintNeedsPreparation(this);
   }
 
   paintTerrainTexture(takeSnapshot = true): number {

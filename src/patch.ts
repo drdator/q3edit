@@ -1,4 +1,4 @@
-import { Vec3, vec3, vec3Add, vec3Sub, vec3Cross, vec3Normalize, vec3Copy, vec3RotateAxis, vec3MirrorAxis } from './math';
+import { Vec3, vec3, vec3Sub, vec3Cross, vec3Normalize, vec3Copy, vec3RotateAxis, vec3MirrorAxis } from './math';
 
 // ── Data structures ──
 
@@ -8,6 +8,25 @@ export interface PatchControlPoint {
   terrainCoord?: [number, number];
 }
 
+export interface TerrainDefSurface {
+  texture: string;
+  offsetX: number;
+  offsetY: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+  contentFlags: number;
+  surfaceFlags: number;
+  value: number;
+}
+
+export interface TerrainDefData {
+  origin: Vec3;
+  scale: [number, number];
+  surfaces: TerrainDefSurface[][];
+  serializable: boolean;
+}
+
 export interface PatchTessVertex {
   position: Vec3;
   normal: Vec3;
@@ -15,10 +34,11 @@ export interface PatchTessVertex {
 }
 
 export interface Patch {
-  width: number;          // columns of control points (always odd: 3, 5, 7...)
-  height: number;         // rows of control points (always odd)
+  width: number;          // columns of control points
+  height: number;         // rows of control points
   texture: string;
   terrainGroupId?: string;
+  terrainDef?: TerrainDefData;
   contentFlags: number;
   surfaceFlags: number;
   value: number;
@@ -34,6 +54,96 @@ export interface Patch {
 // ── Biquadratic Bezier tessellation ──
 
 const SUBDIVISIONS = 6;
+
+function defaultTerrainDefSurface(texture: string, contentFlags = 0, surfaceFlags = 0, value = 0): TerrainDefSurface {
+  return {
+    texture,
+    offsetX: 0,
+    offsetY: 0,
+    rotation: 0,
+    scaleX: 0.5,
+    scaleY: 0.5,
+    contentFlags,
+    surfaceFlags,
+    value,
+  };
+}
+
+function syncTerrainDefControlUvs(patch: Patch): void {
+  if (!patch.terrainDef) return;
+  for (let row = 0; row < patch.height; row++) {
+    for (let col = 0; col < patch.width; col++) {
+      const point = patch.ctrl[row]?.[col];
+      const surface = patch.terrainDef.surfaces[row]?.[col];
+      if (!point || !surface) continue;
+      point.uv = terrainDefUv(surface, point.xyz[0], point.xyz[1]);
+    }
+  }
+}
+
+export function terrainDefDisplayTexture(patch: Patch): string {
+  if (!patch.terrainDef) return patch.texture;
+  const centerTexture = patch.terrainDef.surfaces[Math.floor(patch.height / 2)]?.[Math.floor(patch.width / 2)]?.texture;
+  const counts = new Map<string, number>();
+  let bestTexture = centerTexture ?? patch.texture;
+  let bestCount = counts.get(bestTexture) ?? 0;
+
+  for (const row of patch.terrainDef.surfaces) {
+    for (const surface of row) {
+      const count = (counts.get(surface.texture) ?? 0) + 1;
+      counts.set(surface.texture, count);
+      if (count > bestCount || (count === bestCount && surface.texture === centerTexture)) {
+        bestTexture = surface.texture;
+        bestCount = count;
+      }
+    }
+  }
+
+  return bestTexture;
+}
+
+export function terrainPaintNeedsPreparation(patch: Patch): boolean {
+  return !patch.terrainDef && (patch.width > 3 || patch.height > 3);
+}
+
+export function terrainDefCellTriangleIndices(
+  patch: Patch,
+  row: number,
+  col: number,
+): [number, number, number, number, number, number] {
+  const topLeft = row * patch.width + col;
+  const topRight = topLeft + 1;
+  const bottomLeft = topLeft + patch.width;
+  const bottomRight = bottomLeft + 1;
+  if ((row + col) & 1) {
+    return [topLeft, bottomLeft, bottomRight, bottomRight, topRight, topLeft];
+  }
+  return [topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight];
+}
+
+export function terrainDefCellTexture(patch: Patch, row: number, col: number): string {
+  if (!patch.terrainDef) return patch.texture;
+  const textures = [
+    patch.terrainDef.surfaces[row]?.[col]?.texture,
+    patch.terrainDef.surfaces[row]?.[col + 1]?.texture,
+    patch.terrainDef.surfaces[row + 1]?.[col]?.texture,
+    patch.terrainDef.surfaces[row + 1]?.[col + 1]?.texture,
+  ].filter((texture): texture is string => !!texture);
+  if (textures.length === 0) return patch.texture;
+
+  const counts = new Map<string, number>();
+  let bestTexture = textures[0];
+  let bestCount = 0;
+  for (const texture of textures) {
+    const count = (counts.get(texture) ?? 0) + 1;
+    counts.set(texture, count);
+    if (count > bestCount) {
+      bestTexture = texture;
+      bestCount = count;
+    }
+  }
+  return bestTexture;
+}
 
 /** Evaluate a quadratic Bezier at parameter t for a single component. */
 function bezier2(a: number, b: number, c: number, t: number): number {
@@ -80,6 +190,11 @@ function sampleSubPatch(
 /** Tessellate a patch into renderable triangles. Call after modifying control points. */
 export function tessellatePatch(patch: Patch, subdivisions?: number): void {
   if (subdivisions !== undefined) patch.subdivisions = subdivisions;
+  if (patch.terrainDef) {
+    syncTerrainDefMetadata(patch);
+    tessellateTerrainDefPatch(patch);
+    return;
+  }
   subdivisions = patch.subdivisions;
   const verts: PatchTessVertex[] = [];
   const indices: number[] = [];
@@ -174,6 +289,114 @@ export function tessellatePatch(patch: Patch, subdivisions?: number): void {
   patch.maxs = maxs;
 }
 
+function tessellateTerrainDefPatch(patch: Patch): void {
+  const verts: PatchTessVertex[] = [];
+  const indices: number[] = [];
+
+  for (let row = 0; row < patch.height; row++) {
+    for (let col = 0; col < patch.width; col++) {
+      const cp = patch.ctrl[row][col];
+      verts.push({
+        position: vec3Copy(cp.xyz),
+        normal: [0, 0, 1],
+        uv: [cp.uv[0], cp.uv[1]],
+      });
+    }
+  }
+
+  for (let row = 0; row < patch.height - 1; row++) {
+    for (let col = 0; col < patch.width - 1; col++) {
+      indices.push(...terrainDefCellTriangleIndices(patch, row, col));
+    }
+  }
+
+  const normalAccum: Vec3[] = verts.map(() => [0, 0, 0]);
+  for (let i = 0; i < indices.length; i += 3) {
+    const i0 = indices[i], i1 = indices[i + 1], i2 = indices[i + 2];
+    const p0 = verts[i0].position, p1 = verts[i1].position, p2 = verts[i2].position;
+    const e1 = vec3Sub(p1, p0);
+    const e2 = vec3Sub(p2, p0);
+    const n = vec3Cross(e1, e2);
+    for (const idx of [i0, i1, i2]) {
+      normalAccum[idx][0] += n[0];
+      normalAccum[idx][1] += n[1];
+      normalAccum[idx][2] += n[2];
+    }
+  }
+  for (let i = 0; i < verts.length; i++) {
+    verts[i].normal = vec3Normalize(normalAccum[i]);
+  }
+
+  let mins: Vec3 = [Infinity, Infinity, Infinity];
+  let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const cp of patch.ctrl.flat()) {
+    for (let a = 0; a < 3; a++) {
+      mins[a] = Math.min(mins[a], cp.xyz[a]);
+      maxs[a] = Math.max(maxs[a], cp.xyz[a]);
+    }
+  }
+
+  patch.tessVerts = verts;
+  patch.tessIndices = indices;
+  patch.mins = mins;
+  patch.maxs = maxs;
+}
+
+function terrainDefUv(surface: TerrainDefSurface, x: number, y: number): [number, number] {
+  const sx = Math.abs(surface.scaleX) > 0.0001 ? surface.scaleX : 0.5;
+  const sy = Math.abs(surface.scaleY) > 0.0001 ? surface.scaleY : 0.5;
+  const angle = surface.rotation * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const rx = x * cos + y * sin;
+  const ry = -x * sin + y * cos;
+  return [
+    rx / (sx * 128) + surface.offsetX / 128,
+    ry / (sy * 128) + surface.offsetY / 128,
+  ];
+}
+
+export function syncTerrainDefMetadata(patch: Patch): void {
+  if (!patch.terrainDef) return;
+
+  const terrain = patch.terrainDef;
+  const epsilon = 0.001;
+  const originX = patch.ctrl[0]?.[0]?.xyz[0] ?? terrain.origin[0];
+  const originY = patch.ctrl[0]?.[0]?.xyz[1] ?? terrain.origin[1];
+  const scaleX = patch.width > 1 ? patch.ctrl[0][1].xyz[0] - patch.ctrl[0][0].xyz[0] : terrain.scale[0];
+  const scaleY = patch.height > 1 ? patch.ctrl[1][0].xyz[1] - patch.ctrl[0][0].xyz[1] : terrain.scale[1];
+
+  let serializable = Number.isFinite(scaleX) && Number.isFinite(scaleY) && Math.abs(scaleX) > epsilon && Math.abs(scaleY) > epsilon;
+  for (let row = 0; row < patch.height && serializable; row++) {
+    for (let col = 0; col < patch.width; col++) {
+      const point = patch.ctrl[row][col].xyz;
+      const expectedX = originX + col * scaleX;
+      const expectedY = originY + row * scaleY;
+      if (Math.abs(point[0] - expectedX) > epsilon || Math.abs(point[1] - expectedY) > epsilon) {
+        serializable = false;
+        break;
+      }
+    }
+  }
+
+  terrain.origin[0] = originX;
+  terrain.origin[1] = originY;
+  terrain.scale = [scaleX, scaleY];
+  terrain.serializable = serializable;
+  syncTerrainDefControlUvs(patch);
+  patch.texture = terrainDefDisplayTexture(patch);
+}
+
+export function setPatchTexture(patch: Patch, texture: string): void {
+  patch.texture = texture;
+  if (!patch.terrainDef) return;
+  for (const row of patch.terrainDef.surfaces) {
+    for (const surface of row) {
+      surface.texture = texture;
+    }
+  }
+}
+
 // ── Utility functions ──
 
 export function clonePatch(patch: Patch): Patch {
@@ -189,6 +412,14 @@ export function clonePatch(patch: Patch): Patch {
     height: patch.height,
     texture: patch.texture,
     terrainGroupId: patch.terrainGroupId,
+    terrainDef: patch.terrainDef
+      ? {
+          origin: vec3Copy(patch.terrainDef.origin),
+          scale: [patch.terrainDef.scale[0], patch.terrainDef.scale[1]],
+          surfaces: patch.terrainDef.surfaces.map(row => row.map(surface => ({ ...surface }))),
+          serializable: patch.terrainDef.serializable,
+        }
+      : undefined,
     contentFlags: patch.contentFlags,
     surfaceFlags: patch.surfaceFlags,
     value: patch.value,
@@ -210,6 +441,10 @@ export function translatePatch(patch: Patch, delta: Vec3): void {
       cp.xyz[1] += delta[1];
       cp.xyz[2] += delta[2];
     }
+  }
+  if (patch.terrainDef) {
+    tessellatePatch(patch);
+    return;
   }
   for (const v of patch.tessVerts) {
     v.position[0] += delta[0];
@@ -336,6 +571,53 @@ export function createGridPatch(
   }
 
   return makePatch(clampedWidth, clampedHeight, ctrl, texture);
+}
+
+export function createTerrainDefGridPatch(
+  mins: Vec3,
+  maxs: Vec3,
+  texture: string,
+  width: number,
+  height: number,
+): Patch {
+  const clampedWidth = Math.max(2, width);
+  const clampedHeight = Math.max(2, height);
+  const xMin = mins[0];
+  const xMax = maxs[0];
+  const yMin = mins[1];
+  const yMax = maxs[1];
+  const zBase = maxs[2];
+  const scaleX = clampedWidth === 1 ? 0 : (xMax - xMin) / (clampedWidth - 1);
+  const scaleY = clampedHeight === 1 ? 0 : (yMax - yMin) / (clampedHeight - 1);
+  const surface = defaultTerrainDefSurface(texture);
+  const ctrl: PatchControlPoint[][] = [];
+  const surfaces: TerrainDefSurface[][] = [];
+
+  for (let row = 0; row < clampedHeight; row++) {
+    const y = yMin + row * scaleY;
+    const ctrlRow: PatchControlPoint[] = [];
+    const surfaceRow: TerrainDefSurface[] = [];
+    for (let col = 0; col < clampedWidth; col++) {
+      const x = xMin + col * scaleX;
+      ctrlRow.push({
+        xyz: [x, y, zBase],
+        uv: terrainDefUv(surface, x, y),
+      });
+      surfaceRow.push({ ...surface });
+    }
+    ctrl.push(ctrlRow);
+    surfaces.push(surfaceRow);
+  }
+
+  const patch = makePatch(clampedWidth, clampedHeight, ctrl, texture);
+  patch.terrainDef = {
+    origin: [xMin, yMin, zBase],
+    scale: [scaleX, scaleY],
+    surfaces,
+    serializable: true,
+  };
+  tessellatePatch(patch);
+  return patch;
 }
 
 /** Create a half-cylinder patch. The cylinder curves from mins to maxs in X, extruded along Z. */

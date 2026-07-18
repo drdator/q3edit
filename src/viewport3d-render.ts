@@ -67,6 +67,8 @@ export interface Viewport3DRenderContext {
   pointfileLineCount: number;
   pointfileMarkerVAO: WebGLVertexArrayObject;
   pointfileMarkerCount: number;
+  paintPreviewVAO: WebGLVertexArrayObject;
+  paintPreviewCount: number;
   lineVAO: WebGLVertexArrayObject;
   lineCount: number;
   wireVAO: WebGLVertexArrayObject;
@@ -249,6 +251,16 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.disable(ctx.gl.DEPTH_TEST);
     ctx.gl.bindVertexArray(ctx.lineVAO);
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.lineCount);
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
+  if (showSelection && ctx.paintPreviewCount > 0) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.uniform3f(ctx.lineColorLoc, 0.96, 0.86, 0.24);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    ctx.gl.bindVertexArray(ctx.paintPreviewVAO);
+    ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.paintPreviewCount);
     ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }
 

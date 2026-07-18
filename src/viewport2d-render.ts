@@ -61,7 +61,9 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
 
   if (ctx.editor.patchEditMode) {
     drawTerrainBrushPreview(ctx);
-    drawPatchControlPoints(ctx);
+    if (ctx.editor.terrainBrushMode !== 'texture') {
+      drawPatchControlPoints(ctx);
+    }
   }
 
   for (const entity of ctx.editor.nonWorldspawnEntities()) {
@@ -182,46 +184,87 @@ function drawBrush(ctx: Viewport2DRenderContext, brush: Brush, selected: boolean
 }
 
 function drawPatch(ctx: Viewport2DRenderContext, patch: Patch, selected: boolean): void {
-  ctx.ctx.strokeStyle = selected ? '#ff6600' : '#4488bb';
-  ctx.ctx.lineWidth = selected ? 1.5 : 1;
-  ctx.ctx.fillStyle = selected ? 'rgba(255, 102, 0, 0.08)' : 'rgba(60, 80, 100, 0.1)';
+  const textureTerrainMode = ctx.editor.patchEditMode && ctx.editor.terrainBrushMode === 'texture';
+  ctx.ctx.strokeStyle = textureTerrainMode
+    ? selected ? 'rgba(255, 170, 96, 0.5)' : 'rgba(68, 136, 187, 0.22)'
+    : selected ? '#ff6600' : '#4488bb';
+  ctx.ctx.lineWidth = textureTerrainMode
+    ? selected ? 1 : 0.75
+    : selected ? 1.5 : 1;
+  ctx.ctx.fillStyle = textureTerrainMode
+    ? selected ? 'rgba(255, 102, 0, 0.015)' : 'rgba(60, 80, 100, 0.04)'
+    : selected ? 'rgba(255, 102, 0, 0.08)' : 'rgba(60, 80, 100, 0.1)';
 
   const [x0, y0] = ctx.worldToScreen(patch.mins[ctx.axisH], patch.maxs[ctx.axisV]);
   const [x1, y1] = ctx.worldToScreen(patch.maxs[ctx.axisH], patch.mins[ctx.axisV]);
   ctx.ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
 
-  const n = patch.subdivisions + 1;
-  const subCols = (patch.width - 1) / 2;
-  const subRows = (patch.height - 1) / 2;
-  ctx.ctx.beginPath();
-  for (let spr = 0; spr < subRows; spr++) {
-    for (let spc = 0; spc < subCols; spc++) {
-      const base = (spr * subCols + spc) * n * n;
-      for (let vi = 0; vi < n; vi++) {
-        for (let ui = 0; ui < n; ui++) {
-          const idx = base + vi * n + ui;
-          const p = patch.tessVerts[idx]?.position;
+  if (!textureTerrainMode) {
+    ctx.ctx.beginPath();
+    if (patch.terrainDef) {
+      for (let r = 0; r < patch.height; r++) {
+        for (let c = 0; c < patch.width; c++) {
+          const p = patch.ctrl[r]?.[c]?.xyz;
           if (!p) continue;
           const [sx, sy] = ctx.worldToScreen(p[ctx.axisH], p[ctx.axisV]);
-          if (ui < n - 1) {
-            const q = patch.tessVerts[idx + 1].position;
-            const [qx, qy] = ctx.worldToScreen(q[ctx.axisH], q[ctx.axisV]);
-            ctx.ctx.moveTo(sx, sy);
-            ctx.ctx.lineTo(qx, qy);
+          if (c < patch.width - 1) {
+            const q = patch.ctrl[r]?.[c + 1]?.xyz;
+            if (q) {
+              const [qx, qy] = ctx.worldToScreen(q[ctx.axisH], q[ctx.axisV]);
+              ctx.ctx.moveTo(sx, sy);
+              ctx.ctx.lineTo(qx, qy);
+            }
           }
-          if (vi < n - 1) {
-            const q = patch.tessVerts[idx + n].position;
-            const [qx, qy] = ctx.worldToScreen(q[ctx.axisH], q[ctx.axisV]);
-            ctx.ctx.moveTo(sx, sy);
-            ctx.ctx.lineTo(qx, qy);
+          if (r < patch.height - 1) {
+            const q = patch.ctrl[r + 1]?.[c]?.xyz;
+            if (q) {
+              const [qx, qy] = ctx.worldToScreen(q[ctx.axisH], q[ctx.axisV]);
+              ctx.ctx.moveTo(sx, sy);
+              ctx.ctx.lineTo(qx, qy);
+            }
+          }
+        }
+      }
+    } else {
+      const n = patch.subdivisions + 1;
+      const subCols = (patch.width - 1) / 2;
+      const subRows = (patch.height - 1) / 2;
+      for (let spr = 0; spr < subRows; spr++) {
+        for (let spc = 0; spc < subCols; spc++) {
+          const base = (spr * subCols + spc) * n * n;
+          for (let vi = 0; vi < n; vi++) {
+            for (let ui = 0; ui < n; ui++) {
+              const idx = base + vi * n + ui;
+              const p = patch.tessVerts[idx]?.position;
+              if (!p) continue;
+              const [sx, sy] = ctx.worldToScreen(p[ctx.axisH], p[ctx.axisV]);
+              if (ui < n - 1) {
+                const q = patch.tessVerts[idx + 1]?.position;
+                if (q) {
+                  const [qx, qy] = ctx.worldToScreen(q[ctx.axisH], q[ctx.axisV]);
+                  ctx.ctx.moveTo(sx, sy);
+                  ctx.ctx.lineTo(qx, qy);
+                }
+              }
+              if (vi < n - 1) {
+                const q = patch.tessVerts[idx + n]?.position;
+                if (q) {
+                  const [qx, qy] = ctx.worldToScreen(q[ctx.axisH], q[ctx.axisV]);
+                  ctx.ctx.moveTo(sx, sy);
+                  ctx.ctx.lineTo(qx, qy);
+                }
+              }
+            }
           }
         }
       }
     }
+    ctx.ctx.stroke();
+  } else if (selected) {
+    ctx.ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
   }
-  ctx.ctx.stroke();
 
-  if (selected) {
+  if (selected && !textureTerrainMode) {
     ctx.ctx.strokeStyle = 'rgba(200, 80, 200, 0.6)';
     ctx.ctx.lineWidth = 0.75;
     ctx.ctx.beginPath();
@@ -278,17 +321,19 @@ function drawPointfile(ctx: Viewport2DRenderContext): void {
 
 function drawTerrainBrushPreview(ctx: Viewport2DRenderContext): void {
   if (ctx.editor.terrainBrushMode === 'texture') {
-    const previewPatches = ctx.editor.hoveredTerrainPaintPatches();
-    if (previewPatches.length === 0) return;
+    const previewTargets = ctx.editor.hoveredTerrainPaintTargets();
+    if (previewTargets.length === 0) return;
+    const needsPreparation = previewTargets.some(target => target.needsPreparation);
 
     ctx.ctx.save();
-    ctx.ctx.strokeStyle = 'rgba(255, 214, 92, 0.95)';
-    ctx.ctx.fillStyle = 'rgba(255, 214, 92, 0.12)';
+    ctx.ctx.strokeStyle = needsPreparation ? 'rgba(255, 128, 64, 0.95)' : 'rgba(255, 214, 92, 0.95)';
+    ctx.ctx.fillStyle = needsPreparation ? 'rgba(255, 128, 64, 0.08)' : 'rgba(255, 214, 92, 0.12)';
     ctx.ctx.lineWidth = 2;
+    if (needsPreparation) ctx.ctx.setLineDash([6, 4]);
 
-    for (const patch of previewPatches) {
-      const [x0, y0] = ctx.worldToScreen(patch.mins[ctx.axisH], patch.maxs[ctx.axisV]);
-      const [x1, y1] = ctx.worldToScreen(patch.maxs[ctx.axisH], patch.mins[ctx.axisV]);
+    for (const target of previewTargets) {
+      const [x0, y0] = ctx.worldToScreen(target.mins[ctx.axisH], target.maxs[ctx.axisV]);
+      const [x1, y1] = ctx.worldToScreen(target.maxs[ctx.axisH], target.mins[ctx.axisV]);
       ctx.ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
       ctx.ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     }

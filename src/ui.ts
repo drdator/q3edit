@@ -1092,28 +1092,33 @@ export class UI {
     if (paintTarget) {
       paintTarget.style.display = textureMode ? '' : 'none';
       if (textureMode) {
-        const hovered = this.editor.hoveredTerrainPaintPatches();
+        const hovered = this.editor.hoveredTerrainPaintTargets();
+        const needsPreparation = hovered.some(target => target.needsPreparation);
         const hoveredCount = hovered.length;
-        const tileLabel = hoveredCount === 1 ? 'tile' : 'tiles';
+        const targetLabel = hoveredCount === 1
+          ? hovered[0].type === 'cell' ? 'cell' : 'tile'
+          : 'targets';
         const normalize = (texture: string) => texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '');
         const activeTexture = normalize(this.editor.currentTexture);
-        const hoveredTextures = new Set(hovered.map(patch => normalize(patch.texture)));
+        const hoveredTextures = new Set(hovered.map(target => normalize(target.texture)));
 
         if (hoveredCount === 0) {
-          paintTarget.textContent = 'Paint target: hover a terrain tile in a 2D view';
+          paintTarget.textContent = 'Paint target: hover terrain in a 2D or 3D view';
+        } else if (needsPreparation) {
+          paintTarget.textContent = 'Paint target: prepare terrain for local texture paint';
         } else if (hoveredTextures.size === 1) {
           const [hoveredTexture] = hoveredTextures;
           paintTarget.textContent = hoveredTexture === activeTexture
-            ? `Paint target: ${hoveredCount} ${tileLabel} already use ${hoveredTexture}`
-            : `Paint target: ${hoveredCount} ${tileLabel} ${hoveredTexture} -> ${activeTexture}`;
+            ? `Paint target: ${hoveredCount} ${targetLabel} already use ${hoveredTexture}`
+            : `Paint target: ${hoveredCount} ${targetLabel} ${hoveredTexture} -> ${activeTexture}`;
         } else {
-          paintTarget.textContent = `Paint target: ${hoveredCount} ${tileLabel} -> ${activeTexture}`;
+          paintTarget.textContent = `Paint target: ${hoveredCount} ${targetLabel} -> ${activeTexture}`;
         }
       }
     }
     if (help) {
       help.textContent = textureMode
-        ? 'Pick a texture in the Texture panel, hover a tile to preview it, then Alt-click or Alt-drag in a 2D view to paint.'
+        ? 'Pick a texture in the Texture panel, hover a terrain cell or prepared tile in 2D or 3D to preview it, then Alt-click to paint or Alt-drag in 2D for brush painting.'
         : 'Alt-drag sculpts from the anchor, Alt+Shift paints up, Ctrl+Alt paints down, and Noise/Erode use the same brush settings.';
     }
     if (terrainPanelToggle && terrainPanel) {

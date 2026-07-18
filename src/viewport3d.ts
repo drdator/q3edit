@@ -84,6 +84,9 @@ export class Viewport3D {
   private pointfileMarkerVAO!: WebGLVertexArrayObject;
   private pointfileMarkerVBO!: WebGLBuffer;
   private pointfileMarkerCount = 0;
+  private paintPreviewVAO!: WebGLVertexArrayObject;
+  private paintPreviewVBO!: WebGLBuffer;
+  private paintPreviewCount = 0;
 
   private lineVAO!: WebGLVertexArrayObject;
   private lineVBO!: WebGLBuffer;
@@ -123,6 +126,9 @@ export class Viewport3D {
   private keys = new Set<string>();
   private lastTime = 0;
   private lastPV: Mat4 = mat4Identity();
+  private terrainHoverOwned = false;
+  private terrainHoverCenter: Vec3 | null = null;
+  private terrainHoverAxes: [number, number] | null = null;
 
   // Fullscreen walkthrough mode
   private fullscreen = false;
@@ -270,6 +276,8 @@ export class Viewport3D {
     this.pointfileLineVAO = pointfile.vao; this.pointfileLineVBO = pointfile.vbo;
     const pointfileMarker = createLineBuffer(gl);
     this.pointfileMarkerVAO = pointfileMarker.vao; this.pointfileMarkerVBO = pointfileMarker.vbo;
+    const paintPreview = createLineBuffer(gl);
+    this.paintPreviewVAO = paintPreview.vao; this.paintPreviewVBO = paintPreview.vbo;
     const line = createLineBuffer(gl);
     this.lineVAO = line.vao; this.lineVBO = line.vbo;
     const wire = createLineBuffer(gl);
@@ -314,6 +322,7 @@ export class Viewport3D {
       pathCurveSelVBO: this.pathCurveSelVBO,
       pointfileLineVBO: this.pointfileLineVBO,
       pointfileMarkerVBO: this.pointfileMarkerVBO,
+      paintPreviewVBO: this.paintPreviewVBO,
       lineVBO: this.lineVBO,
       wireVBO: this.wireVBO,
       faceSelVBO: this.faceSelVBO,
@@ -329,6 +338,7 @@ export class Viewport3D {
     this.pathCurveSelCount = result.pathCurveSelCount;
     this.pointfileLineCount = result.pointfileLineCount;
     this.pointfileMarkerCount = result.pointfileMarkerCount;
+    this.paintPreviewCount = result.paintPreviewCount;
     this.lineCount = result.lineCount;
     this.wireCount = result.wireCount;
     this.faceSelCount = result.faceSelCount;
@@ -386,6 +396,8 @@ export class Viewport3D {
       pointfileLineCount: this.pointfileLineCount,
       pointfileMarkerVAO: this.pointfileMarkerVAO,
       pointfileMarkerCount: this.pointfileMarkerCount,
+      paintPreviewVAO: this.paintPreviewVAO,
+      paintPreviewCount: this.paintPreviewCount,
       lineVAO: this.lineVAO,
       lineCount: this.lineCount,
       wireVAO: this.wireVAO,
@@ -458,6 +470,85 @@ export class Viewport3D {
     }, screenX, screenY);
   }
 
+  private terrainHeightAxis(patch: Patch): number {
+    const extents = [
+      patch.maxs[0] - patch.mins[0],
+      patch.maxs[1] - patch.mins[1],
+      patch.maxs[2] - patch.mins[2],
+    ];
+    let axis = 0;
+    for (let i = 1; i < 3; i++) {
+      if (extents[i] < extents[axis]) axis = i;
+    }
+    return axis;
+  }
+
+  private terrainPlanarAxes(patch: Patch): [number, number] {
+    const heightAxis = this.terrainHeightAxis(patch);
+    if (heightAxis === 0) return [1, 2];
+    if (heightAxis === 1) return [0, 2];
+    return [0, 1];
+  }
+
+  private isPatchInPatchEdit(patch: Patch): boolean {
+    return this.editor.patchEditData.some(data => data.patch === patch);
+  }
+
+  private terrainHoverMatchesOwnedState(): boolean {
+    if (!this.terrainHoverOwned || !this.terrainHoverCenter || !this.terrainHoverAxes) return false;
+    if (!this.editor.terrainBrushCenter || !this.editor.terrainBrushAxes) return false;
+    return this.editor.terrainBrushAxes[0] === this.terrainHoverAxes[0]
+      && this.editor.terrainBrushAxes[1] === this.terrainHoverAxes[1]
+      && this.editor.terrainBrushCenter[0] === this.terrainHoverCenter[0]
+      && this.editor.terrainBrushCenter[1] === this.terrainHoverCenter[1]
+      && this.editor.terrainBrushCenter[2] === this.terrainHoverCenter[2];
+  }
+
+  private clearTerrainHover(): void {
+    if (!this.terrainHoverOwned) return;
+    if (this.terrainHoverMatchesOwnedState()) {
+      this.editor.terrainBrushCenter = null;
+      this.editor.terrainBrushAxes = null;
+      this.editor.dirty = true;
+    }
+    this.terrainHoverOwned = false;
+    this.terrainHoverCenter = null;
+    this.terrainHoverAxes = null;
+  }
+
+  private updateTerrainHover(screenX: number, screenY: number): void {
+    if (this.looking || this.gizmo.dragging) return;
+    if (!this.editor.patchEditMode || this.editor.terrainBrushMode !== 'texture') {
+      this.clearTerrainHover();
+      return;
+    }
+
+    const hit = this.pickPatchAt(screenX, screenY);
+    if (!hit || !this.isPatchInPatchEdit(hit.patch)) {
+      this.clearTerrainHover();
+      return;
+    }
+
+    const axes = this.terrainPlanarAxes(hit.patch);
+    const center: Vec3 = [hit.point[0], hit.point[1], hit.point[2]];
+    const changed = !this.terrainHoverOwned
+      || !this.terrainHoverCenter
+      || !this.terrainHoverAxes
+      || this.terrainHoverAxes[0] !== axes[0]
+      || this.terrainHoverAxes[1] !== axes[1]
+      || this.terrainHoverCenter[0] !== center[0]
+      || this.terrainHoverCenter[1] !== center[1]
+      || this.terrainHoverCenter[2] !== center[2];
+    if (!changed) return;
+
+    this.terrainHoverOwned = true;
+    this.terrainHoverAxes = axes;
+    this.terrainHoverCenter = center;
+    this.editor.terrainBrushAxes = [axes[0], axes[1]];
+    this.editor.terrainBrushCenter = [center[0], center[1], center[2]];
+    this.editor.dirty = true;
+  }
+
   pickBrushAt(screenX: number, screenY: number): { entity: Entity; brush: Brush; face: BrushFace } | null {
     return pickBrushAt3D({
       canvas: this.canvas,
@@ -467,7 +558,7 @@ export class Viewport3D {
     }, screenX, screenY);
   }
 
-  pickPatchAt(screenX: number, screenY: number): { entity: Entity; patch: Patch; dist: number } | null {
+  pickPatchAt(screenX: number, screenY: number): { entity: Entity; patch: Patch; dist: number; point: Vec3 } | null {
     return pickPatchAt3D({
       canvas: this.canvas,
       editor: this.editor,
@@ -539,6 +630,13 @@ export class Viewport3D {
         this.didDrag = false;
         this.dragStart = [e.clientX, e.clientY];
       }
+    });
+
+    el.addEventListener('mousemove', (e) => {
+      this.updateTerrainHover(e.clientX, e.clientY);
+    });
+    el.addEventListener('mouseleave', () => {
+      this.clearTerrainHover();
     });
 
     document.addEventListener('mousemove', (e) => {

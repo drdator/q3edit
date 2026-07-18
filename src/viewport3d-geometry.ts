@@ -2,6 +2,7 @@ import { Vec3 } from './math';
 import { Editor } from './editor';
 import { BrushFace, computeFaceUV } from './brush';
 import { entityColor, entityOrigin, parseLightColor } from './entity';
+import { terrainDefCellTexture, type Patch } from './patch';
 import { DrawGroup, LightRadiusDraw } from './viewport3d-render';
 
 export interface Viewport3DGeometryContext {
@@ -15,6 +16,7 @@ export interface Viewport3DGeometryContext {
   pathCurveSelVBO: WebGLBuffer;
   pointfileLineVBO: WebGLBuffer;
   pointfileMarkerVBO: WebGLBuffer;
+  paintPreviewVBO: WebGLBuffer;
   lineVBO: WebGLBuffer;
   wireVBO: WebGLBuffer;
   faceSelVBO: WebGLBuffer;
@@ -32,6 +34,7 @@ export interface Viewport3DGeometryBuild {
   pathCurveSelCount: number;
   pointfileLineCount: number;
   pointfileMarkerCount: number;
+  paintPreviewCount: number;
   lineCount: number;
   wireCount: number;
   faceSelCount: number;
@@ -42,6 +45,7 @@ export interface Viewport3DGeometryBuild {
 
 export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewport3DGeometryBuild {
   const tm = ctx.editor.textureManager;
+  const textureTerrainMode = ctx.editor.patchEditMode && ctx.editor.terrainBrushMode === 'texture';
   const facesByTex = new Map<string, { verts: number[]; selected: boolean; faceSelected: boolean }[]>();
   const appendBoundsWireframe = (verts: number[], mins: Vec3, maxs: Vec3) => {
     const corners: Vec3[] = [
@@ -60,6 +64,23 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     }
   };
   const appendPatchWireframe = (verts: number[], patch: Patch) => {
+    if (patch.terrainDef) {
+      for (let row = 0; row < patch.height; row++) {
+        for (let col = 0; col < patch.width; col++) {
+          const point = patch.ctrl[row]?.[col]?.xyz;
+          if (!point) continue;
+          if (col < patch.width - 1) {
+            const next = patch.ctrl[row]?.[col + 1]?.xyz;
+            if (next) verts.push(point[0], point[1], point[2], next[0], next[1], next[2]);
+          }
+          if (row < patch.height - 1) {
+            const next = patch.ctrl[row + 1]?.[col]?.xyz;
+            if (next) verts.push(point[0], point[1], point[2], next[0], next[1], next[2]);
+          }
+        }
+      }
+      return;
+    }
     const n = patch.subdivisions + 1;
     const subCols = (patch.width - 1) / 2;
     const subRows = (patch.height - 1) / 2;
@@ -134,7 +155,39 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   for (const { entity, patch } of ctx.editor.allPatches()) {
     if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
     const patchSelected = ctx.editor.isPatchSelected(patch, entity);
-    const key = patch.texture.toLowerCase() + (patchSelected ? '|sel' : '');
+    const shaderSelected = patchSelected && !textureTerrainMode;
+    if (patch.terrainDef && (patch.width > 3 || patch.height > 3)) {
+      for (let row = 0; row < patch.height - 1; row++) {
+        for (let col = 0; col < patch.width - 1; col++) {
+          const cellTexture = terrainDefCellTexture(patch, row, col);
+          const key = cellTexture.toLowerCase() + (shaderSelected ? '|sel' : '');
+          let group = facesByTex.get(key);
+          if (!group) {
+            group = [];
+            facesByTex.set(key, group);
+          }
+          const verts: number[] = [];
+          const topLeft = row * patch.width + col;
+          const topRight = topLeft + 1;
+          const bottomLeft = topLeft + patch.width;
+          const bottomRight = bottomLeft + 1;
+          const indices = ((row + col) & 1)
+            ? [topLeft, bottomLeft, bottomRight, bottomRight, topRight, topLeft]
+            : [topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight];
+          for (const idx of indices) {
+            const v = patch.tessVerts[idx];
+            verts.push(
+              v.position[0], v.position[1], v.position[2],
+              v.normal[0], v.normal[1], v.normal[2],
+              v.uv[0], v.uv[1],
+            );
+          }
+          group.push({ verts, selected: shaderSelected, faceSelected: false });
+        }
+      }
+      continue;
+    }
+    const key = patch.texture.toLowerCase() + (shaderSelected ? '|sel' : '');
     let group = facesByTex.get(key);
     if (!group) {
       group = [];
@@ -154,7 +207,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
         );
       }
     }
-    group.push({ verts, selected: patchSelected, faceSelected: false });
+    group.push({ verts, selected: shaderSelected, faceSelected: false });
   }
 
   const entityVertsByColor = new Map<string, number[]>();
@@ -301,12 +354,19 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pointfileMarkerVerts), ctx.gl.DYNAMIC_DRAW);
   const pointfileMarkerCount = pointfileMarkerVerts.length / 3;
 
+  const paintPreviewLineVerts: number[] = [];
+  if (textureTerrainMode) {
+    for (const target of ctx.editor.hoveredTerrainPaintTargets()) {
+      appendBoundsWireframe(paintPreviewLineVerts, target.mins, target.maxs);
+    }
+  }
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.paintPreviewVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(paintPreviewLineVerts), ctx.gl.DYNAMIC_DRAW);
+  const paintPreviewCount = paintPreviewLineVerts.length / 3;
+
   const selLineVerts: number[] = [];
   const wireVerts: number[] = [];
   const faceSelLineVerts: number[] = [];
-  const terrainPaintPreview = ctx.editor.patchEditMode && ctx.editor.terrainBrushMode === 'texture'
-    ? new Set(ctx.editor.hoveredTerrainPaintPatches())
-    : null;
 
   for (const { entity, brush } of ctx.editor.allBrushes()) {
     if (!ctx.editor.isBrushVisibleIn3D(brush, entity)) continue;
@@ -330,12 +390,13 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   for (const { entity, patch } of ctx.editor.allPatches()) {
     if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
+    if (textureTerrainMode && ctx.editor.isPatchSelected(patch, entity)) {
+      appendBoundsWireframe(selLineVerts, patch.mins, patch.maxs);
+      continue;
+    }
     if (ctx.editor.isPatchSelected(patch, entity)) {
       appendPatchWireframe(selLineVerts, patch);
       continue;
-    }
-    if (terrainPaintPreview?.has(patch)) {
-      appendPatchWireframe(faceSelLineVerts, patch);
     }
   }
 
@@ -429,7 +490,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
       }
     }
   }
-  if (ctx.editor.patchEditMode) {
+  if (ctx.editor.patchEditMode && !textureTerrainMode) {
     const s = 4;
     for (let di = 0; di < ctx.editor.patchEditData.length; di++) {
       const patch = ctx.editor.patchEditData[di].patch;
@@ -475,6 +536,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     pathCurveSelCount,
     pointfileLineCount,
     pointfileMarkerCount,
+    paintPreviewCount,
     lineCount,
     wireCount,
     faceSelCount,
