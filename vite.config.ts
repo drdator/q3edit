@@ -8,6 +8,7 @@ const Q3_MAPS = join(Q3_DATA, 'baseq3/maps');
 const IOQUAKE3 = '/Applications/ioquake3/ioquake3.app/Contents/MacOS/ioquake3';
 
 export default defineConfig({
+  publicDir: 'public',
   server: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
@@ -15,7 +16,6 @@ export default defineConfig({
     },
     hmr: false,
   },
-  publicDir: false,
   plugins: [{
     name: 'run-map',
     configureServer(server) {

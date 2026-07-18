@@ -12,6 +12,7 @@ export interface MenuBarContext {
   openRotateDialog: () => void;
   openScaleDialog: () => void;
   compileBSP: () => void | Promise<void>;
+  managePakFiles: () => void | Promise<void>;
   cycleInvisibleMode: () => void;
   setTool: (tool: Tool) => void;
   setGrid: (size: number) => void;
@@ -28,6 +29,8 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
       { separator: true },
       { label: 'Open...', shortcut: 'Ctrl+O', action: () => ctx.editor.openMapFromFile() },
       { label: 'Save', shortcut: 'Ctrl+S', action: () => ctx.editor.saveMapToFile() },
+      { separator: true },
+      { label: 'Manage PK3 Files...', action: () => ctx.managePakFiles() },
       { separator: true },
       { label: 'Import Prefab...', action: () => ctx.editor.importPrefabFromFile() },
       { label: 'Save Selection as Prefab', action: () => ctx.editor.saveSelectionAsPrefab() },

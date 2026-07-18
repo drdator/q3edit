@@ -3,21 +3,33 @@ import { Editor } from './editor';
 import { Viewport2D } from './viewport2d';
 import { Viewport3D } from './viewport3d';
 import { UI } from './ui';
-import { loadAllPaks } from './pak';
+import { loadPakArchives, loadPakManifest, mergePak, PakFiles, PakProgressCallback } from './pak';
+import {
+  loadOpenArenaEnabled,
+  loadStoredPaks,
+  preparePakFiles,
+  replaceStoredAssetConfiguration,
+} from './pak-storage';
 import { TextureManager } from './textures';
 
-// ── Loading screen ──
+let loadingEl: HTMLDivElement;
+const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
 
-const loadingEl = document.createElement('div');
-loadingEl.id = 'loading-screen';
-loadingEl.innerHTML = `
-  <div class="loading-content">
-    <div class="loading-title">Q3 MAP EDITOR</div>
-    <div class="loading-status" id="loading-status">Initializing...</div>
-    <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
-  </div>
-`;
-document.body.appendChild(loadingEl);
+function isOpenArenaNoticeDismissed(): boolean {
+  try {
+    return localStorage.getItem(OPENARENA_NOTICE_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function dismissOpenArenaNotice(): void {
+  try {
+    localStorage.setItem(OPENARENA_NOTICE_DISMISSED_KEY, '1');
+  } catch {
+    // The notice can still be closed when browser storage is unavailable.
+  }
+}
 
 function setLoadingStatus(msg: string) {
   const el = document.getElementById('loading-status');
@@ -46,6 +58,144 @@ async function init() {
   // Create UI
   const ui = new UI(editor);
 
+  let defaultPak: PakFiles = new Map();
+  let defaultPakLoaded = false;
+  let openArenaEnabled = true;
+  let activeTextureManager: TextureManager | null = null;
+
+  const describeAssetStack = (names: string[], useOpenArena: boolean): string => {
+    if (useOpenArena) {
+      return names.length > 0
+        ? `OpenArena + ${names.length} imported PK3 file${names.length === 1 ? '' : 's'}`
+        : 'OpenArena default assets';
+    }
+    return names.length > 0
+      ? `${names.length} imported PK3 file${names.length === 1 ? '' : 's'} · OpenArena disabled`
+      : 'No texture assets enabled';
+  };
+
+  const ensureDefaultPakLoaded = async (
+    onProgress: PakProgressCallback = setLoadingStatus,
+  ): Promise<void> => {
+    if (defaultPakLoaded) return;
+    onProgress('Loading OpenArena assets...');
+    const defaults = await loadPakManifest('/openarena/manifest.json', onProgress, {
+      label: 'OpenArena 0.8.8 default textures',
+      archives: ['pak0.pk3', 'pak4-textures.pk3'],
+      license: 'COPYING',
+      source: 'OPENARENA.md',
+    });
+    defaultPak = defaults.files;
+    defaultPakLoaded = true;
+  };
+
+  const installTextureManager = (pak: PakFiles): TextureManager => {
+    activeTextureManager?.dispose();
+    const texMgr = new TextureManager(vp3D.gl, pak);
+
+    // Create solid-color textures for entity category markers
+    const registerColorTex = (name: string, r: number, g: number, b: number) => {
+      const pixels = new Uint8Array([r, g, b, 255]);
+      const tex = vp3D.gl.createTexture()!;
+      vp3D.gl.bindTexture(vp3D.gl.TEXTURE_2D, tex);
+      vp3D.gl.texImage2D(vp3D.gl.TEXTURE_2D, 0, vp3D.gl.RGBA, 1, 1, 0,
+        vp3D.gl.RGBA, vp3D.gl.UNSIGNED_BYTE, pixels);
+      texMgr.registerTexture(name, tex, 1, 1);
+    };
+    registerColorTex('__entity_green', 40, 180, 40);
+    registerColorTex('__entity_#44cc44', 68, 204, 68);
+    registerColorTex('__entity_#ffcc00', 255, 204, 0);
+    registerColorTex('__entity_#ff6644', 255, 102, 68);
+    registerColorTex('__entity_#cc8844', 204, 136, 68);
+    registerColorTex('__entity_#44bbff', 68, 187, 255);
+    registerColorTex('__entity_#cc44ff', 204, 68, 255);
+    registerColorTex('__entity_#888888', 136, 136, 136);
+
+    texMgr.onTextureLoaded = () => { editor.dirty = true; };
+    editor.textureManager = texMgr;
+    activeTextureManager = texMgr;
+    ui.updateTextureBrowser(texMgr);
+    editor.dirty = true;
+    return texMgr;
+  };
+
+  const rebuildWithStoredPaks = async (): Promise<string[]> => {
+    const stored = await loadStoredPaks();
+    if (openArenaEnabled) await ensureDefaultPakLoaded();
+    const merged = openArenaEnabled ? new Map(defaultPak) : new Map<string, Uint8Array>();
+    if (stored.length > 0) {
+      const userPak = await loadPakArchives(stored, setLoadingStatus);
+      mergePak(merged, userPak);
+    }
+    installTextureManager(merged);
+    return stored.map(pak => pak.name);
+  };
+
+  ui.onManagePakFiles = async () => {
+    let assetLoading: ReturnType<UI['showAssetLoading']> | null = null;
+    try {
+      const stored = await loadStoredPaks();
+      const result = await ui.openPakManager(stored.map(pak => ({
+        name: pak.name,
+        size: pak.data.byteLength,
+      })), openArenaEnabled);
+      if (!result) return;
+
+      assetLoading = ui.showAssetLoading('Preparing PK3 file changes...');
+      await assetLoading.ready;
+      const reportProgress: PakProgressCallback = (message, completed, total) => {
+        setLoadingStatus(message);
+        assetLoading?.update(message, completed, total);
+      };
+
+      ui.setTextureAssetStatus('Applying PK3 file changes...');
+      reportProgress('Applying PK3 file changes...');
+
+      const existingByName = new Map(stored.map(pak => [pak.name.toLowerCase(), pak]));
+      const newFiles = result.entries.filter(entry => entry.file).map(entry => entry.file!);
+      const prepared = await preparePakFiles(newFiles, reportProgress);
+      const preparedByName = new Map(prepared.map(pak => [pak.name.toLowerCase(), pak]));
+      const ordered = result.entries.map(entry => {
+        const key = entry.name.toLowerCase();
+        const archive = preparedByName.get(key) ?? existingByName.get(key);
+        if (!archive) throw new Error(`${entry.name} is no longer available`);
+        return archive;
+      });
+
+      // Build and validate the complete stack before changing persistent
+      // storage, then install the already-extracted result without a second pass.
+      if (result.openArenaEnabled) await ensureDefaultPakLoaded(reportProgress);
+      const merged = result.openArenaEnabled
+        ? new Map(defaultPak)
+        : new Map<string, Uint8Array>();
+      if (ordered.length > 0) {
+        const userPak = await loadPakArchives(ordered, reportProgress);
+        mergePak(merged, userPak);
+      }
+      reportProgress('Saving asset configuration...');
+      await replaceStoredAssetConfiguration(ordered, result.openArenaEnabled);
+      openArenaEnabled = result.openArenaEnabled;
+      assetLoading.update('Updating textures in the 3D view...', 1, 1);
+      const installedTextureManager = installTextureManager(merged);
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      assetLoading.update('Decoding visible textures...', 1, 1);
+      await installedTextureManager.waitForIdle();
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      const names = ordered.map(pak => pak.name);
+      const description = describeAssetStack(names, openArenaEnabled);
+      ui.setTextureAssetStatus(description, names);
+      editor.statusMessage = `Using ${description}`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Failed to update PK3 files:', error);
+      const names = (await loadStoredPaks()).map(pak => pak.name);
+      ui.setTextureAssetStatus(`Could not update PK3 files: ${message}`, names);
+      editor.statusMessage = `Could not update PK3 files: ${message}`;
+    } finally {
+      assetLoading?.close();
+    }
+  };
+
   // Start render loop immediately (untextured)
   function frame(time: number): void {
     vp3D.render(time);
@@ -58,51 +208,55 @@ async function init() {
   }
   requestAnimationFrame(frame);
 
-  // Load pak files in the background
-  setLoadingStatus('Loading pak files...');
+  // Load the persisted asset stack. OpenArena is fetched only when enabled.
+  let showOpenArenaNotice = false;
+  setLoadingStatus('Loading texture asset settings...');
   try {
-    const pak = await loadAllPaks('/baseq3', setLoadingStatus);
-
-    setLoadingStatus('Initializing texture manager...');
-    const texMgr = new TextureManager(vp3D.gl, pak);
-
-    // Create solid-color textures for entity category markers
-    const registerColorTex = (name: string, r: number, g: number, b: number) => {
-      const pixels = new Uint8Array([r, g, b, 255]);
-      const tex = vp3D.gl.createTexture()!;
-      vp3D.gl.bindTexture(vp3D.gl.TEXTURE_2D, tex);
-      vp3D.gl.texImage2D(vp3D.gl.TEXTURE_2D, 0, vp3D.gl.RGBA, 1, 1, 0,
-        vp3D.gl.RGBA, vp3D.gl.UNSIGNED_BYTE, pixels);
-      texMgr.registerTexture(name, tex, 1, 1);
-    };
-    registerColorTex('__entity_green', 40, 180, 40);   // spawns (legacy fallback)
-    registerColorTex('__entity_#44cc44', 68, 204, 68);  // spawns
-    registerColorTex('__entity_#ffcc00', 255, 204, 0);  // lights
-    registerColorTex('__entity_#ff6644', 255, 102, 68);  // weapons
-    registerColorTex('__entity_#cc8844', 204, 136, 68);  // ammo
-    registerColorTex('__entity_#44bbff', 68, 187, 255);  // health/armor
-    registerColorTex('__entity_#cc44ff', 204, 68, 255);  // powerups
-    registerColorTex('__entity_#888888', 136, 136, 136);  // targets/triggers/misc
-
-    editor.textureManager = texMgr;
-
-    // Trigger redraw when textures load
-    texMgr.onTextureLoaded = () => { editor.dirty = true; };
-
-    // Update texture browser with real pak textures
-    ui.updateTextureBrowser(texMgr);
-
+    openArenaEnabled = await loadOpenArenaEnabled();
+    const names = await rebuildWithStoredPaks();
+    ui.setTextureAssetStatus(describeAssetStack(names, openArenaEnabled), names);
+    showOpenArenaNotice = openArenaEnabled && names.length === 0 && !isOpenArenaNoticeDismissed();
     setLoadingStatus('Ready');
   } catch (err) {
-    console.warn('Failed to load pak files:', err);
-    setLoadingStatus('Running without textures (pak files not found)');
+    console.warn('Failed to load texture assets:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    ui.setTextureAssetStatus(`Running without textures: ${message}`);
+    setLoadingStatus('Running without textures (asset files not found)');
   }
 
   // Hide loading screen
   setTimeout(() => {
     loadingEl.style.opacity = '0';
-    setTimeout(() => loadingEl.remove(), 500);
+    setTimeout(() => {
+      loadingEl.remove();
+      if (showOpenArenaNotice) {
+        void ui.showOpenArenaNotice().then(dismissPermanently => {
+          if (dismissPermanently) dismissOpenArenaNotice();
+        });
+      }
+    }, 500);
   }, 500);
 }
 
-init();
+function startEditor(): void {
+  document.documentElement.classList.remove('landing-active');
+  document.body.classList.remove('landing-active');
+  document.getElementById('landing')?.remove();
+  document.title = 'Q3Edit — Editor';
+
+  loadingEl = document.createElement('div');
+  loadingEl.id = 'loading-screen';
+  loadingEl.innerHTML = `
+    <div class="loading-content">
+      <div class="loading-title">Q3EDIT</div>
+      <div class="loading-status" id="loading-status">Initializing...</div>
+      <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
+    </div>
+  `;
+  document.body.appendChild(loadingEl);
+  void init();
+}
+
+if (new URLSearchParams(window.location.search).has('editor')) {
+  startEditor();
+}

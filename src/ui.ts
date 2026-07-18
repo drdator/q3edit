@@ -12,6 +12,23 @@ import { brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
 import '@phosphor-icons/web/regular';
 
+export interface PakManagerEntry {
+  name: string;
+  size: number;
+  file?: File;
+}
+
+export interface PakManagerResult {
+  entries: PakManagerEntry[];
+  openArenaEnabled: boolean;
+}
+
+export interface AssetLoadingHandle {
+  ready: Promise<void>;
+  update: (message: string, completed?: number, total?: number) => void;
+  close: () => void;
+}
+
 const COMMON_TEXTURES = [
   'common/caulk',
   'common/clip',
@@ -24,12 +41,12 @@ const COMMON_TEXTURES = [
   'base_floor/diamond2c',
   'base_floor/pjgrate1',
   'base_trim/pewter_shiney',
-  'base_trim/basemetalsupport',
+  'base_trim/dirty_pewter',
   'gothic_wall/iron01_e',
   'gothic_wall/skull4',
-  'gothic_floor/blocks15',
-  'gothic_trim/baseboard09_e',
-  'skies/toxicsky',
+  'gothic_floor/blocks17floor',
+  'gothic_trim/baseboard09',
+  'skies/earthsky01',
 ];
 
 export class UI {
@@ -45,6 +62,8 @@ export class UI {
   private textureReplace = '';
   private textureReplaceScope: 'selection' | 'map' = 'selection';
   private textureReplaceMatch: 'exact' | 'contains' = 'exact';
+  private textureAssetStatus = 'Loading OpenArena assets...';
+  private importedPakNames: string[] = [];
   private collapsedBrushPanelEntities = new WeakSet<Entity>();
   private collapsedBrushPanelTerrainGroups = new Set<string>();
 
@@ -72,6 +91,7 @@ export class UI {
       openRotateDialog: () => this.openRotateDialog(),
       openScaleDialog: () => this.openScaleDialog(),
       compileBSP: () => this.compileBSP(),
+      managePakFiles: () => this.onManagePakFiles?.(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: (tool) => this.setTool(tool),
       setGrid: (size) => this.setGrid(size),
@@ -626,8 +646,469 @@ export class UI {
     const body = document.getElementById('texture-body')!;
     body.innerHTML = '';
 
+    this.buildTextureSourceControls(body);
     this.buildTextureReplaceControls(body);
     this.buildTextureBrowser(body);
+  }
+
+  onManagePakFiles: (() => Promise<void>) | null = null;
+
+  setTextureAssetStatus(status: string, importedPakNames: string[] = this.importedPakNames): void {
+    this.textureAssetStatus = status;
+    this.importedPakNames = importedPakNames;
+    this.buildTexturePanel();
+  }
+
+  showOpenArenaNotice(): Promise<boolean> {
+    document.getElementById('openarena-notice-dialog')?.remove();
+
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.id = 'openarena-notice-dialog';
+      overlay.className = 'editor-dialog-overlay';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-labelledby', 'openarena-notice-title');
+
+      const dialog = document.createElement('div');
+      dialog.className = 'editor-dialog openarena-notice-dialog';
+
+      const title = document.createElement('div');
+      title.id = 'openarena-notice-title';
+      title.className = 'editor-dialog-title';
+      title.textContent = 'Using OpenArena Assets';
+
+      const copy = document.createElement('div');
+      copy.className = 'openarena-notice-copy';
+      const intro = document.createElement('p');
+      intro.textContent = 'Q3Edit uses OpenArena assets by default so textures work without installing Quake III Arena. OpenArena does not contain the complete retail texture set.';
+      const instructions = document.createElement('p');
+      instructions.append(
+        'To use the original Quake III Arena assets, choose File > Manage PK3 Files..., then add ',
+        Object.assign(document.createElement('code'), { textContent: 'pak0.pk3' }),
+        ' through ',
+        Object.assign(document.createElement('code'), { textContent: 'pak8.pk3' }),
+        ' from the game’s ',
+        Object.assign(document.createElement('code'), { textContent: 'baseq3' }),
+        ' folder and click Save.',
+      );
+      const privacy = document.createElement('p');
+      privacy.textContent = 'Q3Edit reads these files locally and stores them only in this browser; they are never uploaded.';
+      copy.append(intro, instructions, privacy);
+
+      const footer = document.createElement('div');
+      footer.className = 'editor-dialog-actions';
+      const neverShow = document.createElement('button');
+      neverShow.type = 'button';
+      neverShow.className = 'btn';
+      neverShow.textContent = 'Don’t show again';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn primary';
+      ok.textContent = 'OK';
+      footer.append(neverShow, ok);
+
+      dialog.append(title, copy, footer);
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+
+      let settled = false;
+      const finish = (dismissPermanently: boolean) => {
+        if (settled) return;
+        settled = true;
+        overlay.remove();
+        resolve(dismissPermanently);
+      };
+      neverShow.onclick = () => finish(true);
+      ok.onclick = () => finish(false);
+      overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(false);
+        }
+      });
+      overlay.tabIndex = -1;
+      ok.focus();
+    });
+  }
+
+  showAssetLoading(initialMessage: string): AssetLoadingHandle {
+    document.getElementById('asset-loading-dialog')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'asset-loading-dialog';
+    overlay.className = 'editor-dialog-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'asset-loading-title');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'editor-dialog asset-loading-dialog';
+
+    const title = document.createElement('div');
+    title.id = 'asset-loading-title';
+    title.className = 'editor-dialog-title';
+    title.textContent = 'Updating Texture Assets';
+
+    const status = document.createElement('div');
+    status.className = 'asset-loading-status';
+    status.setAttribute('aria-live', 'polite');
+    status.textContent = initialMessage;
+
+    const track = document.createElement('div');
+    track.className = 'asset-loading-track indeterminate';
+    const fill = document.createElement('div');
+    fill.className = 'asset-loading-fill';
+    track.appendChild(fill);
+
+    const hint = document.createElement('div');
+    hint.className = 'asset-loading-hint';
+    hint.textContent = 'Large retail PK3 files can take a few seconds to extract.';
+
+    dialog.append(title, status, track, hint);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const ready = new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+
+    return {
+      ready,
+      update: (message, completed, total) => {
+        status.textContent = message;
+        if (typeof completed === 'number' && typeof total === 'number' && total > 0) {
+          track.classList.remove('indeterminate');
+          fill.style.width = `${Math.max(0, Math.min(100, (completed / total) * 100))}%`;
+        } else {
+          track.classList.add('indeterminate');
+          fill.style.removeProperty('width');
+        }
+      },
+      close: () => overlay.remove(),
+    };
+  }
+
+  private buildTextureSourceControls(body: HTMLElement): void {
+    const section = document.createElement('div');
+    section.className = 'texture-tools texture-source-tools';
+
+    const title = document.createElement('div');
+    title.className = 'texture-subhead';
+    title.textContent = 'Asset Source';
+    section.appendChild(title);
+
+    const status = document.createElement('div');
+    status.className = 'texture-source-status';
+    status.textContent = this.textureAssetStatus;
+    section.appendChild(status);
+
+    const attribution = document.createElement('a');
+    attribution.className = 'texture-source-attribution';
+    attribution.href = '/openarena/OPENARENA.md';
+    attribution.target = '_blank';
+    attribution.rel = 'noreferrer';
+    attribution.textContent = 'OpenArena license and source';
+    section.appendChild(attribution);
+
+    if (this.importedPakNames.length > 0) {
+      const names = document.createElement('div');
+      names.className = 'texture-source-files';
+      names.textContent = this.importedPakNames.join(', ');
+      names.title = this.importedPakNames.join('\n');
+      section.appendChild(names);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'texture-source-actions';
+
+    const manageBtn = document.createElement('button');
+    manageBtn.type = 'button';
+    manageBtn.className = 'btn';
+    manageBtn.innerHTML = '<i class="ph ph-files" aria-hidden="true"></i><span>Manage PK3 files...</span>';
+    manageBtn.title = 'Add, remove, or reorder PK3 files from your Quake III Arena installation';
+    manageBtn.addEventListener('click', async () => {
+      if (!this.onManagePakFiles) return;
+      manageBtn.disabled = true;
+      try {
+        await this.onManagePakFiles();
+      } finally {
+        manageBtn.disabled = false;
+      }
+    });
+
+    actions.appendChild(manageBtn);
+
+    section.appendChild(actions);
+    body.appendChild(section);
+  }
+
+  openPakManager(
+    initialEntries: PakManagerEntry[],
+    initialOpenArenaEnabled: boolean,
+  ): Promise<PakManagerResult | null> {
+    document.getElementById('pak-manager-dialog')?.remove();
+    const entries = initialEntries.map(entry => ({ ...entry }));
+    let openArenaEnabled = initialOpenArenaEnabled;
+
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.id = 'pak-manager-dialog';
+      overlay.className = 'editor-dialog-overlay';
+
+      const dialog = document.createElement('div');
+      dialog.className = 'editor-dialog pak-manager';
+
+      const title = document.createElement('div');
+      title.className = 'editor-dialog-title';
+      title.textContent = 'Manage PK3 Files';
+      dialog.appendChild(title);
+
+      const description = document.createElement('div');
+      description.className = 'editor-dialog-description';
+      description.textContent = 'Files load from top to bottom. Later files have higher priority and override matching assets from earlier files.';
+      dialog.appendChild(description);
+
+      const list = document.createElement('div');
+      list.className = 'pak-manager-list';
+      dialog.appendChild(list);
+      let recentlyMovedNames = new Set<string>();
+
+      const formatSize = (bytes: number): string => {
+        const mb = bytes / (1024 * 1024);
+        return mb >= 0.1 ? `${mb.toFixed(mb >= 10 ? 0 : 1)} MB` : `${Math.ceil(bytes / 1024)} KB`;
+      };
+
+      const render = () => {
+        list.innerHTML = '';
+
+        const defaultRow = document.createElement('div');
+        defaultRow.className = 'pak-manager-row fixed';
+        defaultRow.classList.toggle('disabled-source', !openArenaEnabled);
+        const defaultOrder = document.createElement('span');
+        defaultOrder.className = 'pak-manager-order';
+        defaultOrder.textContent = '1';
+        const defaultInfo = document.createElement('div');
+        defaultInfo.className = 'pak-manager-info';
+        const defaultName = document.createElement('div');
+        defaultName.className = 'pak-manager-name';
+        defaultName.textContent = 'OpenArena default assets';
+        const defaultMeta = document.createElement('div');
+        defaultMeta.className = 'pak-manager-meta';
+        defaultMeta.textContent = openArenaEnabled
+          ? 'Bundled fallback · loaded first'
+          : 'Disabled · not downloaded or loaded';
+        defaultInfo.append(defaultName, defaultMeta);
+
+        const defaultToggle = document.createElement('label');
+        defaultToggle.className = 'pak-manager-source-toggle';
+        const defaultCheckbox = document.createElement('input');
+        defaultCheckbox.type = 'checkbox';
+        defaultCheckbox.checked = openArenaEnabled;
+        defaultCheckbox.onchange = () => {
+          openArenaEnabled = defaultCheckbox.checked;
+          render();
+        };
+        const defaultToggleText = document.createElement('span');
+        defaultToggleText.textContent = openArenaEnabled ? 'Enabled' : 'Disabled';
+        defaultToggle.append(defaultCheckbox, defaultToggleText);
+        defaultRow.append(defaultOrder, defaultInfo, defaultToggle);
+        list.appendChild(defaultRow);
+
+        entries.forEach((entry, index) => {
+          const row = document.createElement('div');
+          row.className = 'pak-manager-row';
+          if (recentlyMovedNames.has(entry.name)) row.classList.add('recently-moved');
+
+          const order = document.createElement('span');
+          order.className = 'pak-manager-order';
+          order.textContent = String(index + 2);
+
+          const info = document.createElement('div');
+          info.className = 'pak-manager-info';
+          const name = document.createElement('div');
+          name.className = 'pak-manager-name';
+          name.textContent = entry.name;
+          const meta = document.createElement('div');
+          meta.className = 'pak-manager-meta';
+          meta.textContent = `${formatSize(entry.size)}${entry.file ? ' · new' : ' · stored in this browser'}`;
+          info.append(name, meta);
+
+          const controls = document.createElement('div');
+          controls.className = 'pak-manager-row-actions';
+          const up = document.createElement('button');
+          up.type = 'button';
+          up.className = 'btn';
+          up.innerHTML = '<i class="ph ph-arrow-up" aria-hidden="true"></i>';
+          up.setAttribute('aria-label', 'Load earlier');
+          up.title = 'Load earlier (lower priority)';
+          up.disabled = index === 0;
+          up.onclick = () => {
+            [entries[index - 1], entries[index]] = [entries[index], entries[index - 1]];
+            recentlyMovedNames = new Set([entry.name]);
+            render();
+          };
+          const down = document.createElement('button');
+          down.type = 'button';
+          down.className = 'btn';
+          down.innerHTML = '<i class="ph ph-arrow-down" aria-hidden="true"></i>';
+          down.setAttribute('aria-label', 'Load later');
+          down.title = 'Load later (higher priority)';
+          down.disabled = index === entries.length - 1;
+          down.onclick = () => {
+            [entries[index], entries[index + 1]] = [entries[index + 1], entries[index]];
+            recentlyMovedNames = new Set([entry.name]);
+            render();
+          };
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'btn pak-manager-remove';
+          remove.innerHTML = '<i class="ph ph-trash" aria-hidden="true"></i>';
+          remove.title = `Remove ${entry.name}`;
+          remove.setAttribute('aria-label', `Remove ${entry.name}`);
+          remove.onclick = () => {
+            entries.splice(index, 1);
+            render();
+          };
+          controls.append(up, down, remove);
+          row.append(order, info, controls);
+          list.appendChild(row);
+        });
+        recentlyMovedNames = new Set();
+
+        if (entries.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'pak-manager-empty';
+          empty.classList.toggle('warning', !openArenaEnabled);
+          empty.textContent = openArenaEnabled
+            ? 'No user PK3 files. OpenArena assets will be used on their own.'
+            : 'No texture assets are enabled. The editor will run without textures.';
+          list.appendChild(empty);
+        }
+        sortButton.disabled = entries.length < 2;
+        removeAllButton.disabled = entries.length === 0;
+      };
+
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = '.pk3,application/zip';
+      fileInput.multiple = true;
+      fileInput.hidden = true;
+      fileInput.onchange = () => {
+        for (const file of Array.from(fileInput.files ?? [])) {
+          const existingIndex = entries.findIndex(entry => entry.name.toLowerCase() === file.name.toLowerCase());
+          const next: PakManagerEntry = { name: file.name, size: file.size, file };
+          if (existingIndex >= 0) entries[existingIndex] = next;
+          else entries.push(next);
+        }
+        fileInput.value = '';
+        render();
+      };
+
+      const addButton = document.createElement('button');
+      addButton.type = 'button';
+      addButton.className = 'btn pak-manager-add';
+      addButton.innerHTML = '<i class="ph ph-plus" aria-hidden="true"></i><span>Add PK3 files...</span>';
+      addButton.onclick = () => fileInput.click();
+
+      const sortButton = document.createElement('button');
+      sortButton.type = 'button';
+      sortButton.className = 'btn';
+      sortButton.innerHTML = '<i class="ph ph-sort-ascending" aria-hidden="true"></i><span>Sort by filename</span>';
+      sortButton.title = 'Sort using natural numeric filename order';
+      sortButton.disabled = entries.length < 2;
+      sortButton.onclick = () => {
+        const previousPositions = new Map(entries.map((entry, index) => [entry.name, index]));
+        entries.sort((a, b) => a.name.localeCompare(b.name, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }));
+        recentlyMovedNames = new Set(entries
+          .filter((entry, index) => previousPositions.get(entry.name) !== index)
+          .map(entry => entry.name));
+        render();
+      };
+
+      const removeAllButton = document.createElement('button');
+      removeAllButton.type = 'button';
+      removeAllButton.className = 'btn pak-manager-remove-all';
+      removeAllButton.innerHTML = '<i class="ph ph-trash" aria-hidden="true"></i><span>Remove all</span>';
+      removeAllButton.onclick = () => {
+        entries.splice(0, entries.length);
+        recentlyMovedNames = new Set();
+        render();
+      };
+
+      const sourceActions = document.createElement('div');
+      sourceActions.className = 'pak-manager-source-actions';
+      sourceActions.append(addButton, removeAllButton, sortButton);
+      dialog.append(sourceActions, fileInput);
+
+      const finePrint = document.createElement('div');
+      finePrint.className = 'pak-manager-fine-print';
+      const retailHelp = document.createElement('p');
+      retailHelp.append(
+        'Retail Quake III Arena: select ',
+        Object.assign(document.createElement('code'), { textContent: 'pak0.pk3' }),
+        ' through ',
+        Object.assign(document.createElement('code'), { textContent: 'pak8.pk3' }),
+        ' from the game’s ',
+        Object.assign(document.createElement('code'), { textContent: 'baseq3' }),
+        ' folder. Install a legally purchased copy or use the original CD, locate the game’s installation folder, then open ',
+        Object.assign(document.createElement('code'), { textContent: 'baseq3' }),
+        '.',
+      );
+      const demoLink = document.createElement('a');
+      demoLink.href = 'https://archive.org/details/QuakeIiiArenaDemo';
+      demoLink.target = '_blank';
+      demoLink.rel = 'noreferrer';
+      demoLink.textContent = 'Quake III Arena demo';
+      retailHelp.append(
+        ' No retail copy? The archived ',
+        demoLink,
+        ' includes a limited set of original assets. After installing or extracting it, add ',
+        Object.assign(document.createElement('code'), { textContent: 'demoq3/pak0.pk3' }),
+        '. Q3Edit reads these files locally and stores them only in this browser; they are never uploaded.',
+      );
+      finePrint.appendChild(retailHelp);
+      dialog.appendChild(finePrint);
+
+      const footer = document.createElement('div');
+      footer.className = 'editor-dialog-actions';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn';
+      cancel.textContent = 'Cancel';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn primary';
+      save.textContent = 'Save';
+      footer.append(cancel, save);
+      dialog.appendChild(footer);
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+
+      let settled = false;
+      const finish = (result: PakManagerResult | null) => {
+        if (settled) return;
+        settled = true;
+        overlay.remove();
+        resolve(result);
+      };
+      cancel.onclick = () => finish(null);
+      save.onclick = () => finish({ entries, openArenaEnabled });
+      overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(null);
+        }
+      });
+      overlay.tabIndex = -1;
+      render();
+      overlay.focus();
+    });
   }
 
   private buildTextureReplaceControls(body: HTMLElement): void {

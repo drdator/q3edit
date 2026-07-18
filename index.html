@@ -1,12 +1,66 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="landing-active">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Q3 Map Editor</title>
+  <meta name="description" content="Q3Edit is a browser-based map editor for Quake III Arena.">
+  <meta name="theme-color" content="#111311">
+  <title>Q3Edit — Quake 3 mapping in your browser</title>
   <link rel="stylesheet" href="/src/style.css">
 </head>
-<body>
+<body class="landing-active">
+  <main id="landing">
+    <nav class="landing-nav" aria-label="Primary navigation">
+      <a class="landing-brand" href="/" aria-label="Q3Edit home">
+        <span class="landing-brand-mark" aria-hidden="true"></span>
+        <span>Q3EDIT</span>
+      </a>
+      <a class="landing-nav-link" href="?editor">Launch editor <span aria-hidden="true">↗</span></a>
+    </nav>
+
+    <section class="landing-hero">
+      <div class="landing-copy">
+        <div class="landing-kicker"><span></span> Quake III Arena map editor</div>
+        <h1>Edit Quake III maps<br><em>in your browser.</em></h1>
+        <p class="landing-lede">
+          Open, edit, and save <code>.map</code> files with 2D and 3D views,
+          brush and patch tools, entity editing, and in-browser BSP compilation.
+        </p>
+        <div class="landing-actions">
+          <a class="landing-button landing-button-primary" href="?editor">
+            Launch Q3Edit <span aria-hidden="true">→</span>
+          </a>
+          <span class="landing-requirement">Requires a WebGL2 browser</span>
+        </div>
+        <ul class="landing-features" aria-label="Highlights">
+          <li><span>01</span> Edit <code>.map</code> files</li>
+          <li><span>02</span> Native brush tools</li>
+          <li><span>03</span> Compile BSP in-browser</li>
+        </ul>
+      </div>
+
+      <div class="landing-visual">
+        <div class="landing-window">
+          <img
+            class="landing-product-shot"
+            src="/src/assets/q3edit-editor.png"
+            alt="Q3Edit showing its four map-editing viewports, toolbars, object list, entity controls, and texture browser"
+            width="1300"
+            height="900"
+            decoding="async"
+            fetchpriority="high"
+          >
+        </div>
+        <div class="landing-visual-note"><span></span> The complete editor, running in your browser</div>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      <span>Q3Edit is an independent, unofficial community project.</span>
+      <span>Made for mappers.</span>
+    </footer>
+  </main>
+
   <div id="app">
     <div id="menubar"></div>
     <div id="main-area">

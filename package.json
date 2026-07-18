@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:q3map": "cd q3map-compiler && make clean && make"
+    "build:q3map": "cd q3map-compiler && make clean && make",
+    "assets:openarena": "./scripts/prepare-openarena-assets.sh",
+    "deploy": "./deploy.sh"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

@@ -14,6 +14,7 @@ export class TextureManager {
   private pak: PakFiles;
   private cache = new Map<string, TextureInfo>();
   private loading = new Set<string>();
+  private pendingLoads = new Set<Promise<void>>();
   private white!: TextureInfo;
   private missing!: TextureInfo;
   // shader name → image path resolved from .shader files
@@ -30,6 +31,21 @@ export class TextureManager {
     this.white = this.createSolid(255, 255, 255, 255, '__white');
     this.missing = this.createCheckerboard();
     this.parseShaders();
+  }
+
+  dispose(): void {
+    const textures = new Set<WebGLTexture>();
+    for (const info of this.cache.values()) textures.add(info.glTexture);
+    textures.add(this.white.glTexture);
+    textures.add(this.missing.glTexture);
+    for (const texture of textures) this.gl.deleteTexture(texture);
+    for (const url of this.thumbnailCache.values()) {
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    }
+    this.cache.clear();
+    this.thumbnailCache.clear();
+    this.loading.clear();
+    this.pendingLoads.clear();
   }
 
   /** Parse all scripts/*.shader files to build shader name → editor image mapping */
@@ -162,10 +178,20 @@ export class TextureManager {
     // Start async load if not already loading
     if (!this.loading.has(key)) {
       this.loading.add(key);
-      this.loadTexture(key);
+      const pending = this.loadTexture(key).finally(() => {
+        this.loading.delete(key);
+        this.pendingLoads.delete(pending);
+      });
+      this.pendingLoads.add(pending);
     }
 
     return this.missing;
+  }
+
+  async waitForIdle(): Promise<void> {
+    while (this.pendingLoads.size > 0) {
+      await Promise.allSettled([...this.pendingLoads]);
+    }
   }
 
   getIfLoaded(name: string): TextureInfo | null {

@@ -1,0 +1,9 @@
+{
+  "label": "OpenArena 0.8.8 default textures",
+  "archives": [
+    "pak0.pk3",
+    "pak4-textures.pk3"
+  ],
+  "license": "COPYING",
+  "source": "OPENARENA.md"
+}
