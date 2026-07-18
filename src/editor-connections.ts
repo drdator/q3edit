@@ -195,7 +195,7 @@ export function collectEntityPathCurves(editor: Editor): EntityPathCurve[] {
       visited.add(current);
       entities.push(current);
       points.push([...(eligible.get(current) as Vec3)]);
-      const next = outgoing.get(current) ?? null;
+      const next: Entity | null = outgoing.get(current) ?? null;
       if (next === start && points.length >= 2) closed = true;
       current = next ?? undefined;
     }

@@ -39,7 +39,7 @@ export function buildSelectionTransfer(editor: Editor): TransferBuildResult {
   const selectedEntities = selectedEntitySet(editor);
   const fullEntities: Entity[] = [];
   const partialEntities = new Map<Entity, Entity>();
-  let worldspawnCopy: Entity | null = null;
+  const worldspawnCopy = createEntity('worldspawn');
   const seenBrushes = new Set<Brush>();
   const seenPatches = new Set<Patch>();
   let totalItems = 0;
@@ -50,13 +50,8 @@ export function buildSelectionTransfer(editor: Editor): TransferBuildResult {
     totalItems++;
   }
 
-  const worldspawnTarget = (): Entity => {
-    if (!worldspawnCopy) worldspawnCopy = createEntity('worldspawn');
-    return worldspawnCopy;
-  };
-
   const entityTarget = (entity: Entity): Entity => {
-    if (entity === editor.worldspawn) return worldspawnTarget();
+    if (entity === editor.worldspawn) return worldspawnCopy;
     let target = partialEntities.get(entity);
     if (!target) {
       target = cloneEntityShell(entity);
@@ -86,7 +81,7 @@ export function buildSelectionTransfer(editor: Editor): TransferBuildResult {
   }
 
   const entities: Entity[] = [];
-  if (worldspawnCopy && (worldspawnCopy.brushes.length > 0 || worldspawnCopy.patches.length > 0)) {
+  if (worldspawnCopy.brushes.length > 0 || worldspawnCopy.patches.length > 0) {
     entities.push(worldspawnCopy);
   }
   entities.push(...fullEntities);

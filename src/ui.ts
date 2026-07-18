@@ -424,7 +424,7 @@ export class UI {
           ? 'brush-item brush-tree-entity'
           : item.kind === 'terrainGroup'
             ? 'brush-item brush-tree-child brush-tree-group'
-            : item.grouped
+            : item.kind === 'patch' && item.grouped
               ? 'brush-item brush-tree-grandchild'
               : 'brush-item brush-tree-child';
 
