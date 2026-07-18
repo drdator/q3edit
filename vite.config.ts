@@ -1,7 +1,11 @@
 import { defineConfig } from 'vite';
 import { mkdirSync, writeFileSync } from 'fs';
 import { spawn } from 'child_process';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+import { phosphorIconSubset } from './scripts/phosphor-icon-subset';
+
+const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 const Q3_DATA = join(process.env.HOME || '', 'Library/Application Support/Quake3');
 const Q3_MAPS = join(Q3_DATA, 'baseq3/maps');
@@ -16,7 +20,7 @@ export default defineConfig({
     },
     hmr: false,
   },
-  plugins: [{
+  plugins: [phosphorIconSubset(PROJECT_ROOT), {
     name: 'run-map',
     configureServer(server) {
       server.middlewares.use('/api/run-map', async (req, res) => {

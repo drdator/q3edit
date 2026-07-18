@@ -10,7 +10,7 @@ import { buildToolbar as buildToolbarUI } from './ui-toolbar';
 import { setupKeyboard as setupKeyboardUI } from './ui-keyboard';
 import { brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
-import '@phosphor-icons/web/regular';
+import 'virtual:phosphor-icons.css';
 
 export interface PakManagerEntry {
   name: string;
