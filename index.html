@@ -3,16 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Q3Edit is an open-source, browser-based level editor for Quake III Arena — TypeScript + WebGL2, with id Software's q3map BSP compiler running as WebAssembly. No install, no game files needed.">
+  <meta name="description" content="Q3Edit is an open-source, browser-based level editor for Quake III Arena — TypeScript + WebGL2, with id Software's q3map BSP compiler and ioquake3 running as WebAssembly. Edit, compile, and playtest without leaving the tab.">
   <meta name="theme-color" content="#111311">
-  <title>Q3Edit — Quake 3 mapping in your browser</title>
+  <link rel="icon" type="image/svg+xml" href="/logo.svg">
+  <title>Q3Edit — edit, compile, and play Quake 3 maps in your browser</title>
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body class="landing-active">
   <main id="landing">
     <nav class="landing-nav" aria-label="Primary navigation">
       <a class="landing-brand" href="/" aria-label="Q3Edit home">
-        <span class="landing-brand-mark" aria-hidden="true"></span>
+        <img class="landing-brand-mark" src="/logo.svg" alt="" width="22" height="22">
         <span>Q3EDIT</span>
       </a>
       <div class="landing-nav-links">
@@ -24,7 +25,7 @@
     <section class="landing-hero">
       <div class="landing-copy">
         <div class="landing-kicker"><span></span> Quake III Arena map editor</div>
-        <h1>Edit Quake III maps<br><em>in your browser.</em></h1>
+        <h1>Edit, compile &amp; play Quake III maps <em>in your browser.</em></h1>
         <p class="landing-lede">
           Open, edit, and save real <code>.map</code> files — brushes, patches,
           entities, and terrain in a TypeScript + WebGL2 editor, with BSP
@@ -40,7 +41,7 @@
         <ul class="landing-features" aria-label="Highlights">
           <li><span>01</span> Radiant-style four-view UI</li>
           <li><span>02</span> Brushes, patches, CSG, terrain</li>
-          <li><span>03</span> q3map compiled to WASM</li>
+          <li><span>03</span> q3map + ioquake3 in WASM</li>
         </ul>
       </div>
 
