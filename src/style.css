@@ -116,6 +116,12 @@ body.landing-active #app {
   box-shadow: inset 4px -4px 0 rgba(232, 160, 48, 0.22);
 }
 
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
 .landing-nav-link {
   color: var(--landing-muted);
   font: 600 11px/1 monospace;
@@ -238,7 +244,7 @@ body.landing-active #app {
 .landing-features li {
   color: #a4a99f;
   font: 11px/1.4 monospace;
-  white-space: nowrap;
+  padding-right: 18px;
 }
 
 .landing-features li span {
