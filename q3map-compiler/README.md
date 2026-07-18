@@ -15,6 +15,10 @@ https://github.com/id-Software/Quake-III-Arena. This port includes WebAssembly
 entry-point, platform compatibility, filesystem, memory, and JPEG-loading
 changes needed by Q3Edit. Git history records the local modifications.
 
+The shader-file list is dynamically allocated in this port. Original q3map
+used an unchecked 64-entry array, which is too small when Q3Edit combines the
+OpenArena shader set with imported retail or custom PK3 files.
+
 Two files from the bundled Independent JPEG Group code differ from the
 upstream Quake III release:
 

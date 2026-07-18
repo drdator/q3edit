@@ -574,22 +574,37 @@ static void ParseShaderFile( const char *filename ) {
 LoadShaderInfo
 ===============
 */
-#define	MAX_SHADER_FILES	64
 void LoadShaderInfo( void ) {
 	char			filename[1024];
 	int				i;
-	char			*shaderFiles[MAX_SHADER_FILES];
+	char			**shaderFiles;
 	int				numShaderFiles;
+	int				shaderFileCapacity;
 
 	sprintf( filename, "%sscripts/shaderlist.txt", gamedir );
 	LoadScriptFile( filename );
 
 	numShaderFiles = 0;
+	shaderFileCapacity = 0;
+	shaderFiles = NULL;
 	while ( 1 ) {
 		if ( !GetToken( qtrue ) ) {
 			break;
 		}
-    shaderFiles[numShaderFiles] = malloc(MAX_OS_PATH);
+		if ( numShaderFiles == shaderFileCapacity ) {
+			char **resizedShaderFiles;
+			shaderFileCapacity = shaderFileCapacity ? shaderFileCapacity * 2 : 64;
+			resizedShaderFiles = realloc( shaderFiles,
+				shaderFileCapacity * sizeof( *shaderFiles ) );
+			if ( !resizedShaderFiles ) {
+				Error( "Unable to allocate shader file list" );
+			}
+			shaderFiles = resizedShaderFiles;
+		}
+		shaderFiles[numShaderFiles] = malloc( strlen( token ) + 1 );
+		if ( !shaderFiles[numShaderFiles] ) {
+			Error( "Unable to allocate shader file name" );
+		}
 		strcpy( shaderFiles[ numShaderFiles ], token );
 		numShaderFiles++;
 	}
@@ -597,9 +612,9 @@ void LoadShaderInfo( void ) {
 	for ( i = 0 ; i < numShaderFiles ; i++ ) {
 		sprintf( filename, "%sscripts/%s.shader", gamedir, shaderFiles[i] );
 		ParseShaderFile( filename );
-    free(shaderFiles[i]);
+		free(shaderFiles[i]);
 	}
+	free( shaderFiles );
 
 	qprintf( "%5i shaderInfo\n", numShaderInfo);
 }
-
