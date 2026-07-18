@@ -36,9 +36,13 @@ done
 
 echo "Building Q3Edit..."
 npm run build
+find dist -type f -name ".DS_Store" -delete
 
 echo "Uploading dist/ to s3://${S3_BUCKET}/..."
-aws s3 sync dist/ "s3://${S3_BUCKET}/" --delete
+aws s3 sync dist/ "s3://${S3_BUCKET}/" \
+  --delete \
+  --exclude ".DS_Store" \
+  --exclude "*/.DS_Store"
 
 echo "Invalidating CloudFront cache..."
 invalidation_id="$(
