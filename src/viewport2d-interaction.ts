@@ -226,6 +226,14 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
   ctx.editor.rotationAxis = ctx.axisDepth;
   ctx.editor.nudgeAxisH = ctx.axisH;
   ctx.editor.nudgeAxisV = ctx.axisV;
+  if (ctx.axisDepth === 2) {
+    const [left, top] = ctx.screenToWorld(0, 0);
+    const [right, bottom] = ctx.screenToWorld(ctx.canvas.clientWidth, ctx.canvas.clientHeight);
+    ctx.editor.activeXYViewBounds = {
+      mins: [Math.min(left, right), Math.min(top, bottom), -65536],
+      maxs: [Math.max(left, right), Math.max(top, bottom), 65536],
+    };
+  }
   const [mx, my] = getLocalPos(ctx, e);
 
   if (e.button === 2 || e.button === 1 || (e.button === 0 && state.spaceDown)) {

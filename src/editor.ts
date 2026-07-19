@@ -210,7 +210,11 @@ import {
   isPatchInRegion as isEditorPatchInRegion,
   isRegionActive as isEditorRegionActive,
   serializeRegionMap as serializeEditorRegionMap,
+  saveRegionToFile as saveEditorRegionToFile,
+  setRegionFromCurrentXYView as setEditorRegionFromCurrentXYView,
+  setRegionFromSingleBrush as setEditorRegionFromSingleBrush,
   setRegionFromSelection as setEditorRegionFromSelection,
+  setRegionFromTallSelection as setEditorRegionFromTallSelection,
   type RegionBounds,
 } from './editor-regions';
 import {
@@ -335,6 +339,7 @@ export class Editor {
   hiddenPatches = new Set<Patch>();
   hiddenEntities = new Set<Entity>();
   regionBounds: RegionBounds | null = null;
+  activeXYViewBounds: RegionBounds | null = null;
 
   // UI callback for locating a texture in the texture panel
   onLocateTexture: ((texture: string) => void) | null = null;
@@ -526,6 +531,11 @@ export class Editor {
   setRegionFromSelection(): void {
     setEditorRegionFromSelection(this);
   }
+
+  setRegionFromCurrentXYView(): void { setEditorRegionFromCurrentXYView(this); }
+  setRegionFromSingleBrush(): void { setEditorRegionFromSingleBrush(this); }
+  setRegionFromTallSelection(): void { setEditorRegionFromTallSelection(this); }
+  saveRegionToFile(): void { saveEditorRegionToFile(this); }
 
   clearRegion(): void {
     clearEditorRegion(this);

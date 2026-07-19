@@ -7,6 +7,8 @@ import { serializeMap as serializeEntities } from './mapfile';
 import type { Vec3 } from './math';
 import type { Patch } from './patch';
 import { clonePatch } from './patch';
+import { getSelectedBrushItems } from './editor-selection';
+import { isGroupInfoEntity } from './named-groups';
 
 export interface RegionBounds {
   mins: Vec3;
@@ -19,7 +21,7 @@ interface RegionExportOptions {
 
 const REGION_COMPILE_WALL_THICKNESS = 16;
 const REGION_COMPILE_WALL_OVERLAP = 1;
-const REGION_WORLD_LIMIT = 65536;
+export const REGION_WORLD_LIMIT = 65536;
 const REGION_BOUNDARY_TEXTURE = 'common/caulk';
 
 function boundsIntersectRegion(bounds: RegionBounds, region: RegionBounds): boolean {
@@ -97,6 +99,47 @@ export function setRegionFromSelection(editor: Editor): void {
   editor.statusMessage = 'Region set from selection';
 }
 
+export function setRegionFromCurrentXYView(editor: Editor): void {
+  if (!editor.activeXYViewBounds) {
+    editor.statusMessage = 'Activate the XY viewport first';
+    return;
+  }
+  editor.regionBounds = {
+    mins: [...editor.activeXYViewBounds.mins] as Vec3,
+    maxs: [...editor.activeXYViewBounds.maxs] as Vec3,
+  };
+  editor.redrawRequested = true;
+  editor.statusMessage = 'Region set from current XY view';
+}
+
+export function setRegionFromSingleBrush(editor: Editor): void {
+  const brushes = getSelectedBrushItems(editor);
+  if (brushes.length !== 1) {
+    editor.statusMessage = 'Select exactly one brush for the region';
+    return;
+  }
+  editor.regionBounds = {
+    mins: [...brushes[0].brush.mins] as Vec3,
+    maxs: [...brushes[0].brush.maxs] as Vec3,
+  };
+  editor.redrawRequested = true;
+  editor.statusMessage = 'Region set from brush';
+}
+
+export function setRegionFromTallSelection(editor: Editor): void {
+  const bounds = getSelectionBounds(editor);
+  if (!bounds) {
+    editor.statusMessage = 'No selection for tall region';
+    return;
+  }
+  editor.regionBounds = {
+    mins: [bounds.mins[0], bounds.mins[1], -REGION_WORLD_LIMIT],
+    maxs: [bounds.maxs[0], bounds.maxs[1], REGION_WORLD_LIMIT],
+  };
+  editor.redrawRequested = true;
+  editor.statusMessage = 'Tall region set from selection';
+}
+
 export function clearRegion(editor: Editor): void {
   if (!editor.regionBounds) {
     editor.statusMessage = 'No active region';
@@ -162,6 +205,10 @@ export function collectRegionEntities(editor: Editor, options: RegionExportOptio
 
   for (let i = 1; i < editor.entities.length; i++) {
     const source = editor.entities[i];
+    if (isGroupInfoEntity(source)) {
+      entities.push(cloneEntityShell(source));
+      continue;
+    }
     if (!isEntityInRegion(editor, source)) continue;
 
     if (!hasEntityGeometry(source)) {
@@ -186,4 +233,24 @@ export function collectRegionEntities(editor: Editor, options: RegionExportOptio
 
 export function serializeRegionMap(editor: Editor, options: RegionExportOptions = {}): string {
   return serializeEntities(collectRegionEntities(editor, options));
+}
+
+export function saveRegionToFile(editor: Editor): void {
+  if (!editor.regionBounds) {
+    editor.statusMessage = 'Set a region before saving';
+    return;
+  }
+  try {
+    const text = serializeRegionMap(editor);
+    const stem = editor.fileName.replace(/\.[^.]+$/, '') || 'untitled';
+    const fileName = `${stem}-region.map`;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = fileName; link.click();
+    URL.revokeObjectURL(url);
+    editor.statusMessage = `Saved ${fileName}`;
+  } catch (error) {
+    editor.statusMessage = error instanceof Error ? `Region save failed: ${error.message}` : 'Region save failed';
+  }
 }
