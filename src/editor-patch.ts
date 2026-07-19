@@ -35,7 +35,7 @@ export function createPatch(
     const patch = creators[preset](mins, maxs, texture);
     editor.worldspawn.patches.push(patch);
     editor.selection = [{ type: 'patch', entity: editor.worldspawn, patch }];
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Created ${preset} patch`;
   });
 }
@@ -50,7 +50,7 @@ export function changeSubdivisions(editor: Editor, delta: number): void {
       tessellatePatch(item.patch);
     }
     const level = patchItems[0].patch.subdivisions;
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Subdivisions: ${level}`;
   }, { coalesceKey: 'patch-subdivisions' });
 }
@@ -71,7 +71,7 @@ export function enterPatchEditMode(editor: Editor): void {
   editor.patchControlSelection = [];
   editor.terrainBrushCenter = null;
   editor.terrainBrushAxes = null;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'Patch edit mode';
 }
 
@@ -85,7 +85,7 @@ export function exitPatchEditMode(editor: Editor): void {
   editor.patchControlSelection = [];
   editor.terrainBrushCenter = null;
   editor.terrainBrushAxes = null;
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function selectControlPoint(
@@ -104,12 +104,12 @@ export function selectControlPoint(
     return;
   }
   editor.patchControlSelection.push({ dataIndex, row, col });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function clearControlPointSelection(editor: Editor): void {
   editor.patchControlSelection = [];
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function isControlPointSelected(editor: Editor, dataIndex: number, row: number, col: number): boolean {
@@ -137,7 +137,7 @@ export function moveSelectedControlPoints(editor: Editor, delta: Vec3): void {
       tessellatePatch(editor.patchEditData[dataIndex].patch);
     }
     stitchSelectedTerrainControlSeams(editor);
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'move-patch-control-points' });
 }
 

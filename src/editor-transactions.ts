@@ -30,7 +30,7 @@ export function resetEditorStateAfterDocumentReplacement(editor: Editor): void {
   editor.patchControlSelection = [];
   editor.terrainBrushCenter = null;
   editor.terrainBrushAxes = null;
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function beginTransaction(
@@ -63,7 +63,7 @@ export function commitTransaction(editor: Editor): boolean {
   if (documentsEqual(active.before, editor.entities)) return false;
 
   editor.history.record(active.before, active.label, active.options);
-  editor.dirty = true;
+  editor.redrawRequested = true;
   return true;
 }
 

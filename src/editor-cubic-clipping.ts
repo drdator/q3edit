@@ -69,7 +69,7 @@ export function cubicClipBounds(editor: Editor): CubicClipBounds | null {
 
 export function toggleCubicClip(editor: Editor): void {
   editor.cubicClipEnabled = !editor.cubicClipEnabled;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = editor.cubicClipEnabled ? cubicClipStatus(editor) : 'Cubic clipping: off';
 }
 
@@ -79,7 +79,7 @@ export function adjustCubicClipSize(editor: Editor, direction: -1 | 1): void {
     : Math.min(MAX_CUBIC_CLIP_SIZE, editor.cubicClipSize * 2);
   editor.cubicClipSize = next;
   editor.cubicClipEnabled = true;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = cubicClipStatus(editor);
 }
 

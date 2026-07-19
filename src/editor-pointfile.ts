@@ -53,7 +53,7 @@ export function loadPointfileText(
 
   editor.pointfilePoints = points;
   editor.pointfileIndex = 0;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   if (options.autoLocate !== false) locateCurrentPoint(editor);
   editor.statusMessage = `${options.statusPrefix ?? 'Loaded pointfile'} (${points.length} point${points.length === 1 ? '' : 's'})`;
   return true;
@@ -82,7 +82,7 @@ export function clearPointfile(editor: Editor, updateStatus = true): void {
   const hadPointfile = editor.pointfilePoints.length > 0;
   editor.pointfilePoints = [];
   editor.pointfileIndex = 0;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   if (updateStatus) {
     editor.statusMessage = hadPointfile ? 'Pointfile cleared' : 'No pointfile loaded';
   }
@@ -98,7 +98,7 @@ export function nextPointfilePoint(editor: Editor): void {
     return;
   }
   editor.pointfileIndex++;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   locateCurrentPoint(editor);
   editor.statusMessage = `Leak spot ${editor.pointfileIndex + 1}/${editor.pointfilePoints.length}`;
 }
@@ -113,7 +113,7 @@ export function prevPointfilePoint(editor: Editor): void {
     return;
   }
   editor.pointfileIndex--;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   locateCurrentPoint(editor);
   editor.statusMessage = `Leak spot ${editor.pointfileIndex + 1}/${editor.pointfilePoints.length}`;
 }

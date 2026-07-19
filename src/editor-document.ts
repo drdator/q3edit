@@ -41,7 +41,7 @@ export function loadMap(editor: Editor, text: string): void {
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();
-  editor.dirty = true;
+  editor.redrawRequested = true;
   if (result.diagnostics.length === 0) {
     editor.statusMessage = 'Map loaded';
     return;
@@ -67,7 +67,7 @@ export function newMap(editor: Editor): void {
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'New map';
 }
 
@@ -129,6 +129,6 @@ export function createDefaultMap(editor: Editor): void {
   light.properties['light'] = '300';
   editor.entities.push(light);
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'Default map created';
 }

@@ -259,7 +259,7 @@ export class Editor {
   terrainBrushAxes: [number, number] | null = null;
   pointfilePoints: Vec3[] = [];
   pointfileIndex = 0;
-  dirty = true;
+  redrawRequested = true;
   textureManager: TextureManager | null = null;
   history = new History();
   fileName = 'untitled.map';
@@ -497,7 +497,7 @@ export class Editor {
 
   toggleTextureLock(): void {
     this.textureLock = !this.textureLock;
-    this.dirty = true;
+    this.redrawRequested = true;
     this.statusMessage = this.textureLock ? 'Texture lock: ON' : 'Texture lock: OFF';
   }
 
@@ -839,7 +839,7 @@ export class Editor {
   centerOnSelection(): void {
     if (this.selection.length === 0) return;
     for (const cb of this.centerOnSelectionCallbacks) cb();
-    this.dirty = true;
+    this.redrawRequested = true;
   }
 
   onLocatePoint(callback: (point: Vec3, lookAt: Vec3 | null) => void): void {
@@ -848,7 +848,7 @@ export class Editor {
 
   locatePoint(point: Vec3, lookAt: Vec3 | null = null): void {
     for (const cb of this.locatePointCallbacks) cb(point, lookAt);
-    this.dirty = true;
+    this.redrawRequested = true;
   }
 
   loadPointfileText(text: string, statusPrefix?: string): boolean {

@@ -167,7 +167,7 @@ export class UI {
     const panel = document.getElementById('terrain-panel');
     if (!panel) return;
     panel.classList.remove('open');
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
   }
 
   private openTerrainPanel(): void {
@@ -180,7 +180,7 @@ export class UI {
     this.setPanelCollapsed(panel, false);
     panel.classList.add('open');
     this.positionTerrainPanel();
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
   }
 
   private setupTerrainPopover(): void {
@@ -218,7 +218,7 @@ export class UI {
       this.brushPanelMode = modeSelect.value as typeof this.brushPanelMode;
       this.editor.selectionFilter = this.brushPanelMode;
       this.brushPanelSignature = '';
-      this.editor.dirty = true;
+      this.editor.redrawRequested = true;
     });
     // Stop click from toggling panel collapse
     modeSelect.addEventListener('mousedown', (ev) => ev.stopPropagation());
@@ -236,7 +236,7 @@ export class UI {
     filterBtn.addEventListener('mousedown', () => {
       this.editor.renderSelectedOnly = !this.editor.renderSelectedOnly;
       filterBtn.textContent = this.editor.renderSelectedOnly ? 'Render: Selected' : 'Render: All';
-      this.editor.dirty = true;
+      this.editor.redrawRequested = true;
     });
     body.appendChild(filterBtn);
 
@@ -444,7 +444,7 @@ export class UI {
                 this.collapsedBrushPanelEntities.add(item.entity);
               }
               this.brushPanelSignature = '';
-              this.editor.dirty = true;
+              this.editor.redrawRequested = true;
             });
           }
 
@@ -476,7 +476,7 @@ export class UI {
                 this.collapsedBrushPanelTerrainGroups.add(collapseKey);
               }
               this.brushPanelSignature = '';
-              this.editor.dirty = true;
+              this.editor.redrawRequested = true;
             });
           }
 
@@ -1265,7 +1265,7 @@ export class UI {
     const next = Math.max(8, Math.min(1024, Math.round(value) || 8));
     if (next === this.editor.terrainBrushRadius) return;
     this.editor.terrainBrushRadius = next;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     this.editor.statusMessage = `Terrain radius: ${next}`;
   }
 
@@ -1273,21 +1273,21 @@ export class UI {
     const next = Math.max(1, Math.min(256, Math.round(value) || 1));
     if (next === this.editor.terrainBrushStrength) return;
     this.editor.terrainBrushStrength = next;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     this.editor.statusMessage = `Terrain strength: ${next}`;
   }
 
   private setTerrainBrushMode(mode: 'height' | 'texture'): void {
     if (mode === this.editor.terrainBrushMode) return;
     this.editor.terrainBrushMode = mode;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     this.editor.statusMessage = `Terrain brush mode: ${mode}`;
   }
 
   private setTerrainFalloff(falloff: 'smooth' | 'linear'): void {
     if (falloff === this.editor.terrainFalloff) return;
     this.editor.terrainFalloff = falloff;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     this.editor.statusMessage = `Terrain falloff: ${falloff}`;
   }
 
@@ -1651,7 +1651,7 @@ export class UI {
       this.editor.rotateAnchor = null;
     }
     this.editor.activeTool = tool;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     document.querySelectorAll('.tool-btn[data-tool]').forEach(el => {
       el.classList.toggle('active', (el as HTMLElement).dataset.tool === tool);
     });
@@ -1660,7 +1660,7 @@ export class UI {
   private setGrid(size: number): void {
     this.editor.gridSize = size;
     this.editor.createDepth = Math.max(size * 4, 64);
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     this.closeMenus();
   }
 
@@ -1676,7 +1676,7 @@ export class UI {
     const modes: ('off' | 'abs' | 'rel')[] = ['off', 'abs', 'rel'];
     const idx = modes.indexOf(this.editor.gridSnapMode);
     this.editor.gridSnapMode = modes[(idx + 1) % modes.length];
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     const labels = { off: 'Grid snap: OFF', abs: 'Grid snap: absolute', rel: 'Grid snap: relative' };
     this.editor.statusMessage = labels[this.editor.gridSnapMode];
     this.closeMenus();
@@ -1684,7 +1684,7 @@ export class UI {
 
   private toggleGeoSnap(): void {
     this.editor.snapToGeometry = !this.editor.snapToGeometry;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     this.editor.statusMessage = this.editor.snapToGeometry ? 'Geometry snap: ON' : 'Geometry snap: OFF';
     this.closeMenus();
   }
@@ -1693,7 +1693,7 @@ export class UI {
     const modes: InvisibleMode[] = ['show', 'dim', 'hide'];
     const idx = modes.indexOf(this.editor.invisibleMode);
     this.editor.invisibleMode = modes[(idx + 1) % modes.length];
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
     const labels: Record<InvisibleMode, string> = {
       show: 'Invisible: show all',
       dim: 'Invisible: transparent',

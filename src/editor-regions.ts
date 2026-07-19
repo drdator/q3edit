@@ -93,7 +93,7 @@ export function setRegionFromSelection(editor: Editor): void {
     mins: [...bounds.mins] as Vec3,
     maxs: [...bounds.maxs] as Vec3,
   };
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'Region set from selection';
 }
 
@@ -104,7 +104,7 @@ export function clearRegion(editor: Editor): void {
   }
 
   editor.regionBounds = null;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'Region cleared';
 }
 

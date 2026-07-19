@@ -49,7 +49,7 @@ export function hideSelected(editor: Editor): void {
   }
 
   editor.selection = [];
-  editor.dirty = true;
+  editor.redrawRequested = true;
   const total = hiddenEntities.size + hiddenBrushes.size + hiddenPatches.size;
   editor.statusMessage = total > 0 ? `Hidden ${total} item${total === 1 ? '' : 's'}` : 'Nothing hidden';
 }
@@ -57,7 +57,7 @@ export function hideSelected(editor: Editor): void {
 export function showHidden(editor: Editor): void {
   const hadHidden = editor.hiddenBrushes.size > 0 || editor.hiddenPatches.size > 0 || editor.hiddenEntities.size > 0;
   clearHiddenState(editor);
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = hadHidden ? 'Hidden items shown' : 'No hidden items';
 }
 
