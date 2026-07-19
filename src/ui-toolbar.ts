@@ -1,5 +1,5 @@
 import { Editor } from './editor';
-import { BRUSH_PRIMITIVES, brushPrimitiveUsesSides } from './brush-primitives';
+import { BRUSH_PRIMITIVES, brushPrimitiveSideRange, brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon, brushPrimitiveToolbarIconMarkup } from './brush-primitive-icons';
 import { formatShortcut, type CommandId, type CommandRegistry } from './commands';
 import type { EditorCommandContext } from './editor-commands';
@@ -96,15 +96,15 @@ export function buildToolbar(ctx: ToolbarContext): void {
   sidesLabel.textContent = 'Sides';
   createToolBody.appendChild(sidesLabel);
 
-  const sidesSelect = document.createElement('select');
+  const sidesSelect = document.createElement('input');
+  sidesSelect.type = 'number';
   sidesSelect.id = 'toolbar-brush-sides';
-  for (let sides = 3; sides <= 9; sides++) {
-    const opt = document.createElement('option');
-    opt.value = String(sides);
-    opt.textContent = String(sides);
-    sidesSelect.appendChild(opt);
-  }
+  sidesSelect.min = '3'; sidesSelect.max = '64'; sidesSelect.step = '1'; sidesSelect.value = String(ctx.editor.currentBrushSides);
   createToolBody.appendChild(sidesSelect);
+
+  const exactButton = document.createElement('div'); exactButton.className = 'btn'; exactButton.textContent = 'Exact Primitive...';
+  exactButton.addEventListener('mousedown', () => void ctx.commands.execute('brush.create-exact'));
+  createToolBody.appendChild(exactButton);
 
   document.body.appendChild(createToolPanel);
 
@@ -112,11 +112,10 @@ export function buildToolbar(ctx: ToolbarContext): void {
 
   const syncCreateToolPanel = () => {
     primitiveSelect.value = ctx.editor.currentBrushPrimitive;
-    for (const option of Array.from(sidesSelect.options)) {
-      option.disabled = ctx.editor.currentBrushPrimitive === 'sphere' && Number(option.value) < 4;
-    }
-    if (ctx.editor.currentBrushPrimitive === 'sphere' && ctx.editor.currentBrushSides < 4) {
-      ctx.editor.currentBrushSides = 4;
+    const range = brushPrimitiveSideRange(ctx.editor.currentBrushPrimitive);
+    if (range) {
+      sidesSelect.min = String(range.min); sidesSelect.max = String(range.max);
+      ctx.editor.currentBrushSides = Math.max(range.min, Math.min(range.max, Math.round(ctx.editor.currentBrushSides)));
     }
     sidesSelect.value = String(ctx.editor.currentBrushSides);
     const usesSides = brushPrimitiveUsesSides(ctx.editor.currentBrushPrimitive);
@@ -153,7 +152,10 @@ export function buildToolbar(ctx: ToolbarContext): void {
     ctx.editor.redrawRequested = true;
   });
   sidesSelect.addEventListener('change', () => {
-    ctx.editor.currentBrushSides = Number(sidesSelect.value);
+    const range = brushPrimitiveSideRange(ctx.editor.currentBrushPrimitive);
+    if (!range) return;
+    ctx.editor.currentBrushSides = Math.max(range.min, Math.min(range.max, Math.round(Number(sidesSelect.value)) || range.min));
+    sidesSelect.value = String(ctx.editor.currentBrushSides);
     ctx.editor.redrawRequested = true;
   });
 

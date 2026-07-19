@@ -3,6 +3,7 @@ import { getSelectedPatchItems } from './editor-selection';
 import type { Editor, Tool } from './editor';
 import type { Vec3 } from './math';
 import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
+import { openExactPrimitiveDialog } from './primitive-dialog';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -173,7 +174,11 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     ...filteringCommands,
 
     { id: 'region.from-selection', label: 'Set From Selection', menu: menu('Region', 0, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromSelection() },
-    { id: 'region.off', label: 'Region Off', menu: menu('Region', 10, 'region'), enabled: ({ editor }) => editor.isRegionActive(), execute: ({ editor }) => editor.clearRegion() },
+    { id: 'region.from-view', label: 'Set From Current XY View', menu: menu('Region', 10, 'region'), execute: ({ editor }) => editor.setRegionFromCurrentXYView() },
+    { id: 'region.from-brush', label: 'Set From One Brush', menu: menu('Region', 20, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromSingleBrush() },
+    { id: 'region.from-tall-selection', label: 'Set Tall From Selection', menu: menu('Region', 30, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromTallSelection() },
+    { id: 'region.save', label: 'Save Region...', menu: menu('Region', 40, 'file'), enabled: ({ editor }) => editor.isRegionActive(), execute: ({ editor }) => editor.saveRegionToFile() },
+    { id: 'region.off', label: 'Region Off', menu: menu('Region', 50, 'region'), enabled: ({ editor }) => editor.isRegionActive(), execute: ({ editor }) => editor.clearRegion() },
     { id: 'pointfile.open', label: 'Open Pointfile...', menu: menu('Pointfile', 0, 'file'), execute: ({ editor }) => editor.openPointfileFromFile() },
     { id: 'pointfile.clear', label: ({ editor }) => editor.pointfilePoints.length > 0 ? `Clear Pointfile (${editor.pointfilePoints.length})` : 'Clear Pointfile', menu: menu('Pointfile', 10, 'file'), enabled: ({ editor }) => editor.pointfilePoints.length > 0, execute: ({ editor }) => editor.clearPointfile() },
     { id: 'pointfile.previous', label: 'Previous Leak Spot', menu: menu('Pointfile', 20, 'navigate'), enabled: ({ editor }) => editor.pointfilePoints.length > 0, execute: ({ editor }) => editor.prevPointfilePoint() },
@@ -203,6 +208,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tool.entity', label: 'Place Entity', defaultShortcut: '3', menu: menu('Tools', 20, 'tools'), checked: ({ editor }) => editor.activeTool === 'entity', execute: ctx => ctx.setTool('entity') },
     { id: 'tool.clip', label: 'Clip', defaultShortcut: '4', menu: menu('Tools', 30, 'tools'), checked: ({ editor }) => editor.activeTool === 'clip', execute: ctx => ctx.setTool('clip') },
     { id: 'tool.rotate', label: 'Rotate', defaultShortcut: '5', menu: menu('Tools', 40, 'tools'), checked: ({ editor }) => editor.activeTool === 'rotate', execute: ctx => ctx.setTool('rotate') },
+    { id: 'brush.create-exact', label: 'Create Exact Primitive...', menu: menu('Tools', 50, 'create'), execute: ({ editor }) => openExactPrimitiveDialog(editor) },
     { id: 'csg.subtract', label: 'CSG Subtract', defaultShortcut: 'Mod+Shift+S', menu: menu('CSG', 0, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgSubtract() },
     { id: 'csg.hollow', label: 'Make Hollow', defaultShortcut: 'Mod+Shift+H', menu: menu('CSG', 10, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgHollow() },
     { id: 'csg.merge', label: 'Merge Brushes', defaultShortcut: 'Mod+Shift+M', menu: menu('CSG', 20, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgMerge() },
