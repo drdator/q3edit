@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFlatPatch } from '../src/patch';
+import { createFlatPatch, createTerrainDefGridPatch } from '../src/patch';
 import { createPatchMatrix, deletePatchColumns, deletePatchRows, fitPatchUV, insertPatchColumns, insertPatchRows, inspectPatch, invertPatch, redispersePatchColumns, thickenPatch, transformPatchUV, transposePatch } from '../src/patch-operations';
 import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
@@ -53,5 +53,22 @@ describe('advanced patch operations', () => {
     const parsed = parseMap(serializeMap(editor.entities));
     expect(parsed[0].patches[0].width).toBe(5);
     expect(parsed[0].patches[0].ctrl).toHaveLength(3);
+  });
+
+  it('requires deliberate terrain conversion before generic patch operations', () => {
+    const editor = new Editor(); const world = createEntity('worldspawn');
+    const terrain = createTerrainDefGridPatch([0, 0, 0], [64, 64, 0], 'terrain/base', 3, 3);
+    world.patches.push(terrain); editor.entities = [world]; editor.selectPatch(world, terrain);
+
+    editor.applyPatchOperation('insert-columns');
+    expect(terrain.width).toBe(3);
+    expect(editor.statusMessage).toContain('Convert terrain');
+
+    editor.convertSelectedTerrainToPatch();
+    expect(terrain.terrainDef).toBeUndefined();
+    editor.applyPatchOperation('insert-columns');
+    expect(terrain.width).toBe(5);
+    editor.undo();
+    expect(editor.entities[0].patches[0].width).toBe(3);
   });
 });

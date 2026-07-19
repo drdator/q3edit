@@ -6,6 +6,7 @@ import {
   type TerrainDefSurface,
   syncTerrainDefMetadata,
 } from './patch';
+import { assertTerrainSerializable } from './terrain-model';
 
 export {
   parseMap,
@@ -39,10 +40,13 @@ export function serializeMap(entities: Entity[]): string {
 
     for (let patchIndex = 0; patchIndex < entity.patches.length; patchIndex++) {
       const patch = entity.patches[patchIndex];
-      if (patch.terrainDef) syncTerrainDefMetadata(patch);
+      if (patch.terrainDef) {
+        syncTerrainDefMetadata(patch);
+        assertTerrainSerializable(patch);
+      }
       lines.push(`// patch ${patchIndex}`);
       lines.push('{');
-      if (patch.terrainDef?.serializable) {
+      if (patch.terrainDef) {
         serializeTerrainDef(lines, patch);
       } else {
         serializePatchDef2(lines, patch);

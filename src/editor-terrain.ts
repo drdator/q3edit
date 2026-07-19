@@ -4,15 +4,19 @@ import {
   createGridPatch,
   createTerrainDefGridPatch,
   setPatchTexture,
+  syncTerrainDefMetadata,
   terrainDefCellTexture,
   terrainDefDisplayTexture,
   terrainPaintNeedsPreparation,
   tessellatePatch,
   type Patch,
+  type TerrainDefSurface,
 } from './patch';
 
 export type TerrainFalloff = 'smooth' | 'linear';
 export type TerrainBrushMode = 'height' | 'texture';
+
+export type TerrainSampleChanges = Partial<TerrainDefSurface> & { height?: number };
 
 let nextTerrainGroupId = 1;
 
@@ -571,6 +575,84 @@ export function stitchSelectedTerrainControlSeams(editor: Editor): number {
     )
   );
 }
+
+export function updateTerrainSample(
+  editor: Editor,
+  patch: Patch,
+  row: number,
+  column: number,
+  changes: TerrainSampleChanges,
+): void {
+  const point = patch.ctrl[row]?.[column];
+  const surface = patch.terrainDef?.surfaces[row]?.[column];
+  if (!point || !surface || !patch.terrainDef) {
+    editor.statusMessage = 'Terrain sample is no longer available';
+    return;
+  }
+  if ((changes.scaleX !== undefined && Math.abs(changes.scaleX) < 0.0001)
+      || (changes.scaleY !== undefined && Math.abs(changes.scaleY) < 0.0001)) {
+    editor.statusMessage = 'Terrain texture scale cannot be zero';
+    return;
+  }
+
+  editor.transact('Edit terrain sample', () => {
+    const { height, ...surfaceChanges } = changes;
+    Object.assign(surface, surfaceChanges);
+    const affected = new Set<Patch>([patch]);
+    if (height !== undefined && Number.isFinite(height)) {
+      point.xyz[2] = height;
+      if (patch.terrainGroupId && point.terrainCoord) {
+        const grouped = editor.entities.flatMap(entity => entity.patches)
+          .filter(candidate => candidate.terrainGroupId === patch.terrainGroupId);
+        const targets = new Map<string, Map<string, [number, number, number][]>>();
+        targets.set(patch.terrainGroupId, new Map([
+          [terrainCoordKey(point.terrainCoord), [[point.xyz[0], point.xyz[1], point.xyz[2]]]],
+        ]));
+        stitchTerrainGroups(editor, grouped, targets);
+        grouped.forEach(candidate => affected.add(candidate));
+      }
+    }
+    for (const candidate of affected) {
+      if (candidate.terrainDef) syncTerrainDefMetadata(candidate);
+      tessellatePatch(candidate);
+    }
+    editor.redrawRequested = true;
+    editor.statusMessage = `Updated terrain sample ${row},${column}`;
+  }, { coalesceKey: `terrain-sample-${row}-${column}` });
+}
+
+function selectTerrainLine(editor: Editor, axis: 0 | 1): void {
+  if (!editor.patchEditMode || editor.patchEditData.length === 0 || editor.patchControlSelection.length === 0) {
+    editor.statusMessage = 'Select a terrain control point first';
+    return;
+  }
+  const coordinates = new Set<number>();
+  for (const selected of editor.patchControlSelection) {
+    const point = editor.patchEditData[selected.dataIndex]?.patch.ctrl[selected.row]?.[selected.col];
+    if (point?.terrainCoord) coordinates.add(point.terrainCoord[axis]);
+  }
+  if (coordinates.size === 0) {
+    editor.statusMessage = 'Selected control points do not belong to a terrain group';
+    return;
+  }
+  editor.patchControlSelection = [];
+  for (let dataIndex = 0; dataIndex < editor.patchEditData.length; dataIndex++) {
+    const patch = editor.patchEditData[dataIndex].patch;
+    for (let row = 0; row < patch.height; row++) {
+      for (let column = 0; column < patch.width; column++) {
+        const coord = patch.ctrl[row][column].terrainCoord;
+        if (coord && coordinates.has(coord[axis])) {
+          editor.patchControlSelection.push({ dataIndex, row, col: column });
+        }
+      }
+    }
+  }
+  editor.redrawRequested = true;
+  editor.statusMessage = `Selected terrain ${axis === 0 ? 'row' : 'column'}`;
+}
+
+export function selectTerrainRows(editor: Editor): void { selectTerrainLine(editor, 0); }
+export function selectTerrainColumns(editor: Editor): void { selectTerrainLine(editor, 1); }
 
 export function createTerrainPatch(editor: Editor): void {
   const bounds = editor.selectionBounds();

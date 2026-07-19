@@ -100,6 +100,7 @@ import {
 import {
   changeSubdivisions as changeEditorPatchSubdivisions,
   applyPatchOperation as applyEditorPatchOperation,
+  convertSelectedTerrainToPatch as convertEditorTerrainToPatch,
   createMatrixPatch as createEditorMatrixPatch,
   thickenSelectedPatches as thickenEditorPatches,
   updatePatchProperties as updateEditorPatchProperties,
@@ -129,14 +130,18 @@ import {
   paintTerrainTexture as paintEditorTerrainTexture,
   raiseTerrain as raiseEditorTerrain,
   sculptTerrain as sculptEditorTerrain,
+  selectTerrainColumns as selectEditorTerrainColumns,
+  selectTerrainRows as selectEditorTerrainRows,
   stitchSelectedTerrainControlSeams as stitchEditorSelectedTerrainControlSeams,
   splitTerrainIntoPaintTiles as splitEditorTerrainIntoPaintTiles,
   stitchTerrainSeams as stitchEditorTerrainSeams,
   smoothTerrain as smoothEditorTerrain,
   toggleTerrainBrushMode as toggleEditorTerrainBrushMode,
+  updateTerrainSample as updateEditorTerrainSample,
   type TerrainBrushMode,
   type TerrainFalloff,
   type TerrainPaintTarget,
+  type TerrainSampleChanges,
 } from './editor-terrain';
 import {
   addBrush as addEditorBrush,
@@ -601,6 +606,7 @@ export class Editor {
   }
 
   applyPatchOperation(operation: PatchOperation): void { applyEditorPatchOperation(this, operation); }
+  convertSelectedTerrainToPatch(): void { convertEditorTerrainToPatch(this); }
   createMatrixPatch(width: number, height: number): void { createEditorMatrixPatch(this, width, height); }
   thickenPatches(amount = 16): void { thickenEditorPatches(this, amount); }
   updatePatchProperties(patch: Patch, changes: Partial<Pick<Patch, 'texture' | 'subdivisions' | 'contentFlags' | 'surfaceFlags' | 'value'>>): void {
@@ -1103,6 +1109,13 @@ export class Editor {
   stitchTerrainSeams(): number {
     return stitchEditorTerrainSeams(this);
   }
+
+  updateTerrainSample(patch: Patch, row: number, column: number, changes: TerrainSampleChanges): void {
+    updateEditorTerrainSample(this, patch, row, column, changes);
+  }
+
+  selectTerrainRows(): void { selectEditorTerrainRows(this); }
+  selectTerrainColumns(): void { selectEditorTerrainColumns(this); }
 
   sculptTerrain(amount: number, takeSnapshot = true, selectedOnly = false): void {
     sculptEditorTerrain(this, amount, takeSnapshot, selectedOnly);

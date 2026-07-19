@@ -13,6 +13,10 @@ const brushDefFixture = readFileSync(
   new URL('./fixtures/brushdef.map', import.meta.url),
   'utf8',
 );
+const terrainFixture = readFileSync(
+  new URL('./fixtures/q3radiant-terrain.map', import.meta.url),
+  'utf8',
+);
 
 describe('classic .map brushes', () => {
   test('loads face texture transforms, flags, and value', () => {
@@ -78,6 +82,17 @@ describe('classic .map brushes', () => {
 });
 
 describe('patch map formats', () => {
+  test('round-trips a Q3Radiant terrainDef syntax fixture losslessly', () => {
+    const first = parseMapWithDiagnostics(terrainFixture);
+    expect(first.diagnostics).toEqual([]);
+    const original = first.document.entities[0].patches[0];
+    const second = parseMapWithDiagnostics(serializeMap(first.document.entities));
+    const loaded = second.document.entities[0].patches[0];
+    expect(second.diagnostics).toEqual([]);
+    expect(loaded.ctrl).toEqual(original.ctrl);
+    expect(loaded.terrainDef).toEqual(original.terrainDef);
+  });
+
   test('round-trips patchDef2 geometry and header flags', () => {
     const worldspawn = createEntity('worldspawn');
     const patch = createFlatPatch([0, 0, 0], [128, 96, 32], 'base_wall/concrete');
@@ -143,6 +158,15 @@ describe('patch map formats', () => {
       surfaceFlags: 128,
       value: 9,
     });
+  });
+
+  test('rejects a non-regular terrain lattice instead of silently changing format', () => {
+    const worldspawn = createEntity('worldspawn');
+    const terrain = createTerrainDefGridPatch([0, 0, 0], [128, 128, 16], 'terrain/base', 3, 3);
+    terrain.ctrl[1][1].xyz[0] += 4;
+    worldspawn.patches.push(terrain);
+
+    expect(() => serializeMap([worldspawn])).toThrow(/Convert it to patchDef2 explicitly/);
   });
 });
 

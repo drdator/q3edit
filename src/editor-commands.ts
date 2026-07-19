@@ -185,6 +185,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'terrain.brush-weaker', label: 'Weaker Brush', menu: menu('Terrain', 110, 'brush'), execute: ({ editor }) => editor.adjustTerrainStrength(-2) },
     { id: 'terrain.brush-stronger', label: 'Stronger Brush', menu: menu('Terrain', 120, 'brush'), execute: ({ editor }) => editor.adjustTerrainStrength(2) },
     { id: 'terrain.falloff', label: ({ editor }) => `Falloff: ${editor.terrainFalloff === 'smooth' ? 'Smooth' : 'Linear'}`, menu: menu('Terrain', 130, 'brush'), execute: ({ editor }) => editor.cycleTerrainFalloff() },
+    { id: 'terrain.select-row', label: 'Select Terrain Row', menu: menu('Terrain', 135, 'selection'), enabled: ({ editor }) => editor.patchEditMode, execute: ({ editor }) => editor.selectTerrainRows() },
+    { id: 'terrain.select-column', label: 'Select Terrain Column', menu: menu('Terrain', 136, 'selection'), enabled: ({ editor }) => editor.patchEditMode, execute: ({ editor }) => editor.selectTerrainColumns() },
 
     { id: 'tool.select', label: 'Select', defaultShortcut: '1', menu: menu('Tools', 0, 'tools'), checked: ({ editor }) => editor.activeTool === 'select', execute: ctx => ctx.setTool('select') },
     { id: 'tool.create', label: 'Create Brush', defaultShortcut: '2', menu: menu('Tools', 10, 'tools'), checked: ({ editor }) => editor.activeTool === 'create', execute: ctx => ctx.setTool('create') },
@@ -223,6 +225,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'patch.delete-columns', label: 'Delete Columns', menu: menu('Patch', 110, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('delete-columns') },
     ...(['transpose','invert','redisperse-rows','redisperse-columns','cycle-cap','naturalize','fit','shift-u','shift-v','scale-up','scale-down','rotate'] as const).map((operation, index) => ({ id: `patch.${operation}`, label: `Patch ${operation.replace(/-/g, ' ')}`, menu: menu('Patch', 120 + index, operation.includes('row') || operation.includes('column') ? 'grid' : 'texture'), enabled: hasSelectedPatches, execute: ({ editor }: EditorCommandContext) => editor.applyPatchOperation(operation) })),
     { id: 'patch.thicken', label: 'Thicken With Caps', menu: menu('Patch', 150, 'shape'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.thickenPatches() },
+    { id: 'terrain.convert-patchdef2', label: 'Convert Terrain to patchDef2', menu: menu('Terrain', 140, 'setup'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.convertSelectedTerrainToPatch() },
     { id: 'patch.subdivide-more', label: 'Increase Patch Subdivisions', defaultShortcut: 'Plus', alternateShortcuts: ['='], menu: menu('Patch', 160, 'subdivision'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(1) },
     { id: 'patch.subdivide-less', label: 'Decrease Patch Subdivisions', defaultShortcut: 'Minus', alternateShortcuts: ['Shift+_'], menu: menu('Patch', 170, 'subdivision'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(-1) },
     { id: 'clip.execute', label: 'Execute Clip', defaultShortcut: 'Enter', enabled: ({ editor }) => editor.activeTool === 'clip', execute: ({ editor }) => editor.executeClip() },
