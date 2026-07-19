@@ -1,5 +1,5 @@
 import { createBoxBrush } from './brush';
-import { createEntity } from './entity';
+import { createEntity, createWorldspawn } from './entity';
 import { parseMapWithDiagnostics, serializeMap as serializeEntities } from './mapfile';
 import type { Editor } from './editor';
 import {
@@ -34,7 +34,7 @@ export function serializeMap(editor: Editor): string {
 export function loadMap(editor: Editor, text: string): void {
   const result = parseMapWithDiagnostics(text);
   editor.transact('Open map', () => {
-    editor.entities = result.entities;
+    editor.entities = result.entities.length > 0 ? result.entities : [createWorldspawn()];
   });
   editor.mapDiagnostics = result.diagnostics;
   editor.selection = [];
@@ -60,7 +60,7 @@ export function loadMap(editor: Editor, text: string): void {
 
 export function newMap(editor: Editor): void {
   editor.transact('New map', () => {
-    editor.entities = [];
+    editor.entities = [createWorldspawn()];
   });
   editor.mapDiagnostics = [];
   editor.selection = [];
@@ -101,7 +101,9 @@ export function openMapFromFile(editor: Editor): void {
 }
 
 export function createDefaultMap(editor: Editor): void {
-  editor.entities = [];
+  // Startup/default-map initialization is deliberately non-undoable. The New
+  // command establishes its undo entry before invoking this initializer.
+  editor.entities = [createWorldspawn()];
   editor.mapDiagnostics = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);

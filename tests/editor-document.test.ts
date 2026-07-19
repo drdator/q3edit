@@ -28,6 +28,17 @@ brushDef
 
     editor.newMap();
     expect(editor.mapDiagnostics).toEqual([]);
+    expect(editor.entities).toHaveLength(1);
+    expect(editor.worldspawn.classname).toBe('worldspawn');
     warn.mockRestore();
+  });
+
+  test('normalizes an empty map to the worldspawn document invariant', () => {
+    const editor = new Editor();
+
+    editor.loadMap('');
+
+    expect(editor.entities).toHaveLength(1);
+    expect(editor.worldspawn.properties.classname).toBe('worldspawn');
   });
 });
