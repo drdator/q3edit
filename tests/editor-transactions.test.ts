@@ -81,6 +81,23 @@ describe('document transactions', () => {
     expect(editor.history.canUndo).toBe(false);
   });
 
+  test('commits an active interaction before undoing it and clears stale edit state', () => {
+    const editor = editorWithMessage();
+    editor.patchEditMode = true;
+    editor.patchEditData = [];
+    editor.patchControlSelection = [{ dataIndex: 0, row: 0, col: 0 }];
+
+    editor.beginTransaction('Active drag');
+    editor.entities[0].properties.message = 'dragged';
+    editor.undo();
+
+    expect(editor.entities[0].properties.message).toBe('before');
+    expect(editor.history.canUndo).toBe(false);
+    expect(editor.history.redoLabel).toBe('Active drag');
+    expect(editor.patchEditMode).toBe(false);
+    expect(editor.patchControlSelection).toEqual([]);
+  });
+
   test('coalesces repeated edits with the same key inside a bounded window', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-19T10:00:00Z'));

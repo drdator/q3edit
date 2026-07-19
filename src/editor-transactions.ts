@@ -19,10 +19,17 @@ function documentsEqual(left: MapSnapshot, right: MapSnapshot): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function resetEditorStateAfterReplacement(editor: Editor): void {
+export function resetEditorStateAfterDocumentReplacement(editor: Editor): void {
   editor.selection = [];
   editor.clearHiddenState();
-  editor.exitVertexMode();
+  editor.vertexMode = false;
+  editor.vertexData = [];
+  editor.vertexSelection = [];
+  editor.patchEditMode = false;
+  editor.patchEditData = [];
+  editor.patchControlSelection = [];
+  editor.terrainBrushCenter = null;
+  editor.terrainBrushAxes = null;
   editor.dirty = true;
 }
 
@@ -66,7 +73,7 @@ export function cancelTransaction(editor: Editor): boolean {
 
   activeTransactions.delete(editor);
   editor.entities = active.before;
-  resetEditorStateAfterReplacement(editor);
+  resetEditorStateAfterDocumentReplacement(editor);
   return true;
 }
 

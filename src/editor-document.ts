@@ -2,27 +2,27 @@ import { createBoxBrush } from './brush';
 import { createEntity } from './entity';
 import { parseMapWithDiagnostics, serializeMap as serializeEntities } from './mapfile';
 import type { Editor } from './editor';
+import {
+  commitTransaction,
+  resetEditorStateAfterDocumentReplacement,
+} from './editor-transactions';
 
 export function undo(editor: Editor): void {
+  commitTransaction(editor);
   const prev = editor.history.undo(editor.entities);
   if (prev) {
     editor.entities = prev.entities;
-    editor.selection = [];
-    editor.clearHiddenState();
-    editor.exitVertexMode();
-    editor.dirty = true;
+    resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Undo: ${prev.label}`;
   }
 }
 
 export function redo(editor: Editor): void {
+  commitTransaction(editor);
   const next = editor.history.redo(editor.entities);
   if (next) {
     editor.entities = next.entities;
-    editor.selection = [];
-    editor.clearHiddenState();
-    editor.exitVertexMode();
-    editor.dirty = true;
+    resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Redo: ${next.label}`;
   }
 }

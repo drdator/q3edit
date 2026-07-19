@@ -1,9 +1,9 @@
 import { Vec3, Mat4, vec3Add, vec3Sub, vec3Scale, vec3Length, vec3Copy, snapAxisDelta } from './math';
 import { Editor } from './editor';
-import { scaleBrushFaces } from './brush';
-import { PatchControlPoint, scalePatchControlPoints } from './patch';
+import { PatchControlPoint } from './patch';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { createLineBuffer } from './gl-utils';
+import { scaleGeometryFromOriginals } from './editor-transforms';
 
 export interface GizmoSegment {
   start: number;
@@ -303,17 +303,19 @@ export class Gizmo {
       const selectedBrushItems = getSelectedBrushItems(this.editor);
       const selectedPatchItems = getSelectedPatchItems(this.editor);
 
-      for (let i = 0; i < selectedBrushItems.length; i++) {
-        const origPts = this.origPoints[i];
-        if (!origPts || origPts.length === 0) continue;
-        scaleBrushFaces(selectedBrushItems[i].brush, origPts, origin, scale);
-      }
-      for (let i = 0; i < selectedPatchItems.length; i++) {
-        const origCtrl = this.origPatchCtrls[i];
-        if (!origCtrl || origCtrl.length === 0) continue;
-        scalePatchControlPoints(selectedPatchItems[i].patch, origCtrl, origin, scale);
-      }
-      this.editor.dirty = true;
+      scaleGeometryFromOriginals(
+        this.editor,
+        selectedBrushItems.flatMap((item, index) => {
+          const origPoints = this.origPoints[index];
+          return origPoints?.length ? [{ brush: item.brush, origPoints }] : [];
+        }),
+        selectedPatchItems.flatMap((item, index) => {
+          const origCtrl = this.origPatchCtrls[index];
+          return origCtrl?.length ? [{ patch: item.patch, origCtrl }] : [];
+        }),
+        origin,
+        scale,
+      );
     }
   }
 

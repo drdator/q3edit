@@ -1,9 +1,14 @@
 import { Vec3, vec3Copy, snapAxisDelta, findNearestSnap } from './math';
 import { Editor } from './editor';
-import { Brush, scaleBrushFaces, rotateBrush } from './brush';
-import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from './patch';
+import type { Brush } from './brush';
+import { PatchControlPoint, type Patch } from './patch';
 import { pickEdge2D, pickVertex2D } from './vertex';
-import { rotateBrushLocked } from './texture-lock';
+import {
+  rotateGeometryFromOriginals,
+  scaleGeometryFromOriginals,
+  type BrushRotationOriginal,
+  type PatchRotationOriginal,
+} from './editor-transforms';
 import {
   getSelectedBrushItems,
   getSelectedPatchItems,
@@ -17,19 +22,6 @@ import {
   pickAt as pickAt2D,
   ResizeEdges,
 } from './viewport2d-picking';
-
-interface RotateBrushOriginal {
-  brush: Brush;
-  points: [Vec3, Vec3, Vec3][];
-  planes: { normal: Vec3; dist: number }[];
-  polygons: Vec3[][];
-  textures: { offsetX: number; offsetY: number; rotation: number; scaleX: number; scaleY: number }[];
-}
-
-interface RotatePatchOriginal {
-  patch: Patch;
-  ctrl: { xyz: Vec3; uv: [number, number] }[][];
-}
 
 type TerrainSculptMode = 'locked' | 'paintRaise' | 'paintLower' | 'paintTexture';
 
@@ -66,8 +58,8 @@ export interface Viewport2DInteractionState {
   rotating: boolean;
   rotateStartAngle: number;
   rotateAppliedAngle: number;
-  rotateBrushOriginals: RotateBrushOriginal[];
-  rotatePatchOriginals: RotatePatchOriginal[];
+  rotateBrushOriginals: BrushRotationOriginal[];
+  rotatePatchOriginals: PatchRotationOriginal[];
   rotateSnapshotTaken: boolean;
   anchorDragging: boolean;
 }
@@ -767,13 +759,13 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
       scaleOrigin[V] = (origMins[V] + origMaxs[V]) / 2;
     }
 
-    for (const { brush, origPoints } of state.resizeBrushes) {
-      scaleBrushFaces(brush, origPoints, scaleOrigin, scale);
-    }
-    for (const { patch, origCtrl } of state.resizePatches) {
-      scalePatchControlPoints(patch, origCtrl, scaleOrigin, scale);
-    }
-    ctx.editor.dirty = true;
+    scaleGeometryFromOriginals(
+      ctx.editor,
+      state.resizeBrushes,
+      state.resizePatches,
+      scaleOrigin,
+      scale,
+    );
     return;
   }
 
@@ -803,33 +795,14 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
       const selCenter = ctx.editor.selectionCenter();
       if (selCenter) center3d[ctx.axisDepth] = selCenter[ctx.axisDepth];
 
-      for (const { brush, points, planes, polygons, textures } of state.rotateBrushOriginals) {
-        for (let fi = 0; fi < brush.faces.length; fi++) {
-          brush.faces[fi].points[0] = vec3Copy(points[fi][0]);
-          brush.faces[fi].points[1] = vec3Copy(points[fi][1]);
-          brush.faces[fi].points[2] = vec3Copy(points[fi][2]);
-          brush.faces[fi].plane = { normal: vec3Copy(planes[fi].normal), dist: planes[fi].dist };
-          brush.faces[fi].polygon = polygons[fi].map(v => vec3Copy(v));
-          brush.faces[fi].offsetX = textures[fi].offsetX;
-          brush.faces[fi].offsetY = textures[fi].offsetY;
-          brush.faces[fi].rotation = textures[fi].rotation;
-          brush.faces[fi].scaleX = textures[fi].scaleX;
-          brush.faces[fi].scaleY = textures[fi].scaleY;
-        }
-        if (ctx.editor.textureLock) {
-          rotateBrushLocked(brush, center3d, axis, totalAngle);
-        } else {
-          rotateBrush(brush, center3d, axis, totalAngle);
-        }
-      }
-      for (const { patch, ctrl } of state.rotatePatchOriginals) {
-        for (let r = 0; r < patch.height; r++) {
-          for (let c = 0; c < patch.width; c++) {
-            patch.ctrl[r][c].xyz = vec3Copy(ctrl[r][c].xyz);
-          }
-        }
-        rotatePatch(patch, center3d, axis, totalAngle);
-      }
+      rotateGeometryFromOriginals(
+        ctx.editor,
+        state.rotateBrushOriginals,
+        state.rotatePatchOriginals,
+        center3d,
+        axis,
+        totalAngle,
+      );
 
       state.rotateAppliedAngle = totalAngle;
       const degrees = totalAngle * 180 / Math.PI;

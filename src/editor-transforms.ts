@@ -11,12 +11,35 @@ import {
   translateEntity,
   type Entity
 } from './entity';
-import { vec3Add, vec3MirrorAxis, vec3RotateAxis, vec3Snap, type Vec3 } from './math';
-import { clonePatch, mirrorPatch, PatchControlPoint, rotatePatch, scalePatchControlPoints, translatePatch } from './patch';
+import { vec3Add, vec3Copy, vec3MirrorAxis, vec3RotateAxis, vec3Snap, type Vec3 } from './math';
+import { clonePatch, mirrorPatch, PatchControlPoint, rotatePatch, scalePatchControlPoints, translatePatch, type Patch } from './patch';
 import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { mirrorBrushLocked, rotateBrushLocked, translateBrushLocked } from './texture-lock';
+
+export interface BrushScaleOriginal {
+  brush: Brush;
+  origPoints: [Vec3, Vec3, Vec3][];
+}
+
+export interface PatchScaleOriginal {
+  patch: Patch;
+  origCtrl: PatchControlPoint[][];
+}
+
+export interface BrushRotationOriginal {
+  brush: Brush;
+  points: [Vec3, Vec3, Vec3][];
+  planes: { normal: Vec3; dist: number }[];
+  polygons: Vec3[][];
+  textures: { offsetX: number; offsetY: number; rotation: number; scaleX: number; scaleY: number }[];
+}
+
+export interface PatchRotationOriginal {
+  patch: Patch;
+  ctrl: PatchControlPoint[][];
+}
 
 function selectedEntitySet(editor: Editor): Set<Entity> {
   return new Set(
@@ -110,6 +133,61 @@ function scalePoint(point: Vec3, center: Vec3, scale: Vec3): Vec3 {
     center[1] + (point[1] - center[1]) * scale[1],
     center[2] + (point[2] - center[2]) * scale[2],
   ];
+}
+
+export function scaleGeometryFromOriginals(
+  editor: Editor,
+  brushes: BrushScaleOriginal[],
+  patches: PatchScaleOriginal[],
+  origin: Vec3,
+  scale: Vec3,
+): void {
+  editor.transact('Resize selection', () => {
+    for (const { brush, origPoints } of brushes) {
+      scaleBrushFaces(brush, origPoints, origin, scale);
+    }
+    for (const { patch, origCtrl } of patches) {
+      scalePatchControlPoints(patch, origCtrl, origin, scale);
+    }
+    editor.dirty = true;
+  }, { coalesceKey: 'resize-selection' });
+}
+
+export function rotateGeometryFromOriginals(
+  editor: Editor,
+  brushes: BrushRotationOriginal[],
+  patches: PatchRotationOriginal[],
+  center: Vec3,
+  axis: number,
+  angle: number,
+): void {
+  editor.transact('Rotate selection', () => {
+    for (const { brush, points, planes, polygons, textures } of brushes) {
+      for (let faceIndex = 0; faceIndex < brush.faces.length; faceIndex++) {
+        const face = brush.faces[faceIndex];
+        face.points[0] = vec3Copy(points[faceIndex][0]);
+        face.points[1] = vec3Copy(points[faceIndex][1]);
+        face.points[2] = vec3Copy(points[faceIndex][2]);
+        face.plane = { normal: vec3Copy(planes[faceIndex].normal), dist: planes[faceIndex].dist };
+        face.polygon = polygons[faceIndex].map(vec3Copy);
+        face.offsetX = textures[faceIndex].offsetX;
+        face.offsetY = textures[faceIndex].offsetY;
+        face.rotation = textures[faceIndex].rotation;
+        face.scaleX = textures[faceIndex].scaleX;
+        face.scaleY = textures[faceIndex].scaleY;
+      }
+      rotateEditorBrush(editor, brush, center, axis, angle);
+    }
+    for (const { patch, ctrl } of patches) {
+      for (let row = 0; row < patch.height; row++) {
+        for (let col = 0; col < patch.width; col++) {
+          patch.ctrl[row][col].xyz = vec3Copy(ctrl[row][col].xyz);
+        }
+      }
+      rotatePatch(patch, center, axis, angle);
+    }
+    editor.dirty = true;
+  }, { coalesceKey: 'rotate-selection-preview' });
 }
 
 export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, axis: number, ctrlKey = false): Brush {
