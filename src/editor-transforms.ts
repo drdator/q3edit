@@ -1,4 +1,13 @@
-import { cloneBrush, mirrorBrush, rotateBrush, scaleBrushFaces, translateBrush, type Brush } from './brush';
+import {
+  cloneBrush,
+  cloneTextureProjection,
+  mirrorBrush,
+  rotateBrush,
+  scaleBrushFaces,
+  translateBrush,
+  type Brush,
+  type BrushTextureProjection,
+} from './brush';
 import { createBrushPrimitive } from './brush-primitives';
 import {
   cloneEntity,
@@ -33,7 +42,7 @@ export interface BrushRotationOriginal {
   points: [Vec3, Vec3, Vec3][];
   planes: { normal: Vec3; dist: number }[];
   polygons: Vec3[][];
-  textures: { offsetX: number; offsetY: number; rotation: number; scaleX: number; scaleY: number }[];
+  textureProjections: BrushTextureProjection[];
 }
 
 export interface PatchRotationOriginal {
@@ -162,7 +171,7 @@ export function rotateGeometryFromOriginals(
   angle: number,
 ): void {
   editor.transact('Rotate selection', () => {
-    for (const { brush, points, planes, polygons, textures } of brushes) {
+    for (const { brush, points, planes, polygons, textureProjections } of brushes) {
       for (let faceIndex = 0; faceIndex < brush.faces.length; faceIndex++) {
         const face = brush.faces[faceIndex];
         face.points[0] = vec3Copy(points[faceIndex][0]);
@@ -170,11 +179,7 @@ export function rotateGeometryFromOriginals(
         face.points[2] = vec3Copy(points[faceIndex][2]);
         face.plane = { normal: vec3Copy(planes[faceIndex].normal), dist: planes[faceIndex].dist };
         face.polygon = polygons[faceIndex].map(vec3Copy);
-        face.offsetX = textures[faceIndex].offsetX;
-        face.offsetY = textures[faceIndex].offsetY;
-        face.rotation = textures[faceIndex].rotation;
-        face.scaleX = textures[faceIndex].scaleX;
-        face.scaleY = textures[faceIndex].scaleY;
+        face.textureProjection = cloneTextureProjection(textureProjections[faceIndex]);
       }
       rotateEditorBrush(editor, brush, center, axis, angle);
     }

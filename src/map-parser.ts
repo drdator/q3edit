@@ -22,8 +22,11 @@ export interface UnsupportedMapConstruct {
   keyword: string;
   line: number;
   column: number;
+  /** Diagnostic capture only; it is not attached to or re-serialized with the document. */
   rawSource: string;
 }
+
+export type UnsupportedConstructPolicy = 'diagnostic-only';
 
 export interface ParsedMapDocument {
   entities: Entity[];
@@ -34,6 +37,7 @@ export interface MapParseResult {
   warnings: MapParseDiagnostic[];
   errors: MapParseDiagnostic[];
   unsupportedConstructs: UnsupportedMapConstruct[];
+  unsupportedConstructPolicy: UnsupportedConstructPolicy;
   diagnostics: MapParseDiagnostic[];
 }
 
@@ -72,6 +76,7 @@ class MapParser {
       warnings: this.diagnostics.filter(diagnostic => diagnostic.severity === 'warning'),
       errors: this.diagnostics.filter(diagnostic => diagnostic.severity === 'error'),
       unsupportedConstructs: this.unsupportedConstructs,
+      unsupportedConstructPolicy: 'diagnostic-only',
       diagnostics: this.diagnostics,
     };
   }

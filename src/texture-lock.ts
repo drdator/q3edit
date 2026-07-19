@@ -1,5 +1,13 @@
 import type { Brush, BrushFace } from './brush';
-import { mirrorBrush, rotateBrush, textureAxisFromPlane, translateBrush } from './brush';
+import {
+  classicTextureProjection,
+  cloneTextureProjection,
+  mirrorBrush,
+  rotateBrush,
+  textureAxisFromPlane,
+  translateBrush,
+  type BrushPrimitiveTextureProjection,
+} from './brush';
 import {
   type Vec3,
   vec3Add,
@@ -10,20 +18,26 @@ import {
 } from './math';
 
 type FaceTextureLockState = {
+  kind: 'classic';
   point: Vec3;
   sValue: number;
   tValue: number;
   sVec: Vec3;
   tVec: Vec3;
+} | {
+  kind: 'brush-primitive';
+  projection: BrushPrimitiveTextureProjection;
 };
 
 function faceTextureVectors(face: BrushFace): { sVec: Vec3; tVec: Vec3 } {
+  const projection = classicTextureProjection(face);
+  if (!projection) throw new Error('Classic texture vectors require a classic projection');
   const [sv, tv] = textureAxisFromPlane(face.plane.normal);
-  const angle = (face.rotation / 180) * Math.PI;
+  const angle = (projection.rotation / 180) * Math.PI;
   const sin = Math.sin(angle);
   const cos = Math.cos(angle);
-  const scaleX = face.scaleX || 0.5;
-  const scaleY = face.scaleY || 0.5;
+  const scaleX = projection.scaleX || 0.5;
+  const scaleY = projection.scaleY || 0.5;
 
   const sVec: Vec3 = [0, 0, 0];
   const tVec: Vec3 = [0, 0, 0];
@@ -37,12 +51,19 @@ function faceTextureVectors(face: BrushFace): { sVec: Vec3; tVec: Vec3 } {
 
 function captureBrushTextureState(brush: Brush): FaceTextureLockState[] {
   return brush.faces.map(face => {
+    if (face.textureProjection.kind === 'brush-primitive') {
+      return {
+        kind: 'brush-primitive',
+        projection: cloneTextureProjection(face.textureProjection) as BrushPrimitiveTextureProjection,
+      };
+    }
     const point = vec3Copy(face.points[0]);
     const { sVec, tVec } = faceTextureVectors(face);
     return {
+      kind: 'classic',
       point,
-      sValue: vec3Dot(point, sVec) + face.offsetX,
-      tValue: vec3Dot(point, tVec) + face.offsetY,
+      sValue: vec3Dot(point, sVec) + face.textureProjection.offsetX,
+      tValue: vec3Dot(point, tVec) + face.textureProjection.offsetY,
       sVec,
       tVec,
     };
@@ -64,6 +85,12 @@ function restoreBrushTextureState(
     const face = brush.faces[i];
     const prev = state[i];
     if (!prev) continue;
+    if (prev.kind === 'brush-primitive') {
+      face.textureProjection = cloneTextureProjection(prev.projection);
+      continue;
+    }
+    const projection = classicTextureProjection(face);
+    if (!projection) continue;
 
     const point = pointTransform(prev.point);
     const sVec = vectorTransform(prev.sVec);
@@ -85,11 +112,11 @@ function restoreBrushTextureState(
     const cos = ((ss * scaleX) + (tt * scaleY)) * 0.5;
     const sin = ((-st * scaleX) + (ts * scaleY)) * 0.5;
 
-    face.scaleX = scaleX;
-    face.scaleY = scaleY;
-    face.rotation = normalizeDegrees(Math.atan2(sin, cos) * 180 / Math.PI);
-    face.offsetX = prev.sValue - vec3Dot(point, sVec);
-    face.offsetY = prev.tValue - vec3Dot(point, tVec);
+    projection.scaleX = scaleX;
+    projection.scaleY = scaleY;
+    projection.rotation = normalizeDegrees(Math.atan2(sin, cos) * 180 / Math.PI);
+    projection.offsetX = prev.sValue - vec3Dot(point, sVec);
+    projection.offsetY = prev.tValue - vec3Dot(point, tVec);
   }
 }
 

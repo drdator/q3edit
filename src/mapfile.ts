@@ -1,5 +1,6 @@
 import type { Vec3 } from './math';
 import type { Entity } from './entity';
+import { classicTextureProjection } from './brush';
 import {
   type Patch,
   type TerrainDefSurface,
@@ -14,6 +15,7 @@ export {
   type MapParseResult,
   type ParsedMapDocument,
   type UnsupportedMapConstruct,
+  type UnsupportedConstructPolicy,
 } from './map-parser';
 
 export function serializeMap(entities: Entity[]): string {
@@ -32,13 +34,17 @@ export function serializeMap(entities: Entity[]): string {
       lines.push(brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
       lines.push('{');
       for (const face of brush.faces) {
+        const projection = classicTextureProjection(face);
+        if (!projection) {
+          throw new Error('brush-primitive texture projections require brushDef serialization');
+        }
         const [point1, point2, point3] = face.points;
         const formatPoint = (value: Vec3) => `( ${fmtNum(value[0])} ${fmtNum(value[1])} ${fmtNum(value[2])} )`;
         // Swap point2/point3 back to standard Q3 inward-facing winding.
         lines.push(
           `${formatPoint(point1)} ${formatPoint(point3)} ${formatPoint(point2)} ` +
-          `${face.texture} ${fmtNum(face.offsetX)} ${fmtNum(face.offsetY)} ` +
-          `${fmtNum(face.rotation)} ${fmtNum(face.scaleX)} ${fmtNum(face.scaleY)} ` +
+          `${face.texture} ${fmtNum(projection.offsetX)} ${fmtNum(projection.offsetY)} ` +
+          `${fmtNum(projection.rotation)} ${fmtNum(projection.scaleX)} ${fmtNum(projection.scaleY)} ` +
           `${face.contentFlags} ${face.surfaceFlags} ${face.value}`,
         );
       }

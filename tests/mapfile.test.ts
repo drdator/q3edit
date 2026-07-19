@@ -8,6 +8,10 @@ const classicBrushFixture = readFileSync(
   new URL('./fixtures/classic-brush.map', import.meta.url),
   'utf8',
 );
+const brushDefFixture = readFileSync(
+  new URL('./fixtures/brushdef.map', import.meta.url),
+  'utf8',
+);
 
 describe('classic .map brushes', () => {
   test('loads face texture transforms, flags, and value', () => {
@@ -31,11 +35,14 @@ describe('classic .map brushes', () => {
     for (const face of brush.faces) {
       expect(face).toMatchObject({
         texture: 'textures/common/caulk',
-        offsetX: 4,
-        offsetY: -8,
-        rotation: 15,
-        scaleX: 0.25,
-        scaleY: 0.5,
+        textureProjection: {
+          kind: 'classic',
+          offsetX: 4,
+          offsetY: -8,
+          rotation: 15,
+          scaleX: 0.25,
+          scaleY: 0.5,
+        },
         contentFlags: 134217728,
         surfaceFlags: 1024,
         value: 7,
@@ -54,22 +61,14 @@ describe('classic .map brushes', () => {
     expect(second[0].brushes[0].faces.map(face => ({
       points: face.points,
       texture: face.texture,
-      offsetX: face.offsetX,
-      offsetY: face.offsetY,
-      rotation: face.rotation,
-      scaleX: face.scaleX,
-      scaleY: face.scaleY,
+      textureProjection: face.textureProjection,
       contentFlags: face.contentFlags,
       surfaceFlags: face.surfaceFlags,
       value: face.value,
     }))).toEqual(first[0].brushes[0].faces.map(face => ({
       points: face.points,
       texture: face.texture,
-      offsetX: face.offsetX,
-      offsetY: face.offsetY,
-      rotation: face.rotation,
-      scaleX: face.scaleX,
-      scaleY: face.scaleY,
+      textureProjection: face.textureProjection,
       contentFlags: face.contentFlags,
       surfaceFlags: face.surfaceFlags,
       value: face.value,
@@ -147,6 +146,21 @@ describe('patch map formats', () => {
 });
 
 describe('map diagnostics', () => {
+  test('captures a Q3Radiant brushDef fixture without misreading later syntax', () => {
+    const result = parseMapWithDiagnostics(brushDefFixture);
+
+    expect(result.document.entities).toHaveLength(1);
+    expect(result.document.entities[0].brushes).toEqual([]);
+    expect(result.errors).toEqual([]);
+    expect(result.unsupportedConstructPolicy).toBe('diagnostic-only');
+    expect(result.unsupportedConstructs).toEqual([expect.objectContaining({
+      keyword: 'brushDef',
+      line: 5,
+      column: 1,
+      rawSource: expect.stringContaining('( ( 0.0078125 0 0.125 ) ( 0 0.015625 -0.25 ) )'),
+    })]);
+  });
+
   test('reports and skips unsupported map blocks without losing later entities', () => {
     const source = `
 {

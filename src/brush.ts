@@ -4,14 +4,26 @@ import {
   vec3RotateAxis, vec3MirrorAxis, vec3Length, planeFromPoints, planePointDistance
 } from './math';
 
-export interface BrushFace {
-  points: [Vec3, Vec3, Vec3];  // 3 points defining the plane (for .map format)
-  texture: string;
+export interface ClassicBrushTextureProjection {
+  kind: 'classic';
   offsetX: number;
   offsetY: number;
   rotation: number;
   scaleX: number;
   scaleY: number;
+}
+
+export interface BrushPrimitiveTextureProjection {
+  kind: 'brush-primitive';
+  matrix: [[number, number, number], [number, number, number]];
+}
+
+export type BrushTextureProjection = ClassicBrushTextureProjection | BrushPrimitiveTextureProjection;
+
+export interface BrushFace {
+  points: [Vec3, Vec3, Vec3];  // 3 points defining the plane (for .map format)
+  texture: string;
+  textureProjection: BrushTextureProjection;
   contentFlags: number;
   surfaceFlags: number;
   value: number;
@@ -37,7 +49,8 @@ export function createFace(
 ): BrushFace {
   return {
     points: [vec3Copy(p1), vec3Copy(p2), vec3Copy(p3)],
-    texture, offsetX, offsetY, rotation, scaleX, scaleY,
+    texture,
+    textureProjection: { kind: 'classic', offsetX, offsetY, rotation, scaleX, scaleY },
     contentFlags, surfaceFlags, value,
     plane: planeFromPoints(p1, p2, p3),
     polygon: [],
@@ -231,6 +244,7 @@ export function cloneBrush(brush: Brush): Brush {
     points: [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3],
     plane: { normal: vec3Copy(f.plane.normal), dist: f.plane.dist },
     polygon: f.polygon.map(vec3Copy),
+    textureProjection: cloneTextureProjection(f.textureProjection),
   }));
   return {
     faces,
@@ -238,6 +252,21 @@ export function cloneBrush(brush: Brush): Brush {
     mins: vec3Copy(brush.mins),
     maxs: vec3Copy(brush.maxs),
   };
+}
+
+export function cloneTextureProjection(projection: BrushTextureProjection): BrushTextureProjection {
+  if (projection.kind === 'classic') return { ...projection };
+  return {
+    kind: 'brush-primitive',
+    matrix: [
+      [...projection.matrix[0]],
+      [...projection.matrix[1]],
+    ],
+  };
+}
+
+export function classicTextureProjection(face: BrushFace): ClassicBrushTextureProjection | null {
+  return face.textureProjection.kind === 'classic' ? face.textureProjection : null;
 }
 
 // Get brush center
@@ -281,13 +310,24 @@ export function computeFaceUV(
 ): [number, number] {
   const [sv, tv] = textureAxisFromPlane(face.plane.normal);
 
-  const ang = (face.rotation / 180) * Math.PI;
+  if (face.textureProjection.kind === 'brush-primitive') {
+    const x = vec3Dot(vertex, sv);
+    const y = vec3Dot(vertex, tv);
+    const [s, t] = face.textureProjection.matrix;
+    return [
+      s[0] * x + s[1] * y + s[2],
+      t[0] * x + t[1] * y + t[2],
+    ];
+  }
+
+  const projection = face.textureProjection;
+  const ang = (projection.rotation / 180) * Math.PI;
   const sinv = Math.sin(ang);
   const cosv = Math.cos(ang);
 
   // Rotated and scaled texture vectors
-  const scaleX = face.scaleX || 0.5;
-  const scaleY = face.scaleY || 0.5;
+  const scaleX = projection.scaleX || 0.5;
+  const scaleY = projection.scaleY || 0.5;
 
   const s: Vec3 = [0, 0, 0];
   const t: Vec3 = [0, 0, 0];
@@ -296,8 +336,8 @@ export function computeFaceUV(
     t[i] = (sinv * sv[i] + cosv * tv[i]) / scaleY;
   }
 
-  const u = (vec3Dot(vertex, s) + face.offsetX) / texWidth;
-  const v = (vec3Dot(vertex, t) + face.offsetY) / texHeight;
+  const u = (vec3Dot(vertex, s) + projection.offsetX) / texWidth;
+  const v = (vec3Dot(vertex, t) + projection.offsetY) / texHeight;
 
   return [u, v];
 }
@@ -315,14 +355,10 @@ function copyFaceStyle(
     planePoints[1],
     planePoints[2],
     texture ?? source?.texture ?? 'common/caulk',
-    source?.offsetX ?? 0,
-    source?.offsetY ?? 0,
-    source?.rotation ?? 0,
-    source?.scaleX ?? 0.5,
-    source?.scaleY ?? 0.5,
   );
 
   if (source) {
+    face.textureProjection = cloneTextureProjection(source.textureProjection);
     face.contentFlags = source.contentFlags;
     face.surfaceFlags = source.surfaceFlags;
     face.value = source.value;
@@ -359,6 +395,7 @@ export function clipBrush(brush: Brush, planePoints: [Vec3, Vec3, Vec3], texture
     points: [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3],
     plane: { normal: vec3Copy(f.plane.normal), dist: f.plane.dist },
     polygon: [],
+    textureProjection: cloneTextureProjection(f.textureProjection),
   }));
 
   // Add the clip face
@@ -671,6 +708,7 @@ function cloneFaceKeepPlane(face: BrushFace, polygon: Vec3[]): BrushFace {
     points: [vec3Copy(face.points[0]), vec3Copy(face.points[1]), vec3Copy(face.points[2])],
     plane: { normal: vec3Copy(face.plane.normal), dist: face.plane.dist },
     polygon: polygon.map(v => vec3Copy(v)),
+    textureProjection: cloneTextureProjection(face.textureProjection),
   };
 }
 
@@ -691,8 +729,14 @@ function makeCaulkFace(polygon: Vec3[], plane: Plane): BrushFace {
   return {
     points: [vec3Copy(p0), vec3Copy(p1), vec3Copy(p2)],
     texture: 'common/caulk',
-    offsetX: 0, offsetY: 0, rotation: 0,
-    scaleX: 0.5, scaleY: 0.5,
+    textureProjection: {
+      kind: 'classic',
+      offsetX: 0,
+      offsetY: 0,
+      rotation: 0,
+      scaleX: 0.5,
+      scaleY: 0.5,
+    },
     contentFlags: 0, surfaceFlags: 0, value: 0,
     plane: { normal: vec3Copy(plane.normal), dist: plane.dist },
     polygon: polygon.map(v => vec3Copy(v)),

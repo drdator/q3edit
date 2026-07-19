@@ -1,4 +1,4 @@
-import { type BrushFace, textureAxisFromPlane } from './brush';
+import { classicTextureProjection, type BrushFace, textureAxisFromPlane } from './brush';
 import { vec3Dot } from './math';
 import { setPatchTexture, terrainDefDisplayTexture, type Patch, type TerrainDefSurface } from './patch';
 import type { Editor } from './editor';
@@ -152,8 +152,10 @@ export function shiftTexture(editor: Editor, du: number, dv: number): void {
   if (faces.length === 0) return;
   editor.transact('Shift texture', () => {
     for (const face of faces) {
-      face.offsetX += du;
-      face.offsetY += dv;
+      const projection = classicTextureProjection(face);
+      if (!projection) continue;
+      projection.offsetX += du;
+      projection.offsetY += dv;
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'shift-texture' });
@@ -164,8 +166,10 @@ export function scaleTexture(editor: Editor, ds: number): void {
   if (faces.length === 0) return;
   editor.transact('Scale texture', () => {
     for (const face of faces) {
-      face.scaleX = Math.max(0.01, face.scaleX + ds);
-      face.scaleY = Math.max(0.01, face.scaleY + ds);
+      const projection = classicTextureProjection(face);
+      if (!projection) continue;
+      projection.scaleX = Math.max(0.01, projection.scaleX + ds);
+      projection.scaleY = Math.max(0.01, projection.scaleY + ds);
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'scale-texture' });
@@ -176,7 +180,9 @@ export function rotateTexture(editor: Editor, angle: number): void {
   if (faces.length === 0) return;
   editor.transact('Rotate texture', () => {
     for (const face of faces) {
-      face.rotation = ((face.rotation + angle) % 360 + 360) % 360;
+      const projection = classicTextureProjection(face);
+      if (!projection) continue;
+      projection.rotation = ((projection.rotation + angle) % 360 + 360) % 360;
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'rotate-texture' });
@@ -187,11 +193,13 @@ export function resetTextureAlignment(editor: Editor): void {
   if (faces.length === 0) return;
   editor.transact('Reset texture alignment', () => {
     for (const face of faces) {
-      face.offsetX = 0;
-      face.offsetY = 0;
-      face.rotation = 0;
-      face.scaleX = 0.5;
-      face.scaleY = 0.5;
+      const projection = classicTextureProjection(face);
+      if (!projection) continue;
+      projection.offsetX = 0;
+      projection.offsetY = 0;
+      projection.rotation = 0;
+      projection.scaleX = 0.5;
+      projection.scaleY = 0.5;
     }
     editor.redrawRequested = true;
     editor.statusMessage = 'Texture alignment reset';
@@ -203,6 +211,8 @@ export function fitTexture(editor: Editor): void {
   if (faces.length === 0 || !editor.textureManager) return;
   editor.transact('Fit texture', () => {
     for (const face of faces) {
+      const projection = classicTextureProjection(face);
+      if (!projection) continue;
       if (face.polygon.length < 3) continue;
       const texInfo = editor.textureManager!.getIfLoaded(face.texture);
       const textureWidth = texInfo?.width ?? 128;
@@ -227,11 +237,11 @@ export function fitTexture(editor: Editor): void {
       const tRange = maxT - minT;
       if (sRange < 0.001 || tRange < 0.001) continue;
 
-      face.scaleX = sRange / textureWidth;
-      face.scaleY = tRange / textureHeight;
-      face.rotation = 0;
-      face.offsetX = -minS / face.scaleX;
-      face.offsetY = -minT / face.scaleY;
+      projection.scaleX = sRange / textureWidth;
+      projection.scaleY = tRange / textureHeight;
+      projection.rotation = 0;
+      projection.offsetX = -minS / projection.scaleX;
+      projection.offsetY = -minT / projection.scaleY;
     }
     editor.redrawRequested = true;
     editor.statusMessage = 'Texture fit to face';

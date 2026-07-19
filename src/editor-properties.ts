@@ -1,18 +1,21 @@
-import type { BrushFace } from './brush';
+import { classicTextureProjection, type BrushFace, type ClassicBrushTextureProjection } from './brush';
 import type { Editor } from './editor';
 import type { Entity } from './entity';
 
 export type FacePropertyChanges = Partial<Pick<BrushFace,
   | 'texture'
-  | 'offsetX'
-  | 'offsetY'
-  | 'rotation'
-  | 'scaleX'
-  | 'scaleY'
   | 'contentFlags'
   | 'surfaceFlags'
   | 'value'
->>;
+> & Omit<ClassicBrushTextureProjection, 'kind'>>;
+
+const PROJECTION_FIELDS = new Set<keyof ClassicBrushTextureProjection>([
+  'offsetX',
+  'offsetY',
+  'rotation',
+  'scaleX',
+  'scaleY',
+]);
 
 const objectIds = new WeakMap<object, number>();
 let nextObjectId = 1;
@@ -86,7 +89,16 @@ export function updateFaceProperties(
   const ids = faces.map(face => objectId(face)).sort((a, b) => a - b).join(',');
   const fields = Object.keys(changes).sort().join(',');
   editor.transact(label, () => {
-    for (const face of faces) Object.assign(face, changes);
+    for (const face of faces) {
+      const projection = classicTextureProjection(face);
+      for (const [field, value] of Object.entries(changes)) {
+        if (PROJECTION_FIELDS.has(field as keyof ClassicBrushTextureProjection)) {
+          if (projection) Object.assign(projection, { [field]: value });
+        } else {
+          Object.assign(face, { [field]: value });
+        }
+      }
+    }
   }, {
     coalesceKey: `face-properties:${ids}:${fields}`,
   });

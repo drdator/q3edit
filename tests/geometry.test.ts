@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   clipBrush,
+  cloneBrush,
   computeFaceUV,
   createBoxBrush,
   validateBrush,
@@ -12,6 +13,27 @@ import {
   rotateBrushLocked,
   translateBrushLocked,
 } from '../src/texture-lock';
+
+describe('brush texture projections', () => {
+  test('evaluates and clones brush-primitive matrices independently of classic texdefs', () => {
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    const face = brush.faces[4];
+    face.textureProjection = {
+      kind: 'brush-primitive',
+      matrix: [[1 / 128, 0, 0.25], [0, 1 / 64, 0.5]],
+    };
+
+    expectUvClose(computeFaceUV([64, 32, 64], face, 128, 64), [0.75, 0]);
+
+    const cloned = cloneBrush(brush);
+    expect(cloned.faces[4].textureProjection).toEqual(face.textureProjection);
+    expect(cloned.faces[4].textureProjection).not.toBe(face.textureProjection);
+    if (cloned.faces[4].textureProjection.kind === 'brush-primitive') {
+      cloned.faces[4].textureProjection.matrix[0][2] = 99;
+    }
+    expect(face.textureProjection.matrix[0][2]).toBe(0.25);
+  });
+});
 
 function expectVecClose(actual: Vec3, expected: Vec3): void {
   expect(actual[0]).toBeCloseTo(expected[0], 5);
