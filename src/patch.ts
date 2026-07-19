@@ -38,6 +38,10 @@ export interface Patch {
   height: number;         // rows of control points
   texture: string;
   terrainGroupId?: string;
+  /** Stable editor-only named-group membership (separate from terrain seams). */
+  editorGroupId?: string;
+  /** Patch-local epairs supported by Q3Radiant patchDef2. */
+  properties?: Record<string, string>;
   terrainDef?: TerrainDefData;
   contentFlags: number;
   surfaceFlags: number;
@@ -412,6 +416,8 @@ export function clonePatch(patch: Patch): Patch {
     height: patch.height,
     texture: patch.texture,
     terrainGroupId: patch.terrainGroupId,
+    editorGroupId: patch.editorGroupId,
+    properties: patch.properties ? { ...patch.properties } : undefined,
     terrainDef: patch.terrainDef
       ? {
           origin: vec3Copy(patch.terrainDef.origin),

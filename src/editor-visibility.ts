@@ -5,6 +5,7 @@ import type { Editor } from './editor';
 import { allBrushes, allPatches } from './editor-queries';
 import { isBrushInRegion, isEntityInRegion, isPatchInRegion } from './editor-regions';
 import { isBrushCategoryVisible, isEntityCategoryVisible, isPatchCategoryVisible } from './display-policy';
+import { isGroupInfoEntity, isObjectInHiddenGroup } from './named-groups';
 
 export const INVISIBLE_TEXTURES = new Set([
   'common/clip', 'common/weapclip', 'common/trigger',
@@ -86,15 +87,15 @@ export function reconcileHiddenState(editor: Editor): void {
 }
 
 export function isEntityHidden(editor: Editor, entity: Entity): boolean {
-  return editor.hiddenEntities.has(entity);
+  return isGroupInfoEntity(entity) || editor.hiddenEntities.has(entity) || isObjectInHiddenGroup(editor, entity);
 }
 
 export function isBrushHidden(editor: Editor, brush: Brush, entity?: Entity): boolean {
-  return editor.hiddenBrushes.has(brush) || (!!entity && isEntityHidden(editor, entity));
+  return editor.hiddenBrushes.has(brush) || isObjectInHiddenGroup(editor, brush, entity) || (!!entity && isEntityHidden(editor, entity));
 }
 
 export function isPatchHidden(editor: Editor, patch: Patch, entity?: Entity): boolean {
-  return editor.hiddenPatches.has(patch) || (!!entity && isEntityHidden(editor, entity));
+  return editor.hiddenPatches.has(patch) || isObjectInHiddenGroup(editor, patch, entity) || (!!entity && isEntityHidden(editor, entity));
 }
 
 export function isBrushVisible(editor: Editor, brush: Brush, entity?: Entity): boolean {

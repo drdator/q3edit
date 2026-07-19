@@ -7,6 +7,7 @@ import {
   syncTerrainDefMetadata,
 } from './patch';
 import { assertTerrainSerializable } from './terrain-model';
+import { GROUP_ID_KEY, GROUP_NAME_KEY, groupNameMap, isGroupInfoEntity } from './named-groups';
 
 export {
   parseMap,
@@ -21,20 +22,26 @@ export {
 
 export function serializeMap(entities: Entity[]): string {
   const lines: string[] = [];
+  const groupNames = groupNameMap(entities);
 
   for (let entityIndex = 0; entityIndex < entities.length; entityIndex++) {
     const entity = entities[entityIndex];
     lines.push(`// entity ${entityIndex}`);
     lines.push('{');
-    for (const [key, value] of Object.entries(entity.properties)) {
+    const entityProperties = { ...entity.properties };
+    if (!isGroupInfoEntity(entity) && entityProperties[GROUP_ID_KEY]) {
+      entityProperties[GROUP_NAME_KEY] = groupNames.get(entityProperties[GROUP_ID_KEY]) ?? entityProperties[GROUP_NAME_KEY] ?? entityProperties[GROUP_ID_KEY];
+    }
+    for (const [key, value] of Object.entries(entityProperties)) {
       lines.push(`${quoteMapString(key)} ${quoteMapString(value)}`);
     }
 
     for (let brushIndex = 0; brushIndex < entity.brushes.length; brushIndex++) {
       const brush = entity.brushes[brushIndex];
       lines.push(brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
+      if (brush.editorGroupId) lines.push(`// q3edit-group ${encodeURIComponent(brush.editorGroupId)}`);
       lines.push('{');
-      serializeBrush(lines, brush);
+      serializeBrush(lines, brush, groupNames.get(brush.editorGroupId ?? ''));
       lines.push('}');
     }
 
@@ -45,11 +52,12 @@ export function serializeMap(entities: Entity[]): string {
         assertTerrainSerializable(patch);
       }
       lines.push(`// patch ${patchIndex}`);
+      if (patch.editorGroupId) lines.push(`// q3edit-group ${encodeURIComponent(patch.editorGroupId)}`);
       lines.push('{');
       if (patch.terrainDef) {
         serializeTerrainDef(lines, patch);
       } else {
-        serializePatchDef2(lines, patch);
+        serializePatchDef2(lines, patch, groupNames.get(patch.editorGroupId ?? ''));
       }
       lines.push('}');
     }
@@ -58,13 +66,13 @@ export function serializeMap(entities: Entity[]): string {
   return lines.join('\n') + '\n';
 }
 
-function serializeBrush(lines: string[], brush: Brush): void {
+function serializeBrush(lines: string[], brush: Brush, groupName?: string): void {
   const projectionKinds = new Set(brush.faces.map(face => face.textureProjection.kind));
   if (projectionKinds.size > 1) {
     throw new Error('Cannot serialize a brush containing mixed classic and brush-primitive projections');
   }
   if (projectionKinds.has('brush-primitive')) {
-    serializeBrushDef(lines, brush);
+    serializeBrushDef(lines, brush, groupName);
     return;
   }
   if (brush.properties && Object.keys(brush.properties).length > 0) {
@@ -85,10 +93,12 @@ function serializeClassicFace(lines: string[], face: BrushFace): void {
   );
 }
 
-function serializeBrushDef(lines: string[], brush: Brush): void {
+function serializeBrushDef(lines: string[], brush: Brush, groupName?: string): void {
   lines.push('brushDef');
   lines.push('{');
-  for (const [key, value] of Object.entries(brush.properties ?? {})) {
+  const properties = { ...(brush.properties ?? {}) };
+  if (groupName) properties[GROUP_NAME_KEY] = groupName;
+  for (const [key, value] of Object.entries(properties)) {
     lines.push(`${quoteMapString(key)} ${quoteMapString(value)}`);
   }
   for (const face of brush.faces) {
@@ -110,7 +120,7 @@ function formatPoint(value: Vec3): string {
   return `( ${fmtNum(value[0])} ${fmtNum(value[1])} ${fmtNum(value[2])} )`;
 }
 
-function serializePatchDef2(lines: string[], patch: Patch): void {
+function serializePatchDef2(lines: string[], patch: Patch, groupName?: string): void {
   lines.push('patchDef2');
   lines.push('{');
   lines.push(patch.texture);
@@ -123,6 +133,11 @@ function serializePatchDef2(lines: string[], patch: Patch): void {
     lines.push(`( ${points.join(' ')} )`);
   }
   lines.push(')');
+  const properties = { ...(patch.properties ?? {}) };
+  if (groupName) properties[GROUP_NAME_KEY] = groupName;
+  for (const [key, value] of Object.entries(properties)) {
+    lines.push(`${quoteMapString(key)} ${quoteMapString(value)}`);
+  }
   lines.push('}');
 }
 

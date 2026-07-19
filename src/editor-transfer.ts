@@ -4,6 +4,7 @@ import { cloneEntity, createEntity, translateEntity, type Entity } from './entit
 import { parseMap } from './mapfile';
 import type { Vec3 } from './math';
 import { clonePatch, type Patch } from './patch';
+import { GROUP_ID_KEY, isGroupInfoEntity, listNamedGroups } from './named-groups';
 
 export type TransferBuildResult = {
   entities: Entity[];
@@ -86,6 +87,15 @@ export function buildSelectionTransfer(editor: Editor): TransferBuildResult {
   }
   entities.push(...fullEntities);
   entities.push(...partialEntities.values());
+  const referencedGroupIds = new Set<string>();
+  for (const entity of entities) {
+    if (entity.properties[GROUP_ID_KEY]) referencedGroupIds.add(entity.properties[GROUP_ID_KEY]);
+    for (const brush of entity.brushes) if (brush.editorGroupId) referencedGroupIds.add(brush.editorGroupId);
+    for (const patch of entity.patches) if (patch.editorGroupId) referencedGroupIds.add(patch.editorGroupId);
+  }
+  entities.push(...listNamedGroups(editor.entities)
+    .filter(group => referencedGroupIds.has(group.id))
+    .map(group => cloneEntity(group.entity)));
   return { entities, totalItems };
 }
 
@@ -100,6 +110,7 @@ export function countTransferItems(entities: Entity[]): number {
   let total = 0;
 
   for (const entity of entities) {
+    if (isGroupInfoEntity(entity)) continue;
     if (entity.classname === 'worldspawn') {
       total += entity.brushes.length + entity.patches.length;
     } else {
@@ -127,7 +138,37 @@ export function insertTransferEntities(editor: Editor, entities: Entity[], delta
   let brushCount = 0;
   let patchCount = 0;
 
-  for (const source of entities) {
+  const sources = entities.map(cloneEntity);
+  const existingGroups = new Map(listNamedGroups(editor.entities).map(group => [group.id, group]));
+  const usedIds = new Set(existingGroups.keys());
+  const remap = new Map<string, string>();
+  const metadataToInsert: Entity[] = [];
+  for (const metadata of sources.filter(isGroupInfoEntity)) {
+    const oldId = metadata.properties[GROUP_ID_KEY];
+    const existing = existingGroups.get(oldId);
+    if (existing && existing.name === metadata.properties.group) continue;
+    let nextId = oldId;
+    if (!nextId || usedIds.has(nextId)) {
+      let index = 1;
+      while (usedIds.has(`group-${index}`)) index++;
+      nextId = `group-${index}`;
+      if (oldId) remap.set(oldId, nextId);
+      metadata.properties[GROUP_ID_KEY] = nextId;
+    }
+    usedIds.add(nextId);
+    metadataToInsert.push(metadata);
+  }
+  for (const source of sources) {
+    if (isGroupInfoEntity(source)) continue;
+    const entityGroup = source.properties[GROUP_ID_KEY];
+    if (entityGroup && remap.has(entityGroup)) source.properties[GROUP_ID_KEY] = remap.get(entityGroup)!;
+    for (const brush of source.brushes) if (brush.editorGroupId && remap.has(brush.editorGroupId)) brush.editorGroupId = remap.get(brush.editorGroupId);
+    for (const patch of source.patches) if (patch.editorGroupId && remap.has(patch.editorGroupId)) patch.editorGroupId = remap.get(patch.editorGroupId);
+  }
+  editor.entities.push(...metadataToInsert);
+
+  for (const source of sources) {
+    if (isGroupInfoEntity(source)) continue;
     const entity = cloneEntity(source);
     translateEntity(entity, delta);
 
