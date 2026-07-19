@@ -158,7 +158,10 @@ export function collectEntityPathCurves(editor: Editor): EntityPathCurve[] {
     const points = cameraGroups.get(id) ?? []; points.push(entity); cameraGroups.set(id, points); cameraEntities.add(entity);
   }
   for (const entities of cameraGroups.values()) {
-    entities.sort((a, b) => Number(a.properties[CAMERA_ORDER_KEY] ?? 0) - Number(b.properties[CAMERA_ORDER_KEY] ?? 0));
+    entities.sort((a, b) => {
+      const orderA = Number(a.properties[CAMERA_ORDER_KEY]); const orderB = Number(b.properties[CAMERA_ORDER_KEY]);
+      return (Number.isFinite(orderA) ? orderA : 0) - (Number.isFinite(orderB) ? orderB : 0);
+    });
     const points = entities.map(entity => entityDisplayOrigin(entity)!).filter(Boolean);
     if (points.length < 2) continue;
     const closed = entities.some(entity => entity.properties[CAMERA_CLOSED_KEY] === '1');

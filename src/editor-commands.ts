@@ -185,6 +185,22 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'pointfile.next', label: 'Next Leak Spot', menu: menu('Pointfile', 30, 'navigate'), enabled: ({ editor }) => editor.pointfilePoints.length > 0, execute: ({ editor }) => editor.nextPointfilePoint() },
     { id: 'path.connect', label: 'Connect Selection as Path', defaultShortcut: 'Mod+Shift+K', menu: menu('Path', 0, 'path'), execute: ({ editor }) => editor.connectSelectedEntitiesAsPath() },
     { id: 'path.connect-closed', label: 'Connect Selection as Closed Path', defaultShortcut: 'Mod+Alt+K', menu: menu('Path', 10, 'path'), execute: ({ editor }) => editor.connectSelectedEntitiesAsClosedPath() },
+    { id: 'path.camera-selection', label: 'Camera Path from Selection...', menu: menu('Path', 20, 'camera'), execute: ({ editor }) => {
+      const name = globalThis.prompt?.('Camera path name', 'Camera Path'); if (name) editor.createCameraPathFromSelection(name);
+    } },
+    { id: 'path.camera-selection-closed', label: 'Closed Camera Path from Selection...', menu: menu('Path', 30, 'camera'), execute: ({ editor }) => {
+      const name = globalThis.prompt?.('Camera path name', 'Camera Loop'); if (name) editor.createCameraPathFromSelection(name, true);
+    } },
+    { id: 'path.camera-view', label: 'New Camera Path from 3D View...', menu: menu('Path', 40, 'camera'), execute: ({ editor }) => {
+      const name = globalThis.prompt?.('Camera path name', 'Camera Path'); if (name) editor.createCameraPathFromCurrentCamera(name);
+    } },
+    { id: 'path.camera-play', label: 'Play Camera Path', menu: menu('Path', 50, 'playback'), enabled: ({ editor }) => editor.cameraPaths().length > 0, execute: ({ editor }) => {
+      const selected = editor.cameraPaths().find(path => path.points.some(point => editor.selection.some(item => item.entity === point.entity))) ?? editor.cameraPaths()[0];
+      if (selected) editor.startCameraPlayback(selected.id);
+    } },
+    { id: 'path.camera-stop', label: 'Stop Camera', menu: menu('Path', 60, 'playback'), enabled: ({ editor }) => !!editor.cameraPlayback, execute: ({ editor }) => editor.stopCameraPlayback() },
+    { id: 'path.smart', label: 'Build Smart Path', menu: menu('Path', 70, 'smart'), execute: ({ editor }) => editor.createSmartPath() },
+    { id: 'path.smart-train', label: 'Build Smart Train Path', menu: menu('Path', 80, 'smart'), execute: ({ editor }) => editor.createSmartTrainPath() },
 
     { id: 'terrain.create', label: 'Create Terrain Patch', menu: menu('Terrain', 0, 'setup'), enabled: hasSelection, execute: ({ editor }) => editor.createTerrainPatch() },
     { id: 'terrain.prepare-paint', label: 'Prepare Terrain For Texture Paint', menu: menu('Terrain', 10, 'setup'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.splitTerrainIntoPaintTiles() },
