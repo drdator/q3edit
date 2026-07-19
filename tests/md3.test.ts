@@ -6,7 +6,7 @@ import { createEntity } from '../src/entity';
 import { decodeMd3, Md3Error } from '../src/md3';
 import { ModelManager } from '../src/model-manager';
 import { buildModelGeometry, transformedModelBounds } from '../src/model-geometry';
-import { projectModelPreview } from '../src/model-browser';
+import { filterModelPaths, projectModelPreview } from '../src/model-browser';
 import { createMinimalMd3 } from './fixtures/minimal-md3';
 
 function archive(name: string, files: Record<string, Uint8Array>) {
@@ -34,6 +34,14 @@ describe('MD3 decoding', () => {
     const oversized = createMinimalMd3();
     new DataView(oversized.buffer).setInt32(76, 2048, true);
     expect(() => decodeMd3(oversized)).toThrow(/frame count/);
+  });
+});
+
+describe('model browser', () => {
+  it('filters paths case-insensitively and preserves their source order', () => {
+    const paths = ['models/mapobjects/Tree.md3', 'models/powerups/mega.md3', 'models/mapobjects/lamp.md3'];
+    expect(filterModelPaths(paths, ' MAPOBJECTS ')).toEqual([paths[0], paths[2]]);
+    expect(filterModelPaths(paths, '')).toEqual(paths);
   });
 });
 

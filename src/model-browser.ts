@@ -3,6 +3,11 @@ import type { Md3Model } from './md3';
 
 export interface PreviewLine { from: [number, number]; to: [number, number] }
 
+export function filterModelPaths(paths: readonly string[], query: string): string[] {
+  const normalized = query.trim().toLowerCase();
+  return paths.filter(path => !normalized || path.toLowerCase().includes(normalized));
+}
+
 export function projectModelPreview(model: Md3Model, width: number, height: number): PreviewLine[] {
   const frame = model.frames[0];
   if (!frame) return [];
@@ -34,23 +39,94 @@ export function openModelBrowser(editor: Editor, current: string, onSelect: (pat
   const overlay = document.createElement('div');
   overlay.id = 'model-browser-dialog';
   overlay.className = 'editor-dialog-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'model-browser-title');
   const dialog = document.createElement('div');
   dialog.className = 'editor-dialog model-browser';
   const title = document.createElement('div');
-  title.className = 'editor-dialog-title'; title.textContent = 'Choose Model';
+  title.id = 'model-browser-title';
+  title.className = 'editor-dialog-title';
+  title.textContent = 'Choose Model';
+
+  const content = document.createElement('div');
+  content.className = 'model-browser-content';
+  const resultsPane = document.createElement('div');
+  resultsPane.className = 'model-browser-results';
   const search = document.createElement('input');
-  search.type = 'search'; search.placeholder = 'Search models...';
+  search.type = 'search';
+  search.className = 'model-browser-search';
+  search.placeholder = 'Search models…';
+  search.setAttribute('aria-label', 'Search models');
+  search.autocomplete = 'off';
+  search.spellcheck = false;
+  const resultCount = document.createElement('div');
+  resultCount.className = 'model-browser-result-count';
+  resultCount.setAttribute('aria-live', 'polite');
   const list = document.createElement('select');
-  list.size = 14;
+  list.className = 'model-browser-list';
+  list.setAttribute('aria-label', 'Models');
+  list.size = 18;
+  resultsPane.append(search, resultCount, list);
+
+  const previewPane = document.createElement('div');
+  previewPane.className = 'model-browser-preview-pane';
+  const previewHeader = document.createElement('div');
+  previewHeader.className = 'model-browser-preview-header';
+  const previewLabel = document.createElement('span');
+  previewLabel.className = 'model-browser-preview-label';
+  previewLabel.textContent = 'Preview';
+  const previewPath = document.createElement('span');
+  previewPath.className = 'model-browser-preview-path';
+  const previewStats = document.createElement('span');
+  previewStats.className = 'model-browser-preview-stats';
+  previewHeader.append(previewLabel, previewPath, previewStats);
+  const previewFrame = document.createElement('div');
+  previewFrame.className = 'model-browser-preview-frame';
   const canvas = document.createElement('canvas');
-  canvas.width = 320; canvas.height = 240; canvas.className = 'model-browser-preview';
+  canvas.width = 640;
+  canvas.height = 480;
+  canvas.className = 'model-browser-preview';
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', 'Selected model wireframe preview');
+  previewFrame.appendChild(canvas);
+  previewPane.append(previewHeader, previewFrame);
+  content.append(resultsPane, previewPane);
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn';
+  cancel.textContent = 'Cancel';
+  const use = document.createElement('button');
+  use.type = 'button';
+  use.className = 'btn primary';
+  use.textContent = 'Use Model';
+  const actions = document.createElement('div');
+  actions.className = 'editor-dialog-actions';
+  actions.append(cancel, use);
+
+  const allModels = manager.listModels();
   let selected = current;
   const draw = () => {
     const context = canvas.getContext('2d')!;
-    context.fillStyle = '#151515'; context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#151515';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    previewPath.textContent = selected || 'No model selected';
+    previewPath.title = selected;
     const model = manager.get(selected);
-    if (!model) { context.fillStyle = '#888'; context.fillText('No preview available', 12, 24); return; }
-    context.strokeStyle = '#57b9d8'; context.beginPath();
+    if (!model) {
+      previewStats.textContent = '';
+      context.fillStyle = '#888';
+      context.font = '20px monospace';
+      context.textAlign = 'center';
+      context.fillText(selected ? 'No preview available' : 'No matching models', canvas.width / 2, canvas.height / 2);
+      return;
+    }
+    const triangleCount = model.surfaces.reduce((sum, surface) => sum + surface.triangles.length, 0);
+    previewStats.textContent = `${model.surfaces.length} surface${model.surfaces.length === 1 ? '' : 's'} · ${triangleCount} triangle${triangleCount === 1 ? '' : 's'}`;
+    context.strokeStyle = '#57b9d8';
+    context.lineWidth = 1.5;
+    context.beginPath();
     for (const line of projectModelPreview(model, canvas.width, canvas.height)) {
       context.moveTo(...line.from); context.lineTo(...line.to);
     }
@@ -58,22 +134,42 @@ export function openModelBrowser(editor: Editor, current: string, onSelect: (pat
   };
   const populate = () => {
     list.innerHTML = '';
-    const query = search.value.trim().toLowerCase();
-    for (const path of manager.listModels().filter(path => !query || path.includes(query))) {
-      const option = new Option(path, path); option.selected = path === selected; list.appendChild(option);
+    const matches = filterModelPaths(allModels, search.value);
+    for (const path of matches) {
+      const option = new Option(path, path);
+      list.appendChild(option);
     }
-    if (!list.value && list.options.length) list.selectedIndex = 0;
-    selected = list.value || selected; draw();
+    selected = matches.includes(selected) ? selected : matches[0] ?? '';
+    list.value = selected;
+    list.disabled = matches.length === 0;
+    use.disabled = !selected;
+    resultCount.textContent = `${matches.length} of ${allModels.length} models`;
+    draw();
   };
   search.addEventListener('input', populate);
-  list.addEventListener('change', () => { selected = list.value; draw(); });
-  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn'; cancel.textContent = 'Cancel';
-  const use = document.createElement('button'); use.type = 'button'; use.className = 'btn primary'; use.textContent = 'Use Model';
+  search.addEventListener('keydown', event => {
+    if (event.key === 'ArrowDown' && !list.disabled) {
+      list.focus();
+      event.preventDefault();
+    } else if (event.key === 'Enter' && selected) {
+      use.click();
+      event.preventDefault();
+    }
+  });
+  list.addEventListener('change', () => { selected = list.value; use.disabled = !selected; draw(); });
+  list.addEventListener('dblclick', () => use.click());
+  list.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && selected) { use.click(); event.preventDefault(); }
+  });
   const close = () => overlay.remove();
   cancel.onclick = close;
   use.onclick = () => { if (selected) onSelect(selected); close(); };
-  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
-  const actions = document.createElement('div'); actions.className = 'editor-dialog-actions'; actions.append(cancel, use);
-  dialog.append(title, search, list, canvas, actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
-  populate(); search.focus();
+  overlay.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { close(); event.stopPropagation(); }
+  });
+  dialog.append(title, content, actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  populate();
+  search.focus();
 }
