@@ -54,7 +54,6 @@ import {
   redo as redoDocument,
   saveMapToFile as saveEditorMapToFile,
   serializeMap as serializeEditorMap,
-  snapshot as snapshotDocument,
   undo as undoDocument,
 } from './editor-document';
 import {
@@ -669,10 +668,6 @@ export class Editor {
   }
 
   // ── History ──
-
-  snapshot(): void {
-    snapshotDocument(this);
-  }
 
   beginTransaction(label: string, options: TransactionOptions = {}): void {
     beginEditorTransaction(this, label, options);

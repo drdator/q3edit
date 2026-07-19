@@ -56,10 +56,6 @@ export class History {
     this.redoStack.length = 0;
   }
 
-  snapshot(entities: Entity[], label = 'Edit document'): void {
-    this.record(entities, label);
-  }
-
   undo(currentEntities: Entity[]): HistoryResult | null {
     if (this.undoStack.length === 0) return null;
     const entry = this.undoStack.pop()!;

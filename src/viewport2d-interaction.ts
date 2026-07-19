@@ -263,7 +263,6 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
   }
 
   if (ctx.editor.activeTool === 'entity') {
-    ctx.editor.snapshot();
     const origin = snapPlanarPoint(ctx, wx, wy, e.ctrlKey, false);
     origin[ctx.axisDepth] = 0;
     const entity = ctx.editor.addEntity(ctx.editor.currentEntityClass, origin, e.ctrlKey);
@@ -435,8 +434,9 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       state.dragging = true;
       state.hasDragged = false;
       if (state.terrainSculptMode === 'paintTexture') {
-        const painted = ctx.editor.paintTerrainTexture(true);
-        state.terrainSculptSnapshotTaken = painted > 0;
+        ctx.editor.beginTransaction('Paint terrain texture');
+        state.terrainSculptSnapshotTaken = true;
+        const painted = ctx.editor.paintTerrainTexture(false);
         state.hasDragged = painted > 0;
       }
       return;
@@ -679,7 +679,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     const grid = ctx.editor.effectiveGrid(e.ctrlKey);
 
     if (!state.resizeSnapshotTaken) {
-      ctx.editor.snapshot();
+      ctx.editor.beginTransaction('Resize selection');
       state.resizeSnapshotTaken = true;
     }
 
@@ -791,7 +791,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
 
     if (totalAngle !== state.rotateAppliedAngle) {
       if (!state.rotateSnapshotTaken) {
-        ctx.editor.snapshot();
+        ctx.editor.beginTransaction('Rotate selection');
         state.rotateSnapshotTaken = true;
       }
       state.hasDragged = true;
@@ -888,7 +888,9 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
 
     if (snappedDx !== 0 || snappedDy !== 0) {
       if (!state.vertexDragSnapshotTaken) {
-        ctx.editor.snapshot();
+        ctx.editor.beginTransaction(ctx.editor.patchEditMode
+          ? 'Move patch control points'
+          : 'Move brush vertices');
         state.vertexDragSnapshotTaken = true;
       }
       state.hasDragged = true;
@@ -912,9 +914,12 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     if (state.terrainSculptMode === 'paintTexture') {
       const moved = wx !== state.terrainSculptLastWorld[0] || wy !== state.terrainSculptLastWorld[1];
       if (moved) {
-        const painted = ctx.editor.paintTerrainTexture(!state.terrainSculptSnapshotTaken);
-        if (painted > 0) {
+        if (!state.terrainSculptSnapshotTaken) {
+          ctx.editor.beginTransaction('Paint terrain texture');
           state.terrainSculptSnapshotTaken = true;
+        }
+        const painted = ctx.editor.paintTerrainTexture(false);
+        if (painted > 0) {
           state.hasDragged = true;
         }
         state.terrainSculptLastWorld = [wx, wy];
@@ -937,7 +942,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     }
     if (amount !== 0) {
       if (!state.terrainSculptSnapshotTaken) {
-        ctx.editor.snapshot();
+        ctx.editor.beginTransaction('Sculpt terrain');
         state.terrainSculptSnapshotTaken = true;
       }
       state.hasDragged = true;
@@ -983,7 +988,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
   if (snappedDx === 0 && snappedDy === 0) return;
 
   if (!state.moveSnapshotTaken) {
-    ctx.editor.snapshot();
+    ctx.editor.beginTransaction(e.altKey ? 'Duplicate and move selection' : 'Move selection');
     if (e.altKey) {
       ctx.editor.duplicateSelectionInPlace();
     }
@@ -1083,6 +1088,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
   }
 
   if (state.resizing) {
+    if (state.resizeSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.resizeSnapshotTaken = false;
+    }
     state.resizing = false;
     state.resizeBrushes = [];
     state.resizePatches = [];
@@ -1104,6 +1113,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     return;
   }
   if (state.rotating) {
+    if (state.rotateSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.rotateSnapshotTaken = false;
+    }
     state.rotating = false;
     state.dragging = false;
     state.rotateBrushOriginals = [];
@@ -1115,12 +1128,20 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     return;
   }
   if (state.vertexDragging) {
+    if (state.vertexDragSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.vertexDragSnapshotTaken = false;
+    }
     state.vertexDragging = false;
     state.dragging = false;
     if (state.hasDragged) ctx.editor.statusMessage = 'Vertex moved';
     return;
   }
   if (state.terrainSculpting) {
+    if (state.terrainSculptSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.terrainSculptSnapshotTaken = false;
+    }
     state.terrainSculpting = false;
     state.terrainSculptMode = 'locked';
     state.dragging = false;
@@ -1128,7 +1149,6 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
   }
   if (ctx.editor.creating) {
     ctx.editor.creating = false;
-    ctx.editor.snapshot();
     const mins: Vec3 = [0, 0, 0];
     const maxs: Vec3 = [0, 0, 0];
     mins[ctx.axisH] = Math.min(ctx.editor.createStart[ctx.axisH], ctx.editor.createEnd[ctx.axisH]);
@@ -1146,6 +1166,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
       ctx.editor.selectBrush(ctx.editor.worldspawn, brush);
       ctx.editor.statusMessage = `${ctx.editor.currentBrushPrimitive} brush created`;
     }
+  }
+  if (state.moveSnapshotTaken) {
+    ctx.editor.commitTransaction();
+    state.moveSnapshotTaken = false;
   }
   state.dragging = false;
 }

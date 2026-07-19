@@ -197,7 +197,12 @@ export class Gizmo {
 
   handleDrag(e: MouseEvent): void {
     if (!this.snapshotTaken) {
-      this.editor.snapshot();
+      const label = this.editor.vertexMode
+        ? 'Move brush vertices'
+        : this.editor.patchEditMode
+          ? 'Move patch control points'
+          : this.editor.gizmoMode === 'scale' ? 'Scale selection' : 'Move selection';
+      this.editor.beginTransaction(label);
       if (e.altKey && this.editor.gizmoMode === 'move') {
         this.editor.duplicateSelectionInPlace();
       }
@@ -313,6 +318,10 @@ export class Gizmo {
   }
 
   endDrag(): void {
+    if (this.snapshotTaken) {
+      this.editor.commitTransaction();
+      this.snapshotTaken = false;
+    }
     this.dragging = false;
     this.axis = -1;
     this.geoSnapTargets = null;

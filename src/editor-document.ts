@@ -3,10 +3,6 @@ import { createEntity } from './entity';
 import { parseMapWithDiagnostics, serializeMap as serializeEntities } from './mapfile';
 import type { Editor } from './editor';
 
-export function snapshot(editor: Editor): void {
-  editor.history.snapshot(editor.entities);
-}
-
 export function undo(editor: Editor): void {
   const prev = editor.history.undo(editor.entities);
   if (prev) {
