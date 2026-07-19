@@ -3,7 +3,8 @@ import { Editor } from './editor';
 import { Viewport2D } from './viewport2d';
 import { Viewport3D } from './viewport3d';
 import { UI } from './ui';
-import { loadPakArchives, loadPakManifest, mergePak, PakFiles, PakProgressCallback } from './pak';
+import { indexPakArchives, loadPakManifest, type PakArchive, type PakProgressCallback } from './pak';
+import { AssetIndex } from './asset-index';
 import {
   loadOpenArenaEnabled,
   loadStoredPaks,
@@ -63,7 +64,7 @@ async function init() {
   // Create UI
   const ui = new UI(editor);
 
-  let defaultPak: PakFiles = new Map();
+  let defaultArchives: PakArchive[] = [];
   let defaultPakLoaded = false;
   let openArenaEnabled = true;
   let activeTextureManager: TextureManager | null = null;
@@ -90,13 +91,13 @@ async function init() {
       license: 'COPYING',
       source: 'OPENARENA.md',
     });
-    defaultPak = defaults.files;
+    defaultArchives = defaults.archives;
     defaultPakLoaded = true;
   };
 
-  const installTextureManager = (pak: PakFiles): TextureManager => {
+  const installTextureManager = (assets: AssetIndex): TextureManager => {
     activeTextureManager?.dispose();
-    const texMgr = new TextureManager(vp3D.gl, pak);
+    const texMgr = new TextureManager(vp3D.gl, assets);
 
     // Create solid-color textures for entity category markers
     const registerColorTex = (name: string, r: number, g: number, b: number) => {
@@ -127,12 +128,8 @@ async function init() {
   const rebuildWithStoredPaks = async (): Promise<string[]> => {
     const stored = await loadStoredPaks();
     if (openArenaEnabled) await ensureDefaultPakLoaded();
-    const merged = openArenaEnabled ? new Map(defaultPak) : new Map<string, Uint8Array>();
-    if (stored.length > 0) {
-      const userPak = await loadPakArchives(stored, setLoadingStatus);
-      mergePak(merged, userPak);
-    }
-    installTextureManager(merged);
+    const archives = [...(openArenaEnabled ? defaultArchives : []), ...stored];
+    installTextureManager(await indexPakArchives(archives, setLoadingStatus));
     return stored.map(pak => pak.name);
   };
 
@@ -170,18 +167,13 @@ async function init() {
       // Build and validate the complete stack before changing persistent
       // storage, then install the already-extracted result without a second pass.
       if (result.openArenaEnabled) await ensureDefaultPakLoaded(reportProgress);
-      const merged = result.openArenaEnabled
-        ? new Map(defaultPak)
-        : new Map<string, Uint8Array>();
-      if (ordered.length > 0) {
-        const userPak = await loadPakArchives(ordered, reportProgress);
-        mergePak(merged, userPak);
-      }
+      const archives = [...(result.openArenaEnabled ? defaultArchives : []), ...ordered];
+      const assets = await indexPakArchives(archives, reportProgress);
       reportProgress('Saving asset configuration...');
       await replaceStoredAssetConfiguration(ordered, result.openArenaEnabled);
       openArenaEnabled = result.openArenaEnabled;
       assetLoading.update('Updating textures in the 3D view...', 1, 1);
-      const installedTextureManager = installTextureManager(merged);
+      const installedTextureManager = installTextureManager(assets);
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       assetLoading.update('Decoding visible textures...', 1, 1);
       await installedTextureManager.waitForIdle();
