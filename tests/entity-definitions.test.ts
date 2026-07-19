@@ -7,7 +7,10 @@ import {
   loadEntityClassRegistry,
   parseEntDefinitions,
   parseQuakedDefinitions,
+  setEntityClassRegistry,
 } from '../src/entity-definitions';
+import { Editor } from '../src/editor';
+import type { Entity } from '../src/entity';
 
 const fixture = readFileSync(new URL('./fixtures/entities.def', import.meta.url), 'utf8');
 
@@ -72,5 +75,22 @@ describe('entity definitions', () => {
     registry.loadSource('/*QUAKED custom (0 0 1) ?\nCustom class\n*/', 'custom.def', 'def');
     expect(registry.get('custom')).not.toBeNull();
     expect(registry.get('light')).not.toBeNull();
+  });
+
+  it('applies defaults only when creating an entity', () => {
+    const registry = new EntityClassRegistry([]);
+    const definition = parseQuakedDefinitions(
+      '/*QUAKED custom (1 1 1) (-8 -8 -8) (8 8 8)\ncount: amount (default: 3)\n*/',
+    ).classes[0];
+    registry.add(definition);
+    setEntityClassRegistry(registry);
+    const editor = new Editor();
+    editor.createDefaultMap();
+    const created = editor.addEntity('custom', [0, 0, 0]);
+    expect(created.properties.count).toBe('3');
+    const loaded: Entity = { classname: 'custom', properties: { classname: 'custom' }, brushes: [], patches: [] };
+    editor.entities.push(loaded);
+    expect(loaded.properties.count).toBeUndefined();
+    setEntityClassRegistry(new EntityClassRegistry());
   });
 });

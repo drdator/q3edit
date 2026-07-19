@@ -2,6 +2,7 @@ import { Editor } from './editor';
 import { Brush, BrushFace, classicTextureProjection, type ClassicBrushTextureProjection } from './brush';
 import { Entity } from './entity';
 import { getEntityClassRegistry } from './entity-definitions';
+import { buildDefinedEntityProperties } from './entity-property-panel';
 import {
   addEntityProperty,
   removeEntityProperty,
@@ -80,8 +81,11 @@ export class PropertiesPanel {
         propsDiv.appendChild(classInput);
       }
 
+      const classDefinition = getEntityClassRegistry().get(entity.classname);
+      if (classDefinition) buildDefinedEntityProperties(propsDiv, this.editor, entity, classDefinition);
+
       for (const [key, value] of Object.entries(entity.properties)) {
-        if (key === 'classname') continue;
+        if (key === 'classname' || key === 'spawnflags' || classDefinition?.properties[key]) continue;
         const row = document.createElement('div');
         row.className = 'kv-row';
 

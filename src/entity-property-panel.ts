@@ -1,0 +1,163 @@
+import type { Editor } from './editor';
+import { removeEntityProperty, setEntitySpawnflag, setTypedEntityProperty } from './editor-properties';
+import type { Entity } from './entity';
+import type { EntityClassDefinition, EntityPropertyDefinition } from './entity-definitions';
+
+export const ENTITY_PROPERTY_COMMAND_IDS = {
+  set: 'entity.property.set',
+  remove: 'entity.property.remove',
+  spawnflag: 'entity.spawnflag.set',
+} as const;
+
+function addHelp(container: HTMLElement, definition: EntityPropertyDefinition): void {
+  if (!definition.description) return;
+  const help = document.createElement('small');
+  help.className = 'entity-property-help';
+  help.textContent = definition.description;
+  container.appendChild(help);
+}
+
+function entityReferenceList(editor: Editor, key: string): string {
+  const id = `entity-reference-${key.replace(/[^\w-]/g, '-')}`;
+  document.getElementById(id)?.remove();
+  const list = document.createElement('datalist');
+  list.id = id;
+  const names = new Set(editor.entities.flatMap(entity =>
+    [entity.properties.targetname, entity.properties.name].filter((value): value is string => Boolean(value))));
+  for (const name of [...names].sort()) {
+    const option = document.createElement('option');
+    option.value = name;
+    list.appendChild(option);
+  }
+  document.body.appendChild(list);
+  return id;
+}
+
+function valueControl(
+  editor: Editor,
+  entity: Entity,
+  definition: EntityPropertyDefinition,
+  value: string,
+): HTMLElement {
+  const commit = (next: string) => setTypedEntityProperty(editor, entity, definition.key, next, definition.type);
+  if (definition.type === 'choice' && definition.choices?.length) {
+    const select = document.createElement('select');
+    if (value && !definition.choices.some(choice => choice.value === value)) {
+      select.appendChild(new Option(`${value} (custom)`, value));
+    }
+    for (const choice of definition.choices) select.appendChild(new Option(choice.label, choice.value));
+    select.value = value;
+    select.addEventListener('change', () => commit(select.value));
+    return select;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = `entity-value entity-value-${definition.type}`;
+  const input = document.createElement('input');
+  input.type = definition.type === 'number' || definition.type === 'angle' ? 'number' : 'text';
+  input.value = value;
+  input.spellcheck = false;
+  input.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.set;
+  if (definition.type === 'vector' || definition.type === 'color') input.placeholder = 'x y z';
+  if (definition.type === 'asset') input.placeholder = 'path/to/asset';
+  if (definition.type === 'entity-reference') input.setAttribute('list', entityReferenceList(editor, definition.key));
+  input.addEventListener('change', () => commit(input.value));
+  wrapper.appendChild(input);
+
+  if (definition.type === 'color') {
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    const parts = value.trim().split(/\s+/).map(Number);
+    const hex = parts.length >= 3 && parts.every(Number.isFinite)
+      ? `#${parts.slice(0, 3).map(part => Math.round(Math.max(0, Math.min(1, part)) * 255).toString(16).padStart(2, '0')).join('')}`
+      : '#ffffff';
+    picker.value = hex;
+    picker.addEventListener('input', () => {
+      const rgb = [1, 3, 5].map(offset => parseInt(picker.value.slice(offset, offset + 2), 16) / 255);
+      input.value = rgb.map(component => component.toFixed(3)).join(' ');
+      commit(input.value);
+    });
+    wrapper.appendChild(picker);
+  }
+
+  if (definition.type === 'angle') {
+    const directions: Array<[string, string]> = [['N', '90'], ['E', '0'], ['S', '270'], ['W', '180'], ['Up', '-1'], ['Down', '-2']];
+    const directionsRow = document.createElement('div');
+    directionsRow.className = 'entity-angle-directions';
+    for (const [label, angle] of directions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn';
+      button.textContent = label;
+      button.addEventListener('click', () => { input.value = angle; commit(angle); });
+      directionsRow.appendChild(button);
+    }
+    wrapper.appendChild(directionsRow);
+  }
+  return wrapper;
+}
+
+export function buildDefinedEntityProperties(
+  container: HTMLElement,
+  editor: Editor,
+  entity: Entity,
+  definition: EntityClassDefinition,
+): void {
+  if (definition.description) {
+    const description = document.createElement('p');
+    description.className = 'entity-class-description';
+    description.textContent = definition.description;
+    container.appendChild(description);
+  }
+
+  for (const property of Object.values(definition.properties)) {
+    const hasValue = property.key in entity.properties;
+    const row = document.createElement('div');
+    row.className = 'entity-defined-property';
+    const label = document.createElement('label');
+    label.textContent = property.name || property.key;
+    label.title = property.key;
+    row.appendChild(label);
+    if (hasValue) {
+      row.appendChild(valueControl(editor, entity, property, entity.properties[property.key]));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn icon-btn kv-del';
+      remove.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.remove;
+      remove.innerHTML = '<i class="ph ph-trash"></i>';
+      remove.addEventListener('click', () => removeEntityProperty(editor, entity, property.key));
+      row.appendChild(remove);
+    } else {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'btn';
+      add.textContent = `Add ${property.name || property.key}`;
+      add.addEventListener('click', () => setTypedEntityProperty(
+        editor, entity, property.key, property.default ?? definition.defaults[property.key] ?? '', property.type));
+      row.appendChild(add);
+    }
+    addHelp(row, property);
+    container.appendChild(row);
+  }
+
+  if (definition.spawnflags.length > 0) {
+    const flags = document.createElement('fieldset');
+    flags.className = 'entity-spawnflags';
+    const legend = document.createElement('legend');
+    legend.textContent = 'Spawnflags';
+    flags.appendChild(legend);
+    const current = Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0;
+    for (const flag of definition.spawnflags) {
+      const label = document.createElement('label');
+      label.title = flag.description ?? '';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = (current & flag.bit) !== 0;
+      checkbox.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.spawnflag;
+      checkbox.addEventListener('change', () => setEntitySpawnflag(editor, entity, flag.bit, checkbox.checked));
+      label.append(checkbox, document.createTextNode(flag.name));
+      flags.appendChild(label);
+    }
+    container.appendChild(flags);
+  }
+}
