@@ -20,12 +20,27 @@ describe('global preferences', () => {
     const preferences = structuredClone(DEFAULT_GLOBAL_PREFERENCES);
     preferences.editorDefaults.gridSize = 999;
     preferences.shortcuts['file.save'] = 'Ctrl+Shift+S';
+    preferences.collapsedPanels['entity-panel'] = true;
     saveGlobalPreferences(preferences, storage);
 
     const loaded = loadGlobalPreferences(storage);
     expect(loaded.preferences.version).toBe(2);
     expect(loaded.preferences.editorDefaults.gridSize).toBe(256);
     expect(loaded.preferences.shortcuts['file.save']).toBe('Ctrl+Shift+S');
+    expect(loaded.preferences.collapsedPanels).toEqual({ 'entity-panel': true });
+  });
+
+  it('ignores invalid persisted panel states', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 2,
+      collapsedPanels: { 'entity-panel': true, 'texture-panel': 'yes', 'groups-panel': false },
+    }));
+
+    expect(loadGlobalPreferences(storage).preferences.collapsedPanels).toEqual({
+      'entity-panel': true,
+      'groups-panel': false,
+    });
   });
 
   it('migrates the legacy display settings', () => {

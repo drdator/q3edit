@@ -136,15 +136,17 @@ export class UI {
     // Add collapse toggles to all panel headers
     for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
       const panel = header.parentElement as HTMLElement | null;
-      if (panel?.id === 'terrain-panel') continue;
+      if (!panel || panel.id === 'terrain-panel') continue;
       const toggle = document.createElement('span');
       toggle.className = 'panel-toggle';
-      toggle.textContent = '\u2212';
       header.appendChild(toggle);
+      this.setPanelCollapsed(panel, this.editor.preferences.collapsedPanels[panel.id] ?? false);
       header.addEventListener('mousedown', () => {
         const owningPanel = header.parentElement!;
-        owningPanel.classList.toggle('collapsed');
-        toggle.textContent = owningPanel.classList.contains('collapsed') ? '+' : '\u2212';
+        const collapsed = !owningPanel.classList.contains('collapsed');
+        this.setPanelCollapsed(owningPanel, collapsed);
+        this.editor.preferences.collapsedPanels[owningPanel.id] = collapsed;
+        this.editor.persistCurrentPreferences();
       });
     }
 
