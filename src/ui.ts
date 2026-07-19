@@ -12,18 +12,8 @@ import { createEditorCommandRegistry, type EditorCommandContext } from './editor
 import type { CommandRegistry } from './commands';
 import { brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
+import { PakManagerModel, type PakManagerEntry, type PakManagerResult } from './pak-manager';
 import 'virtual:phosphor-icons.css';
-
-export interface PakManagerEntry {
-  name: string;
-  size: number;
-  file?: File;
-}
-
-export interface PakManagerResult {
-  entries: PakManagerEntry[];
-  openArenaEnabled: boolean;
-}
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -854,8 +844,8 @@ export class UI {
     initialOpenArenaEnabled: boolean,
   ): Promise<PakManagerResult | null> {
     document.getElementById('pak-manager-dialog')?.remove();
-    const entries = initialEntries.map(entry => ({ ...entry }));
-    let openArenaEnabled = initialOpenArenaEnabled;
+    const model = new PakManagerModel(initialEntries, initialOpenArenaEnabled);
+    const entries = model.entries;
 
     return new Promise(resolve => {
       const overlay = document.createElement('div');
@@ -890,7 +880,7 @@ export class UI {
 
         const defaultRow = document.createElement('div');
         defaultRow.className = 'pak-manager-row fixed';
-        defaultRow.classList.toggle('disabled-source', !openArenaEnabled);
+        defaultRow.classList.toggle('disabled-source', !model.openArenaEnabled);
         const defaultOrder = document.createElement('span');
         defaultOrder.className = 'pak-manager-order';
         defaultOrder.textContent = '1';
@@ -901,7 +891,7 @@ export class UI {
         defaultName.textContent = 'OpenArena default assets';
         const defaultMeta = document.createElement('div');
         defaultMeta.className = 'pak-manager-meta';
-        defaultMeta.textContent = openArenaEnabled
+        defaultMeta.textContent = model.openArenaEnabled
           ? 'Bundled fallback · loaded first'
           : 'Disabled · not downloaded or loaded';
         defaultInfo.append(defaultName, defaultMeta);
@@ -910,13 +900,13 @@ export class UI {
         defaultToggle.className = 'pak-manager-source-toggle';
         const defaultCheckbox = document.createElement('input');
         defaultCheckbox.type = 'checkbox';
-        defaultCheckbox.checked = openArenaEnabled;
+        defaultCheckbox.checked = model.openArenaEnabled;
         defaultCheckbox.onchange = () => {
-          openArenaEnabled = defaultCheckbox.checked;
+          model.openArenaEnabled = defaultCheckbox.checked;
           render();
         };
         const defaultToggleText = document.createElement('span');
-        defaultToggleText.textContent = openArenaEnabled ? 'Enabled' : 'Disabled';
+        defaultToggleText.textContent = model.openArenaEnabled ? 'Enabled' : 'Disabled';
         defaultToggle.append(defaultCheckbox, defaultToggleText);
         defaultRow.append(defaultOrder, defaultInfo, defaultToggle);
         list.appendChild(defaultRow);
@@ -950,7 +940,7 @@ export class UI {
           up.title = 'Load earlier (lower priority)';
           up.disabled = index === 0;
           up.onclick = () => {
-            [entries[index - 1], entries[index]] = [entries[index], entries[index - 1]];
+            model.move(index, -1);
             recentlyMovedNames = new Set([entry.name]);
             render();
           };
@@ -962,7 +952,7 @@ export class UI {
           down.title = 'Load later (higher priority)';
           down.disabled = index === entries.length - 1;
           down.onclick = () => {
-            [entries[index], entries[index + 1]] = [entries[index + 1], entries[index]];
+            model.move(index, 1);
             recentlyMovedNames = new Set([entry.name]);
             render();
           };
@@ -973,7 +963,7 @@ export class UI {
           remove.title = `Remove ${entry.name}`;
           remove.setAttribute('aria-label', `Remove ${entry.name}`);
           remove.onclick = () => {
-            entries.splice(index, 1);
+            model.remove(index);
             render();
           };
           controls.append(up, down, remove);
@@ -985,8 +975,8 @@ export class UI {
         if (entries.length === 0) {
           const empty = document.createElement('div');
           empty.className = 'pak-manager-empty';
-          empty.classList.toggle('warning', !openArenaEnabled);
-          empty.textContent = openArenaEnabled
+          empty.classList.toggle('warning', !model.openArenaEnabled);
+          empty.textContent = model.openArenaEnabled
             ? 'No user PK3 files. OpenArena assets will be used on their own.'
             : 'No texture assets are enabled. The editor will run without textures.';
           list.appendChild(empty);
@@ -1001,12 +991,7 @@ export class UI {
       fileInput.multiple = true;
       fileInput.hidden = true;
       fileInput.onchange = () => {
-        for (const file of Array.from(fileInput.files ?? [])) {
-          const existingIndex = entries.findIndex(entry => entry.name.toLowerCase() === file.name.toLowerCase());
-          const next: PakManagerEntry = { name: file.name, size: file.size, file };
-          if (existingIndex >= 0) entries[existingIndex] = next;
-          else entries.push(next);
-        }
+        model.upsertFiles(Array.from(fileInput.files ?? []));
         fileInput.value = '';
         render();
       };
@@ -1024,14 +1009,7 @@ export class UI {
       sortButton.title = 'Sort using natural numeric filename order';
       sortButton.disabled = entries.length < 2;
       sortButton.onclick = () => {
-        const previousPositions = new Map(entries.map((entry, index) => [entry.name, index]));
-        entries.sort((a, b) => a.name.localeCompare(b.name, undefined, {
-          numeric: true,
-          sensitivity: 'base',
-        }));
-        recentlyMovedNames = new Set(entries
-          .filter((entry, index) => previousPositions.get(entry.name) !== index)
-          .map(entry => entry.name));
+        recentlyMovedNames = model.sortByFilename();
         render();
       };
 
@@ -1040,7 +1018,7 @@ export class UI {
       removeAllButton.className = 'btn pak-manager-remove-all';
       removeAllButton.innerHTML = '<i class="ph ph-trash" aria-hidden="true"></i><span>Remove all</span>';
       removeAllButton.onclick = () => {
-        entries.splice(0, entries.length);
+        model.clear();
         recentlyMovedNames = new Set();
         render();
       };
@@ -1102,7 +1080,7 @@ export class UI {
         resolve(result);
       };
       cancel.onclick = () => finish(null);
-      save.onclick = () => finish({ entries, openArenaEnabled });
+      save.onclick = () => finish(model.result());
       overlay.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
           event.preventDefault();
@@ -2631,6 +2609,13 @@ export class UI {
     for (const tex of textures) {
       const item = document.createElement('div');
       item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
+      const asset = this.texMgr?.getTextureAsset(tex);
+      if (asset) {
+        const overrides = asset.overriddenSources.length > 0
+          ? `; overrides ${asset.overriddenSources.map(source => source.archiveName).join(', ')}`
+          : '';
+        item.title = `${asset.path} — ${asset.source.archiveName}${overrides}`;
+      }
 
       // Strip textures/ prefix, then strip selected dir prefix in list mode
       let displayName = tex.replace(/^textures\//, '');
