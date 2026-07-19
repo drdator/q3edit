@@ -7,6 +7,7 @@ import {
   renameEntityProperty,
   setEntityClassname,
   setEntityProperty,
+  updateBrushPrimitiveMatrixEntry,
   updateFaceProperties,
 } from './editor-properties';
 
@@ -276,11 +277,7 @@ export class PropertiesPanel {
         updateFaceProperties(this.editor, [face], 'Edit face rotation', { rotation: parseFloat(val) || 0 });
       });
     } else {
-      const projectionHint = document.createElement('label');
-      projectionHint.textContent = 'Brush-primitive texture matrix editing is not available yet.';
-      projectionHint.style.color = '#888';
-      projectionHint.style.fontSize = '11px';
-      container.appendChild(projectionHint);
+      this.addBrushPrimitiveMatrixFields(container, [face]);
     }
 
     // Flags
@@ -340,6 +337,8 @@ export class PropertiesPanel {
         const r = parseFloat(val) || 0;
         updateFaceProperties(this.editor, faces, 'Edit face rotations', { rotation: r });
       }, sameRot ? undefined : { placeholder: '(mixed)' });
+    } else if (faces.every(face => face.textureProjection.kind === 'brush-primitive')) {
+      this.addBrushPrimitiveMatrixFields(container, faces);
     } else {
       const projectionHint = document.createElement('label');
       projectionHint.textContent = 'Texture alignment fields require classic brush projections.';
@@ -355,6 +354,25 @@ export class PropertiesPanel {
       sameSurf ? faces[0].surfaceFlags : null, sameCont ? faces[0].contentFlags : null, 'Surf', 'Cont', (s, c) => {
       updateFaceProperties(this.editor, faces, 'Edit face flags', { surfaceFlags: s, contentFlags: c });
     });
+  }
+
+  private addBrushPrimitiveMatrixFields(container: HTMLElement, faces: BrushFace[]): void {
+    const labels = [
+      ['S/X', 0, 0], ['S/Y', 0, 1], ['S/Offset', 0, 2],
+      ['T/X', 1, 0], ['T/Y', 1, 1], ['T/Offset', 1, 2],
+    ] as const;
+    for (const [label, row, column] of labels) {
+      const values = faces.flatMap(face => face.textureProjection.kind === 'brush-primitive'
+        ? [face.textureProjection.matrix[row][column]]
+        : []);
+      const common = values.length > 0 && values.every(value => value === values[0]);
+      this.addFaceField(container, label, common ? String(values[0]) : '', 'number', value => {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+          updateBrushPrimitiveMatrixEntry(this.editor, faces, row, column, parsed);
+        }
+      }, common ? undefined : { placeholder: '(mixed)' });
+    }
   }
 
   private addFaceField(container: HTMLElement, label: string, value: string, type: string, onChange: (val: string) => void, opts?: { placeholder?: string; locateTexture?: boolean }): void {

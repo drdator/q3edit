@@ -25,7 +25,7 @@ import { clonePatch, mirrorPatch, PatchControlPoint, rotatePatch, scalePatchCont
 import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
-import { mirrorBrushLocked, rotateBrushLocked, translateBrushLocked } from './texture-lock';
+import { mirrorBrushLocked, rotateBrushLocked, scaleBrushLocked, translateBrushLocked } from './texture-lock';
 
 export interface BrushScaleOriginal {
   brush: Brush;
@@ -80,6 +80,20 @@ function mirrorEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: num
     return;
   }
   mirrorBrush(brush, center, axis);
+}
+
+function scaleEditorBrush(
+  editor: Editor,
+  brush: Brush,
+  originalPoints: [Vec3, Vec3, Vec3][],
+  center: Vec3,
+  scale: Vec3,
+): void {
+  if (editor.textureLock) {
+    scaleBrushLocked(brush, originalPoints, center, scale);
+    return;
+  }
+  scaleBrushFaces(brush, originalPoints, center, scale);
 }
 
 function translateEditorEntity(editor: Editor, entity: Entity, delta: Vec3): void {
@@ -153,7 +167,7 @@ export function scaleGeometryFromOriginals(
 ): void {
   editor.transact('Resize selection', () => {
     for (const { brush, origPoints } of brushes) {
-      scaleBrushFaces(brush, origPoints, origin, scale);
+      scaleEditorBrush(editor, brush, origPoints, origin, scale);
     }
     for (const { patch, origCtrl } of patches) {
       scalePatchControlPoints(patch, origCtrl, origin, scale);
@@ -368,7 +382,7 @@ export function scaleSelection(editor: Editor, scale: Vec3): void {
     for (let i = 0; i < brushItems.length; i++) {
       const origPoints = brushOriginals[i];
       if (!origPoints) continue;
-      scaleBrushFaces(brushItems[i].brush, origPoints, center, scale);
+      scaleEditorBrush(editor, brushItems[i].brush, origPoints, center, scale);
     }
 
     for (let i = 0; i < patchItems.length; i++) {

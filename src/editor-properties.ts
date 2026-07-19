@@ -103,3 +103,24 @@ export function updateFaceProperties(
     coalesceKey: `face-properties:${ids}:${fields}`,
   });
 }
+
+export function updateBrushPrimitiveMatrixEntry(
+  editor: Editor,
+  faces: BrushFace[],
+  row: 0 | 1,
+  column: 0 | 1 | 2,
+  value: number,
+): void {
+  const primitiveFaces = faces.filter(face => face.textureProjection.kind === 'brush-primitive');
+  if (primitiveFaces.length === 0) return;
+  const ids = primitiveFaces.map(face => objectId(face)).sort((a, b) => a - b).join(',');
+  editor.transact('Edit brush primitive matrix', () => {
+    for (const face of primitiveFaces) {
+      if (face.textureProjection.kind === 'brush-primitive') {
+        face.textureProjection.matrix[row][column] = value;
+      }
+    }
+  }, {
+    coalesceKey: `brush-primitive-matrix:${ids}:${row}:${column}`,
+  });
+}

@@ -35,6 +35,8 @@ export interface BrushFace {
 export interface Brush {
   faces: BrushFace[];
   name?: string;
+  /** Brush-local epairs used by brushDef. */
+  properties?: Record<string, string>;
   // Computed AABB
   mins: Vec3;
   maxs: Vec3;
@@ -249,6 +251,7 @@ export function cloneBrush(brush: Brush): Brush {
   return {
     faces,
     name: brush.name,
+    properties: brush.properties ? { ...brush.properties } : undefined,
     mins: vec3Copy(brush.mins),
     maxs: vec3Copy(brush.maxs),
   };
@@ -401,7 +404,13 @@ export function clipBrush(brush: Brush, planePoints: [Vec3, Vec3, Vec3], texture
   // Add the clip face
   faces.push(copyFaceStyle(brush.faces[0], planePoints, texture));
 
-  const newBrush: Brush = { faces, mins: [0, 0, 0], maxs: [0, 0, 0] };
+  const newBrush: Brush = {
+    faces,
+    name: brush.name,
+    properties: brush.properties ? { ...brush.properties } : undefined,
+    mins: [0, 0, 0],
+    maxs: [0, 0, 0],
+  };
   computeBrushGeometry(newBrush);
 
   // Remove faces with degenerate polygons
@@ -567,6 +576,7 @@ function triangulateNonPlanarFaces(brush: Brush): void {
         points: [vec3Copy(p0), vec3Copy(p1), vec3Copy(p2)],
         plane: triPlane,
         polygon: [vec3Copy(p0), vec3Copy(p1), vec3Copy(p2)],
+        textureProjection: cloneTextureProjection(face.textureProjection),
       });
     }
   }
@@ -688,11 +698,11 @@ function splitBrushByPlane(brush: Brush, splitFaceIdx: number, splitPlane: Plane
   // The back brush already has the splitting face as its boundary.
   if (cutPoints.length >= 3) {
     const capPoly = orderPointsOnPlane(cutPoints, splitPlane);
-    frontFaces.push(makeCaulkFace([...capPoly].reverse(), invertedPlane));
+    frontFaces.push(makeCaulkFace([...capPoly].reverse(), invertedPlane, brush.faces[splitFaceIdx]));
   }
 
-  const backBrush = backFaces.length >= 4 ? assembleBrush(backFaces) : null;
-  const frontBrush = frontFaces.length >= 4 ? assembleBrush(frontFaces) : null;
+  const backBrush = backFaces.length >= 4 ? assembleBrush(backFaces, brush) : null;
+  const frontBrush = frontFaces.length >= 4 ? assembleBrush(frontFaces, brush) : null;
 
   return [backBrush, frontBrush];
 }
@@ -713,7 +723,7 @@ function cloneFaceKeepPlane(face: BrushFace, polygon: Vec3[]): BrushFace {
 }
 
 /** Create a caulk-textured cap face from a polygon and its plane. */
-function makeCaulkFace(polygon: Vec3[], plane: Plane): BrushFace {
+function makeCaulkFace(polygon: Vec3[], plane: Plane, source?: BrushFace): BrushFace {
   let p0 = polygon[0], p1 = polygon[1], p2 = polygon[2];
   for (let i = 0; i < polygon.length; i++) {
     const a = polygon[i];
@@ -729,7 +739,7 @@ function makeCaulkFace(polygon: Vec3[], plane: Plane): BrushFace {
   return {
     points: [vec3Copy(p0), vec3Copy(p1), vec3Copy(p2)],
     texture: 'common/caulk',
-    textureProjection: {
+    textureProjection: source ? cloneTextureProjection(source.textureProjection) : {
       kind: 'classic',
       offsetX: 0,
       offsetY: 0,
@@ -772,7 +782,7 @@ function orderPointsOnPlane(points: Vec3[], plane: Plane): Vec3[] {
 }
 
 /** Assemble a brush from pre-clipped faces. No rebuild — polygons are authoritative. */
-function assembleBrush(faces: BrushFace[]): Brush {
+function assembleBrush(faces: BrushFace[], source?: Brush): Brush {
   let mins: Vec3 = [Infinity, Infinity, Infinity];
   let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
   for (const face of faces) {
@@ -781,7 +791,13 @@ function assembleBrush(faces: BrushFace[]): Brush {
       maxs = vec3Max(maxs, v);
     }
   }
-  return { faces, mins, maxs };
+  return {
+    faces,
+    name: source?.name,
+    properties: source?.properties ? { ...source.properties } : undefined,
+    mins,
+    maxs,
+  };
 }
 
 // Resize a box brush by setting new AABB (reconstructs faces)

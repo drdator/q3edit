@@ -9,6 +9,7 @@ import {
   setEntityClassname,
   setEntityProperty,
   updateFaceProperties,
+  updateBrushPrimitiveMatrixEntry,
 } from '../src/editor-properties';
 
 function editorWithEntity(): { editor: Editor; entity: ReturnType<typeof createEntity> } {
@@ -65,5 +66,23 @@ describe('transactional property editing', () => {
     expect(editor.entities[0].brushes[0].faces.slice(0, 2).every(face =>
       face.contentFlags === 0 && face.surfaceFlags === 0
     )).toBe(true);
+  });
+
+  test('edits brush-primitive matrix entries transactionally', () => {
+    const { editor } = editorWithEntity();
+    const face = editor.entities[0].brushes[0].faces[0];
+    face.textureProjection = {
+      kind: 'brush-primitive',
+      matrix: [[0.01, 0, 0], [0, 0.01, 0]],
+    };
+
+    updateBrushPrimitiveMatrixEntry(editor, [face], 0, 2, 0.25);
+
+    expect(face.textureProjection.matrix[0][2]).toBe(0.25);
+    expect(editor.history.undoLabel).toBe('Edit brush primitive matrix');
+    editor.undo();
+    const restored = editor.entities[0].brushes[0].faces[0].textureProjection;
+    expect(restored.kind).toBe('brush-primitive');
+    if (restored.kind === 'brush-primitive') expect(restored.matrix[0][2]).toBe(0);
   });
 });

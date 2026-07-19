@@ -162,6 +162,16 @@ class MapParser {
       this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
       return;
     }
+    if (marker.kind === 'word' && marker.value === 'brushDef') {
+      this.index++;
+      const brush = this.parseBrushDef(closeIndex, openingBrace);
+      if (brush) {
+        if (brushName) brush.name = brushName;
+        entity.brushes.push(brush);
+      }
+      this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
+      return;
+    }
     if (marker.kind === 'word' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(marker.value) &&
         this.nextSignificantKind(this.index + 1) === 'brace-open') {
       const closingBrace = this.tokens[closeIndex] ?? this.tokens[this.tokens.length - 1];
@@ -250,6 +260,108 @@ class MapParser {
       values[0], values[1], values[2], values[3], values[4],
       optional[0], optional[1], optional[2],
     );
+  }
+
+  private parseBrushDef(limit: number, openingBrace: MapToken): Brush | null {
+    if (!this.expect('brace-open', limit, "Expected '{' after brushDef")) return null;
+    const faces: BrushFace[] = [];
+    const properties: Record<string, string> = {};
+
+    while (this.index < limit && this.current().kind !== 'eof') {
+      this.skipComments();
+      const token = this.current();
+      if (token.kind === 'brace-close') {
+        this.index++;
+        break;
+      }
+      if (token.kind === 'string') {
+        const key = token;
+        this.index++;
+        const value = this.currentSignificant();
+        if (value.kind !== 'string') {
+          this.report('warning', value, `Ignored malformed brush property '${key.value}'`);
+          this.skipLine(key.line);
+        } else {
+          properties[key.value] = value.value;
+          this.index++;
+        }
+        continue;
+      }
+      if (token.kind !== 'paren-open') {
+        this.report('warning', token, 'Ignored malformed brushDef face');
+        this.skipLine(token.line);
+        continue;
+      }
+      const face = this.parseBrushDefFace(limit);
+      if (face) faces.push(face);
+      else this.skipLine(token.line);
+    }
+
+    if (faces.length < 4) {
+      this.report('warning', openingBrace, 'Ignored brushDef with fewer than 4 valid faces');
+      return null;
+    }
+    const brush: Brush = {
+      faces,
+      properties: Object.keys(properties).length > 0 ? properties : undefined,
+      mins: [0, 0, 0],
+      maxs: [0, 0, 0],
+    };
+    computeBrushGeometry(brush);
+    return brush;
+  }
+
+  private parseBrushDefFace(limit: number): BrushFace | null {
+    const start = this.current();
+    const points: Vec3[] = [];
+    for (let point = 0; point < 3; point++) {
+      const value = this.readNumberTuple(3, limit, 'brushDef face point');
+      if (!value) {
+        this.report('warning', start, 'Ignored malformed brushDef face');
+        return null;
+      }
+      points.push(value as Vec3);
+    }
+
+    if (!this.expect('paren-open', limit, "Expected '(' before brushDef texture matrix")) return null;
+    const row0 = this.readNumberTuple(3, limit, 'brushDef texture matrix row 1');
+    if (!row0) {
+      this.report('warning', start, 'Ignored malformed brushDef face');
+      return null;
+    }
+    const row1 = this.readNumberTuple(3, limit, 'brushDef texture matrix row 2');
+    if (!row1 || !this.expect('paren-close', limit, "Expected ')' after brushDef texture matrix")) {
+      this.report('warning', start, 'Ignored malformed brushDef face');
+      return null;
+    }
+    const texture = this.readText(limit, 'brushDef face texture');
+    if (texture === null) return null;
+    const flags = this.readOptionalFaceFlags(limit);
+    const face = createFace(
+      points[0], points[2], points[1], texture,
+      0, 0, 0, 0.5, 0.5,
+      flags[0], flags[1], flags[2],
+    );
+    face.textureProjection = {
+      kind: 'brush-primitive',
+      matrix: [
+        [row0[0], row0[1], row0[2]],
+        [row1[0], row1[1], row1[2]],
+      ],
+    };
+    return face;
+  }
+
+  private readOptionalFaceFlags(limit: number): [number, number, number] {
+    const values: [number, number, number] = [0, 0, 0];
+    for (let index = 0; index < values.length; index++) {
+      this.skipComments();
+      const token = this.current();
+      if (this.index >= limit || token.kind !== 'word' || !Number.isFinite(Number(token.value))) break;
+      values[index] = Number(token.value);
+      this.index++;
+    }
+    return values;
   }
 
   private parsePatchDef2(limit: number): Patch | null {

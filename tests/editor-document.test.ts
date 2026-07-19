@@ -10,7 +10,7 @@ describe('editor map loading', () => {
 {
 "classname" "worldspawn"
 {
-brushDef
+brushDef3
 {
 }
 }
@@ -20,7 +20,7 @@ brushDef
     expect(editor.mapDiagnostics).toContainEqual(expect.objectContaining({
       severity: 'warning',
       line: 5,
-      message: expect.stringContaining("Unsupported map block 'brushDef'"),
+      message: expect.stringContaining("Unsupported map block 'brushDef3'"),
     }));
     expect(editor.statusMessage).toContain('Map loaded with 1 warning');
     expect(editor.statusMessage).toContain('line 5');
