@@ -1009,6 +1009,90 @@ textarea:focus-visible {
   box-sizing: border-box;
 }
 
+.entity-defined-property {
+  margin-bottom: 7px;
+}
+
+.entity-defined-property > label {
+  margin-bottom: 3px;
+}
+
+.entity-property-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.entity-property-controls > select,
+.entity-property-controls > .entity-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.entity-property-controls > select {
+  width: auto;
+  height: 18px;
+  box-sizing: border-box;
+}
+
+.entity-property-controls > .btn {
+  margin: 0;
+}
+
+.entity-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.entity-value > input[type="text"],
+.entity-value > input[type="number"] {
+  flex: 1 1 100px;
+  min-width: 0;
+  width: auto;
+  height: 18px;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
+.entity-value > input[type="color"] {
+  flex: 0 0 25px;
+  width: 25px;
+  height: 18px;
+  padding: 1px;
+  border: 1px solid var(--border-dark);
+  background: var(--bg-light);
+}
+
+.entity-value > .btn {
+  margin: 0;
+  height: 18px;
+  box-sizing: border-box;
+}
+
+.entity-angle-directions {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  flex: 1 0 100%;
+  gap: 2px;
+}
+
+.entity-angle-directions > .btn {
+  justify-content: center;
+  min-width: 0;
+  padding: 2px;
+  margin: 0;
+}
+
+.entity-property-help {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
 .brush-list {
   display: flex;
   flex-direction: column;
