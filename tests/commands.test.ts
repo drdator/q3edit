@@ -30,6 +30,7 @@ describe('CommandRegistry', () => {
       quickPlay: noop,
       managePakFiles: noop,
       openPreferences: noop,
+      openDiagnostics: noop,
       openTerrainPanel: noop,
       cycleInvisibleMode: noop,
       setTool: noop,
@@ -49,7 +50,7 @@ describe('CommandRegistry', () => {
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
-      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openTerrainPanel: noop,
+      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openDiagnostics: noop, openTerrainPanel: noop,
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
     });

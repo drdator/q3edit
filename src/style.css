@@ -1481,6 +1481,41 @@ textarea:focus-visible {
   .preferences-content { grid-template-columns: 1fr; }
 }
 
+/* ── Diagnostics & brush utilities ── */
+.diagnostics-dialog {
+  width: min(820px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+}
+
+.diagnostics-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.diagnostics-tabs .active { color: var(--bg-dark); background: var(--accent); border-color: var(--accent); }
+.diagnostics-content { flex: 1; min-height: 0; overflow: auto; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border-dark); }
+.diagnostics-content h3 { margin: 14px 0 6px; color: var(--text-bright); }
+.diagnostics-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+.diagnostics-summary > div { display: flex; justify-content: space-between; gap: 8px; padding: 7px; background: var(--bg); border: 1px solid var(--border-dark); }
+.diagnostics-summary strong { color: var(--accent); }
+.diagnostics-list, .entity-info-list { display: flex; flex-direction: column; gap: 3px; }
+.diagnostic-row { width: 100%; display: grid; grid-template-columns: 58px 1fr; gap: 8px; padding: 6px; color: var(--text); text-align: left; background: var(--bg); border: 1px solid var(--border-dark); font: inherit; }
+button.diagnostic-row { cursor: pointer; }
+button.diagnostic-row:hover { border-color: var(--accent); }
+.diagnostic-severity { text-transform: uppercase; font-weight: bold; }
+.diagnostic-row.error .diagnostic-severity { color: #ff6666; }
+.diagnostic-row.warning .diagnostic-severity { color: #ffb86c; }
+.diagnostic-row.info .diagnostic-severity { color: #6cbcff; }
+.diagnostics-content details { margin-top: 12px; line-height: 1.6; }
+.diagnostics-content summary { cursor: pointer; color: var(--text-bright); }
+.entity-info-row { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(220px, 1.5fr) auto; gap: 10px; width: 100%; padding: 7px; color: var(--text); text-align: left; background: var(--bg); border: 1px solid var(--border-dark); font: inherit; cursor: pointer; }
+.entity-info-row:hover { border-color: var(--accent); }
+.entity-info-row strong { color: var(--text-bright); }
+.entity-info-row .has-issues { color: #ffb86c; }
+.find-brush-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; max-width: 600px; }
+.find-brush-form p, .diagnostics-inline-status { grid-column: 1 / -1; color: var(--text-dim); }
+.find-brush-form input { min-width: 0; padding: 7px; color: var(--text); background: var(--bg-darker); border: 1px solid var(--border-light); font: inherit; }
+.brush-macro-editor { width: 100%; height: min(390px, 50vh); margin: 10px 0; padding: 8px; resize: vertical; color: var(--text); background: var(--bg-darker); border: 1px solid var(--border-light); font: 11px/1.45 monospace; tab-size: 2; }
+.brush-macro-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
 .game-preview-overlay {
   z-index: 10000;
   padding: 0;

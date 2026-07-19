@@ -14,6 +14,7 @@ export interface EditorCommandContext {
   quickPlay: (quality: 'fast' | 'normal' | 'full') => void | Promise<void>;
   managePakFiles: () => void | Promise<void>;
   openPreferences: () => void;
+  openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
   openTerrainPanel: () => void;
   cycleInvisibleMode: () => void;
   setTool: (tool: Tool) => void;
@@ -270,6 +271,10 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'gizmo.scale', label: 'Scale Mode', defaultShortcut: 'E', checked: ({ editor }) => editor.gizmoMode === 'scale', execute: ctx => setGizmo(ctx, 'scale') },
     { id: 'view.snap-mode', label: ({ editor }) => `Grid Snap: ${editor.gridSnapMode === 'off' ? 'Off' : editor.gridSnapMode === 'abs' ? 'Absolute' : 'Relative'}`, checked: ({ editor }) => editor.gridSnapMode !== 'off', execute: ctx => ctx.toggleSnap() },
     { id: 'terrain.open-panel', label: 'Open Terrain Panel', execute: ctx => ctx.openTerrainPanel() },
+    { id: 'tools.map-info', label: 'Map Info & Diagnostics...', defaultShortcut: 'M', menu: menu('Tools', 300, 'diagnostics'), execute: ctx => ctx.openDiagnostics('map') },
+    { id: 'tools.entity-info', label: 'Entity Info...', defaultShortcut: 'Mod+L', menu: menu('Tools', 310, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entities') },
+    { id: 'tools.find-brush', label: 'Find Brush...', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
+    { id: 'tools.brush-macros', label: 'Brush Macros...', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },
 
     { id: 'texture.fit', label: 'Fit Texture', defaultShortcut: 'Mod+Shift+F', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture() },
     { id: 'texture.reset', label: 'Reset Texture Alignment', defaultShortcut: 'Mod+Shift+N', enabled: hasSelectedFaces, execute: ({ editor }) => editor.resetTextureAlignment() },
