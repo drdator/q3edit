@@ -64,7 +64,7 @@ function inferPropertyType(key: string): EntityPropertyType {
   if (lower === '_color' || lower === 'color') return 'color';
   if (lower === 'origin' || lower.endsWith('_vector') || lower === 'movedir') return 'vector';
   if (lower === 'target' || lower === 'targetname' || lower === 'killtarget') return 'entity-reference';
-  if (lower === 'model' || lower.endsWith('sound') || lower.endsWith('shader')) return 'asset';
+  if (lower === 'model' || lower === 'skin' || lower.endsWith('sound') || lower.endsWith('shader')) return 'asset';
   if (/^(?:light|wait|random|speed|count|damage|health|radius|lip|height)$/.test(lower)) return 'number';
   return 'string';
 }

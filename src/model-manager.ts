@@ -31,6 +31,7 @@ export class ModelManager {
   clear(): void { this.cache.clear(); }
 
   listModels(): string[] { return this.assets.models().map(asset => asset.normalizedPath); }
+  listSkins(): string[] { return this.assets.skins().map(asset => asset.normalizedPath); }
 
   get(path: string): Md3Model | null {
     const resolved = normalizeModelPath(path).find(candidate => this.assets.get(candidate));

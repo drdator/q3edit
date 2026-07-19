@@ -6,6 +6,7 @@ import { createEntity } from '../src/entity';
 import { decodeMd3, Md3Error } from '../src/md3';
 import { ModelManager } from '../src/model-manager';
 import { buildModelGeometry, transformedModelBounds } from '../src/model-geometry';
+import { projectModelPreview } from '../src/model-browser';
 import { createMinimalMd3 } from './fixtures/minimal-md3';
 
 function archive(name: string, files: Record<string, Uint8Array>) {
@@ -23,6 +24,7 @@ describe('MD3 decoding', () => {
     expect(model.surfaces[0].uvs).toEqual([[0, 0], [1, 0], [0, 1]]);
     expect(model.surfaces[0].frames[0][1].position).toEqual([1, 0, 0]);
     expect(model.surfaces[0].frames[0][0].normal[2]).toBeCloseTo(1);
+    expect(projectModelPreview(model, 320, 240)).toHaveLength(3);
   });
 
   it('reports invalid, truncated, and oversized binary structures', () => {
