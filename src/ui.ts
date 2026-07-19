@@ -18,6 +18,7 @@ import { buildGroupsPanel as buildGroupsPanelUI } from './groups-panel';
 import { buildCameraPanel as buildCameraPanelUI } from './camera-panel';
 import { applyAppearancePreferences, openPreferencesDialog } from './preferences-dialog';
 import type { ProjectConfiguration } from './project-config';
+import { openDiagnosticsDialog, type DiagnosticsTab } from './diagnostics-dialog';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -78,6 +79,7 @@ export class UI {
       quickPlay: quality => this.compileBSP(quality),
       managePakFiles: () => this.onManagePakFiles?.(),
       openPreferences: () => this.openPreferences(),
+      openDiagnostics: tab => this.openDiagnostics(tab),
       openTerrainPanel: () => this.openTerrainPanel(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: tool => this.setTool(tool),
@@ -1596,6 +1598,11 @@ export class UI {
       commands: this.commands,
       onApplied: (_preferences, project) => { void this.onProjectConfigurationChanged?.(project); },
     });
+  }
+
+  private openDiagnostics(tab: DiagnosticsTab): void {
+    this.closeMenus();
+    openDiagnosticsDialog(this.editor, tab);
   }
 
   // ── Tool/Grid helpers ──
