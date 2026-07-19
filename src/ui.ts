@@ -2600,6 +2600,9 @@ export class UI {
         const captured = message.captured === true;
         dialog.classList.toggle('captured', captured);
         if (!captured) closeBtn.focus();
+      } else if (message?.type === 'q3edit-player:capture-error') {
+        status.textContent = message.message;
+        this.editor.statusMessage = message.message;
       } else if (message?.type === 'q3edit-player:error') {
         dialog.classList.add('error');
         status.textContent = `Could not start: ${message.message}`;

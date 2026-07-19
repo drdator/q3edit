@@ -74,15 +74,59 @@
       const loading = document.getElementById('loading');
       const canvas = document.getElementById('canvas');
       let started = false;
+      let capturePending = false;
+      let captureAttempt = 0;
+      let handledCaptureFailure = 0;
+      let captureRequestedForPointerGesture = false;
+
+      function reportCaptureFailure(error, attempt = captureAttempt) {
+        if (attempt !== captureAttempt || document.pointerLockElement === canvas) return;
+        handledCaptureFailure = attempt;
+        capturePending = false;
+        const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error || 'The browser denied pointer lock');
+        const message = `Could not capture the mouse. Click the game view to retry. (${detail})`;
+        send('q3edit-player:capture-error', { message });
+        console.warn(message);
+      }
+
+      function requestMouseCapture() {
+        if (capturePending || document.pointerLockElement === canvas) return;
+        if (typeof canvas.requestPointerLock !== 'function') {
+          reportCaptureFailure('Pointer Lock is not supported by this browser');
+          return;
+        }
+
+        const attempt = ++captureAttempt;
+        capturePending = true;
+        canvas.focus({ preventScroll: true });
+        try {
+          // Promise.resolve also supports browsers whose older implementation
+          // returns undefined instead of a Promise.
+          void Promise.resolve(canvas.requestPointerLock()).catch((error) => {
+            reportCaptureFailure(error, attempt);
+          });
+        } catch (error) {
+          reportCaptureFailure(error, attempt);
+        }
+      }
 
       function updatePointerLockState() {
         const captured = document.pointerLockElement === canvas;
+        capturePending = false;
         document.body.classList.toggle('pointer-locked', captured);
         send('q3edit-player:capture', { captured });
       }
 
       function blockUncapturedMouseInput(event) {
         if (document.pointerLockElement === canvas) return;
+        const isCaptureGesture = event.target === canvas && (
+          event.type === 'pointerdown'
+          || (event.type === 'mousedown' && typeof window.PointerEvent === 'undefined')
+        );
+        if (isCaptureGesture) {
+          captureRequestedForPointerGesture = true;
+          requestMouseCapture();
+        }
         event.stopImmediatePropagation();
         event.stopPropagation();
         if (event.type === 'wheel' || event.type === 'contextmenu') event.preventDefault();
@@ -95,6 +139,16 @@
       }
 
       document.addEventListener('pointerlockchange', updatePointerLockState);
+      document.addEventListener('pointerlockerror', () => {
+        const attempt = captureAttempt;
+        capturePending = false;
+        // Modern browsers also reject the request Promise with the useful
+        // DOMException. Give that microtask a chance to report before falling
+        // back to the event, which carries no error details.
+        window.setTimeout(() => {
+          if (handledCaptureFailure !== attempt) reportCaptureFailure(null, attempt);
+        }, 0);
+      });
       for (const eventType of [
         'mousemove', 'mousedown', 'mouseup',
         'pointermove', 'pointerdown', 'pointerup',
@@ -105,11 +159,14 @@
       for (const eventType of ['keydown', 'keyup', 'keypress']) {
         window.addEventListener(eventType, blockUncapturedKeyboardInput, true);
       }
-      canvas.addEventListener('click', () => {
-        canvas.focus();
+      canvas.addEventListener('click', (event) => {
         if (document.pointerLockElement === canvas) return;
-        const request = canvas.requestPointerLock();
-        if (request instanceof Promise) void request.catch(() => {});
+        event.stopImmediatePropagation();
+        if (captureRequestedForPointerGesture) {
+          captureRequestedForPointerGesture = false;
+          return;
+        }
+        requestMouseCapture();
       });
 
       function send(type, detail = {}) {
