@@ -215,6 +215,8 @@ export function removeSelectionFromNamedGroups(editor: Editor): void {
 }
 
 export function selectNamedGroup(editor: Editor, id: string): void {
+  const group = namedGroupForId(editor.entities, id);
+  if (group?.locked) { editor.statusMessage = `Group ${group.name} is locked`; return; }
   const selection: SelectionItem[] = [];
   for (const entity of editor.entities) {
     if (isGroupInfoEntity(entity)) continue;
@@ -231,7 +233,10 @@ export function setNamedGroupHidden(editor: Editor, id: string, hidden: boolean)
   const group = namedGroupForId(editor.entities, id); if (!group) return;
   editor.transact(hidden ? 'Hide named group' : 'Show named group', () => {
     if (hidden) group.entity.properties[GROUP_HIDDEN_KEY] = '1'; else delete group.entity.properties[GROUP_HIDDEN_KEY];
-    if (hidden) editor.selection = editor.selection.filter(item => objectGroupId(item.type === 'entity' ? item.entity : item.type === 'patch' ? item.patch : item.brush) !== id);
+    if (hidden) editor.selection = editor.selection.filter(item => {
+      const object = item.type === 'entity' ? item.entity : item.type === 'patch' ? item.patch : item.brush;
+      return !isObjectInHiddenGroup(editor, object, item.entity);
+    });
     editor.redrawRequested = true; editor.statusMessage = `${hidden ? 'Hidden' : 'Shown'} group ${group.name}`;
   });
 }
@@ -240,7 +245,10 @@ export function setNamedGroupLocked(editor: Editor, id: string, locked: boolean)
   const group = namedGroupForId(editor.entities, id); if (!group) return;
   editor.transact(locked ? 'Lock named group' : 'Unlock named group', () => {
     if (locked) group.entity.properties[GROUP_LOCKED_KEY] = '1'; else delete group.entity.properties[GROUP_LOCKED_KEY];
-    if (locked) editor.selection = editor.selection.filter(item => objectGroupId(item.type === 'entity' ? item.entity : item.type === 'patch' ? item.patch : item.brush) !== id);
+    if (locked) editor.selection = editor.selection.filter(item => {
+      const object = item.type === 'entity' ? item.entity : item.type === 'patch' ? item.patch : item.brush;
+      return !isObjectInLockedGroup(editor, object, item.entity);
+    });
     editor.redrawRequested = true; editor.statusMessage = `${locked ? 'Locked' : 'Unlocked'} group ${group.name}`;
   });
 }

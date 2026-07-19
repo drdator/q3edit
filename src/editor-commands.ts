@@ -30,10 +30,11 @@ const MENU_ORDER: Record<string, number> = {
   Pointfile: 4,
   Path: 5,
   Terrain: 6,
-  Patch: 7,
-  Tools: 8,
-  CSG: 9,
-  Grid: 10,
+  Groups: 7,
+  Patch: 8,
+  Tools: 9,
+  CSG: 10,
+  Grid: 11,
 };
 
 const menu = (name: string, order: number, group: string, submenu?: string): CommandMenuPlacement => ({
@@ -141,6 +142,15 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.group-selection', label: 'Group Selection', defaultShortcut: 'Mod+Shift+G', menu: menu('Edit', 160, 'grouping'), enabled: hasSelection, execute: ({ editor }) => editor.groupSelectionIntoEntity() },
     { id: 'edit.move-worldspawn', label: 'Move to Worldspawn', defaultShortcut: 'Mod+Shift+U', menu: menu('Edit', 170, 'grouping'), enabled: hasSelection, execute: ({ editor }) => editor.moveSelectionToWorldspawn() },
     { id: 'edit.connect-entities', label: 'Connect Entities', defaultShortcut: 'Mod+K', menu: menu('Edit', 180, 'grouping'), execute: ({ editor }) => editor.connectSelectedEntities() },
+    { id: 'groups.create', label: 'Create Named Group...', menu: menu('Groups', 0, 'manage'), execute: ({ editor }) => {
+      const name = globalThis.prompt?.('Named group', 'Group'); if (name) editor.createNamedGroup(name);
+    } },
+    { id: 'groups.add-selection', label: 'Add Selection to Group...', menu: menu('Groups', 10, 'membership'), enabled: hasSelection, execute: ({ editor }) => {
+      const groups = editor.namedGroups();
+      const name = globalThis.prompt?.(`Group name (${groups.map(group => group.name).join(', ')})`, groups[0]?.name ?? '');
+      const group = groups.find(candidate => candidate.name === name); if (group) editor.addSelectionToNamedGroup(group.id);
+    } },
+    { id: 'groups.remove-selection', label: 'Remove Selection from Groups', menu: menu('Groups', 20, 'membership'), enabled: hasSelection, execute: ({ editor }) => editor.removeSelectionFromNamedGroups() },
     { id: 'edit.duplicate', label: 'Duplicate', defaultShortcut: 'Mod+D', menu: menu('Edit', 190, 'change'), enabled: hasSelection, execute: ({ editor }) => editor.duplicateSelection() },
     { id: 'edit.delete', label: 'Delete', defaultShortcut: 'Delete', alternateShortcuts: ['Backspace'], menu: menu('Edit', 200, 'change'), enabled: hasSelection, execute: ({ editor }) => editor.deleteSelection() },
     { id: 'edit.rotate-90', label: 'Rotate 90°', defaultShortcut: 'R', menu: menu('Edit', 210, 'transform'), enabled: hasSelection, execute: ({ editor }) => editor.rotateSelection(90) },
