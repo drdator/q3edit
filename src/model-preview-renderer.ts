@@ -135,7 +135,7 @@ export class ModelPreviewRenderer {
 
   rotate(deltaX: number, deltaY: number): void {
     this.yaw += deltaX * 0.012;
-    this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch + deltaY * 0.012));
+    this.pitch = Math.max(-1.35, Math.min(1.35, this.pitch - deltaY * 0.012));
     this.render();
   }
 
