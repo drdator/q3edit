@@ -101,7 +101,7 @@ export function isEntityVisibleIn3D(editor: Editor, entity: Entity): boolean {
   if (!editor.isEntityVisible(entity)) return false;
   const clip = cubicClipBounds(editor);
   if (!clip) return true;
-  const bounds = getEntityBounds(entity);
+  const bounds = getEntityBounds(entity, editor.modelManager);
   return bounds ? boundsIntersect(bounds, clip) : false;
 }
 

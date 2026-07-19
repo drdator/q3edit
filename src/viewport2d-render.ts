@@ -55,8 +55,8 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
     drawPatch(ctx, patch, ctx.editor.isPatchSelected(patch, entity));
   }
 
-  drawPathLines(ctx);
-  drawPathCurves(ctx);
+  if (ctx.editor.display.categories.paths) drawPathLines(ctx);
+  if (ctx.editor.display.categories.paths && ctx.editor.display.categories.curves) drawPathCurves(ctx);
   drawPointfile(ctx);
 
   if (ctx.editor.patchEditMode) {
@@ -576,6 +576,19 @@ function drawEntity(ctx: Viewport2DRenderContext, entity: Entity, selected: bool
   ctx.ctx.globalAlpha = 1.0;
   ctx.ctx.stroke();
 
+  if (ctx.editor.display.categories.angles) {
+    const angle = Number(entity.properties.angle);
+    if (Number.isFinite(angle)) {
+      const radians = angle * Math.PI / 180;
+      const direction: [number, number, number] = [Math.cos(radians), Math.sin(radians), 0];
+      const end = [...origin] as [number, number, number];
+      end[ctx.axisH] += direction[ctx.axisH] * 24;
+      end[ctx.axisV] += direction[ctx.axisV] * 24;
+      const [ex, ey] = ctx.worldToScreen(end[ctx.axisH], end[ctx.axisV]);
+      ctx.ctx.beginPath(); ctx.ctx.moveTo(sx, sy); ctx.ctx.lineTo(ex, ey); ctx.ctx.stroke();
+    }
+  }
+
   const entityLightOrigin = entityOrigin(entity);
   if (selected && entity.classname === 'light' && entity.properties['light'] && entityLightOrigin) {
     const radius = parseFloat(entity.properties['light']);
@@ -594,10 +607,15 @@ function drawEntity(ctx: Viewport2DRenderContext, entity: Entity, selected: bool
     }
   }
 
-  ctx.ctx.fillStyle = selected ? '#ffaa00' : catColor;
-  ctx.ctx.font = '9px monospace';
-  ctx.ctx.textAlign = 'left';
-  ctx.ctx.fillText(entity.classname, sx + size + 3, sy + 3);
+  if (ctx.editor.display.categories.names || ctx.editor.display.categories.coordinates) {
+    ctx.ctx.fillStyle = selected ? '#ffaa00' : catColor;
+    ctx.ctx.font = '9px monospace';
+    ctx.ctx.textAlign = 'left';
+    const name = ctx.editor.display.categories.names ? entity.classname : '';
+    const coordinates = ctx.editor.display.categories.coordinates && entityLightOrigin
+      ? `${name ? ' ' : ''}(${entityLightOrigin.map(value => Math.round(value)).join(' ')})` : '';
+    ctx.ctx.fillText(name + coordinates, sx + size + 3, sy + 3);
+  }
 }
 
 function drawCreationPreview(ctx: Viewport2DRenderContext): void {

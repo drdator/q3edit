@@ -299,14 +299,14 @@ export class UI {
     const regionSignature = e.regionBounds
       ? `${e.regionBounds.mins.join(',')}:${e.regionBounds.maxs.join(',')}`
       : 'none';
-    const signatureParts: string[] = [mode, regionSignature];
+    const signatureParts: string[] = [mode, regionSignature, JSON.stringify(e.display.categories)];
 
     for (let ei = 0; ei < e.entities.length; ei++) {
       const entity = e.entities[ei];
-      if (!e.isEntityInRegion(entity)) continue;
+      if (!e.isEntityVisible(entity)) continue;
       const brushChildren = (mode === 'all' || mode === 'brushes')
         ? entity.brushes
-          .filter(brush => e.isBrushInRegion(brush, entity))
+          .filter(brush => e.isBrushVisible(brush, entity))
           .map((brush, index) => ({
             kind: 'brush' as const,
             entity,
@@ -320,7 +320,7 @@ export class UI {
         ? (() => {
           const visiblePatches = entity.patches
             .map((patch, index) => ({ patch, index }))
-            .filter(item => e.isPatchInRegion(item.patch, entity));
+            .filter(item => e.isPatchVisible(item.patch, entity));
           const groupedPatches = new Map<string, Array<{ patch: Patch; index: number }>>();
           for (const item of visiblePatches) {
             if (!item.patch.terrainGroupId) continue;

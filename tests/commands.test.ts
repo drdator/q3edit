@@ -7,7 +7,7 @@ import {
   type KeyboardShortcutEvent,
 } from '../src/commands';
 import { createEditorCommandRegistry, type EditorCommandContext } from '../src/editor-commands';
-import type { Editor } from '../src/editor';
+import { Editor } from '../src/editor';
 
 const keyEvent = (key: string, overrides: Partial<KeyboardShortcutEvent> = {}): KeyboardShortcutEvent => ({
   key,
@@ -41,6 +41,26 @@ describe('CommandRegistry', () => {
 
     expect(() => createEditorCommandRegistry(context)).not.toThrow();
     expect(createEditorCommandRegistry(context).list().length).toBeGreaterThan(100);
+  });
+
+  it('exposes checked state for display categories, renderer modes, and lighting', () => {
+    const noop = () => {};
+    const editor = new Editor();
+    const registry = createEditorCommandRegistry({
+      editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
+      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openTerrainPanel: noop,
+      cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
+      decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
+    });
+    expect(registry.getState('view.display.lights').checked).toBe(true);
+    registry.execute('view.display.lights');
+    expect(registry.getState('view.display.lights').checked).toBe(false);
+    registry.execute('view.renderer.flat');
+    expect(registry.getState('view.renderer.flat').checked).toBe(true);
+    registry.execute('view.texture-filter.nearest');
+    expect(registry.getState('view.texture-filter.nearest').checked).toBe(true);
+    registry.execute('view.dynamic-lights');
+    expect(registry.getState('view.dynamic-lights').checked).toBe(true);
   });
 
   it('rejects duplicate command IDs', () => {

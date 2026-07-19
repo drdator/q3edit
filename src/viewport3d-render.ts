@@ -1,6 +1,7 @@
 import { Mat4, mat4LookAt, mat4Multiply, mat4Perspective, vec3Add } from './math';
 import { Editor } from './editor';
 import { BlendMode } from './textures';
+import { entityOrigin, parseLightColor } from './entity';
 
 export interface DrawGroup {
   textureName: string;
@@ -48,6 +49,10 @@ export interface Viewport3DRenderContext {
   solidUseAlphaLoc: WebGLUniformLocation;
   solidAlphaOverrideLoc: WebGLUniformLocation;
   solidSolidOverrideLoc: WebGLUniformLocation;
+  solidDynamicLightCountLoc: WebGLUniformLocation;
+  solidDynamicLightPosLoc: WebGLUniformLocation;
+  solidDynamicLightColorLoc: WebGLUniformLocation;
+  solidDynamicLightRadiusLoc: WebGLUniformLocation;
   lineProg: WebGLProgram;
   linePVLoc: WebGLUniformLocation;
   lineColorLoc: WebGLUniformLocation;
@@ -110,18 +115,32 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.gridCount);
   }
 
-  if (ctx.drawGroups.length > 0) {
+  if (ctx.drawGroups.length > 0 && ctx.editor.display.rendererMode !== 'wireframe') {
     ctx.gl.useProgram(ctx.solidProg);
     ctx.gl.uniformMatrix4fv(ctx.solidPVLoc, false, pv);
     ctx.gl.uniform1i(ctx.solidTexLoc, 0);
+    const lights = ctx.editor.display.dynamicLights
+      ? [...ctx.editor.pointEntities()].filter(entity => entity.classname === 'light' && ctx.editor.isEntityVisibleIn3D(entity)).slice(0, 4)
+      : [];
+    const positions = new Float32Array(12); const colors = new Float32Array(12); const radii = new Float32Array(4);
+    lights.forEach((entity, index) => {
+      const origin = entityOrigin(entity) ?? [0, 0, 0]; const color = parseLightColor(entity) ?? [1, 1, 1];
+      positions.set(origin, index * 3); colors.set(color, index * 3);
+      radii[index] = Math.max(1, Number(entity.properties.light) || 300);
+    });
+    ctx.gl.uniform1i(ctx.solidDynamicLightCountLoc, lights.length);
+    ctx.gl.uniform3fv(ctx.solidDynamicLightPosLoc, positions);
+    ctx.gl.uniform3fv(ctx.solidDynamicLightColorLoc, colors);
+    ctx.gl.uniform1fv(ctx.solidDynamicLightRadiusLoc, radii);
     ctx.gl.activeTexture(ctx.gl.TEXTURE0);
     ctx.gl.bindVertexArray(ctx.solidVAO);
 
     const drawGroup = (group: DrawGroup) => {
       const tm = ctx.editor.textureManager;
       if (tm) {
-        const texInfo = tm.get(group.textureName);
-        ctx.gl.bindTexture(ctx.gl.TEXTURE_2D, texInfo.glTexture);
+        const textureName = ctx.editor.display.rendererMode === 'textured' ? group.textureName : '__white';
+        const texInfo = tm.get(textureName);
+        tm.bind(texInfo, ctx.editor.display.textureFiltering);
       }
       const hideSelection = ctx.fullscreen && ctx.fullscreenMode !== 'edit';
       ctx.gl.uniform1f(ctx.solidSelLoc, !hideSelection && group.selected ? 1.0 : 0.0);

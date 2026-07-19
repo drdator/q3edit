@@ -2,6 +2,7 @@ import { CommandRegistry, type CommandDefinition, type CommandMenuPlacement } fr
 import { getSelectedPatchItems } from './editor-selection';
 import type { Editor, Tool } from './editor';
 import type { Vec3 } from './math';
+import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -79,6 +80,34 @@ function setGizmo(context: EditorCommandContext, mode: 'move' | 'scale'): void {
 }
 
 function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
+  const displayLabels: Record<DisplayCategory, string> = {
+    entities: 'Entities', lights: 'Lights', paths: 'Paths', world: 'World', detail: 'Detail Geometry',
+    water: 'Water', clip: 'Clip', hint: 'Hint', caulk: 'Caulk', curves: 'Curves', names: 'Names',
+    angles: 'Angles', coordinates: 'Coordinates', blocks: 'Blocks',
+  };
+  const displayCommands: CommandDefinition<EditorCommandContext>[] = DISPLAY_CATEGORIES.map((category, index) => ({
+    id: `view.display.${category}`,
+    label: displayLabels[category],
+    menu: menu('View', 100 + index, 'display', 'Display Categories'),
+    checked: ({ editor }) => editor.display.categories[category],
+    execute: ({ editor }) => editor.toggleDisplayCategory(category),
+  }));
+  const rendererModes: RendererMode[] = ['wireframe', 'flat', 'textured'];
+  const rendererCommands: CommandDefinition<EditorCommandContext>[] = rendererModes.map((mode, index) => ({
+    id: `view.renderer.${mode}`,
+    label: mode === 'flat' ? 'Flat Shaded' : mode[0].toUpperCase() + mode.slice(1),
+    menu: menu('View', 200 + index, 'renderer', 'Renderer Mode'),
+    checked: ({ editor }) => editor.display.rendererMode === mode,
+    execute: ({ editor }) => editor.setRendererMode(mode),
+  }));
+  const textureFilters: TextureFiltering[] = ['nearest', 'linear', 'trilinear'];
+  const filteringCommands: CommandDefinition<EditorCommandContext>[] = textureFilters.map((filtering, index) => ({
+    id: `view.texture-filter.${filtering}`,
+    label: filtering[0].toUpperCase() + filtering.slice(1),
+    menu: menu('View', 210 + index, 'renderer', 'Texture Filtering'),
+    checked: ({ editor }) => editor.display.textureFiltering === filtering,
+    execute: ({ editor }) => editor.setTextureFiltering(filtering),
+  }));
   const commands: CommandDefinition<EditorCommandContext>[] = [
     { id: 'file.new', label: 'New', defaultShortcut: 'Mod+N', menu: menu('File', 0, 'document'), execute: ({ editor }) => { editor.newMap(); editor.createDefaultMap(); } },
     { id: 'file.open', label: 'Open...', defaultShortcut: 'Mod+O', menu: menu('File', 10, 'open-save'), execute: ({ editor }) => editor.openMapFromFile() },
@@ -127,6 +156,10 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'view.cubic-clip', label: ({ editor }) => editor.cubicClipEnabled ? `Cubic Clipping: ${editor.cubicClipSize} cube` : 'Cubic Clipping: Off', menu: menu('View', 30, 'clipping'), checked: ({ editor }) => editor.cubicClipEnabled, execute: ({ editor }) => editor.toggleCubicClip() },
     { id: 'view.cubic-clip-smaller', label: 'Smaller Clip Cube', menu: menu('View', 40, 'clipping'), execute: ({ editor }) => editor.adjustCubicClipSize(-1) },
     { id: 'view.cubic-clip-larger', label: 'Larger Clip Cube', menu: menu('View', 50, 'clipping'), execute: ({ editor }) => editor.adjustCubicClipSize(1) },
+    { id: 'view.dynamic-lights', label: 'Dynamic Light Preview', menu: menu('View', 220, 'renderer'), checked: ({ editor }) => editor.display.dynamicLights, execute: ({ editor }) => editor.toggleDynamicLights() },
+    ...displayCommands,
+    ...rendererCommands,
+    ...filteringCommands,
 
     { id: 'region.from-selection', label: 'Set From Selection', menu: menu('Region', 0, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromSelection() },
     { id: 'region.off', label: 'Region Off', menu: menu('Region', 10, 'region'), enabled: ({ editor }) => editor.isRegionActive(), execute: ({ editor }) => editor.clearRegion() },

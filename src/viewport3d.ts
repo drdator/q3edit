@@ -55,6 +55,10 @@ export class Viewport3D {
   private solidUseAlphaLoc!: WebGLUniformLocation;
   private solidAlphaOverrideLoc!: WebGLUniformLocation;
   private solidSolidOverrideLoc!: WebGLUniformLocation;
+  private solidDynamicLightCountLoc!: WebGLUniformLocation;
+  private solidDynamicLightPosLoc!: WebGLUniformLocation;
+  private solidDynamicLightColorLoc!: WebGLUniformLocation;
+  private solidDynamicLightRadiusLoc!: WebGLUniformLocation;
   private lineProg!: WebGLProgram;
   private linePVLoc!: WebGLUniformLocation;
   private lineColorLoc!: WebGLUniformLocation;
@@ -254,6 +258,10 @@ export class Viewport3D {
     this.solidUseAlphaLoc = gl.getUniformLocation(this.solidProg, 'uUseAlpha')!;
     this.solidAlphaOverrideLoc = gl.getUniformLocation(this.solidProg, 'uAlphaOverride')!;
     this.solidSolidOverrideLoc = gl.getUniformLocation(this.solidProg, 'uSolidOverride')!;
+    this.solidDynamicLightCountLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightCount')!;
+    this.solidDynamicLightPosLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightPos[0]')!;
+    this.solidDynamicLightColorLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightColor[0]')!;
+    this.solidDynamicLightRadiusLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightRadius[0]')!;
 
     this.lineProg = createProgram(gl, LINE_VERT_SRC, LINE_FRAG_SRC);
     this.linePVLoc = gl.getUniformLocation(this.lineProg, 'uPV')!;
@@ -377,6 +385,10 @@ export class Viewport3D {
       solidUseAlphaLoc: this.solidUseAlphaLoc,
       solidAlphaOverrideLoc: this.solidAlphaOverrideLoc,
       solidSolidOverrideLoc: this.solidSolidOverrideLoc,
+      solidDynamicLightCountLoc: this.solidDynamicLightCountLoc,
+      solidDynamicLightPosLoc: this.solidDynamicLightPosLoc,
+      solidDynamicLightColorLoc: this.solidDynamicLightColorLoc,
+      solidDynamicLightRadiusLoc: this.solidDynamicLightRadiusLoc,
       lineProg: this.lineProg,
       linePVLoc: this.linePVLoc,
       lineColorLoc: this.lineColorLoc,
