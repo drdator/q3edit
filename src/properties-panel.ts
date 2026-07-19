@@ -1,6 +1,8 @@
 import { Editor } from './editor';
 import { Brush, BrushFace, classicTextureProjection, type ClassicBrushTextureProjection } from './brush';
-import { ENTITY_CLASS_SUGGESTIONS, Entity } from './entity';
+import { Entity } from './entity';
+import { getEntityClassRegistry } from './entity-definitions';
+import { buildDefinedEntityProperties } from './entity-property-panel';
 import {
   addEntityProperty,
   removeEntityProperty,
@@ -79,8 +81,11 @@ export class PropertiesPanel {
         propsDiv.appendChild(classInput);
       }
 
+      const classDefinition = getEntityClassRegistry().get(entity.classname);
+      if (classDefinition) buildDefinedEntityProperties(propsDiv, this.editor, entity, classDefinition);
+
       for (const [key, value] of Object.entries(entity.properties)) {
-        if (key === 'classname') continue;
+        if (key === 'classname' || key === 'spawnflags' || classDefinition?.properties[key]) continue;
         const row = document.createElement('div');
         row.className = 'kv-row';
 
@@ -171,12 +176,13 @@ export class PropertiesPanel {
     if (!list) {
       list = document.createElement('datalist');
       list.id = listId;
-      for (const classname of ENTITY_CLASS_SUGGESTIONS) {
-        const option = document.createElement('option');
-        option.value = classname;
-        list.appendChild(option);
-      }
       document.body.appendChild(list);
+    }
+    list.innerHTML = '';
+    for (const definition of getEntityClassRegistry().list()) {
+      const option = document.createElement('option');
+      option.value = definition.classname;
+      list.appendChild(option);
     }
     return listId;
   }

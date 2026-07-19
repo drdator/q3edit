@@ -1,5 +1,5 @@
 import { Editor, Tool, InvisibleMode } from './editor';
-import { BRUSH_ENTITY_CLASSES, Entity, ENTITY_CATEGORIES } from './entity';
+import { Entity } from './entity';
 import { TextureManager } from './textures';
 import { PropertiesPanel } from './properties-panel';
 import { Brush } from './brush';
@@ -13,6 +13,7 @@ import type { CommandRegistry } from './commands';
 import { brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
 import { PakManagerModel, type PakManagerEntry, type PakManagerResult } from './pak-manager';
+import { buildEntityPanel as buildEntityPanelUI } from './entity-panel';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -565,76 +566,12 @@ export class UI {
 
   private buildEntityPanel(): void {
     const body = document.getElementById('entity-body')!;
+    buildEntityPanelUI(body, this.editor);
+  }
 
-    // Entity class selector
-    const label = document.createElement('label');
-    label.textContent = 'Entity Class';
-    body.appendChild(label);
-
-    const select = document.createElement('select');
-    select.id = 'entity-class-select';
-    for (const cat of ENTITY_CATEGORIES) {
-      const group = document.createElement('optgroup');
-      group.label = cat.name;
-      for (const cls of cat.classes) {
-        const opt = document.createElement('option');
-        opt.value = cls.classname;
-        opt.textContent = cls.classname;
-        if (cls.classname === this.editor.currentEntityClass) opt.selected = true;
-        group.appendChild(opt);
-      }
-      select.appendChild(group);
-    }
-    select.addEventListener('change', () => {
-      this.editor.currentEntityClass = select.value;
-    });
-    body.appendChild(select);
-
-    const brushEntityLabel = document.createElement('label');
-    brushEntityLabel.textContent = 'Brush Entity Class';
-    brushEntityLabel.style.marginTop = '10px';
-    body.appendChild(brushEntityLabel);
-
-    const brushEntitySelect = document.createElement('select');
-    brushEntitySelect.id = 'brush-entity-class-select';
-    for (const classname of BRUSH_ENTITY_CLASSES) {
-      const opt = document.createElement('option');
-      opt.value = classname;
-      opt.textContent = classname;
-      if (classname === this.editor.currentBrushEntityClass) opt.selected = true;
-      brushEntitySelect.appendChild(opt);
-    }
-    brushEntitySelect.addEventListener('change', () => {
-      this.editor.currentBrushEntityClass = brushEntitySelect.value;
-    });
-    body.appendChild(brushEntitySelect);
-
-    const brushEntityActions = document.createElement('div');
-    brushEntityActions.className = 'kv-row';
-
-    const groupBtn = document.createElement('div');
-    groupBtn.className = 'btn';
-    groupBtn.textContent = 'Group Selection';
-    groupBtn.addEventListener('mousedown', () => {
-      this.editor.groupSelectionIntoEntity();
-    });
-
-    const ungroupBtn = document.createElement('div');
-    ungroupBtn.className = 'btn';
-    ungroupBtn.textContent = 'To Worldspawn';
-    ungroupBtn.addEventListener('mousedown', () => {
-      this.editor.moveSelectionToWorldspawn();
-    });
-
-    brushEntityActions.appendChild(groupBtn);
-    brushEntityActions.appendChild(ungroupBtn);
-    body.appendChild(brushEntityActions);
-
-    // Properties area (shown when entity selected)
-    const propsDiv = document.createElement('div');
-    propsDiv.id = 'entity-props';
-    propsDiv.style.marginTop = '8px';
-    body.appendChild(propsDiv);
+  updateEntityDefinitions(): void {
+    this.buildEntityPanel();
+    this.editor.redrawRequested = true;
   }
 
   private buildTexturePanel(): void {

@@ -1,0 +1,20 @@
+/*QUAKED info_player_deathmatch (1 0 1) (-16 -16 -24) (16 16 32) initial
+Potential spawning position for deathmatch games.
+angle: direction the player faces (default: 0)
+target: entity activated when this spawn is used
+*/
+
+/*QUAKED trigger_hurt (.5 .5 .5) ? START_OFF - SILENT NO_PROTECTION SLOW
+Any player touching this will be hurt.
+damage: damage per second (default: 5)
+*/
+
+/*QUAKED broken_entity (red green blue) ? BAD
+Malformed on purpose.
+*/
+
+/*QUAKED misc_model (1 0 0) (-16 -16 -16) (16 16 16)
+Places a model in the world.
+model: model path (default: models/mapobjects/tree.md3)
+_color: optional tint
+*/

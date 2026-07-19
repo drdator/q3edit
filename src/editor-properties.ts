@@ -1,6 +1,7 @@
 import { classicTextureProjection, type BrushFace, type ClassicBrushTextureProjection } from './brush';
 import type { Editor } from './editor';
 import type { Entity } from './entity';
+import type { EntityPropertyType } from './entity-definitions';
 
 export type FacePropertyChanges = Partial<Pick<BrushFace,
   | 'texture'
@@ -62,6 +63,27 @@ export function setEntityProperty(editor: Editor, entity: Entity, key: string, v
   }, {
     coalesceKey: `entity-property:${objectId(entity)}:${key}`,
   });
+}
+
+export function setTypedEntityProperty(
+  editor: Editor,
+  entity: Entity,
+  key: string,
+  value: string,
+  _type: EntityPropertyType,
+): void {
+  setEntityProperty(editor, entity, key, value);
+}
+
+export function setEntitySpawnflag(
+  editor: Editor,
+  entity: Entity,
+  bit: number,
+  enabled: boolean,
+): void {
+  const current = Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0;
+  const next = enabled ? (current | bit) : (current & ~bit);
+  setEntityProperty(editor, entity, 'spawnflags', String(next));
 }
 
 export function removeEntityProperty(editor: Editor, entity: Entity, key: string): void {
