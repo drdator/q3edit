@@ -114,7 +114,7 @@ function parsePropertyDocumentation(description: string): {
       return { value, label: label ?? value };
     });
     const type = choices ? 'choice' : inferPropertyType(key);
-    properties[key] = { key, name: key, type, description: help, choices };
+    properties[key] = { key, name: key, type, description: help, default: defaults[key], choices };
     if (key.toLowerCase() === 'model' && defaults[key]) model = defaults[key];
   }
   return { description: prose.join('\n'), properties, defaults, model };
@@ -338,7 +338,13 @@ export function loadEntityClassRegistry(index: AssetIndex): EntityClassRegistry 
     const text = index.readText(asset.normalizedPath);
     if (text === null) continue;
     const format = asset.normalizedPath.endsWith('.ent') ? 'ent' : 'def';
-    registry.loadSource(text, `${asset.source.archiveName}:${asset.path}`, format);
+    const source = `${asset.source.archiveName}:${asset.path}`;
+    const result = format === 'ent' ? parseEntDefinitions(text, source) : parseQuakedDefinitions(text, source);
+    registry.diagnostics.push(...result.diagnostics);
+    for (const definition of result.classes) {
+      definition.source = { path: asset.path, archiveName: asset.source.archiveName };
+      registry.add(definition);
+    }
   }
   return registry;
 }

@@ -66,6 +66,7 @@ describe('entity definitions', () => {
     ]);
     const registry = loadEntityClassRegistry(index);
     expect(registry.get('light')?.color).toEqual([1, 0, 0]);
+    expect(registry.get('light')?.source).toEqual({ path: 'scripts/override.def', archiveName: 'pak1.pk3' });
     expect(registry.get('info_player_start')?.source?.archiveName).toBe('Q3Edit fallback');
     expect(registry.get('unknown')).toBeNull();
   });

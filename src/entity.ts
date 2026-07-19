@@ -11,7 +11,10 @@ export interface Entity {
 }
 
 export function createEntity(classname: string, origin?: Vec3): Entity {
-  const properties: Record<string, string> = { classname };
+  const properties: Record<string, string> = {
+    ...getEntityClassRegistry().get(classname)?.defaults,
+    classname,
+  };
   if (origin) {
     properties['origin'] = `${origin[0]} ${origin[1]} ${origin[2]}`;
   }

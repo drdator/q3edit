@@ -12,7 +12,6 @@ import { createBrushPrimitive } from './brush-primitives';
 import {
   cloneEntity,
   createEntity,
-  entityDefaults,
   entityOrigin,
   mirrorEntity,
   rotateEntity,
@@ -527,12 +526,6 @@ export function addEntity(editor: Editor, classname: string, origin: Vec3, ctrlK
   return editor.transact('Create entity', () => {
     const snapped = vec3Snap(origin, editor.effectiveGrid(ctrlKey));
     const entity = createEntity(classname, snapped);
-    const defaults = entityDefaults(classname);
-    for (const [key, value] of Object.entries(defaults)) {
-      if (!(key in entity.properties)) {
-        entity.properties[key] = value;
-      }
-    }
     editor.entities.push(entity);
     editor.redrawRequested = true;
     return entity;

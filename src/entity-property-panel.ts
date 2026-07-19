@@ -147,6 +147,16 @@ export function buildDefinedEntityProperties(
     legend.textContent = 'Spawnflags';
     flags.appendChild(legend);
     const current = Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0;
+    const rawRow = document.createElement('label');
+    rawRow.textContent = 'Raw value';
+    const rawInput = document.createElement('input');
+    rawInput.type = 'number';
+    rawInput.value = String(current);
+    rawInput.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.set;
+    rawInput.addEventListener('change', () => setTypedEntityProperty(
+      editor, entity, 'spawnflags', rawInput.value, 'number'));
+    rawRow.appendChild(rawInput);
+    flags.appendChild(rawRow);
     for (const flag of definition.spawnflags) {
       const label = document.createElement('label');
       label.title = flag.description ?? '';
