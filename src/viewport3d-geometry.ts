@@ -311,6 +311,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   const pathLineVerts: number[] = [];
   const pathSelLineVerts: number[] = [];
   for (const link of ctx.editor.display.categories.paths ? ctx.editor.collectEntityLinks() : []) {
+    if (!ctx.editor.isEntityVisibleIn3D(link.source) || !ctx.editor.isEntityVisibleIn3D(link.target)) continue;
     if (!ctx.editor.isSegmentVisibleIn3D(link.from, link.to)) continue;
     const arr = link.highlighted ? pathSelLineVerts : pathLineVerts;
     arr.push(
@@ -330,6 +331,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   const pathCurveVerts: number[] = [];
   const pathCurveSelVerts: number[] = [];
   for (const curve of ctx.editor.display.categories.paths && ctx.editor.display.categories.curves ? ctx.editor.collectEntityPathCurves() : []) {
+    if (curve.entities.some(entity => !ctx.editor.isEntityVisibleIn3D(entity))) continue;
     const arr = curve.highlighted ? pathCurveSelVerts : pathCurveVerts;
     for (let i = 0; i < curve.points.length - 1; i++) {
       const from = curve.points[i];
@@ -421,6 +423,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   }
 
   for (const entity of ctx.editor.nonWorldspawnEntities()) {
+    if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
     if (!ctx.editor.isEntitySelected(entity)) continue;
     if (ctx.editor.isPointEntity(entity)) {
       const origin = ctx.editor.entityDisplayOrigin(entity);
@@ -456,6 +459,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   const circleSegments = 48;
   for (const entity of ctx.editor.nonWorldspawnEntities()) {
     if (entity.classname !== 'light' || !entity.properties['light']) continue;
+    if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
     if (!ctx.editor.isEntitySelected(entity)) continue;
     const radius = parseFloat(entity.properties['light']);
     if (!(radius > 0)) continue;

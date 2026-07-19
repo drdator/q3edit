@@ -398,6 +398,7 @@ function drawPathLines(ctx: Viewport2DRenderContext): void {
   if (links.length === 0) return;
 
   for (const link of links) {
+    if (!ctx.editor.isEntityVisible(link.source) || !ctx.editor.isEntityVisible(link.target)) continue;
     const [sx0, sy0] = ctx.worldToScreen(link.from[ctx.axisH], link.from[ctx.axisV]);
     const [sx1, sy1] = ctx.worldToScreen(link.to[ctx.axisH], link.to[ctx.axisV]);
     const dx = sx1 - sx0;
@@ -448,6 +449,7 @@ function drawPathCurves(ctx: Viewport2DRenderContext): void {
 
   ctx.ctx.save();
   for (const curve of curves) {
+    if (curve.entities.some(entity => !ctx.editor.isEntityVisible(entity))) continue;
     if (curve.points.length < 2) continue;
     ctx.ctx.strokeStyle = curve.highlighted ? '#ffe066' : '#62d88b';
     ctx.ctx.lineWidth = curve.highlighted ? 2 : 1.5;

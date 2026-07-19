@@ -182,7 +182,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     }
   }
 
-  if (!isGameView && ctx.wireCount > 0) {
+  if ((!isGameView || ctx.editor.display.rendererMode === 'wireframe') && ctx.wireCount > 0) {
     ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
     ctx.gl.uniform3f(ctx.lineColorLoc, 0.0, 0.0, 0.0);
