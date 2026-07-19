@@ -14,6 +14,7 @@ import { brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
 import { PakManagerModel, type PakManagerEntry, type PakManagerResult } from './pak-manager';
 import { buildEntityPanel as buildEntityPanelUI } from './entity-panel';
+import { buildGroupsPanel as buildGroupsPanelUI } from './groups-panel';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -136,6 +137,7 @@ export class UI {
     }
 
     this.buildBrushPanel();
+    this.buildGroupsPanel();
     this.buildEntityPanel();
     this.buildTexturePanel();
     this.buildTerrainPanel();
@@ -567,6 +569,11 @@ export class UI {
   private buildEntityPanel(): void {
     const body = document.getElementById('entity-body')!;
     buildEntityPanelUI(body, this.editor);
+  }
+
+  private buildGroupsPanel(): void {
+    const body = document.getElementById('groups-body')!;
+    buildGroupsPanelUI(body, this.editor);
   }
 
   updateEntityDefinitions(): void {
@@ -1713,6 +1720,7 @@ export class UI {
 
     // Update panels
     this.updateBrushPanel();
+    this.buildGroupsPanel();
     this.propertiesPanel.update();
   }
 

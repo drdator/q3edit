@@ -160,6 +160,18 @@ import {
   moveSelectionToWorldspawn as moveEditorSelectionToWorldspawn,
 } from './editor-grouping';
 import {
+  addSelectionToNamedGroup as addEditorSelectionToNamedGroup,
+  createNamedGroup as createEditorNamedGroup,
+  deleteNamedGroup as deleteEditorNamedGroup,
+  listNamedGroups,
+  removeSelectionFromNamedGroups as removeEditorSelectionFromNamedGroups,
+  renameNamedGroup as renameEditorNamedGroup,
+  selectNamedGroup as selectEditorNamedGroup,
+  setNamedGroupHidden as setEditorNamedGroupHidden,
+  setNamedGroupLocked as setEditorNamedGroupLocked,
+  type NamedGroup,
+} from './named-groups';
+import {
   collectEntityPathCurves as collectEditorEntityPathCurves,
   collectEntityLinks as collectEditorEntityLinks,
   connectSelectedEntitiesAsClosedPath as connectEditorSelectedEntitiesAsClosedPath,
@@ -691,6 +703,16 @@ export class Editor {
   moveSelectionToWorldspawn(): void {
     moveEditorSelectionToWorldspawn(this);
   }
+
+  namedGroups(): NamedGroup[] { return listNamedGroups(this.entities); }
+  createNamedGroup(name: string): NamedGroup | null { return createEditorNamedGroup(this, name); }
+  renameNamedGroup(id: string, name: string): void { renameEditorNamedGroup(this, id, name); }
+  deleteNamedGroup(id: string): void { deleteEditorNamedGroup(this, id); }
+  addSelectionToNamedGroup(id: string): void { addEditorSelectionToNamedGroup(this, id); }
+  removeSelectionFromNamedGroups(): void { removeEditorSelectionFromNamedGroups(this); }
+  selectNamedGroup(id: string): void { selectEditorNamedGroup(this, id); }
+  setNamedGroupHidden(id: string, hidden: boolean): void { setEditorNamedGroupHidden(this, id, hidden); }
+  setNamedGroupLocked(id: string, locked: boolean): void { setEditorNamedGroupLocked(this, id, locked); }
 
   connectSelectedEntities(): void {
     connectEditorSelectedEntities(this);

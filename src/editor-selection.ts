@@ -3,6 +3,7 @@ import type { Entity } from './entity';
 import type { Patch } from './patch';
 import type { Editor, SelectionItem } from './editor';
 import { entityBounds as getEntityBounds, nonWorldspawnEntities } from './editor-queries';
+import { isObjectInLockedGroup } from './named-groups';
 
 function selectsWholeEntity(editor: Editor, entity: Entity): boolean {
   return entity !== editor.worldspawn && (entity.brushes.length > 0 || entity.patches.length > 0);
@@ -39,6 +40,7 @@ export function clearSelection(editor: Editor): void {
 }
 
 export function selectBrush(editor: Editor, entity: Entity, brush: Brush, additive = false): void {
+  if (isObjectInLockedGroup(editor, brush, entity)) { editor.statusMessage = 'Named group is locked'; return; }
   if (selectsWholeEntity(editor, entity) && !hasDirectGeometrySelection(editor, entity)) {
     selectEntity(editor, entity, additive);
     return;
@@ -47,6 +49,7 @@ export function selectBrush(editor: Editor, entity: Entity, brush: Brush, additi
 }
 
 export function selectBrushDirect(editor: Editor, entity: Entity, brush: Brush, additive = false): void {
+  if (isObjectInLockedGroup(editor, brush, entity)) { editor.statusMessage = 'Named group is locked'; return; }
   if (!additive) editor.selection = [];
   const idx = editor.selection.findIndex(
     s => s.type === 'brush' && s.brush === brush
@@ -60,6 +63,7 @@ export function selectBrushDirect(editor: Editor, entity: Entity, brush: Brush, 
 }
 
 export function selectEntity(editor: Editor, entity: Entity, additive = false): void {
+  if (isObjectInLockedGroup(editor, entity)) { editor.statusMessage = 'Named group is locked'; return; }
   if (!additive) editor.selection = [];
   const idx = editor.selection.findIndex(
     s => s.type === 'entity' && s.entity === entity
@@ -92,18 +96,21 @@ export function addBrushToSelection(editor: Editor, entity: Entity, brush: Brush
 }
 
 export function addBrushDirectToSelection(editor: Editor, entity: Entity, brush: Brush): void {
+  if (isObjectInLockedGroup(editor, brush, entity)) return;
   if (isBrushSelected(editor, brush, entity)) return;
   editor.selection.push({ type: 'brush', entity, brush });
   editor.redrawRequested = true;
 }
 
 export function addEntityToSelection(editor: Editor, entity: Entity): void {
+  if (isObjectInLockedGroup(editor, entity)) return;
   if (isEntitySelected(editor, entity)) return;
   editor.selection.push({ type: 'entity', entity });
   editor.redrawRequested = true;
 }
 
 export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additive = false): void {
+  if (isObjectInLockedGroup(editor, patch, entity)) { editor.statusMessage = 'Named group is locked'; return; }
   if (selectsWholeEntity(editor, entity) && !hasDirectGeometrySelection(editor, entity)) {
     selectEntity(editor, entity, additive);
     return;
@@ -128,6 +135,7 @@ export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additi
 }
 
 export function selectPatchDirect(editor: Editor, entity: Entity, patch: Patch, additive = false): void {
+  if (isObjectInLockedGroup(editor, patch, entity)) { editor.statusMessage = 'Named group is locked'; return; }
   if (!additive) editor.selection = [];
   const idx = editor.selection.findIndex(
     s => s.type === 'patch' && s.patch === patch
@@ -163,6 +171,7 @@ export function addPatchToSelection(editor: Editor, entity: Entity, patch: Patch
 }
 
 export function addPatchDirectToSelection(editor: Editor, entity: Entity, patch: Patch): void {
+  if (isObjectInLockedGroup(editor, patch, entity)) return;
   if (isPatchSelected(editor, patch, entity)) return;
   editor.selection.push({ type: 'patch', entity, patch });
   editor.redrawRequested = true;
@@ -279,11 +288,13 @@ function selectionCommandCandidates(editor: Editor, scope: SelectionCommandScope
     for (const brush of scope.entity.brushes) {
       if (!editor.isBrushInRegion(brush, scope.entity)) continue;
       if (editor.isBrushHidden(brush, scope.entity)) continue;
+      if (isObjectInLockedGroup(editor, brush, scope.entity)) continue;
       items.push({ type: 'brush', entity: scope.entity, brush });
     }
     for (const patch of scope.entity.patches) {
       if (!editor.isPatchInRegion(patch, scope.entity)) continue;
       if (editor.isPatchHidden(patch, scope.entity)) continue;
+      if (isObjectInLockedGroup(editor, patch, scope.entity)) continue;
       items.push({ type: 'patch', entity: scope.entity, patch });
     }
     return items;
@@ -295,11 +306,13 @@ function selectionCommandCandidates(editor: Editor, scope: SelectionCommandScope
     for (const brush of worldspawn.brushes) {
       if (!editor.isBrushInRegion(brush, worldspawn)) continue;
       if (editor.isBrushHidden(brush, worldspawn)) continue;
+      if (isObjectInLockedGroup(editor, brush, worldspawn)) continue;
       items.push({ type: 'brush', entity: worldspawn, brush });
     }
     for (const patch of worldspawn.patches) {
       if (!editor.isPatchInRegion(patch, worldspawn)) continue;
       if (editor.isPatchHidden(patch, worldspawn)) continue;
+      if (isObjectInLockedGroup(editor, patch, worldspawn)) continue;
       items.push({ type: 'patch', entity: worldspawn, patch });
     }
   }
@@ -307,6 +320,7 @@ function selectionCommandCandidates(editor: Editor, scope: SelectionCommandScope
   for (const entity of nonWorldspawnEntities(editor)) {
     if (!editor.isEntityInRegion(entity)) continue;
     if (editor.isEntityHidden(entity)) continue;
+    if (isObjectInLockedGroup(editor, entity)) continue;
     items.push({ type: 'entity', entity });
   }
 

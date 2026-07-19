@@ -35,6 +35,8 @@ export interface BrushFace {
 export interface Brush {
   faces: BrushFace[];
   name?: string;
+  /** Stable editor-only named-group membership. */
+  editorGroupId?: string;
   /** Brush-local epairs used by brushDef. */
   properties?: Record<string, string>;
   // Computed AABB
@@ -251,6 +253,7 @@ export function cloneBrush(brush: Brush): Brush {
   return {
     faces,
     name: brush.name,
+    editorGroupId: brush.editorGroupId,
     properties: brush.properties ? { ...brush.properties } : undefined,
     mins: vec3Copy(brush.mins),
     maxs: vec3Copy(brush.maxs),

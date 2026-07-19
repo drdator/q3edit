@@ -5,6 +5,7 @@ import type { Patch } from './patch';
 import type { Editor } from './editor';
 import type { ModelManager } from './model-manager';
 import { getEntityClassRegistry } from './entity-definitions';
+import { isGroupInfoEntity } from './named-groups';
 
 export function* allBrushes(editor: Editor): Iterable<{ entity: Entity; brush: Brush }> {
   for (const entity of editor.entities) {
@@ -24,7 +25,7 @@ export function* allPatches(editor: Editor): Iterable<{ entity: Entity; patch: P
 
 export function* nonWorldspawnEntities(editor: Editor): Iterable<Entity> {
   for (let i = 1; i < editor.entities.length; i++) {
-    yield editor.entities[i];
+    if (!isGroupInfoEntity(editor.entities[i])) yield editor.entities[i];
   }
 }
 

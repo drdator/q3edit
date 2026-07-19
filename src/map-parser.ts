@@ -8,6 +8,7 @@ import {
   type TerrainDefSurface,
 } from './patch';
 import { tokenizeMap, type MapToken, type MapTokenKind } from './map-tokenizer';
+import { reconcileNamedGroups } from './named-groups';
 
 export type MapParseDiagnosticSeverity = 'warning' | 'error';
 
@@ -42,6 +43,7 @@ export interface MapParseResult {
 }
 
 const AUTO_GENERATED_COMMENT = /^(brush|entity|patch) \d+$/;
+const GROUP_MEMBERSHIP_COMMENT = /^q3edit-group\s+(.+)$/;
 
 class MapParser {
   private index = 0;
@@ -91,11 +93,18 @@ class MapParser {
       patches: [],
     };
     let pendingComment: MapToken | undefined;
+    let pendingGroupId: string | undefined;
 
     while (this.current().kind !== 'eof') {
       const token = this.current();
       if (token.kind === 'comment') {
-        pendingComment = token;
+        const membership = token.value.match(GROUP_MEMBERSHIP_COMMENT);
+        if (membership) {
+          try { pendingGroupId = decodeURIComponent(membership[1]); }
+          catch { pendingGroupId = membership[1]; }
+        } else {
+          pendingComment = token;
+        }
         this.index++;
         continue;
       }
@@ -105,6 +114,7 @@ class MapParser {
       }
       if (token.kind === 'string') {
         pendingComment = undefined;
+        pendingGroupId = undefined;
         this.parseProperty(entity);
         continue;
       }
@@ -113,7 +123,8 @@ class MapParser {
           ? pendingComment.value
           : undefined;
         pendingComment = undefined;
-        this.parseEntityBlock(entity, brushName);
+        this.parseEntityBlock(entity, brushName, pendingGroupId);
+        pendingGroupId = undefined;
         continue;
       }
 
@@ -140,7 +151,7 @@ class MapParser {
     if (key.value === 'classname') entity.classname = value.value;
   }
 
-  private parseEntityBlock(entity: Entity, brushName?: string): void {
+  private parseEntityBlock(entity: Entity, brushName?: string, editorGroupId?: string): void {
     const openIndex = this.index;
     const openingBrace = this.tokens[openIndex];
     const closeIndex = this.findClosingBrace(openIndex);
@@ -151,14 +162,14 @@ class MapParser {
     if (marker.kind === 'word' && marker.value === 'patchDef2') {
       this.index++;
       const patch = this.parsePatchDef2(closeIndex);
-      if (patch) entity.patches.push(patch);
+      if (patch) { patch.editorGroupId = editorGroupId ?? patch.editorGroupId; entity.patches.push(patch); }
       this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
       return;
     }
     if (marker.kind === 'word' && marker.value === 'terrainDef') {
       this.index++;
       const patch = this.parseTerrainDef(closeIndex);
-      if (patch) entity.patches.push(patch);
+      if (patch) { patch.editorGroupId = editorGroupId; entity.patches.push(patch); }
       this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
       return;
     }
@@ -167,6 +178,7 @@ class MapParser {
       const brush = this.parseBrushDef(closeIndex, openingBrace);
       if (brush) {
         if (brushName) brush.name = brushName;
+        brush.editorGroupId = editorGroupId ?? brush.properties?._q3edit_group_id;
         entity.brushes.push(brush);
       }
       this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
@@ -189,6 +201,7 @@ class MapParser {
     const brush = this.parseClassicBrush(closeIndex, openingBrace);
     if (brush) {
       if (brushName) brush.name = brushName;
+      brush.editorGroupId = editorGroupId;
       entity.brushes.push(brush);
     }
     this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
@@ -388,6 +401,26 @@ class MapParser {
       ctrl.push(row);
     }
     if (!this.expect('paren-close', limit, "Expected ')' after patch control matrix")) return null;
+    const properties: Record<string, string> = {};
+    while (this.index < limit) {
+      this.skipComments();
+      if (this.current().kind === 'brace-close') break;
+      const key = this.current();
+      if (key.kind !== 'string') {
+        this.report('warning', key, 'Ignored malformed patch property');
+        this.skipLine(key.line);
+        continue;
+      }
+      this.index++;
+      const value = this.currentSignificant();
+      if (value.kind !== 'string') {
+        this.report('warning', value, `Ignored malformed patch property '${key.value}'`);
+        this.skipLine(key.line);
+        continue;
+      }
+      properties[key.value] = value.value;
+      this.index++;
+    }
     if (!this.expect('brace-close', limit, "Expected '}' after patchDef2 data")) return null;
 
     const patch: Patch = {
@@ -397,6 +430,8 @@ class MapParser {
       contentFlags: header[2],
       surfaceFlags: header[3],
       value: header[4],
+      editorGroupId: properties._q3edit_group_id,
+      properties: Object.keys(properties).length > 0 ? properties : undefined,
       ctrl,
       subdivisions: 6,
       mins: [0, 0, 0],
@@ -591,7 +626,9 @@ class MapParser {
 export function parseMapWithDiagnostics(source: string): MapParseResult {
   const tokenized = tokenizeMap(source);
   const parser = new MapParser(source, tokenized.tokens, tokenized.diagnostics);
-  return parser.parse();
+  const result = parser.parse();
+  reconcileNamedGroups(result.document.entities);
+  return result;
 }
 
 export function parseMap(source: string): Entity[] {
