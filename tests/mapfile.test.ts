@@ -144,6 +144,15 @@ describe('patch map formats', () => {
       value: 9,
     });
   });
+
+  test('rejects a non-regular terrain lattice instead of silently changing format', () => {
+    const worldspawn = createEntity('worldspawn');
+    const terrain = createTerrainDefGridPatch([0, 0, 0], [128, 128, 16], 'terrain/base', 3, 3);
+    terrain.ctrl[1][1].xyz[0] += 4;
+    worldspawn.patches.push(terrain);
+
+    expect(() => serializeMap([worldspawn])).toThrow(/Convert it to patchDef2 explicitly/);
+  });
 });
 
 describe('map diagnostics', () => {

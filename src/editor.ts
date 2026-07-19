@@ -100,6 +100,7 @@ import {
 import {
   changeSubdivisions as changeEditorPatchSubdivisions,
   applyPatchOperation as applyEditorPatchOperation,
+  convertSelectedTerrainToPatch as convertEditorTerrainToPatch,
   createMatrixPatch as createEditorMatrixPatch,
   thickenSelectedPatches as thickenEditorPatches,
   updatePatchProperties as updateEditorPatchProperties,
@@ -601,6 +602,7 @@ export class Editor {
   }
 
   applyPatchOperation(operation: PatchOperation): void { applyEditorPatchOperation(this, operation); }
+  convertSelectedTerrainToPatch(): void { convertEditorTerrainToPatch(this); }
   createMatrixPatch(width: number, height: number): void { createEditorMatrixPatch(this, width, height); }
   thickenPatches(amount = 16): void { thickenEditorPatches(this, amount); }
   updatePatchProperties(patch: Patch, changes: Partial<Pick<Patch, 'texture' | 'subdivisions' | 'contentFlags' | 'surfaceFlags' | 'value'>>): void {

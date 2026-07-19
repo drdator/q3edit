@@ -17,6 +17,7 @@ import {
   insertPatchRows, invertPatch, naturalizePatchUV, redispersePatchColumns,
   redispersePatchRows, thickenPatch, transformPatchUV, transposePatch,
 } from './patch-operations';
+import { convertTerrainToBezierPatch, isTerrainMesh } from './terrain-model';
 
 export type PatchOperation = 'insert-rows' | 'delete-rows' | 'insert-columns' | 'delete-columns'
   | 'transpose' | 'invert' | 'redisperse-rows' | 'redisperse-columns'
@@ -66,6 +67,10 @@ export function changeSubdivisions(editor: Editor, delta: number): void {
 
 export function applyPatchOperation(editor: Editor, operation: PatchOperation): void {
   const items = getSelectedPatchItems(editor); if (!items.length) return;
+  if (items.some(item => isTerrainMesh(item.patch))) {
+    editor.statusMessage = 'Generic patch tools cannot edit terrainDef. Convert terrain to patchDef2 first.';
+    return;
+  }
   const operations: Record<PatchOperation, (patch: Patch) => void> = {
     'insert-rows': insertPatchRows, 'delete-rows': deletePatchRows,
     'insert-columns': insertPatchColumns, 'delete-columns': deletePatchColumns,
@@ -82,6 +87,19 @@ export function applyPatchOperation(editor: Editor, operation: PatchOperation): 
   editor.transact(`Patch ${operation}`, () => {
     for (const item of items) operations[operation](item.patch);
     editor.redrawRequested = true; editor.statusMessage = `Patch: ${operation}`;
+  });
+}
+
+export function convertSelectedTerrainToPatch(editor: Editor): void {
+  const items = getSelectedPatchItems(editor).filter(item => isTerrainMesh(item.patch));
+  if (!items.length) {
+    editor.statusMessage = 'Select terrainDef terrain to convert';
+    return;
+  }
+  editor.transact('Convert terrain to patchDef2', () => {
+    for (const item of items) convertTerrainToBezierPatch(item.patch);
+    editor.redrawRequested = true;
+    editor.statusMessage = `Converted ${items.length} terrain ${items.length === 1 ? 'mesh' : 'meshes'} to patchDef2`;
   });
 }
 
