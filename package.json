@@ -15,6 +15,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
     "build:q3map": "cd q3map-compiler && make clean && make",
@@ -27,7 +29,8 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "typescript": "^5.7.0",
-    "vite": "^8.0.1"
+    "vite": "^8.0.1",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@phosphor-icons/web": "^2.1.2",

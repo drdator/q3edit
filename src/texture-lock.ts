@@ -76,7 +76,12 @@ function restoreBrushTextureState(
     const tt = vec3Dot(tVec, tv);
 
     const scaleX = 1 / Math.max(1e-6, Math.hypot(ss, st));
-    const scaleY = 1 / Math.max(1e-6, Math.hypot(ts, tt));
+    // A cardinal plane-axis change can reflect one texture axis. Classic Q3
+    // projection represents that with a negative scale; forcing both scales
+    // positive changes the mapping when a face rotates between base axes.
+    const determinant = ss * tt - st * ts;
+    const scaleY = (determinant < 0 ? -1 : 1) /
+      Math.max(1e-6, Math.hypot(ts, tt));
     const cos = ((ss * scaleX) + (tt * scaleY)) * 0.5;
     const sin = ((-st * scaleX) + (ts * scaleY)) * 0.5;
 
