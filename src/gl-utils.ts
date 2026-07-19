@@ -28,6 +28,10 @@ uniform float uFaceSelected;
 uniform float uUseAlpha;
 uniform float uAlphaOverride; // 0.0 = no override, >0 = forced alpha
 uniform float uSolidOverride; // 1.0 = replace texture with solid color
+uniform int uDynamicLightCount;
+uniform vec3 uDynamicLightPos[4];
+uniform vec3 uDynamicLightColor[4];
+uniform float uDynamicLightRadius[4];
 out vec4 fragColor;
 void main() {
   vec3 n = normalize(vNormal);
@@ -36,6 +40,12 @@ void main() {
 
   vec4 texColor = texture(uTexture, vUV);
   vec3 color = texColor.rgb * diff;
+  for (int i = 0; i < 4; i++) {
+    if (i >= uDynamicLightCount) break;
+    float radius = max(uDynamicLightRadius[i], 1.0);
+    float attenuation = max(0.0, 1.0 - distance(vWorldPos, uDynamicLightPos[i]) / radius);
+    color += texColor.rgb * uDynamicLightColor[i] * attenuation * attenuation;
+  }
 
   // Orange tint for selected brushes
   color = mix(color, vec3(1.0, 0.6, 0.2), uSelected * 0.25);

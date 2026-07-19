@@ -1,5 +1,6 @@
 import { AssetIndex, type IndexedAsset } from './asset-index';
 import { decodeTGA } from './tga';
+import type { TextureFiltering } from './display-policy';
 
 export type BlendMode = 'opaque' | 'add' | 'blend';
 
@@ -200,6 +201,15 @@ export class TextureManager {
 
   registerTexture(name: string, glTexture: WebGLTexture, width: number, height: number): void {
     this.cache.set(name, { glTexture, width, height });
+  }
+
+  bind(info: TextureInfo, filtering: TextureFiltering): void {
+    this.gl.bindTexture(this.gl.TEXTURE_2D, info.glTexture);
+    const min = filtering === 'nearest' ? this.gl.NEAREST
+      : filtering === 'linear' ? this.gl.LINEAR : this.gl.LINEAR_MIPMAP_LINEAR;
+    const mag = filtering === 'nearest' ? this.gl.NEAREST : this.gl.LINEAR;
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, min);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, mag);
   }
 
   private async loadTexture(name: string): Promise<void> {
