@@ -5,6 +5,7 @@ import { Viewport3D } from './viewport3d';
 import { UI } from './ui';
 import { indexPakArchives, loadPakManifest, type PakArchive, type PakProgressCallback } from './pak';
 import { AssetIndex } from './asset-index';
+import { loadEntityClassRegistry, setEntityClassRegistry } from './entity-definitions';
 import {
   loadOpenArenaEnabled,
   loadStoredPaks,
@@ -96,6 +97,12 @@ async function init() {
   };
 
   const installTextureManager = (assets: AssetIndex): TextureManager => {
+    const entityRegistry = loadEntityClassRegistry(assets);
+    setEntityClassRegistry(entityRegistry);
+    ui.updateEntityDefinitions();
+    if (entityRegistry.diagnostics.length > 0) {
+      console.warn('Entity definition diagnostics:', entityRegistry.diagnostics);
+    }
     activeTextureManager?.dispose();
     const texMgr = new TextureManager(vp3D.gl, assets);
 

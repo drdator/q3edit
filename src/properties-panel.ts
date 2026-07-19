@@ -1,6 +1,7 @@
 import { Editor } from './editor';
 import { Brush, BrushFace, classicTextureProjection, type ClassicBrushTextureProjection } from './brush';
-import { ENTITY_CLASS_SUGGESTIONS, Entity } from './entity';
+import { Entity } from './entity';
+import { getEntityClassRegistry } from './entity-definitions';
 import {
   addEntityProperty,
   removeEntityProperty,
@@ -171,12 +172,13 @@ export class PropertiesPanel {
     if (!list) {
       list = document.createElement('datalist');
       list.id = listId;
-      for (const classname of ENTITY_CLASS_SUGGESTIONS) {
-        const option = document.createElement('option');
-        option.value = classname;
-        list.appendChild(option);
-      }
       document.body.appendChild(list);
+    }
+    list.innerHTML = '';
+    for (const definition of getEntityClassRegistry().list()) {
+      const option = document.createElement('option');
+      option.value = definition.classname;
+      list.appendChild(option);
     }
     return listId;
   }

@@ -1,6 +1,7 @@
 import { Vec3, vec3, vec3Copy, vec3Add, vec3RotateAxis, vec3MirrorAxis } from './math';
 import { Brush, cloneBrush, mirrorBrush, rotateBrush, translateBrush } from './brush';
 import { Patch, clonePatch, mirrorPatch, rotatePatch, translatePatch } from './patch';
+import { getEntityClassRegistry } from './entity-definitions';
 
 export interface Entity {
   classname: string;
@@ -257,11 +258,16 @@ for (const cat of ENTITY_CATEGORIES) {
 
 /** Get the default properties for an entity classname */
 export function entityDefaults(classname: string): Record<string, string> {
-  return _entityDefMap.get(classname)?.defaults ?? {};
+  return getEntityClassRegistry().get(classname)?.defaults ?? _entityDefMap.get(classname)?.defaults ?? {};
 }
 
 /** Get the category color for an entity classname */
 export function entityColor(classname: string): string {
+  const registryColor = getEntityClassRegistry().get(classname)?.color;
+  if (registryColor) {
+    const hex = registryColor.map(value => Math.round(Math.min(1, Math.max(0, value)) * 255).toString(16).padStart(2, '0'));
+    return `#${hex.join('')}`;
+  }
   return _entityColorMap.get(classname) ?? '#888888';
 }
 
