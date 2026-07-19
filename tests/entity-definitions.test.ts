@@ -1,0 +1,76 @@
+import { strToU8, zipSync } from 'fflate';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { AssetIndex } from '../src/asset-index';
+import {
+  EntityClassRegistry,
+  loadEntityClassRegistry,
+  parseEntDefinitions,
+  parseQuakedDefinitions,
+} from '../src/entity-definitions';
+
+const fixture = readFileSync(new URL('./fixtures/entities.def', import.meta.url), 'utf8');
+
+function archive(name: string, files: Record<string, string>) {
+  const zipped = zipSync(Object.fromEntries(Object.entries(files).map(([path, value]) => [path, strToU8(value)])));
+  return { name, data: new Uint8Array(zipped).buffer };
+}
+
+describe('entity definitions', () => {
+  it('parses Q3Radiant QUAKED headers, bounds, docs, defaults, models, and flags', () => {
+    const result = parseQuakedDefinitions(fixture, 'entities.def');
+    expect(result.classes).toHaveLength(3);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.classes[0]).toMatchObject({
+      classname: 'info_player_deathmatch',
+      type: 'point',
+      color: [1, 0, 1],
+      bounds: { mins: [-16, -16, -24], maxs: [16, 16, 32] },
+      defaults: { angle: '0' },
+      spawnflags: [{ bit: 1, name: 'initial' }],
+    });
+    expect(result.classes[0].properties.angle.type).toBe('angle');
+    expect(result.classes[0].properties.target.type).toBe('entity-reference');
+    expect(result.classes[1].spawnflags.map(flag => flag.bit)).toEqual([1, 4, 8, 16]);
+    expect(result.classes[2].model).toBe('models/mapobjects/tree.md3');
+    expect(result.classes[2].properties._color.type).toBe('color');
+  });
+
+  it('parses Radiant XML ent types, choices, and flags while retaining valid classes', () => {
+    const result = parseEntDefinitions(`<classes>
+      <point name="light" color="0 1 0" box="-8 -8 -8 8 8 8" group="Lights">
+        Dynamic light
+        <integer key="light" name="Intensity" value="300">Brightness</integer>
+        <color key="_color" name="Color" />
+        <list key="style" name="Style"><item value="0" name="Normal"/><item value="1" name="Flicker"/></list>
+        <flag key="1" name="START_OFF">Initially disabled</flag>
+        <flag key="bad" name="BROKEN" />
+      </point>
+      <point color="1 1 1">missing name</point>
+    </classes>`, 'entities.ent');
+    expect(result.classes).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.classes[0].properties.light).toMatchObject({ type: 'number', default: '300' });
+    expect(result.classes[0].properties.style.choices).toEqual([
+      { value: '0', label: 'Normal' }, { value: '1', label: 'Flicker' },
+    ]);
+  });
+
+  it('loads definitions in deterministic archive precedence order with fallbacks', () => {
+    const index = new AssetIndex([
+      archive('pak0.pk3', { 'scripts/base.def': '/*QUAKED light (0 1 0) (-8 -8 -8) (8 8 8)\nbase\n*/' }),
+      archive('pak1.pk3', { 'scripts/override.def': '/*QUAKED light (1 0 0) (-4 -4 -4) (4 4 4)\noverride\n*/' }),
+    ]);
+    const registry = loadEntityClassRegistry(index);
+    expect(registry.get('light')?.color).toEqual([1, 0, 0]);
+    expect(registry.get('info_player_start')?.source?.archiveName).toBe('Q3Edit fallback');
+    expect(registry.get('unknown')).toBeNull();
+  });
+
+  it('replaces duplicate classes without deleting unrelated fallback classes', () => {
+    const registry = new EntityClassRegistry();
+    registry.loadSource('/*QUAKED custom (0 0 1) ?\nCustom class\n*/', 'custom.def', 'def');
+    expect(registry.get('custom')).not.toBeNull();
+    expect(registry.get('light')).not.toBeNull();
+  });
+});
