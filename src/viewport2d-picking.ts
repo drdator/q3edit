@@ -102,7 +102,7 @@ export function pickEntityAt(
       }
     }
 
-    if (!includeBrushEntities || ctx.editor.isPointEntity(entity)) continue;
+    if (!includeBrushEntities && !ctx.editor.isPointEntity(entity)) continue;
 
     const bounds = ctx.editor.entityBounds(entity);
     if (!bounds) continue;

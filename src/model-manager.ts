@@ -2,6 +2,7 @@ import type { AssetIndex } from './asset-index';
 import { getEntityClassRegistry } from './entity-definitions';
 import type { Entity } from './entity';
 import { decodeMd3, type Md3Model } from './md3';
+import { transformedModelBounds } from './model-geometry';
 
 export interface ResolvedModel {
   path: string;
@@ -77,6 +78,11 @@ export class ModelManager {
       }
     }
     return { path, model, frame, skinPath, surfaceTextures };
+  }
+
+  entityBounds(entity: Entity) {
+    const resolved = this.resolveEntity(entity);
+    return resolved ? transformedModelBounds(entity, resolved) : null;
   }
 
   private readSkin(path?: string): Map<string, string> {

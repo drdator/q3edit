@@ -5,6 +5,7 @@ import { EntityClassRegistry, parseQuakedDefinitions, setEntityClassRegistry } f
 import { createEntity } from '../src/entity';
 import { decodeMd3, Md3Error } from '../src/md3';
 import { ModelManager } from '../src/model-manager';
+import { buildModelGeometry, transformedModelBounds } from '../src/model-geometry';
 import { createMinimalMd3 } from './fixtures/minimal-md3';
 
 function archive(name: string, files: Record<string, Uint8Array>) {
@@ -50,6 +51,13 @@ describe('ModelManager', () => {
     const resolved = manager.resolveEntity(entity)!;
     expect(resolved.frame).toBe(0);
     expect(resolved.surfaceTextures.get('body')).toBe('textures/models/red');
+    entity.properties.origin = '10 20 30';
+    entity.properties.angle = '90';
+    entity.properties.modelscale = '2';
+    const geometry = buildModelGeometry(entity, resolved);
+    expect(geometry[0].texture).toBe('textures/models/red');
+    expect(geometry[0].vertices.slice(8, 11)).toEqual([10, 22, 30]);
+    expect(transformedModelBounds(entity, resolved)).toEqual({ mins: [8, 18, 28], maxs: [12, 22, 32] });
     delete entity.properties.skin;
     expect(manager.resolveEntity(entity)?.surfaceTextures.get('body')).toBe('textures/models/default');
     setEntityClassRegistry(new EntityClassRegistry());

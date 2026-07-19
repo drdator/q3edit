@@ -552,7 +552,7 @@ function drawEntity(ctx: Viewport2DRenderContext, entity: Entity, selected: bool
   const size = hasGeometry ? 6 : 8;
   const catColor = entityColor(entity.classname);
 
-  if (hasGeometry && bounds) {
+  if ((hasGeometry || ctx.editor.modelManager?.resolveEntity(entity)) && bounds) {
     const [x0, y0] = ctx.worldToScreen(bounds.mins[ctx.axisH], bounds.maxs[ctx.axisV]);
     const [x1, y1] = ctx.worldToScreen(bounds.maxs[ctx.axisH], bounds.mins[ctx.axisV]);
     ctx.ctx.strokeStyle = selected ? '#ffaa00' : catColor;

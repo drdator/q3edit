@@ -4,6 +4,7 @@ import { BrushFace, computeFaceUV } from './brush';
 import { entityColor, entityOrigin, parseLightColor } from './entity';
 import { terrainDefCellTexture, type Patch } from './patch';
 import { DrawGroup, LightRadiusDraw } from './viewport3d-render';
+import { buildModelGeometry } from './model-geometry';
 
 export interface Viewport3DGeometryContext {
   gl: WebGL2RenderingContext;
@@ -215,6 +216,18 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
     const origin = ctx.editor.entityDisplayOrigin(entity);
     if (!origin) continue;
+    const resolvedModel = ctx.editor.modelManager?.resolveEntity(entity);
+    if (resolvedModel) {
+      const selected = ctx.editor.isEntitySelected(entity);
+      for (const surface of buildModelGeometry(entity, resolvedModel)) {
+        if (surface.vertices.length === 0) continue;
+        const key = surface.texture.toLowerCase() + (selected ? '|sel' : '');
+        const group = facesByTex.get(key) ?? [];
+        group.push({ verts: surface.vertices, selected, faceSelected: false });
+        facesByTex.set(key, group);
+      }
+      continue;
+    }
     const color = entityColor(entity.classname);
     let verts = entityVertsByColor.get(color);
     if (!verts) {
@@ -405,6 +418,11 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     if (ctx.editor.isPointEntity(entity)) {
       const origin = ctx.editor.entityDisplayOrigin(entity);
       if (!origin || !ctx.editor.isPointVisibleIn3D(origin)) continue;
+      const modelBounds = ctx.editor.modelManager?.entityBounds(entity);
+      if (modelBounds) {
+        appendBoundsWireframe(selLineVerts, modelBounds.mins, modelBounds.maxs);
+        continue;
+      }
       const s = 8;
       const pts: Vec3[] = [
         [origin[0], origin[1], origin[2] + s],
