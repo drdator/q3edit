@@ -14,6 +14,7 @@ import {
   replaceStoredAssetConfiguration,
 } from './pak-storage';
 import { TextureManager } from './textures';
+import { saveProjectConfiguration, type ProjectConfiguration } from './project-config';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -98,7 +99,7 @@ async function init() {
   };
 
   const installTextureManager = (assets: AssetIndex): TextureManager => {
-    const entityRegistry = loadEntityClassRegistry(assets);
+    const entityRegistry = loadEntityClassRegistry(assets, editor.projectConfiguration.entityDefinitions.sources);
     setEntityClassRegistry(entityRegistry);
     editor.modelManager = new ModelManager(assets);
     ui.updateEntityDefinitions();
@@ -135,11 +136,23 @@ async function init() {
   };
 
   const rebuildWithStoredPaks = async (): Promise<string[]> => {
-    const stored = await loadStoredPaks();
+    const allStored = await loadStoredPaks();
+    const configured = editor.projectConfiguration.assets;
+    const stored = configured.configured
+      ? configured.archives.map(name => allStored.find(pak => pak.name.toLowerCase() === name.toLowerCase())).filter((pak): pak is PakArchive => pak !== undefined)
+      : allStored;
     if (openArenaEnabled) await ensureDefaultPakLoaded();
     const archives = [...(openArenaEnabled ? defaultArchives : []), ...stored];
     installTextureManager(await indexPakArchives(archives, setLoadingStatus));
     return stored.map(pak => pak.name);
+  };
+
+  ui.onProjectConfigurationChanged = async (project: ProjectConfiguration) => {
+    openArenaEnabled = project.assets.configured ? project.assets.openArenaEnabled : await loadOpenArenaEnabled();
+    const names = await rebuildWithStoredPaks();
+    const description = describeAssetStack(names, openArenaEnabled);
+    ui.setTextureAssetStatus(description, names);
+    editor.statusMessage = `Using ${description}`;
   };
 
   ui.onManagePakFiles = async () => {
@@ -181,6 +194,13 @@ async function init() {
       reportProgress('Saving asset configuration...');
       await replaceStoredAssetConfiguration(ordered, result.openArenaEnabled);
       openArenaEnabled = result.openArenaEnabled;
+      editor.projectConfiguration.assets = {
+        ...editor.projectConfiguration.assets,
+        archives: ordered.map(pak => pak.name),
+        openArenaEnabled,
+        configured: true,
+      };
+      saveProjectConfiguration(editor.projectConfiguration);
       assetLoading.update('Updating textures in the 3D view...', 1, 1);
       const installedTextureManager = installTextureManager(assets);
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
@@ -218,7 +238,9 @@ async function init() {
   let showOpenArenaNotice = false;
   setLoadingStatus('Loading texture asset settings...');
   try {
-    openArenaEnabled = await loadOpenArenaEnabled();
+    openArenaEnabled = editor.projectConfiguration.assets.configured
+      ? editor.projectConfiguration.assets.openArenaEnabled
+      : await loadOpenArenaEnabled();
     const names = await rebuildWithStoredPaks();
     ui.setTextureAssetStatus(describeAssetStack(names, openArenaEnabled), names);
     showOpenArenaNotice = openArenaEnabled && names.length === 0 && !isOpenArenaNoticeDismissed();

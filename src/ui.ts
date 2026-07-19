@@ -16,6 +16,8 @@ import { PakManagerModel, type PakManagerEntry, type PakManagerResult } from './
 import { buildEntityPanel as buildEntityPanelUI } from './entity-panel';
 import { buildGroupsPanel as buildGroupsPanelUI } from './groups-panel';
 import { buildCameraPanel as buildCameraPanelUI } from './camera-panel';
+import { applyAppearancePreferences, openPreferencesDialog } from './preferences-dialog';
+import type { ProjectConfiguration } from './project-config';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -75,6 +77,7 @@ export class UI {
       compileBSP: () => this.compileBSP(),
       quickPlay: quality => this.compileBSP(quality),
       managePakFiles: () => this.onManagePakFiles?.(),
+      openPreferences: () => this.openPreferences(),
       openTerrainPanel: () => this.openTerrainPanel(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: tool => this.setTool(tool),
@@ -84,6 +87,9 @@ export class UI {
       toggleSnap: () => this.toggleSnap(),
       toggleGeoSnap: () => this.toggleGeoSnap(),
     });
+    const conflicts = this.commands.replaceShortcutOverrides(this.editor.preferences.shortcuts);
+    if (conflicts.length > 0) this.editor.statusMessage = 'Some stored shortcuts were ignored because they conflict';
+    applyAppearancePreferences(this.editor.preferences);
     this.buildMenuBar();
     this.buildToolbar();
     this.buildSidePanel();
@@ -613,6 +619,7 @@ export class UI {
   }
 
   onManagePakFiles: (() => Promise<void>) | null = null;
+  onProjectConfigurationChanged: ((project: ProjectConfiguration) => Promise<void>) | null = null;
 
   setTextureAssetStatus(status: string, importedPakNames: string[] = this.importedPakNames): void {
     this.textureAssetStatus = status;
@@ -1582,6 +1589,15 @@ export class UI {
     });
   }
 
+  private openPreferences(): void {
+    this.closeMenus();
+    openPreferencesDialog({
+      editor: this.editor,
+      commands: this.commands,
+      onApplied: (_preferences, project) => { void this.onProjectConfigurationChanged?.(project); },
+    });
+  }
+
   // ── Tool/Grid helpers ──
 
   private setTool(tool: Tool): void {
@@ -1599,6 +1615,7 @@ export class UI {
     this.editor.gridSize = size;
     this.editor.createDepth = Math.max(size * 4, 64);
     this.editor.redrawRequested = true;
+    this.editor.persistCurrentPreferences();
     this.closeMenus();
   }
 
@@ -1617,6 +1634,7 @@ export class UI {
     this.editor.redrawRequested = true;
     const labels = { off: 'Grid snap: OFF', abs: 'Grid snap: absolute', rel: 'Grid snap: relative' };
     this.editor.statusMessage = labels[this.editor.gridSnapMode];
+    this.editor.persistCurrentPreferences();
     this.closeMenus();
   }
 
@@ -1624,6 +1642,7 @@ export class UI {
     this.editor.snapToGeometry = !this.editor.snapToGeometry;
     this.editor.redrawRequested = true;
     this.editor.statusMessage = this.editor.snapToGeometry ? 'Geometry snap: ON' : 'Geometry snap: OFF';
+    this.editor.persistCurrentPreferences();
     this.closeMenus();
   }
 
@@ -1638,6 +1657,7 @@ export class UI {
       hide: 'Invisible: hidden',
     };
     this.editor.statusMessage = labels[this.editor.invisibleMode];
+    this.editor.persistCurrentPreferences();
   }
 
   // ── Update UI state ──
@@ -2364,11 +2384,13 @@ export class UI {
         ? this.editor.serializeRegionMap(true)
         : this.editor.serializeMap();
 
+      const compile = this.editor.projectConfiguration.compile;
       const result = await compileMap(mapText, {
-        args: ['-v'],
-        vis: quality !== 'fast',
-        visArgs: quality === 'full' ? [] : ['-fast'],
-        light: quality !== 'fast',
+        args: compile.bspArgs.length > 0 ? compile.bspArgs : ['-v'],
+        vis: quality !== 'fast' && compile.vis,
+        visArgs: quality === 'full' ? compile.visArgs : ['-fast', ...compile.visArgs],
+        light: quality !== 'fast' && compile.light,
+        lightArgs: compile.lightArgs,
         shaderFiles,
         imageFiles,
         onOutput: (line) => {

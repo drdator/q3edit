@@ -29,6 +29,7 @@ describe('CommandRegistry', () => {
       compileBSP: noop,
       quickPlay: noop,
       managePakFiles: noop,
+      openPreferences: noop,
       openTerrainPanel: noop,
       cycleInvisibleMode: noop,
       setTool: noop,
@@ -48,7 +49,7 @@ describe('CommandRegistry', () => {
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
-      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openTerrainPanel: noop,
+      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openTerrainPanel: noop,
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
     });
@@ -126,6 +127,47 @@ describe('CommandRegistry', () => {
 
     expect(first).toHaveBeenCalledTimes(1);
     expect(second).toHaveBeenCalledTimes(2);
+  });
+
+  it('supports normalized shortcut overrides, conflicts, disabling, and reset', () => {
+    const registry = new CommandRegistry({});
+    registry.register({ id: 'file.save', label: 'Save', defaultShortcut: 'Mod+S', execute: () => {} });
+    registry.register({ id: 'file.open', label: 'Open', defaultShortcut: 'Mod+O', execute: () => {} });
+
+    expect(registry.setShortcut('file.save', 'Shift+Ctrl+s')).toBeNull();
+    expect(registry.shortcutFor('file.save')).toBe('Mod+Shift+S');
+    expect(registry.findShortcutConflict('file.open', 'Ctrl+Shift+S')).toEqual({
+      shortcut: 'Mod+Shift+S', commandId: 'file.open', conflictingCommandId: 'file.save',
+    });
+    expect(registry.setShortcut('file.open', 'Ctrl+Shift+S')).not.toBeNull();
+    expect(registry.shortcutFor('file.open')).toBe('Mod+O');
+
+    registry.setShortcut('file.save', null);
+    expect(registry.shortcutFor('file.save')).toBeUndefined();
+    registry.resetShortcut('file.save');
+    expect(registry.shortcutFor('file.save')).toBe('Mod+S');
+  });
+
+  it('ignores missing commands and reports conflicts while applying stored overrides', () => {
+    const registry = new CommandRegistry({});
+    registry.register({ id: 'first', label: 'First', defaultShortcut: '1', execute: () => {} });
+    registry.register({ id: 'second', label: 'Second', defaultShortcut: '2', execute: () => {} });
+
+    expect(registry.applyShortcutOverrides({ missing: '3', first: '4', second: '4' })).toEqual([
+      { shortcut: '4', commandId: 'second', conflictingCommandId: 'first' },
+    ]);
+    expect(registry.shortcutOverrideEntries()).toEqual({ first: '4' });
+  });
+
+  it('replaces shortcut overrides atomically so assignments can be swapped', () => {
+    const registry = new CommandRegistry({});
+    registry.register({ id: 'first', label: 'First', defaultShortcut: '1', execute: () => {} });
+    registry.register({ id: 'second', label: 'Second', defaultShortcut: '2', execute: () => {} });
+    expect(registry.replaceShortcutOverrides({ first: '2', second: '1' })).toEqual([]);
+    expect(registry.shortcutFor('first')).toBe('2');
+    expect(registry.shortcutFor('second')).toBe('1');
+    expect(registry.replaceShortcutOverrides({ first: '3', second: '3' })).toHaveLength(1);
+    expect(registry.shortcutFor('first')).toBe('2');
   });
 });
 

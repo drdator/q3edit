@@ -34,6 +34,12 @@ export interface CommandState {
   checked: boolean;
 }
 
+export interface ShortcutConflict {
+  shortcut: string;
+  commandId: CommandId;
+  conflictingCommandId: CommandId;
+}
+
 export interface KeyboardShortcutEvent {
   key: string;
   code?: string;
@@ -147,6 +153,7 @@ export function formatShortcut(shortcut: string, platform = globalThis.navigator
 export class CommandRegistry<Context> {
   private readonly commands = new Map<CommandId, CommandDefinition<Context>>();
   private readonly shortcutOwners = new Map<string, CommandId>();
+  private readonly shortcutOverrides = new Map<CommandId, string | null>();
   private readonly listeners = new Set<CommandStateListener>();
 
   constructor(private readonly context: Context) {}
@@ -168,6 +175,107 @@ export class CommandRegistry<Context> {
     for (const shortcut of shortcuts) this.shortcutOwners.set(shortcut, command.id);
   }
 
+  private rebuildShortcutOwners(): void {
+    this.shortcutOwners.clear();
+    for (const command of this.commands.values()) {
+      const effective = this.shortcutOverrides.has(command.id)
+        ? this.shortcutOverrides.get(command.id)
+        : command.defaultShortcut;
+      const shortcuts = [effective, ...(this.shortcutOverrides.has(command.id) ? [] : command.alternateShortcuts ?? [])]
+        .filter((shortcut): shortcut is string => typeof shortcut === 'string')
+        .map(normalizeShortcut);
+      for (const shortcut of shortcuts) this.shortcutOwners.set(shortcut, command.id);
+    }
+  }
+
+  shortcutFor(id: CommandId): string | undefined {
+    const command = this.get(id);
+    const shortcut = this.shortcutOverrides.has(id) ? this.shortcutOverrides.get(id) : command.defaultShortcut;
+    return shortcut === null || shortcut === undefined ? undefined : normalizeShortcut(shortcut);
+  }
+
+  defaultShortcutFor(id: CommandId): string | undefined {
+    const shortcut = this.get(id).defaultShortcut;
+    return shortcut === undefined ? undefined : normalizeShortcut(shortcut);
+  }
+
+  shortcutOverrideEntries(): Record<CommandId, string | null> {
+    return Object.fromEntries(this.shortcutOverrides);
+  }
+
+  findShortcutConflict(id: CommandId, shortcut: string): ShortcutConflict | null {
+    this.get(id);
+    const normalized = normalizeShortcut(shortcut);
+    const owner = this.shortcutOwners.get(normalized);
+    return owner && owner !== id
+      ? { shortcut: normalized, commandId: id, conflictingCommandId: owner }
+      : null;
+  }
+
+  setShortcut(id: CommandId, shortcut: string | null): ShortcutConflict | null {
+    this.get(id);
+    const normalized = shortcut === null ? null : normalizeShortcut(shortcut);
+    if (normalized !== null) {
+      const conflict = this.findShortcutConflict(id, normalized);
+      if (conflict) return conflict;
+    }
+    this.shortcutOverrides.set(id, normalized);
+    this.rebuildShortcutOwners();
+    this.notifyStateChanged();
+    return null;
+  }
+
+  resetShortcut(id: CommandId): void {
+    this.get(id);
+    this.shortcutOverrides.delete(id);
+    this.rebuildShortcutOwners();
+    this.notifyStateChanged();
+  }
+
+  resetAllShortcuts(): void {
+    this.shortcutOverrides.clear();
+    this.rebuildShortcutOwners();
+    this.notifyStateChanged();
+  }
+
+  applyShortcutOverrides(overrides: Record<string, string | null>): ShortcutConflict[] {
+    const conflicts: ShortcutConflict[] = [];
+    for (const [id, shortcut] of Object.entries(overrides)) {
+      if (!this.commands.has(id)) continue;
+      const conflict = this.setShortcut(id, shortcut);
+      if (conflict) conflicts.push(conflict);
+    }
+    return conflicts;
+  }
+
+  replaceShortcutOverrides(overrides: Record<string, string | null>): ShortcutConflict[] {
+    const normalized = new Map<CommandId, string | null>();
+    for (const [id, shortcut] of Object.entries(overrides)) {
+      if (!this.commands.has(id)) continue;
+      normalized.set(id, shortcut === null ? null : normalizeShortcut(shortcut));
+    }
+    const owners = new Map<string, CommandId>();
+    const conflicts: ShortcutConflict[] = [];
+    for (const command of this.commands.values()) {
+      const overridden = normalized.has(command.id);
+      const shortcuts = [overridden ? normalized.get(command.id) : command.defaultShortcut,
+        ...(overridden ? [] : command.alternateShortcuts ?? [])]
+        .filter((shortcut): shortcut is string => typeof shortcut === 'string')
+        .map(normalizeShortcut);
+      for (const shortcut of shortcuts) {
+        const owner = owners.get(shortcut);
+        if (owner) conflicts.push({ shortcut, commandId: command.id, conflictingCommandId: owner });
+        else owners.set(shortcut, command.id);
+      }
+    }
+    if (conflicts.length > 0) return conflicts;
+    this.shortcutOverrides.clear();
+    for (const [id, shortcut] of normalized) this.shortcutOverrides.set(id, shortcut);
+    this.rebuildShortcutOwners();
+    this.notifyStateChanged();
+    return [];
+  }
+
   registerAll(commands: readonly CommandDefinition<Context>[]): void {
     for (const command of commands) this.register(command);
   }
@@ -187,7 +295,7 @@ export class CommandRegistry<Context> {
     return {
       label: typeof command.label === 'function' ? command.label(this.context) : command.label,
       description: command.description,
-      shortcut: command.defaultShortcut,
+      shortcut: this.shortcutFor(id),
       enabled: command.enabled?.(this.context) ?? true,
       checked: command.checked?.(this.context) ?? false,
     };
