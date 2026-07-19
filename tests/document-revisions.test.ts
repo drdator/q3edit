@@ -18,6 +18,12 @@ describe('document revisions', () => {
     expect(editor.redrawRequested).toBe(true);
     expect(editor.documentRevision).toBe(initialRevision);
     expect(editor.hasUnsavedChanges).toBe(false);
+
+    editor.redrawRequested = false;
+    editor.toggleTextureLock();
+    expect(editor.redrawRequested).toBe(true);
+    expect(editor.documentRevision).toBe(initialRevision);
+    expect(editor.hasUnsavedChanges).toBe(false);
   });
 
   test('advances only for committed document changes', () => {
@@ -33,6 +39,18 @@ describe('document revisions', () => {
 
     expect(editor.documentRevision).toBeGreaterThan(initialRevision);
     expect(editor.hasUnsavedChanges).toBe(true);
+  });
+
+  test('cancelled transactions preserve the current revision', () => {
+    const editor = new Editor();
+    const initialRevision = editor.documentRevision;
+
+    editor.beginTransaction('Cancelled edit');
+    editor.worldspawn.properties.message = 'temporary';
+    editor.cancelTransaction();
+
+    expect(editor.documentRevision).toBe(initialRevision);
+    expect(editor.hasUnsavedChanges).toBe(false);
   });
 
   test('save identity follows undo and redo exactly', () => {
@@ -93,6 +111,13 @@ describe('document revisions', () => {
 "message" "opened"
 }
 `);
+    expect(editor.worldspawn.properties.message).toBe('opened');
+    expect(editor.hasUnsavedChanges).toBe(false);
+
+    editor.undo();
+    expect(editor.worldspawn.properties.message).toBe('local');
+    expect(editor.hasUnsavedChanges).toBe(true);
+    editor.redo();
     expect(editor.worldspawn.properties.message).toBe('opened');
     expect(editor.hasUnsavedChanges).toBe(false);
 
