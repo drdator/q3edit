@@ -265,6 +265,9 @@ export class Editor {
   fileName = 'untitled.map';
   clipboardText = '';
   mapDiagnostics: MapParseDiagnostic[] = [];
+  documentRevision = 0;
+  savedDocumentRevision = 0;
+  private nextDocumentRevision = 1;
 
   // Drag state for brush creation
   creating = false;
@@ -665,6 +668,26 @@ export class Editor {
   }
 
   // ── History ──
+
+  get hasUnsavedChanges(): boolean {
+    return this.documentRevision !== this.savedDocumentRevision;
+  }
+
+  /** Internal transaction hook: assign a fresh identity to committed document state. */
+  commitDocumentRevision(): void {
+    this.documentRevision = this.nextDocumentRevision++;
+  }
+
+  /** Internal history hook: restore the identity associated with a snapshot. */
+  restoreDocumentRevision(revision: number): void {
+    this.documentRevision = revision;
+    this.nextDocumentRevision = Math.max(this.nextDocumentRevision, revision + 1);
+  }
+
+  markDocumentSaved(): void {
+    this.savedDocumentRevision = this.documentRevision;
+    this.history.breakCoalescing();
+  }
 
   beginTransaction(label: string, options: TransactionOptions = {}): void {
     beginEditorTransaction(this, label, options);

@@ -4,6 +4,7 @@ export type MapSnapshot = Entity[];
 
 export interface HistoryEntry {
   entities: MapSnapshot;
+  revision: number;
   label: string;
   coalesceKey?: string;
   committedAt: number;
@@ -11,6 +12,7 @@ export interface HistoryEntry {
 
 export interface HistoryResult {
   entities: MapSnapshot;
+  revision: number;
   label: string;
 }
 
@@ -28,7 +30,12 @@ export class History {
   private redoStack: HistoryEntry[] = [];
   private maxSize = 100;
 
-  record(entities: Entity[], label: string, options: HistoryRecordOptions = {}): void {
+  record(
+    entities: Entity[],
+    revision: number,
+    label: string,
+    options: HistoryRecordOptions = {},
+  ): void {
     const now = Date.now();
     const previous = this.undoStack[this.undoStack.length - 1];
     const coalesceWindowMs = options.coalesceWindowMs ?? 750;
@@ -46,6 +53,7 @@ export class History {
 
     this.undoStack.push({
       entities: cloneMapSnapshot(entities),
+      revision,
       label,
       coalesceKey: options.coalesceKey,
       committedAt: now,
@@ -56,26 +64,33 @@ export class History {
     this.redoStack.length = 0;
   }
 
-  undo(currentEntities: Entity[]): HistoryResult | null {
+  undo(currentEntities: Entity[], currentRevision: number): HistoryResult | null {
     if (this.undoStack.length === 0) return null;
     const entry = this.undoStack.pop()!;
     this.redoStack.push({
       entities: cloneMapSnapshot(currentEntities),
+      revision: currentRevision,
       label: entry.label,
       committedAt: Date.now(),
     });
-    return { entities: entry.entities, label: entry.label };
+    return { entities: entry.entities, revision: entry.revision, label: entry.label };
   }
 
-  redo(currentEntities: Entity[]): HistoryResult | null {
+  redo(currentEntities: Entity[], currentRevision: number): HistoryResult | null {
     if (this.redoStack.length === 0) return null;
     const entry = this.redoStack.pop()!;
     this.undoStack.push({
       entities: cloneMapSnapshot(currentEntities),
+      revision: currentRevision,
       label: entry.label,
       committedAt: Date.now(),
     });
-    return { entities: entry.entities, label: entry.label };
+    return { entities: entry.entities, revision: entry.revision, label: entry.label };
+  }
+
+  breakCoalescing(): void {
+    const latest = this.undoStack[this.undoStack.length - 1];
+    if (latest) latest.coalesceKey = undefined;
   }
 
   get canUndo(): boolean { return this.undoStack.length > 0; }

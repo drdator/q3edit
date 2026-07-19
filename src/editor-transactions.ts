@@ -9,6 +9,7 @@ export interface TransactionOptions {
 interface TransactionState {
   label: string;
   before: MapSnapshot;
+  beforeRevision: number;
   depth: number;
   options: TransactionOptions;
 }
@@ -47,6 +48,7 @@ export function beginTransaction(
   activeTransactions.set(editor, {
     label,
     before: cloneMapSnapshot(editor.entities),
+    beforeRevision: editor.documentRevision,
     depth: 1,
     options,
   });
@@ -62,7 +64,8 @@ export function commitTransaction(editor: Editor): boolean {
 
   if (documentsEqual(active.before, editor.entities)) return false;
 
-  editor.history.record(active.before, active.label, active.options);
+  editor.history.record(active.before, active.beforeRevision, active.label, active.options);
+  editor.commitDocumentRevision();
   editor.redrawRequested = true;
   return true;
 }
@@ -73,6 +76,7 @@ export function cancelTransaction(editor: Editor): boolean {
 
   activeTransactions.delete(editor);
   editor.entities = active.before;
+  editor.restoreDocumentRevision(active.beforeRevision);
   resetEditorStateAfterDocumentReplacement(editor);
   return true;
 }
