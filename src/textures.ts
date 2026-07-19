@@ -1,4 +1,4 @@
-import { PakFiles } from './pak';
+import { AssetIndex, type IndexedAsset } from './asset-index';
 import { decodeTGA } from './tga';
 
 export type BlendMode = 'opaque' | 'add' | 'blend';
@@ -11,7 +11,7 @@ export interface TextureInfo {
 
 export class TextureManager {
   private gl: WebGL2RenderingContext;
-  private pak: PakFiles;
+  private assets: AssetIndex;
   private cache = new Map<string, TextureInfo>();
   private loading = new Set<string>();
   private pendingLoads = new Set<Promise<void>>();
@@ -25,9 +25,9 @@ export class TextureManager {
   // Callback when a texture finishes loading (triggers redraw)
   onTextureLoaded: (() => void) | null = null;
 
-  constructor(gl: WebGL2RenderingContext, pak: PakFiles) {
+  constructor(gl: WebGL2RenderingContext, assets: AssetIndex) {
     this.gl = gl;
-    this.pak = pak;
+    this.assets = assets;
     this.white = this.createSolid(255, 255, 255, 255, '__white');
     this.missing = this.createCheckerboard();
     this.parseShaders();
@@ -50,10 +50,10 @@ export class TextureManager {
 
   /** Parse all scripts/*.shader files to build shader name → editor image mapping */
   private parseShaders(): void {
-    for (const [path, data] of this.pak) {
+    for (const asset of this.assets.shaders()) {
+      const path = asset.normalizedPath;
       if (!path.startsWith('scripts/') || !path.endsWith('.shader')) continue;
-
-      const text = new TextDecoder().decode(data);
+      const text = this.assets.readText(path) ?? '';
       let i = 0;
       const len = text.length;
 
@@ -215,7 +215,7 @@ export class TextureManager {
     ];
 
     for (const path of candidates) {
-      const data = this.pak.get(path);
+      const data = this.assets.readBytes(path);
       if (!data) continue;
 
       if (path.endsWith('.tga')) {
@@ -246,7 +246,7 @@ export class TextureManager {
         'textures/' + shaderImage + '.jpg',
       ];
       for (const path of shaderCandidates) {
-        const data = this.pak.get(path);
+        const data = this.assets.readBytes(path);
         if (!data) continue;
 
         if (path.endsWith('.tga')) {
@@ -343,7 +343,7 @@ export class TextureManager {
     ];
 
     for (const path of candidates) {
-      const data = this.pak.get(path);
+      const data = this.assets.readBytes(path);
       if (!data) continue;
 
       if (path.endsWith('.tga')) {
@@ -378,7 +378,7 @@ export class TextureManager {
         'textures/' + shaderImage + '.jpg',
       ];
       for (const path of shaderCandidates) {
-        const data = this.pak.get(path);
+        const data = this.assets.readBytes(path);
         if (!data) continue;
 
         if (path.endsWith('.tga')) {
@@ -410,9 +410,10 @@ export class TextureManager {
   /** Get all .shader files from the pak as { 'scripts/foo.shader': 'contents...' } */
   getShaderFiles(): Record<string, string> {
     const result: Record<string, string> = {};
-    for (const [path, data] of this.pak) {
+    for (const asset of this.assets.shaders()) {
+      const path = asset.normalizedPath;
       if (path.startsWith('scripts/') && path.endsWith('.shader')) {
-        result[path] = new TextDecoder().decode(data);
+        result[path] = this.assets.readText(path) ?? '';
       }
     }
     return result;
@@ -431,7 +432,7 @@ export class TextureManager {
       'textures/' + baseName + '.jpg',
     ];
     for (const path of candidates) {
-      const data = this.pak.get(path);
+      const data = this.assets.readBytes(path);
       if (data) return [path, data];
     }
     return null;
@@ -440,7 +441,7 @@ export class TextureManager {
   // List all texture paths available in the pak (for the texture browser)
   listTextures(): string[] {
     const textures: string[] = [];
-    for (const path of this.pak.keys()) {
+    for (const { normalizedPath: path } of this.assets.images()) {
       if ((path.startsWith('textures/') || path.startsWith('models/')) &&
           (path.endsWith('.tga') || path.endsWith('.jpg'))) {
         // Strip extension and 'textures/' prefix
@@ -457,7 +458,7 @@ export class TextureManager {
   // List texture directories (for folder-based browsing)
   listTextureDirectories(): string[] {
     const dirs = new Set<string>();
-    for (const path of this.pak.keys()) {
+    for (const { normalizedPath: path } of this.assets.images()) {
       if (path.startsWith('textures/') && (path.endsWith('.tga') || path.endsWith('.jpg'))) {
         const parts = path.split('/');
         if (parts.length >= 3) {
@@ -472,11 +473,20 @@ export class TextureManager {
   listTexturesInDir(dir: string): string[] {
     const prefix = `textures/${dir}/`;
     const textures = new Set<string>();
-    for (const path of this.pak.keys()) {
+    for (const { normalizedPath: path } of this.assets.images()) {
       if (path.startsWith(prefix) && (path.endsWith('.tga') || path.endsWith('.jpg'))) {
         textures.add(path.replace(/\.(tga|jpg)$/, '').replace(/^textures\//, ''));
       }
     }
     return [...textures].sort();
+  }
+
+  getTextureAsset(name: string): IndexedAsset | null {
+    const baseName = name.toLowerCase().replace(/\\/g, '/').replace(/\.(tga|jpg|jpeg)$/i, '');
+    for (const path of [baseName + '.tga', baseName + '.jpg', 'textures/' + baseName + '.tga', 'textures/' + baseName + '.jpg']) {
+      const asset = this.assets.get(path);
+      if (asset) return asset;
+    }
+    return null;
   }
 }
