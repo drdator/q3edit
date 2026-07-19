@@ -6,7 +6,7 @@ import { createEntity } from '../src/entity';
 import { decodeMd3, Md3Error } from '../src/md3';
 import { ModelManager } from '../src/model-manager';
 import { buildModelGeometry, transformedModelBounds } from '../src/model-geometry';
-import { projectModelPreview } from '../src/model-browser';
+import { filterModelPaths, projectModelPreview } from '../src/model-browser';
 import { createMinimalMd3 } from './fixtures/minimal-md3';
 
 function archive(name: string, files: Record<string, Uint8Array>) {
@@ -37,6 +37,14 @@ describe('MD3 decoding', () => {
   });
 });
 
+describe('model browser', () => {
+  it('filters paths case-insensitively and preserves their source order', () => {
+    const paths = ['models/mapobjects/Tree.md3', 'models/powerups/mega.md3', 'models/mapobjects/lamp.md3'];
+    expect(filterModelPaths(paths, ' MAPOBJECTS ')).toEqual([paths[0], paths[2]]);
+    expect(filterModelPaths(paths, '')).toEqual(paths);
+  });
+});
+
 describe('ModelManager', () => {
   it('resolves definition models, frame policy, skin overrides, and shader fallback', () => {
     const registry = new EntityClassRegistry([]);
@@ -53,6 +61,11 @@ describe('ModelManager', () => {
     const resolved = manager.resolveEntity(entity)!;
     expect(resolved.frame).toBe(0);
     expect(resolved.surfaceTextures.get('body')).toBe('textures/models/red');
+    expect(manager.resolve('test', 99, 'models/red.skin')).toMatchObject({
+      path: 'models/test.md3',
+      frame: 0,
+      skinPath: 'models/red.skin',
+    });
     entity.properties.origin = '10 20 30';
     entity.properties.angle = '90';
     entity.properties.modelscale = '2';

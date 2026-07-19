@@ -10,6 +10,30 @@ export interface TextureInfo {
   height: number;
 }
 
+const IMAGE_EXTENSION = /\.(tga|jpe?g|png|webp)$/i;
+const IMAGE_EXTENSIONS = ['.tga', '.jpg', '.jpeg', '.png', '.webp'] as const;
+
+function normalizedImageName(name: string): string {
+  return name.toLowerCase().replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+export function textureImageCandidates(name: string): string[] {
+  const normalized = normalizedImageName(name);
+  const explicitExtension = normalized.match(IMAGE_EXTENSION)?.[0].toLowerCase();
+  const baseName = normalized.replace(IMAGE_EXTENSION, '');
+  const roots = baseName.startsWith('textures/') ? [baseName] : [baseName, `textures/${baseName}`];
+  const extensions = explicitExtension
+    ? [explicitExtension, ...IMAGE_EXTENSIONS.filter(extension => extension !== explicitExtension)]
+    : [...IMAGE_EXTENSIONS];
+  return [...new Set(roots.flatMap(root => extensions.map(extension => root + extension)))];
+}
+
+export function imageMimeType(path: string): string {
+  if (/\.png$/i.test(path)) return 'image/png';
+  if (/\.webp$/i.test(path)) return 'image/webp';
+  return 'image/jpeg';
+}
+
 export class TextureManager {
   private gl: WebGL2RenderingContext;
   private assets: AssetIndex;
@@ -156,7 +180,7 @@ export class TextureManager {
 
         const image = editorImage || firstMapImage;
         if (image) {
-          const imagePath = image.replace(/\.(tga|jpg|jpeg)$/i, '');
+          const imagePath = image.replace(IMAGE_EXTENSION, '');
           this.shaderImages.set(shortKey, imagePath);
           this.shaderImages.set(key, imagePath);
         }
@@ -165,7 +189,7 @@ export class TextureManager {
   }
 
   getBlendMode(name: string): BlendMode {
-    const key = name.toLowerCase().replace(/\\/g, '/').replace(/\.(tga|jpg|jpeg)$/i, '');
+    const key = name.toLowerCase().replace(/\\/g, '/').replace(IMAGE_EXTENSION, '');
     return this.shaderBlendModes.get(key) ?? this.shaderBlendModes.get('textures/' + key) ?? 'opaque';
   }
 
@@ -213,77 +237,31 @@ export class TextureManager {
   }
 
   private async loadTexture(name: string): Promise<void> {
-    // Strip extension if present
-    const baseName = name.replace(/\.(tga|jpg|jpeg)$/i, '');
-
-    // Try various paths to find the texture file
-    const candidates = [
-      baseName + '.tga',
-      baseName + '.jpg',
-      'textures/' + baseName + '.tga',
-      'textures/' + baseName + '.jpg',
-    ];
-
-    for (const path of candidates) {
-      const data = this.assets.readBytes(path);
-      if (!data) continue;
-
-      if (path.endsWith('.tga')) {
-        const result = decodeTGA(data);
-        if (result) {
-          const info = this.uploadRGBA(result.pixels, result.width, result.height);
+    const source = this.findImageFile(name);
+    if (source) {
+      try {
+        const info = source[0].endsWith('.tga')
+          ? this.loadTGA(source[1])
+          : await this.loadBitmap(source[1], imageMimeType(source[0]));
+        if (info) {
           this.cache.set(name, info);
           this.onTextureLoaded?.();
           return;
         }
-      } else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
-        try {
-          const info = await this.loadJPG(data);
-          this.cache.set(name, info);
-          this.onTextureLoaded?.();
-          return;
-        } catch { /* try next */ }
-      }
-    }
-
-    // Try shader-defined image as fallback
-    const shaderImage = this.shaderImages.get(baseName);
-    if (shaderImage && shaderImage !== baseName) {
-      const shaderCandidates = [
-        shaderImage + '.tga',
-        shaderImage + '.jpg',
-        'textures/' + shaderImage + '.tga',
-        'textures/' + shaderImage + '.jpg',
-      ];
-      for (const path of shaderCandidates) {
-        const data = this.assets.readBytes(path);
-        if (!data) continue;
-
-        if (path.endsWith('.tga')) {
-          const result = decodeTGA(data);
-          if (result) {
-            const info = this.uploadRGBA(result.pixels, result.width, result.height);
-            this.cache.set(name, info);
-            this.onTextureLoaded?.();
-            return;
-          }
-        } else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
-          try {
-            const info = await this.loadJPG(data);
-            this.cache.set(name, info);
-            this.onTextureLoaded?.();
-            return;
-          } catch { /* try next */ }
-        }
-      }
+      } catch { /* use the missing texture below */ }
     }
 
     // Not found — use missing texture placeholder
     this.cache.set(name, this.missing);
   }
 
-  private async loadJPG(data: Uint8Array): Promise<TextureInfo> {
-    const blob = new Blob([data.buffer as ArrayBuffer], { type: 'image/jpeg' });
+  private loadTGA(data: Uint8Array): TextureInfo | null {
+    const result = decodeTGA(data);
+    return result ? this.uploadRGBA(result.pixels, result.width, result.height) : null;
+  }
+
+  private async loadBitmap(data: Uint8Array, mimeType: string): Promise<TextureInfo> {
+    const blob = new Blob([data.buffer as ArrayBuffer], { type: mimeType });
     const bitmap = await createImageBitmap(blob);
     const gl = this.gl;
 
@@ -343,78 +321,27 @@ export class TextureManager {
     const key = name.toLowerCase().replace(/\\/g, '/');
     const cached = this.thumbnailCache.get(key);
     if (cached) return cached;
-
-    const baseName = key.replace(/\.(tga|jpg|jpeg)$/i, '');
-    const candidates = [
-      baseName + '.tga',
-      baseName + '.jpg',
-      'textures/' + baseName + '.tga',
-      'textures/' + baseName + '.jpg',
-    ];
-
-    for (const path of candidates) {
-      const data = this.assets.readBytes(path);
-      if (!data) continue;
-
-      if (path.endsWith('.tga')) {
-        const result = decodeTGA(data);
-        if (result) {
-          const canvas = document.createElement('canvas');
-          canvas.width = result.width;
-          canvas.height = result.height;
-          const ctx = canvas.getContext('2d')!;
-          const imageData = ctx.createImageData(result.width, result.height);
-          imageData.data.set(result.pixels);
-          ctx.putImageData(imageData, 0, 0);
-          const url = canvas.toDataURL();
-          this.thumbnailCache.set(key, url);
-          return url;
-        }
-      } else {
-        const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-        const url = URL.createObjectURL(blob);
-        this.thumbnailCache.set(key, url);
-        return url;
-      }
+    const source = this.findImageFile(name);
+    if (!source) return null;
+    const [path, data] = source;
+    if (path.endsWith('.tga')) {
+      const result = decodeTGA(data);
+      if (!result) return null;
+      const canvas = document.createElement('canvas');
+      canvas.width = result.width;
+      canvas.height = result.height;
+      const ctx = canvas.getContext('2d')!;
+      const imageData = ctx.createImageData(result.width, result.height);
+      imageData.data.set(result.pixels);
+      ctx.putImageData(imageData, 0, 0);
+      const url = canvas.toDataURL();
+      this.thumbnailCache.set(key, url);
+      return url;
     }
-
-    // Try shader-defined image as fallback
-    const shaderImage = this.shaderImages.get(baseName);
-    if (shaderImage && shaderImage !== baseName) {
-      const shaderCandidates = [
-        shaderImage + '.tga',
-        shaderImage + '.jpg',
-        'textures/' + shaderImage + '.tga',
-        'textures/' + shaderImage + '.jpg',
-      ];
-      for (const path of shaderCandidates) {
-        const data = this.assets.readBytes(path);
-        if (!data) continue;
-
-        if (path.endsWith('.tga')) {
-          const result = decodeTGA(data);
-          if (result) {
-            const canvas = document.createElement('canvas');
-            canvas.width = result.width;
-            canvas.height = result.height;
-            const ctx = canvas.getContext('2d')!;
-            const imageData = ctx.createImageData(result.width, result.height);
-            imageData.data.set(result.pixels);
-            ctx.putImageData(imageData, 0, 0);
-            const url = canvas.toDataURL();
-            this.thumbnailCache.set(key, url);
-            return url;
-          }
-        } else {
-          const blob = new Blob([data as BlobPart], { type: 'image/jpeg' });
-          const url = URL.createObjectURL(blob);
-          this.thumbnailCache.set(key, url);
-          return url;
-        }
-      }
-    }
-
-    return null;
+    const blob = new Blob([data as BlobPart], { type: imageMimeType(path) });
+    const url = URL.createObjectURL(blob);
+    this.thumbnailCache.set(key, url);
+    return url;
   }
 
   /** Get all .shader files from the pak as { 'scripts/foo.shader': 'contents...' } */
@@ -434,16 +361,19 @@ export class TextureManager {
    * Returns [pakPath, data] or null if not found.
    */
   findImageFile(name: string): [string, Uint8Array] | null {
-    const baseName = name.replace(/\.(tga|jpg|jpeg)$/i, '');
-    const candidates = [
-      baseName + '.tga',
-      baseName + '.jpg',
-      'textures/' + baseName + '.tga',
-      'textures/' + baseName + '.jpg',
-    ];
-    for (const path of candidates) {
+    const normalized = normalizedImageName(name);
+    const baseName = normalized.replace(IMAGE_EXTENSION, '');
+    for (const path of textureImageCandidates(normalized)) {
       const data = this.assets.readBytes(path);
       if (data) return [path, data];
+    }
+    const shaderImage = this.shaderImages.get(baseName)
+      ?? this.shaderImages.get(baseName.startsWith('textures/') ? baseName.slice(9) : `textures/${baseName}`);
+    if (shaderImage && shaderImage !== baseName) {
+      for (const path of textureImageCandidates(shaderImage)) {
+        const data = this.assets.readBytes(path);
+        if (data) return [path, data];
+      }
     }
     return null;
   }
@@ -453,9 +383,9 @@ export class TextureManager {
     const textures: string[] = [];
     for (const { normalizedPath: path } of this.assets.images()) {
       if ((path.startsWith('textures/') || path.startsWith('models/')) &&
-          (path.endsWith('.tga') || path.endsWith('.jpg'))) {
+          IMAGE_EXTENSION.test(path)) {
         // Strip extension and 'textures/' prefix
-        const name = path.replace(/\.(tga|jpg)$/, '').replace(/^textures\//, '');
+        const name = path.replace(IMAGE_EXTENSION, '').replace(/^textures\//, '');
         if (!textures.includes(name)) {
           textures.push(name);
         }
@@ -469,7 +399,7 @@ export class TextureManager {
   listTextureDirectories(): string[] {
     const dirs = new Set<string>();
     for (const { normalizedPath: path } of this.assets.images()) {
-      if (path.startsWith('textures/') && (path.endsWith('.tga') || path.endsWith('.jpg'))) {
+      if (path.startsWith('textures/') && IMAGE_EXTENSION.test(path)) {
         const parts = path.split('/');
         if (parts.length >= 3) {
           dirs.add(parts[1]); // e.g., 'base_wall', 'gothic_floor', etc.
@@ -484,16 +414,15 @@ export class TextureManager {
     const prefix = `textures/${dir}/`;
     const textures = new Set<string>();
     for (const { normalizedPath: path } of this.assets.images()) {
-      if (path.startsWith(prefix) && (path.endsWith('.tga') || path.endsWith('.jpg'))) {
-        textures.add(path.replace(/\.(tga|jpg)$/, '').replace(/^textures\//, ''));
+      if (path.startsWith(prefix) && IMAGE_EXTENSION.test(path)) {
+        textures.add(path.replace(IMAGE_EXTENSION, '').replace(/^textures\//, ''));
       }
     }
     return [...textures].sort();
   }
 
   getTextureAsset(name: string): IndexedAsset | null {
-    const baseName = name.toLowerCase().replace(/\\/g, '/').replace(/\.(tga|jpg|jpeg)$/i, '');
-    for (const path of [baseName + '.tga', baseName + '.jpg', 'textures/' + baseName + '.tga', 'textures/' + baseName + '.jpg']) {
+    for (const path of textureImageCandidates(name)) {
       const asset = this.assets.get(path);
       if (asset) return asset;
     }

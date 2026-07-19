@@ -61,13 +61,16 @@ export class ModelManager {
     const definition = getEntityClassRegistry().get(entity.classname);
     const requestedPath = entity.properties.model || definition?.model;
     if (!requestedPath) return null;
+    const requestedFrame = Number.parseInt(entity.properties.frame ?? '0', 10) || 0;
+    return this.resolve(requestedPath, requestedFrame, entity.properties.skin);
+  }
+
+  resolve(requestedPath: string, requestedFrame = 0, requestedSkin?: string): ResolvedModel | null {
     const path = normalizeModelPath(requestedPath).find(candidate => this.assets.get(candidate));
     if (!path) return null;
     const model = this.get(path);
     if (!model || model.frames.length === 0) return null;
-    const requestedFrame = Number.parseInt(entity.properties.frame ?? '0', 10) || 0;
     const frame = Math.max(0, Math.min(model.frames.length - 1, requestedFrame));
-    const requestedSkin = entity.properties.skin;
     const defaultSkin = path.replace(/\.md3$/i, '_default.skin');
     const skinPath = requestedSkin
       ? [requestedSkin, requestedSkin.startsWith('models/') ? '' : `models/${requestedSkin}`].find(candidate => candidate && this.assets.get(candidate))
