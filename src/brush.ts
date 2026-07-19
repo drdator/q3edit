@@ -32,12 +32,13 @@ export function createFace(
   p1: Vec3, p2: Vec3, p3: Vec3,
   texture = 'common/caulk',
   offsetX = 0, offsetY = 0, rotation = 0,
-  scaleX = 0.5, scaleY = 0.5
+  scaleX = 0.5, scaleY = 0.5,
+  contentFlags = 0, surfaceFlags = 0, value = 0,
 ): BrushFace {
   return {
     points: [vec3Copy(p1), vec3Copy(p2), vec3Copy(p3)],
     texture, offsetX, offsetY, rotation, scaleX, scaleY,
-    contentFlags: 0, surfaceFlags: 0, value: 0,
+    contentFlags, surfaceFlags, value,
     plane: planeFromPoints(p1, p2, p3),
     polygon: [],
   };

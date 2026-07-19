@@ -9,6 +9,25 @@ import {
   tessellatePatch,
 } from './patch';
 
+export type MapParseDiagnosticSeverity = 'warning' | 'error';
+
+export interface MapParseDiagnostic {
+  severity: MapParseDiagnosticSeverity;
+  line: number;
+  message: string;
+}
+
+export interface MapParseResult {
+  entities: Entity[];
+  diagnostics: MapParseDiagnostic[];
+}
+
+type DiagnosticReporter = (
+  severity: MapParseDiagnosticSeverity,
+  line: number,
+  message: string,
+) => void;
+
 // ── Serialize to .map format ──
 
 export function serializeMap(entities: Entity[]): string {
@@ -119,9 +138,18 @@ function defaultTerrainSurface(patch: Patch): TerrainDefSurface {
 // ── Parse .map format ──
 
 export function parseMap(text: string): Entity[] {
+  return parseMapWithDiagnostics(text).entities;
+}
+
+export function parseMapWithDiagnostics(text: string): MapParseResult {
   const entities: Entity[] = [];
+  const diagnostics: MapParseDiagnostic[] = [];
   const lines = text.split('\n');
   let i = 0;
+
+  const report: DiagnosticReporter = (severity, line, message) => {
+    diagnostics.push({ severity, line, message });
+  };
 
   function skipWhitespace() {
     while (i < lines.length) {
@@ -143,11 +171,26 @@ export function parseMap(text: string): Entity[] {
     return false;
   }
 
+  function skipBlockBody(openLineIndex: number): void {
+    i = openLineIndex + 1;
+    let depth = 1;
+    while (i < lines.length && depth > 0) {
+      const line = lines[i].trim();
+      if (line === '{') depth++;
+      if (line === '}') depth--;
+      i++;
+    }
+  }
+
   while (i < lines.length) {
     skipWhitespace();
     if (i >= lines.length) break;
 
-    if (!expectLine('{')) break;
+    if (!expectLine('{')) {
+      report('error', i + 1, `Expected entity opening brace, found '${lines[i].trim()}'`);
+      break;
+    }
+    const entityStartLine = i;
 
     const entity: Entity = {
       classname: 'worldspawn',
@@ -157,6 +200,7 @@ export function parseMap(text: string): Entity[] {
     };
 
     // Parse properties and brushes
+    let entityClosed = false;
     while (i < lines.length) {
       skipWhitespace();
       if (i >= lines.length) break;
@@ -164,10 +208,12 @@ export function parseMap(text: string): Entity[] {
 
       if (line === '}') {
         i++;
+        entityClosed = true;
         break;
       }
 
       if (line === '{') {
+        const blockOpenIndex = i;
         // Brush or patch — check if the previous non-blank line was a comment (brush name)
         let brushName: string | undefined;
         for (let j = i - 1; j >= 0; j--) {
@@ -197,18 +243,33 @@ export function parseMap(text: string): Entity[] {
           const patch = parsePatchDef2(lines, () => i, (v) => { i = v; });
           if (patch) {
             entity.patches.push(patch);
+          } else {
+            report('error', peekIdx + 1, 'Could not parse patchDef2 block');
+            skipBlockBody(blockOpenIndex);
           }
         } else if (peekIdx < lines.length && lines[peekIdx].trim() === 'terrainDef') {
           i = peekIdx + 1; // skip past 'terrainDef'
           const patch = parseTerrainDef(lines, () => i, (v) => { i = v; });
           if (patch) {
             entity.patches.push(patch);
+          } else {
+            report('error', peekIdx + 1, 'Could not parse terrainDef block');
+            skipBlockBody(blockOpenIndex);
           }
         } else {
-          const brush = parseBrush(lines, () => i, (v) => { i = v; });
-          if (brush) {
-            if (brushName) brush.name = brushName;
-            entity.brushes.push(brush);
+          const marker = lines[peekIdx]?.trim() ?? '';
+          const unsupportedBlock = marker.match(/^([A-Za-z_][A-Za-z0-9_]*)$/)?.[1];
+          if (unsupportedBlock) {
+            report('warning', peekIdx + 1, `Unsupported map block '${unsupportedBlock}' was skipped`);
+            skipBlockBody(blockOpenIndex);
+          } else {
+            const brush = parseBrush(lines, () => i, (v) => { i = v; }, report);
+            if (brush) {
+              if (brushName) brush.name = brushName;
+              entity.brushes.push(brush);
+            } else {
+              report('warning', blockOpenIndex + 1, 'Ignored brush with fewer than 4 valid faces');
+            }
           }
         }
       } else if (line.startsWith('"')) {
@@ -219,20 +280,32 @@ export function parseMap(text: string): Entity[] {
           if (match[1] === 'classname') {
             entity.classname = match[2];
           }
+        } else {
+          report('warning', i + 1, 'Ignored malformed entity property');
         }
         i++;
       } else {
+        report('warning', i + 1, `Ignored unexpected entity content '${line}'`);
         i++;
       }
+    }
+
+    if (!entityClosed) {
+      report('error', entityStartLine, 'Entity is missing a closing brace');
     }
 
     entities.push(entity);
   }
 
-  return entities;
+  return { entities, diagnostics };
 }
 
-function parseBrush(lines: string[], getI: () => number, setI: (v: number) => void): Brush | null {
+function parseBrush(
+  lines: string[],
+  getI: () => number,
+  setI: (v: number) => void,
+  report?: DiagnosticReporter,
+): Brush | null {
   const faces: BrushFace[] = [];
 
   while (getI() < lines.length) {
@@ -252,6 +325,8 @@ function parseBrush(lines: string[], getI: () => number, setI: (v: number) => vo
     const face = parseFaceLine(line);
     if (face) {
       faces.push(face);
+    } else {
+      report?.('warning', getI() + 1, 'Ignored malformed brush face');
     }
     setI(getI() + 1);
   }
@@ -269,7 +344,7 @@ function parseBrush(lines: string[], getI: () => number, setI: (v: number) => vo
 
 function parseFaceLine(line: string): BrushFace | null {
   // Match three point groups: ( x y z ) ( x y z ) ( x y z )
-  const pointRegex = /\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\)/g;
+  const pointRegex = /\(\s*(-?[\d.eE+]+)\s+(-?[\d.eE+]+)\s+(-?[\d.eE+]+)\s*\)/g;
   const points: Vec3[] = [];
   let match;
   let lastSuccessIndex = 0;
@@ -302,7 +377,8 @@ function parseFaceLine(line: string): BrushFace | null {
   // Swap p2/p3 to produce outward-pointing normals for the clipping algorithm.
   return createFace(
     points[0], points[2], points[1],
-    texture, offsetX, offsetY, rotation, scaleX, scaleY
+    texture, offsetX, offsetY, rotation, scaleX, scaleY,
+    contentFlags, surfaceFlags, value,
   );
 }
 

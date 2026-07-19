@@ -208,6 +208,7 @@ import {
   type CubicClipBounds,
 } from './editor-cubic-clipping';
 import type { BrushPrimitive } from './brush-primitives';
+import type { MapParseDiagnostic } from './mapfile';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -257,6 +258,7 @@ export class Editor {
   history = new History();
   fileName = 'untitled.map';
   clipboardText = '';
+  mapDiagnostics: MapParseDiagnostic[] = [];
 
   // Drag state for brush creation
   creating = false;

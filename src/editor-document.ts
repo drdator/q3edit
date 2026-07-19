@@ -1,6 +1,6 @@
 import { createBoxBrush } from './brush';
 import { createEntity } from './entity';
-import { parseMap, serializeMap as serializeEntities } from './mapfile';
+import { parseMapWithDiagnostics, serializeMap as serializeEntities } from './mapfile';
 import type { Editor } from './editor';
 
 export function snapshot(editor: Editor): void {
@@ -37,18 +37,34 @@ export function serializeMap(editor: Editor): string {
 
 export function loadMap(editor: Editor, text: string): void {
   snapshot(editor);
-  editor.entities = parseMap(text);
+  const result = parseMapWithDiagnostics(text);
+  editor.entities = result.entities;
+  editor.mapDiagnostics = result.diagnostics;
   editor.selection = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();
   editor.dirty = true;
-  editor.statusMessage = 'Map loaded';
+  if (result.diagnostics.length === 0) {
+    editor.statusMessage = 'Map loaded';
+    return;
+  }
+
+  const warnings = result.diagnostics.filter(diagnostic => diagnostic.severity === 'warning').length;
+  const errors = result.diagnostics.length - warnings;
+  const counts = [
+    errors > 0 ? `${errors} error${errors === 1 ? '' : 's'}` : '',
+    warnings > 0 ? `${warnings} warning${warnings === 1 ? '' : 's'}` : '',
+  ].filter(Boolean).join(', ');
+  const first = result.diagnostics[0];
+  editor.statusMessage = `Map loaded with ${counts} (line ${first.line}: ${first.message})`;
+  console.warn('Map parse diagnostics', result.diagnostics);
 }
 
 export function newMap(editor: Editor): void {
   snapshot(editor);
   editor.entities = [];
+  editor.mapDiagnostics = [];
   editor.selection = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);
@@ -88,6 +104,7 @@ export function openMapFromFile(editor: Editor): void {
 
 export function createDefaultMap(editor: Editor): void {
   editor.entities = [];
+  editor.mapDiagnostics = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();
