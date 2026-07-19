@@ -703,6 +703,62 @@ textarea:focus-visible {
   overflow: visible;
 }
 
+.panel.floating-panel.entity-tool-popover {
+  width: 286px;
+  max-height: min(78vh, 560px);
+}
+
+.entity-tool-popover .panel-body {
+  overflow: hidden;
+  padding: 7px;
+}
+
+.entity-class-picker {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.entity-class-picker input[type="search"] {
+  height: 25px;
+  padding: 3px 7px;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  border-top-color: var(--border-light);
+  border-left-color: var(--border-light);
+  color: var(--text);
+  font: 11px/1 monospace;
+  outline: none;
+}
+
+.entity-class-picker input[type="search"]:focus,
+.entity-class-picker select:focus {
+  border-color: var(--accent);
+}
+
+.entity-class-picker select.entity-class-results {
+  min-height: 238px;
+  margin-bottom: 5px;
+  padding: 2px;
+  overflow-y: auto;
+}
+
+.entity-class-picker select.entity-class-results option {
+  padding: 3px 5px;
+}
+
+.entity-class-description {
+  min-height: 28px;
+  max-height: 45px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font: 10px/1.4 monospace;
+}
+
+#entity-panel .entity-class-description {
+  margin: -1px 0 7px;
+}
+
 /* ── Viewport Container ── */
 #viewport-container {
   flex: 1;
@@ -871,6 +927,7 @@ textarea:focus-visible {
 }
 
 .panel-body input[type="text"],
+.panel-body input[type="search"],
 .panel-body input[type="number"],
 .panel-body select {
   width: 100%;

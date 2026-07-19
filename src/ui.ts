@@ -19,6 +19,7 @@ import { buildCameraPanel as buildCameraPanelUI } from './camera-panel';
 import { applyAppearancePreferences, openPreferencesDialog } from './preferences-dialog';
 import type { ProjectConfiguration } from './project-config';
 import { openDiagnosticsDialog, type DiagnosticsTab } from './diagnostics-dialog';
+import { refreshEntityClassPickers } from './entity-class-picker';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -608,6 +609,7 @@ export class UI {
 
   updateEntityDefinitions(): void {
     this.buildEntityPanel();
+    refreshEntityClassPickers(this.editor);
     this.editor.redrawRequested = true;
   }
 
@@ -1765,6 +1767,10 @@ export class UI {
     if (e.activeTool !== 'create') {
       createPanel?.classList.remove('open');
       document.getElementById('tool-create')?.classList.remove('active-panel');
+    }
+    if (e.activeTool !== 'entity') {
+      document.getElementById('entity-tool-panel')?.classList.remove('open');
+      document.getElementById('tool-entity')?.classList.remove('active-panel');
     }
 
     // Update panels
