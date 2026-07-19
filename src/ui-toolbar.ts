@@ -150,6 +150,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     syncCreateToolPanel();
     setCreateToolButtonIcon();
     ctx.editor.redrawRequested = true;
+    ctx.editor.persistCurrentPreferences();
   });
   sidesSelect.addEventListener('change', () => {
     const range = brushPrimitiveSideRange(ctx.editor.currentBrushPrimitive);
@@ -157,6 +158,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     ctx.editor.currentBrushSides = Math.max(range.min, Math.min(range.max, Math.round(Number(sidesSelect.value)) || range.min));
     sidesSelect.value = String(ctx.editor.currentBrushSides);
     ctx.editor.redrawRequested = true;
+    ctx.editor.persistCurrentPreferences();
   });
 
   document.addEventListener('mousedown', (event) => {

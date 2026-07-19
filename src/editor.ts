@@ -5,7 +5,9 @@ import { Patch } from './patch';
 import { History } from './history';
 import { TextureManager } from './textures';
 import type { ModelManager } from './model-manager';
-import { loadDisplayPreferences, saveDisplayPreferences, setDisplayCategory, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
+import { DEFAULT_DISPLAY_PREFERENCES, saveDisplayPreferences, setDisplayCategory, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
+import { DEFAULT_GLOBAL_PREFERENCES, loadGlobalPreferences, saveGlobalPreferences, type GlobalPreferences } from './preferences';
+import { DEFAULT_PROJECT_CONFIGURATION, loadProjectConfiguration, resolveProjectPreferences, type ProjectConfiguration } from './project-config';
 import { BrushVertex } from './vertex';
 import {
   addBrushToSelection as addBrushSelectionItem,
@@ -287,6 +289,8 @@ export type SelectionItem = {
 }
 
 export class Editor {
+  preferences: GlobalPreferences = structuredClone(DEFAULT_GLOBAL_PREFERENCES);
+  projectConfiguration: ProjectConfiguration = structuredClone(DEFAULT_PROJECT_CONFIGURATION);
   entities: Entity[] = [createWorldspawn()];
   selection: SelectionItem[] = [];
   activeTool: Tool = 'select';
@@ -309,7 +313,7 @@ export class Editor {
   redrawRequested = true;
   textureManager: TextureManager | null = null;
   modelManager: ModelManager | null = null;
-  display = loadDisplayPreferences();
+  display = structuredClone(DEFAULT_DISPLAY_PREFERENCES);
   history = new History();
   fileName = 'untitled.map';
   clipboardText = '';
@@ -368,26 +372,76 @@ export class Editor {
   invisibleMode: InvisibleMode = 'show';
   textureLock = true;
 
+  constructor() {
+    const loaded = loadGlobalPreferences();
+    this.preferences = loaded.preferences;
+    this.projectConfiguration = loadProjectConfiguration();
+    const resolved = resolveProjectPreferences(this.preferences, this.projectConfiguration);
+    this.gridSize = resolved.gridSize;
+    this.gridSnapMode = resolved.gridSnapMode;
+    this.snapToGeometry = this.preferences.editorDefaults.snapToGeometry;
+    this.textureLock = this.preferences.editorDefaults.textureLock;
+    this.currentBrushPrimitive = this.preferences.editorDefaults.brushPrimitive;
+    this.currentBrushSides = this.preferences.editorDefaults.brushSides;
+    this.invisibleMode = this.preferences.editorDefaults.invisibleMode;
+    this.display = resolved.display;
+    if (loaded.migrated) saveGlobalPreferences(this.preferences);
+    if (loaded.recoveredFromCorruptStorage) this.statusMessage = 'Preferences were reset because stored data was invalid';
+  }
+
+  applyPreferences(preferences: GlobalPreferences, project = this.projectConfiguration): void {
+    this.preferences = structuredClone(preferences);
+    this.projectConfiguration = structuredClone(project);
+    const resolved = resolveProjectPreferences(this.preferences, this.projectConfiguration);
+    this.gridSize = resolved.gridSize;
+    this.gridSnapMode = resolved.gridSnapMode;
+    this.snapToGeometry = this.preferences.editorDefaults.snapToGeometry;
+    this.textureLock = this.preferences.editorDefaults.textureLock;
+    this.currentBrushPrimitive = this.preferences.editorDefaults.brushPrimitive;
+    this.currentBrushSides = this.preferences.editorDefaults.brushSides;
+    this.invisibleMode = this.preferences.editorDefaults.invisibleMode;
+    this.display = resolved.display;
+    this.redrawRequested = true;
+  }
+
+  persistCurrentPreferences(): void {
+    this.preferences.editorDefaults = {
+      gridSize: this.gridSize,
+      gridSnapMode: this.gridSnapMode,
+      snapToGeometry: this.snapToGeometry,
+      textureLock: this.textureLock,
+      brushPrimitive: this.currentBrushPrimitive,
+      brushSides: this.currentBrushSides,
+      invisibleMode: this.invisibleMode,
+    };
+    this.preferences.display = structuredClone(this.display);
+    saveGlobalPreferences(this.preferences);
+  }
+
   toggleDisplayCategory(category: DisplayCategory): void {
     setDisplayCategory(this.display, category, !this.display.categories[category]);
+    this.persistCurrentPreferences();
     this.redrawRequested = true;
   }
 
   setRendererMode(mode: RendererMode): void {
     this.display.rendererMode = mode;
     saveDisplayPreferences(this.display);
+    this.persistCurrentPreferences();
     this.redrawRequested = true;
   }
 
   setTextureFiltering(filtering: TextureFiltering): void {
     this.display.textureFiltering = filtering;
     saveDisplayPreferences(this.display);
+    this.persistCurrentPreferences();
     this.redrawRequested = true;
   }
 
   toggleDynamicLights(): void {
     this.display.dynamicLights = !this.display.dynamicLights;
     saveDisplayPreferences(this.display);
+    this.persistCurrentPreferences();
     this.redrawRequested = true;
   }
 
@@ -581,6 +635,7 @@ export class Editor {
     this.textureLock = !this.textureLock;
     this.redrawRequested = true;
     this.statusMessage = this.textureLock ? 'Texture lock: ON' : 'Texture lock: OFF';
+    this.persistCurrentPreferences();
   }
 
   makeDetail(): void {

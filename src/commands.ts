@@ -248,6 +248,34 @@ export class CommandRegistry<Context> {
     return conflicts;
   }
 
+  replaceShortcutOverrides(overrides: Record<string, string | null>): ShortcutConflict[] {
+    const normalized = new Map<CommandId, string | null>();
+    for (const [id, shortcut] of Object.entries(overrides)) {
+      if (!this.commands.has(id)) continue;
+      normalized.set(id, shortcut === null ? null : normalizeShortcut(shortcut));
+    }
+    const owners = new Map<string, CommandId>();
+    const conflicts: ShortcutConflict[] = [];
+    for (const command of this.commands.values()) {
+      const overridden = normalized.has(command.id);
+      const shortcuts = [overridden ? normalized.get(command.id) : command.defaultShortcut,
+        ...(overridden ? [] : command.alternateShortcuts ?? [])]
+        .filter((shortcut): shortcut is string => typeof shortcut === 'string')
+        .map(normalizeShortcut);
+      for (const shortcut of shortcuts) {
+        const owner = owners.get(shortcut);
+        if (owner) conflicts.push({ shortcut, commandId: command.id, conflictingCommandId: owner });
+        else owners.set(shortcut, command.id);
+      }
+    }
+    if (conflicts.length > 0) return conflicts;
+    this.shortcutOverrides.clear();
+    for (const [id, shortcut] of normalized) this.shortcutOverrides.set(id, shortcut);
+    this.rebuildShortcutOwners();
+    this.notifyStateChanged();
+    return [];
+  }
+
   registerAll(commands: readonly CommandDefinition<Context>[]): void {
     for (const command of commands) this.register(command);
   }

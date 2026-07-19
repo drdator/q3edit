@@ -72,6 +72,18 @@ describe('entity definitions', () => {
     expect(registry.get('unknown')).toBeNull();
   });
 
+  it('limits definitions to project-configured source paths', () => {
+    const index = new AssetIndex([
+      archive('pak0.pk3', {
+        'scripts/base.def': '/*QUAKED base_only (0 1 0) ?\nbase\n*/',
+        'scripts/mod.def': '/*QUAKED mod_only (1 0 0) ?\nmod\n*/',
+      }),
+    ]);
+    const registry = loadEntityClassRegistry(index, ['pak0.pk3:scripts/mod.def']);
+    expect(registry.get('mod_only')).not.toBeNull();
+    expect(registry.get('base_only')).toBeNull();
+  });
+
   it('replaces duplicate classes without deleting unrelated fallback classes', () => {
     const registry = new EntityClassRegistry();
     registry.loadSource('/*QUAKED custom (0 0 1) ?\nCustom class\n*/', 'custom.def', 'def');

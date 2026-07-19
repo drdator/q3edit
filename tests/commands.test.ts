@@ -29,6 +29,7 @@ describe('CommandRegistry', () => {
       compileBSP: noop,
       quickPlay: noop,
       managePakFiles: noop,
+      openPreferences: noop,
       openTerrainPanel: noop,
       cycleInvisibleMode: noop,
       setTool: noop,
@@ -48,7 +49,7 @@ describe('CommandRegistry', () => {
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
-      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openTerrainPanel: noop,
+      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openTerrainPanel: noop,
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
     });
@@ -156,6 +157,17 @@ describe('CommandRegistry', () => {
       { shortcut: '4', commandId: 'second', conflictingCommandId: 'first' },
     ]);
     expect(registry.shortcutOverrideEntries()).toEqual({ first: '4' });
+  });
+
+  it('replaces shortcut overrides atomically so assignments can be swapped', () => {
+    const registry = new CommandRegistry({});
+    registry.register({ id: 'first', label: 'First', defaultShortcut: '1', execute: () => {} });
+    registry.register({ id: 'second', label: 'Second', defaultShortcut: '2', execute: () => {} });
+    expect(registry.replaceShortcutOverrides({ first: '2', second: '1' })).toEqual([]);
+    expect(registry.shortcutFor('first')).toBe('2');
+    expect(registry.shortcutFor('second')).toBe('1');
+    expect(registry.replaceShortcutOverrides({ first: '3', second: '3' })).toHaveLength(1);
+    expect(registry.shortcutFor('first')).toBe('2');
   });
 });
 

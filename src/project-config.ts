@@ -8,7 +8,7 @@ export interface ProjectConfiguration {
   version: typeof PROJECT_CONFIG_VERSION;
   name: string;
   game: { basePath: string; gameDirectory: string; executable: string };
-  assets: { archives: string[]; searchPaths: string[]; openArenaEnabled: boolean };
+  assets: { archives: string[]; searchPaths: string[]; openArenaEnabled: boolean; configured: boolean };
   compile: { bspArgs: string[]; vis: boolean; visArgs: string[]; light: boolean; lightArgs: string[] };
   entityDefinitions: { sources: string[] };
   overrides: {
@@ -28,7 +28,7 @@ export const DEFAULT_PROJECT_CONFIGURATION: ProjectConfiguration = {
   version: PROJECT_CONFIG_VERSION,
   name: 'Quake III Arena',
   game: { basePath: '', gameDirectory: 'baseq3', executable: '' },
-  assets: { archives: [], searchPaths: [], openArenaEnabled: true },
+  assets: { archives: [], searchPaths: [], openArenaEnabled: true, configured: false },
   compile: { bspArgs: [], vis: true, visArgs: [], light: true, lightArgs: [] },
   entityDefinitions: { sources: [] },
   overrides: {},
@@ -61,6 +61,7 @@ export function normalizeProjectConfiguration(value: unknown): ProjectConfigurat
   result.assets = {
     archives: strings(assets.archives), searchPaths: strings(assets.searchPaths),
     openArenaEnabled: typeof assets.openArenaEnabled === 'boolean' ? assets.openArenaEnabled : result.assets.openArenaEnabled,
+    configured: assets.configured === true,
   };
   result.compile = {
     bspArgs: strings(compile.bspArgs), vis: typeof compile.vis === 'boolean' ? compile.vis : result.compile.vis,

@@ -332,9 +332,12 @@ function definitionAssets(index: AssetIndex): IndexedAsset[] {
     a.source.archiveIndex - b.source.archiveIndex || a.normalizedPath.localeCompare(b.normalizedPath));
 }
 
-export function loadEntityClassRegistry(index: AssetIndex): EntityClassRegistry {
+export function loadEntityClassRegistry(index: AssetIndex, configuredSources: readonly string[] = []): EntityClassRegistry {
   const registry = new EntityClassRegistry();
-  for (const asset of definitionAssets(index)) {
+  const sourceSet = new Set(configuredSources.map(source => source.replace(/\\/g, '/').toLowerCase()));
+  const assets = definitionAssets(index).filter(asset => sourceSet.size === 0 ||
+    sourceSet.has(asset.normalizedPath) || sourceSet.has(`${asset.source.archiveName}:${asset.normalizedPath}`.toLowerCase()));
+  for (const asset of assets) {
     const text = index.readText(asset.normalizedPath);
     if (text === null) continue;
     const format = asset.normalizedPath.endsWith('.ent') ? 'ent' : 'def';
