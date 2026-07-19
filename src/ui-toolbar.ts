@@ -162,14 +162,15 @@ export function buildToolbar(ctx: ToolbarContext): void {
     entityToolPanel.classList.remove('open');
     entityToolButton?.classList.remove('active-panel');
   };
+  const updateEntityToolButtonTitle = (classname = ctx.editor.currentEntityClass) => {
+    const shortcut = ctx.commands.getState('tool.entity').shortcut;
+    if (entityToolButton) entityToolButton.title = `Place Entity: ${classname}${shortcut ? ` (${formatShortcut(shortcut)})` : ''}`;
+  };
   const entityPicker = createEntityClassPicker(ctx.editor, {
     idPrefix: 'toolbar-entity-class',
     listSize: 11,
     onConfirm: () => closeEntityToolPanel(),
-    onSelectionChanged: classname => {
-      const shortcut = ctx.commands.getState('tool.entity').shortcut;
-      if (entityToolButton) entityToolButton.title = `Place Entity: ${classname}${shortcut ? ` (${formatShortcut(shortcut)})` : ''}`;
-    },
+    onSelectionChanged: updateEntityToolButtonTitle,
   });
   entityToolBody.appendChild(entityPicker.element);
   document.body.appendChild(entityToolPanel);
@@ -277,7 +278,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     } else if (tool.id === 'entity') {
       entityToolButton = btn;
       entityPicker.refresh();
-      refreshCommandState.push(() => entityPicker.refresh());
+      refreshCommandState.push(updateEntityToolButtonTitle);
     }
   }
 
