@@ -4,6 +4,7 @@ import { Entity, createEntity, createWorldspawn } from './entity';
 import { Patch } from './patch';
 import { History } from './history';
 import { TextureManager } from './textures';
+import type { ModelManager } from './model-manager';
 import { BrushVertex } from './vertex';
 import {
   addBrushToSelection as addBrushSelectionItem,
@@ -261,6 +262,7 @@ export class Editor {
   pointfileIndex = 0;
   redrawRequested = true;
   textureManager: TextureManager | null = null;
+  modelManager: ModelManager | null = null;
   history = new History();
   fileName = 'untitled.map';
   clipboardText = '';
@@ -798,11 +800,11 @@ export class Editor {
   }
 
   entityBounds(entity: Entity): { mins: Vec3; maxs: Vec3 } | null {
-    return getEntityBounds(entity);
+    return getEntityBounds(entity, this.modelManager);
   }
 
   entityCenter(entity: Entity): Vec3 | null {
-    return getEntityCenter(entity);
+    return getEntityCenter(entity, this.modelManager);
   }
 
   entityDisplayOrigin(entity: Entity): Vec3 | null {

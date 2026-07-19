@@ -117,7 +117,8 @@ export function pickEntityAt3D(
     if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
 
     let bounds = ctx.editor.entityBounds(entity);
-    if (ctx.editor.isPointEntity(entity)) {
+    if (ctx.editor.isPointEntity(entity) && bounds &&
+        bounds.mins.every((value, axis) => value === bounds!.maxs[axis])) {
       const origin = ctx.editor.entityDisplayOrigin(entity);
       if (!origin) continue;
       const size = 8;

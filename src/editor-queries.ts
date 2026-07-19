@@ -3,6 +3,8 @@ import { vec3Add, vec3Max, vec3Min, vec3Scale, type Vec3 } from './math';
 import type { Brush } from './brush';
 import type { Patch } from './patch';
 import type { Editor } from './editor';
+import type { ModelManager } from './model-manager';
+import { getEntityClassRegistry } from './entity-definitions';
 
 export function* allBrushes(editor: Editor): Iterable<{ entity: Entity; brush: Brush }> {
   for (const entity of editor.entities) {
@@ -42,7 +44,7 @@ export function* pointEntities(editor: Editor): Iterable<Entity> {
   }
 }
 
-export function entityBounds(entity: Entity): { mins: Vec3; maxs: Vec3 } | null {
+export function entityBounds(entity: Entity, models?: ModelManager | null): { mins: Vec3; maxs: Vec3 } | null {
   let mins: Vec3 = [Infinity, Infinity, Infinity];
   let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
   let hasBounds = false;
@@ -63,13 +65,23 @@ export function entityBounds(entity: Entity): { mins: Vec3; maxs: Vec3 } | null 
     return { mins, maxs };
   }
 
+  const modelBounds = models?.entityBounds(entity);
+  if (modelBounds) return modelBounds;
+
   const origin = entityOrigin(entity);
   if (!origin) return null;
+  const definitionBounds = getEntityClassRegistry().get(entity.classname)?.bounds;
+  if (definitionBounds) {
+    return {
+      mins: vec3Add(origin, definitionBounds.mins),
+      maxs: vec3Add(origin, definitionBounds.maxs),
+    };
+  }
   return { mins: origin, maxs: origin };
 }
 
-export function entityCenter(entity: Entity): Vec3 | null {
-  const bounds = entityBounds(entity);
+export function entityCenter(entity: Entity, models?: ModelManager | null): Vec3 | null {
+  const bounds = entityBounds(entity, models);
   if (!bounds) return null;
   return vec3Scale(vec3Add(bounds.mins, bounds.maxs), 0.5);
 }
@@ -136,7 +148,7 @@ export function selectionBounds(editor: Editor): { mins: Vec3; maxs: Vec3 } | nu
 
   for (const item of editor.selection) {
     if (item.type === 'entity') {
-      const bounds = entityBounds(item.entity);
+      const bounds = entityBounds(item.entity, editor.modelManager);
       if (!bounds) continue;
       mins = vec3Min(mins, bounds.mins);
       maxs = vec3Max(maxs, bounds.maxs);

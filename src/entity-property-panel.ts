@@ -2,6 +2,7 @@ import type { Editor } from './editor';
 import { removeEntityProperty, setEntitySpawnflag, setTypedEntityProperty } from './editor-properties';
 import type { Entity } from './entity';
 import type { EntityClassDefinition, EntityPropertyDefinition } from './entity-definitions';
+import { openModelBrowser } from './model-browser';
 
 export const ENTITY_PROPERTY_COMMAND_IDS = {
   set: 'entity.property.set',
@@ -60,9 +61,30 @@ function valueControl(
   input.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.set;
   if (definition.type === 'vector' || definition.type === 'color') input.placeholder = 'x y z';
   if (definition.type === 'asset') input.placeholder = 'path/to/asset';
+  if (definition.type === 'asset') {
+    const choices = definition.key.toLowerCase() === 'skin'
+      ? editor.modelManager?.listSkins()
+      : editor.modelManager?.listModels();
+    if (choices?.length) {
+      const id = `entity-assets-${definition.key}`;
+      document.getElementById(id)?.remove();
+      const list = document.createElement('datalist'); list.id = id;
+      for (const path of choices) list.appendChild(new Option(path, path));
+      document.body.appendChild(list); input.setAttribute('list', id);
+    }
+  }
   if (definition.type === 'entity-reference') input.setAttribute('list', entityReferenceList(editor, definition.key));
   input.addEventListener('change', () => commit(input.value));
   wrapper.appendChild(input);
+
+  if (definition.type === 'asset' && definition.key.toLowerCase() === 'model') {
+    const browse = document.createElement('button');
+    browse.type = 'button'; browse.className = 'btn'; browse.textContent = 'Browse…';
+    browse.addEventListener('click', () => openModelBrowser(editor, input.value, path => {
+      input.value = path; commit(path);
+    }));
+    wrapper.appendChild(browse);
+  }
 
   if (definition.type === 'color') {
     const picker = document.createElement('input');
@@ -110,7 +132,14 @@ export function buildDefinedEntityProperties(
     container.appendChild(description);
   }
 
-  for (const property of Object.values(definition.properties)) {
+  const definedProperties = { ...definition.properties };
+  if ((definition.classname === 'misc_model' || definition.model) && !definedProperties.model) {
+    definedProperties.model = { key: 'model', name: 'Model', type: 'asset', description: 'MD3 model path.' };
+  }
+  if ((definition.classname === 'misc_model' || definition.model) && !definedProperties.skin) {
+    definedProperties.skin = { key: 'skin', name: 'Skin', type: 'asset', description: 'Optional surface-to-shader skin file.' };
+  }
+  for (const property of Object.values(definedProperties)) {
     const hasValue = property.key in entity.properties;
     const row = document.createElement('div');
     row.className = 'entity-defined-property';
