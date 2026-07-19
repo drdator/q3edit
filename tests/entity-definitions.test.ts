@@ -11,6 +11,7 @@ import {
 } from '../src/entity-definitions';
 import { Editor } from '../src/editor';
 import type { Entity } from '../src/entity';
+import { createBoxBrush } from '../src/brush';
 
 const fixture = readFileSync(new URL('./fixtures/entities.def', import.meta.url), 'utf8');
 
@@ -92,6 +93,16 @@ describe('entity definitions', () => {
     const loaded: Entity = { classname: 'custom', properties: { classname: 'custom' }, brushes: [], patches: [] };
     editor.entities.push(loaded);
     expect(loaded.properties.count).toBeUndefined();
+
+    const brushDefinition = parseQuakedDefinitions(
+      '/*QUAKED custom_func (0 0 1) ?\nspeed: movement speed (default: 100)\n*/',
+    ).classes[0];
+    registry.add(brushDefinition);
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    editor.worldspawn.brushes.push(brush);
+    editor.selectBrush(editor.worldspawn, brush);
+    editor.groupSelectionIntoEntity('custom_func');
+    expect(editor.entities[editor.entities.length - 1]?.properties.speed).toBe('100');
     setEntityClassRegistry(new EntityClassRegistry());
   });
 });
