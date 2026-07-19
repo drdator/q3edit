@@ -1,278 +1,156 @@
-import { Editor, Tool } from './editor';
+import { formatShortcut, type CommandDefinition, type CommandRegistry } from './commands';
+import type { EditorCommandContext } from './editor-commands';
 
-type MenuItem =
-  | {
-      label: string | (() => string);
-      shortcut?: string;
-      action?: () => void | Promise<void>;
-      children?: MenuItem[];
-      separator?: false;
-    }
-  | { separator: true; label?: undefined; shortcut?: undefined; action?: undefined; children?: undefined };
+type EditorCommand = CommandDefinition<EditorCommandContext>;
+type MenuEntry =
+  | { kind: 'command'; command: EditorCommand }
+  | { kind: 'submenu'; label: string; commands: EditorCommand[] }
+  | { kind: 'separator' };
 
 export interface MenuBarContext {
-  editor: Editor;
+  commands: CommandRegistry<EditorCommandContext>;
   getOpenMenu: () => HTMLElement | null;
   setOpenMenu: (menu: HTMLElement | null) => void;
   closeMenus: () => void;
-  openRotateDialog: () => void;
-  openScaleDialog: () => void;
-  compileBSP: () => void | Promise<void>;
-  quickPlay: (quality: 'fast' | 'normal' | 'full') => void | Promise<void>;
-  managePakFiles: () => void | Promise<void>;
-  cycleInvisibleMode: () => void;
-  setTool: (tool: Tool) => void;
-  setGrid: (size: number) => void;
-  increaseGrid: () => void;
-  decreaseGrid: () => void;
+}
+
+function menuEntries(commands: EditorCommand[]): MenuEntry[] {
+  const entries: MenuEntry[] = [];
+  let previousGroup: string | undefined;
+  for (let index = 0; index < commands.length;) {
+    const command = commands[index];
+    const placement = command.menu!;
+    if (previousGroup !== undefined && placement.group !== previousGroup) entries.push({ kind: 'separator' });
+    previousGroup = placement.group;
+
+    if (!placement.submenu) {
+      entries.push({ kind: 'command', command });
+      index++;
+      continue;
+    }
+
+    const submenu = placement.submenu;
+    const children: EditorCommand[] = [];
+    while (index < commands.length && commands[index].menu?.submenu === submenu) {
+      children.push(commands[index]);
+      index++;
+    }
+    entries.push({ kind: 'submenu', label: submenu, commands: children });
+  }
+  return entries;
 }
 
 export function buildMenuBar(ctx: MenuBarContext): () => void {
   const bar = document.getElementById('menubar')!;
-  const refreshLabels: (() => void)[] = [];
-  const menus: Record<string, MenuItem[]> = {
-    'File': [
-      { label: 'New', shortcut: 'Ctrl+N', action: () => { ctx.editor.newMap(); ctx.editor.createDefaultMap(); } },
-      { separator: true },
-      { label: 'Open...', shortcut: 'Ctrl+O', action: () => ctx.editor.openMapFromFile() },
-      { label: 'Save', shortcut: 'Ctrl+S', action: () => ctx.editor.saveMapToFile() },
-      { separator: true },
-      { label: 'Manage PK3 Files...', action: () => ctx.managePakFiles() },
-      { separator: true },
-      { label: 'Import Prefab...', action: () => ctx.editor.importPrefabFromFile() },
-      { label: 'Save Selection as Prefab', action: () => ctx.editor.saveSelectionAsPrefab() },
-      { separator: true },
-      { label: 'Export .map to Console', action: () => console.log(ctx.editor.serializeMap()) },
-      { separator: true },
-      { label: 'Compile BSP...', action: () => ctx.compileBSP() },
-      {
-        label: 'Quick Play',
-        children: [
-          { label: 'Fast', shortcut: 'Ctrl+Alt+1', action: () => ctx.quickPlay('fast') },
-          { label: 'Normal', shortcut: 'Ctrl+Alt+2', action: () => ctx.quickPlay('normal') },
-          { label: 'Full', shortcut: 'Ctrl+Alt+3', action: () => ctx.quickPlay('full') },
-        ],
-      },
-    ],
-    'Edit': [
-      { label: 'Undo', shortcut: 'Ctrl+Z', action: () => ctx.editor.undo() },
-      { label: 'Redo', shortcut: 'Ctrl+Y', action: () => ctx.editor.redo() },
-      { separator: true },
-      { label: 'Copy', shortcut: 'Ctrl+C', action: () => ctx.editor.copySelection() },
-      { label: 'Paste', shortcut: 'Ctrl+V', action: () => ctx.editor.pasteClipboard() },
-      { separator: true },
-      { label: 'Select All', shortcut: 'Ctrl+A', action: () => ctx.editor.selectAll() },
-      { label: 'Select All Of Type', action: () => ctx.editor.selectAllOfType() },
-      { label: 'Invert Selection', shortcut: 'Ctrl+Shift+I', action: () => ctx.editor.invertSelection() },
-      { label: 'Select Touching', action: () => ctx.editor.selectTouching() },
-      { label: 'Select Inside', action: () => ctx.editor.selectInside() },
-      { label: 'Select Complete Tall', action: () => ctx.editor.selectCompleteTall() },
-      { label: 'Select Partial Tall', action: () => ctx.editor.selectPartialTall() },
-      { separator: true },
-      { label: 'Deselect', shortcut: 'Esc', action: () => ctx.editor.clearSelection() },
-      { label: 'Hide Selected', shortcut: 'H', action: () => ctx.editor.hideSelected() },
-      { label: 'Show Hidden', shortcut: 'Shift+H', action: () => ctx.editor.showHidden() },
-      { separator: true },
-      { label: 'Make Detail', action: () => ctx.editor.makeDetail() },
-      { label: 'Make Structural', action: () => ctx.editor.makeStructural() },
-      { separator: true },
-      { label: 'Group Selection', shortcut: 'Ctrl+Shift+G', action: () => ctx.editor.groupSelectionIntoEntity() },
-      { label: 'Move to Worldspawn', shortcut: 'Ctrl+Shift+U', action: () => ctx.editor.moveSelectionToWorldspawn() },
-      { label: 'Connect Entities', shortcut: 'Ctrl+K', action: () => ctx.editor.connectSelectedEntities() },
-      { separator: true },
-      { label: 'Duplicate', shortcut: 'Ctrl+D', action: () => ctx.editor.duplicateSelection() },
-      { label: 'Delete', shortcut: 'Del', action: () => ctx.editor.deleteSelection() },
-      { separator: true },
-      { label: 'Rotate 90°', shortcut: 'R', action: () => ctx.editor.rotateSelection(90) },
-      { label: 'Rotate 15°', shortcut: 'Shift+R', action: () => ctx.editor.rotateSelection(15) },
-      { label: 'Rotate...', shortcut: 'Ctrl+Shift+R', action: () => ctx.openRotateDialog() },
-      { label: 'Scale...', shortcut: 'Ctrl+Shift+E', action: () => ctx.openScaleDialog() },
-      { separator: true },
-      { label: 'Flip X', shortcut: 'Shift+X', action: () => ctx.editor.flipSelection(0) },
-      { label: 'Flip Y', shortcut: 'Shift+Y', action: () => ctx.editor.flipSelection(1) },
-      { label: 'Flip Z', shortcut: 'Shift+Z', action: () => ctx.editor.flipSelection(2) },
-    ],
-    'View': [
-      { label: 'Texture Lock', shortcut: 'T', action: () => ctx.editor.toggleTextureLock() },
-      { label: 'Cycle Invisible Mode', shortcut: 'I', action: () => ctx.cycleInvisibleMode() },
-      {
-        label: 'Render Selected Only',
-        action: () => {
-          ctx.editor.renderSelectedOnly = !ctx.editor.renderSelectedOnly;
-          ctx.editor.redrawRequested = true;
-        },
-      },
-      { separator: true },
-      {
-        label: () => ctx.editor.cubicClipEnabled
-          ? `Cubic Clipping: ${ctx.editor.cubicClipSize} cube`
-          : 'Cubic Clipping: Off',
-        action: () => ctx.editor.toggleCubicClip(),
-      },
-      { label: 'Smaller Clip Cube', action: () => ctx.editor.adjustCubicClipSize(-1) },
-      { label: 'Larger Clip Cube', action: () => ctx.editor.adjustCubicClipSize(1) },
-    ],
-    'Region': [
-      { label: 'Set From Selection', action: () => ctx.editor.setRegionFromSelection() },
-      { label: 'Region Off', action: () => ctx.editor.clearRegion() },
-    ],
-    'Pointfile': [
-      { label: 'Open Pointfile...', action: () => ctx.editor.openPointfileFromFile() },
-      {
-        label: () => ctx.editor.pointfilePoints.length > 0
-          ? `Clear Pointfile (${ctx.editor.pointfilePoints.length})`
-          : 'Clear Pointfile',
-        action: () => ctx.editor.clearPointfile(),
-      },
-      { separator: true },
-      { label: 'Previous Leak Spot', action: () => ctx.editor.prevPointfilePoint() },
-      { label: 'Next Leak Spot', action: () => ctx.editor.nextPointfilePoint() },
-    ],
-    'Path': [
-      { label: 'Connect Selection as Path', shortcut: 'Ctrl+Shift+K', action: () => ctx.editor.connectSelectedEntitiesAsPath() },
-      { label: 'Connect Selection as Closed Path', shortcut: 'Ctrl+Alt+K', action: () => ctx.editor.connectSelectedEntitiesAsClosedPath() },
-    ],
-    'Terrain': [
-      { label: 'Create Terrain Patch', action: () => ctx.editor.createTerrainPatch() },
-      { label: 'Prepare Terrain For Texture Paint', action: () => ctx.editor.splitTerrainIntoPaintTiles() },
-      { label: 'Stitch Terrain Seams', action: () => ctx.editor.stitchTerrainSeams() },
-      { separator: true },
-      {
-        label: () => `Brush Mode: ${ctx.editor.terrainBrushMode === 'texture' ? 'Texture' : 'Height'}`,
-        action: () => ctx.editor.toggleTerrainBrushMode(),
-      },
-      { separator: true },
-      { label: 'Raise Terrain', shortcut: 'PgUp', action: () => ctx.editor.raiseTerrain() },
-      { label: 'Lower Terrain', shortcut: 'PgDn', action: () => ctx.editor.lowerTerrain() },
-      { label: 'Smooth Terrain', shortcut: 'Home', action: () => ctx.editor.smoothTerrain() },
-      { label: 'Noise Terrain', action: () => ctx.editor.noiseTerrain() },
-      { label: 'Erode Terrain', action: () => ctx.editor.erodeTerrain() },
-      { separator: true },
-      { label: 'Smaller Radius', action: () => ctx.editor.adjustTerrainRadius(-8) },
-      { label: 'Larger Radius', action: () => ctx.editor.adjustTerrainRadius(8) },
-      { label: 'Weaker Brush', action: () => ctx.editor.adjustTerrainStrength(-2) },
-      { label: 'Stronger Brush', action: () => ctx.editor.adjustTerrainStrength(2) },
-      {
-        label: () => `Falloff: ${ctx.editor.terrainFalloff === 'smooth' ? 'Smooth' : 'Linear'}`,
-        action: () => ctx.editor.cycleTerrainFalloff(),
-      },
-    ],
-    'Tools': [
-      { label: 'Select', shortcut: '1', action: () => ctx.setTool('select') },
-      { label: 'Create Brush', shortcut: '2', action: () => ctx.setTool('create') },
-      { label: 'Place Entity', shortcut: '3', action: () => ctx.setTool('entity') },
-      { label: 'Clip', shortcut: '4', action: () => ctx.setTool('clip') },
-      { label: 'Rotate', shortcut: '5', action: () => ctx.setTool('rotate') },
-    ],
-    'CSG': [
-      { label: 'CSG Subtract', shortcut: 'Shift+Ctrl+S', action: () => ctx.editor.csgSubtract() },
-      { label: 'Make Hollow', shortcut: 'Shift+Ctrl+H', action: () => ctx.editor.csgHollow() },
-      { label: 'Merge Brushes', shortcut: 'Shift+Ctrl+M', action: () => ctx.editor.csgMerge() },
-    ],
-    'Grid': [
-      { label: 'Grid 1', action: () => ctx.setGrid(1) },
-      { label: 'Grid 2', action: () => ctx.setGrid(2) },
-      { label: 'Grid 4', action: () => ctx.setGrid(4) },
-      { label: 'Grid 8', action: () => ctx.setGrid(8) },
-      { label: 'Grid 16', action: () => ctx.setGrid(16) },
-      { label: 'Grid 32', action: () => ctx.setGrid(32) },
-      { label: 'Grid 64', action: () => ctx.setGrid(64) },
-      { separator: true },
-      { label: 'Smaller Grid', shortcut: '[', action: () => ctx.decreaseGrid() },
-      { label: 'Larger Grid', shortcut: ']', action: () => ctx.increaseGrid() },
-    ],
+  const refreshState: (() => void)[] = [];
+  const menuCommands = ctx.commands.list()
+    .filter((command): command is EditorCommand & { menu: NonNullable<EditorCommand['menu']> } => command.menu !== undefined)
+    .sort((a, b) => a.menu.menuOrder - b.menu.menuOrder || a.menu.order - b.menu.order);
+  const menus = new Map<string, EditorCommand[]>();
+  for (const command of menuCommands) {
+    const commands = menus.get(command.menu.menu) ?? [];
+    commands.push(command);
+    menus.set(command.menu.menu, commands);
+  }
+
+  const appendCommand = (container: HTMLElement, command: EditorCommand): void => {
+    const action = document.createElement('div');
+    action.className = 'menu-action';
+    action.dataset.command = command.id;
+    const label = document.createElement('span');
+    action.appendChild(label);
+    if (command.defaultShortcut) {
+      const shortcut = document.createElement('span');
+      shortcut.className = 'shortcut';
+      shortcut.textContent = formatShortcut(command.defaultShortcut);
+      action.appendChild(shortcut);
+    }
+
+    const refresh = () => {
+      const state = ctx.commands.getState(command.id);
+      label.textContent = state.label;
+      action.classList.toggle('disabled', !state.enabled);
+      action.classList.toggle('checked', state.checked);
+      action.setAttribute('aria-disabled', String(!state.enabled));
+      action.setAttribute('aria-checked', String(state.checked));
+    };
+    refresh();
+    refreshState.push(refresh);
+    action.addEventListener('mousedown', event => {
+      event.stopPropagation();
+      if (!ctx.commands.getState(command.id).enabled) return;
+      ctx.closeMenus();
+      void ctx.commands.execute(command.id);
+    });
+    container.appendChild(action);
   };
 
-  const appendMenuItems = (container: HTMLElement, items: MenuItem[]): void => {
-    for (const item of items) {
-      if (item.separator) {
-        const sep = document.createElement('div');
-        sep.className = 'menu-separator';
-        container.appendChild(sep);
-        continue;
-      }
-
-      const action = document.createElement('div');
-      action.className = 'menu-action';
-      const label = document.createElement('span');
-      const refreshLabel = () => {
-        label.textContent = typeof item.label === 'function' ? item.label() : item.label;
-      };
-      refreshLabel();
-      refreshLabels.push(refreshLabel);
-      action.appendChild(label);
-
-      if (item.children) {
-        action.classList.add('has-submenu');
-        action.addEventListener('mouseenter', () => action.classList.add('submenu-open'));
-        action.addEventListener('mouseleave', () => action.classList.remove('submenu-open'));
+  const appendEntries = (container: HTMLElement, entries: MenuEntry[]): void => {
+    for (const entry of entries) {
+      if (entry.kind === 'separator') {
+        const separator = document.createElement('div');
+        separator.className = 'menu-separator';
+        container.appendChild(separator);
+      } else if (entry.kind === 'command') {
+        appendCommand(container, entry.command);
+      } else {
+        const submenuAction = document.createElement('div');
+        submenuAction.className = 'menu-action has-submenu';
+        const label = document.createElement('span');
+        label.textContent = entry.label;
+        submenuAction.appendChild(label);
         const arrow = document.createElement('span');
         arrow.className = 'submenu-arrow';
         arrow.textContent = '\u203a';
-        action.appendChild(arrow);
-
+        submenuAction.appendChild(arrow);
         const submenu = document.createElement('div');
         submenu.className = 'menu-dropdown menu-submenu';
-        appendMenuItems(submenu, item.children);
-        action.appendChild(submenu);
-      } else if (item.shortcut) {
-        const shortcut = document.createElement('span');
-        shortcut.className = 'shortcut';
-        shortcut.textContent = item.shortcut;
-        action.appendChild(shortcut);
+        for (const command of entry.commands) appendCommand(submenu, command);
+        submenuAction.appendChild(submenu);
+        submenuAction.addEventListener('mouseenter', () => submenuAction.classList.add('submenu-open'));
+        submenuAction.addEventListener('mouseleave', () => submenuAction.classList.remove('submenu-open'));
+        submenuAction.addEventListener('mousedown', event => {
+          event.stopPropagation();
+          submenuAction.classList.toggle('submenu-open');
+        });
+        container.appendChild(submenuAction);
       }
-
-      action.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-        if (item.children) {
-          action.classList.toggle('submenu-open');
-          return;
-        }
-        ctx.closeMenus();
-        item.action?.();
-      });
-      container.appendChild(action);
     }
   };
 
-  for (const [name, items] of Object.entries(menus)) {
+  for (const [name, commands] of menus) {
     const menuItem = document.createElement('div');
     menuItem.className = 'menu-item';
     menuItem.textContent = name;
-
     const dropdown = document.createElement('div');
     dropdown.className = 'menu-dropdown';
-    appendMenuItems(dropdown, items);
-
+    appendEntries(dropdown, menuEntries(commands));
     menuItem.appendChild(dropdown);
 
     menuItem.addEventListener('mouseenter', () => {
       const openMenu = ctx.getOpenMenu();
       if (openMenu && openMenu !== menuItem) {
-        for (const refreshLabel of refreshLabels) refreshLabel();
+        for (const refresh of refreshState) refresh();
         openMenu.classList.remove('open');
         menuItem.classList.add('open');
         ctx.setOpenMenu(menuItem);
       }
     });
-
-    menuItem.addEventListener('mousedown', (e) => {
-      e.stopPropagation();
-      if (ctx.getOpenMenu() === menuItem) {
-        ctx.closeMenus();
-      } else {
-        for (const refreshLabel of refreshLabels) refreshLabel();
+    menuItem.addEventListener('mousedown', event => {
+      event.stopPropagation();
+      if (ctx.getOpenMenu() === menuItem) ctx.closeMenus();
+      else {
+        for (const refresh of refreshState) refresh();
         ctx.closeMenus();
         menuItem.classList.add('open');
         ctx.setOpenMenu(menuItem);
       }
     });
-
     bar.appendChild(menuItem);
   }
 
   document.addEventListener('mousedown', () => ctx.closeMenus());
-  return () => {
-    for (const refreshLabel of refreshLabels) refreshLabel();
-  };
+  const refresh = () => { for (const update of refreshState) update(); };
+  ctx.commands.subscribe(refresh);
+  return refresh;
 }

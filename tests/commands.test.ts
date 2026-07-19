@@ -6,6 +6,8 @@ import {
   shortcutFromKeyboardEvent,
   type KeyboardShortcutEvent,
 } from '../src/commands';
+import { createEditorCommandRegistry, type EditorCommandContext } from '../src/editor-commands';
+import type { Editor } from '../src/editor';
 
 const keyEvent = (key: string, overrides: Partial<KeyboardShortcutEvent> = {}): KeyboardShortcutEvent => ({
   key,
@@ -17,6 +19,30 @@ const keyEvent = (key: string, overrides: Partial<KeyboardShortcutEvent> = {}): 
 });
 
 describe('CommandRegistry', () => {
+  it('registers the complete editor command set without conflicts', () => {
+    const noop = () => {};
+    const context: EditorCommandContext = {
+      editor: {} as Editor,
+      handleExitVertexMode: noop,
+      openRotateDialog: noop,
+      openScaleDialog: noop,
+      compileBSP: noop,
+      quickPlay: noop,
+      managePakFiles: noop,
+      openTerrainPanel: noop,
+      cycleInvisibleMode: noop,
+      setTool: noop,
+      setGrid: noop,
+      increaseGrid: noop,
+      decreaseGrid: noop,
+      toggleSnap: noop,
+      toggleGeoSnap: noop,
+    };
+
+    expect(() => createEditorCommandRegistry(context)).not.toThrow();
+    expect(createEditorCommandRegistry(context).list().length).toBeGreaterThan(100);
+  });
+
   it('rejects duplicate command IDs', () => {
     const registry = new CommandRegistry({});
     registry.register({ id: 'file.save', label: 'Save', execute: () => {} });

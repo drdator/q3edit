@@ -2,6 +2,7 @@ export type CommandId = string;
 
 export interface CommandMenuPlacement {
   menu: string;
+  menuOrder: number;
   order: number;
   group?: string;
   submenu?: string;
@@ -120,7 +121,7 @@ export function shortcutFromKeyboardEvent(event: KeyboardShortcutEvent): string 
   return [
     ...(event.ctrlKey || event.metaKey ? ['Mod'] : []),
     ...(event.altKey ? ['Alt'] : []),
-    ...(event.shiftKey ? ['Shift'] : []),
+    ...(event.shiftKey && event.key !== '+' ? ['Shift'] : []),
     normalizeKeyName(key),
   ].join('+');
 }
