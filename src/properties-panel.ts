@@ -3,6 +3,7 @@ import { Brush, BrushFace, classicTextureProjection, type ClassicBrushTexturePro
 import { Entity } from './entity';
 import { getEntityClassRegistry } from './entity-definitions';
 import { buildDefinedEntityProperties } from './entity-property-panel';
+import { buildPatchInspector } from './patch-inspector';
 import {
   addEntityProperty,
   removeEntityProperty,
@@ -162,6 +163,9 @@ export class PropertiesPanel {
         addEntityProperty(this.editor, entity);
       });
       propsDiv.appendChild(addBtn);
+    } else if (sel.some(s => s.type === 'patch')) {
+      const patches = sel.filter((item): item is Extract<typeof sel[number], { type: 'patch' }> => item.type === 'patch').map(item => item.patch);
+      buildPatchInspector(propsDiv, this.editor, patches);
     } else if (sel.some(s => s.type === 'brush')) {
       const brushItems = sel.filter(s => s.type === 'brush') as Array<{ type: 'brush'; entity: Entity; brush: Brush }>;
       this.buildBrushPropsUI(propsDiv, brushItems.map(b => b.brush));

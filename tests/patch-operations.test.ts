@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createFlatPatch } from '../src/patch';
 import { createPatchMatrix, deletePatchColumns, deletePatchRows, fitPatchUV, insertPatchColumns, insertPatchRows, inspectPatch, invertPatch, redispersePatchColumns, thickenPatch, transformPatchUV, transposePatch } from '../src/patch-operations';
+import { Editor } from '../src/editor';
+import { createEntity } from '../src/entity';
+import { parseMap, serializeMap } from '../src/mapfile';
 
 describe('advanced patch operations', () => {
   it('inserts/deletes rows and columns while retaining legal odd dimensions', () => {
@@ -37,5 +40,18 @@ describe('advanced patch operations', () => {
     expect(thickened.every(result => result.tessIndices.length > 0)).toBe(true);
     expect(Math.abs(thickened[0].mins[2] - thickened[1].mins[2])).toBe(8);
     expect(inspectPatch(thickened[0]).controlPoints).toHaveLength(9);
+  });
+
+  it('runs operations transactionally and round-trips their control grid', () => {
+    const editor = new Editor(); const world = createEntity('worldspawn');
+    const patch = createFlatPatch([0, 0, 0], [64, 64, 0], 'textures/test');
+    world.patches.push(patch); editor.entities = [world]; editor.selectPatch(world, patch);
+    editor.applyPatchOperation('insert-columns');
+    expect(patch.width).toBe(5);
+    editor.undo(); expect(editor.entities[0].patches[0].width).toBe(3);
+    editor.redo(); expect(editor.entities[0].patches[0].width).toBe(5);
+    const parsed = parseMap(serializeMap(editor.entities));
+    expect(parsed[0].patches[0].width).toBe(5);
+    expect(parsed[0].patches[0].ctrl).toHaveLength(3);
   });
 });

@@ -44,6 +44,16 @@ export function transposePatch(patch: Patch): void {
 }
 
 export function invertPatch(patch: Patch): void { patch.ctrl.reverse(); finish(patch); }
+export function cyclePatchCap(patch: Patch): void { transposePatch(patch); invertPatch(patch); }
+
+export const PATCH_TOOL_DECISIONS = {
+  overlays: 'deferred: requires a non-document reference-layer model',
+  freeze: 'deferred: requires overlay/reference semantics',
+  weld: 'deferred: ambiguous across independent quadratic grids',
+  drillDown: 'deferred: selection workflow has no Q3-compatible browser model yet',
+  bend: 'deferred: requires an explicit pivot/axis interaction design',
+  explicitInsertDeleteModes: 'implemented as deterministic selected-patch commands instead of modal tools',
+} as const;
 
 export function redispersePatchRows(patch: Patch): void {
   for (let col = 0; col < patch.width; col++) {
