@@ -1614,6 +1614,7 @@ export class UI {
     const bar = document.getElementById('statusbar')!;
     bar.innerHTML = `
       <span class="status-item" id="status-msg">Ready</span>
+      <span class="status-item" id="status-file">untitled.map</span>
       <span class="status-item" id="status-tool">Tool: Select</span>
       <span class="status-item" id="status-grid">Grid: 16</span>
       <span class="status-item" id="status-sel">Sel: 0</span>
@@ -1710,6 +1711,9 @@ export class UI {
     this.updateTerrainPanel();
 
     document.getElementById('status-msg')!.textContent = e.statusMessage;
+    const modifiedMarker = e.hasUnsavedChanges ? ' *' : '';
+    document.getElementById('status-file')!.textContent = `${e.fileName}${modifiedMarker}`;
+    document.title = `${modifiedMarker ? '* ' : ''}${e.fileName} — Q3Edit`;
     let toolLabel: string;
     if (e.vertexMode) {
       toolLabel = 'Tool: vertex';

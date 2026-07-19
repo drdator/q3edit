@@ -42,6 +42,11 @@ function setLoadingStatus(msg: string) {
 async function init() {
   const editor = new Editor();
   editor.createDefaultMap();
+  window.addEventListener('beforeunload', event => {
+    if (!editor.hasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 
   // Get canvases
   const xyCanvas = document.querySelector('#vp-xy canvas') as HTMLCanvasElement;
