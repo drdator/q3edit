@@ -3,6 +3,7 @@ import { getSelectedPatchItems } from './editor-selection';
 import type { Editor, Tool } from './editor';
 import type { Vec3 } from './math';
 import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
+import { openExactPrimitiveDialog } from './primitive-dialog';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -207,6 +208,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tool.entity', label: 'Place Entity', defaultShortcut: '3', menu: menu('Tools', 20, 'tools'), checked: ({ editor }) => editor.activeTool === 'entity', execute: ctx => ctx.setTool('entity') },
     { id: 'tool.clip', label: 'Clip', defaultShortcut: '4', menu: menu('Tools', 30, 'tools'), checked: ({ editor }) => editor.activeTool === 'clip', execute: ctx => ctx.setTool('clip') },
     { id: 'tool.rotate', label: 'Rotate', defaultShortcut: '5', menu: menu('Tools', 40, 'tools'), checked: ({ editor }) => editor.activeTool === 'rotate', execute: ctx => ctx.setTool('rotate') },
+    { id: 'brush.create-exact', label: 'Create Exact Primitive...', menu: menu('Tools', 50, 'create'), execute: ({ editor }) => openExactPrimitiveDialog(editor) },
     { id: 'csg.subtract', label: 'CSG Subtract', defaultShortcut: 'Mod+Shift+S', menu: menu('CSG', 0, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgSubtract() },
     { id: 'csg.hollow', label: 'Make Hollow', defaultShortcut: 'Mod+Shift+H', menu: menu('CSG', 10, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgHollow() },
     { id: 'csg.merge', label: 'Merge Brushes', defaultShortcut: 'Mod+Shift+M', menu: menu('CSG', 20, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgMerge() },

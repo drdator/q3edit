@@ -19,9 +19,27 @@ const BRUSH_PRIMITIVE_ICON_NAMES: Record<BrushPrimitive, string> = {
   pyramid: 'triangle',
 };
 
-function clampSides(primitive: BrushPrimitive, sides: number): number {
-  const minSides = primitive === 'sphere' ? 4 : 3;
-  return Math.max(minSides, Math.min(9, Math.round(sides)));
+export function brushPrimitiveSideRange(primitive: BrushPrimitive): { min: number; max: number } | null {
+  if (!brushPrimitiveUsesSides(primitive)) return null;
+  return primitive === 'sphere' ? { min: 4, max: 32 } : { min: 3, max: 64 };
+}
+
+export function validateBrushPrimitiveParameters(
+  primitive: BrushPrimitive,
+  mins: Vec3,
+  maxs: Vec3,
+  axis: number,
+  sides: number,
+): void {
+  if (![...mins, ...maxs].every(Number.isFinite)) throw new Error('Primitive bounds must be finite');
+  if (![0, 1, 2].includes(axis) || !Number.isInteger(axis)) throw new Error('Primitive axis must be X, Y, or Z');
+  for (let dimension = 0; dimension < 3; dimension++) {
+    if (maxs[dimension] - mins[dimension] <= 0.001) throw new Error('Primitive dimensions must be greater than zero');
+  }
+  const range = brushPrimitiveSideRange(primitive);
+  if (range && (!Number.isInteger(sides) || sides < range.min || sides > range.max)) {
+    throw new Error(`${primitive} sides must be an integer from ${range.min} to ${range.max}`);
+  }
 }
 
 function creationAxes(axis: number): [number, number] {
@@ -200,6 +218,21 @@ export function brushPrimitiveIconName(primitive: BrushPrimitive): string {
   return BRUSH_PRIMITIVE_ICON_NAMES[primitive];
 }
 
+function fitBrushToBounds(brush: Brush, mins: Vec3, maxs: Vec3): Brush {
+  const sourceMins = [...brush.mins] as Vec3;
+  const sourceMaxs = [...brush.maxs] as Vec3;
+  for (const face of brush.faces) {
+    for (const point of face.points) {
+      for (let axis = 0; axis < 3; axis++) {
+        const extent = sourceMaxs[axis] - sourceMins[axis];
+        point[axis] = mins[axis] + ((point[axis] - sourceMins[axis]) / extent) * (maxs[axis] - mins[axis]);
+      }
+    }
+  }
+  computeBrushGeometry(brush);
+  return brush;
+}
+
 export function createBrushPrimitive(
   primitive: BrushPrimitive,
   mins: Vec3,
@@ -208,18 +241,20 @@ export function createBrushPrimitive(
   axis: number,
   sides: number,
 ): Brush {
-  const clampedSides = clampSides(primitive, sides);
+  validateBrushPrimitiveParameters(primitive, mins, maxs, axis, sides);
 
+  let brush: Brush;
   switch (primitive) {
     case 'box':
       return createBoxBrush(mins, maxs, texture);
     case 'cylinder':
-      return createCylinderBrush(mins, maxs, texture, axis, clampedSides);
+      brush = createCylinderBrush(mins, maxs, texture, axis, sides); break;
     case 'cone':
-      return createConeBrush(mins, maxs, texture, axis, clampedSides);
+      brush = createConeBrush(mins, maxs, texture, axis, sides); break;
     case 'sphere':
-      return createSphereBrush(mins, maxs, texture, clampedSides);
+      brush = createSphereBrush(mins, maxs, texture, sides); break;
     case 'pyramid':
-      return createPyramidBrush(mins, maxs, texture, axis);
+      brush = createPyramidBrush(mins, maxs, texture, axis); break;
   }
+  return fitBrushToBounds(brush, mins, maxs);
 }

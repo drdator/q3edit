@@ -235,6 +235,7 @@ import {
   type CubicClipBounds,
 } from './editor-cubic-clipping';
 import type { BrushPrimitive } from './brush-primitives';
+import { createExactBrushPrimitive as createEditorExactBrushPrimitive, type ExactPrimitiveParameters } from './editor-primitives';
 import type { MapParseDiagnostic } from './mapfile';
 import {
   beginTransaction as beginEditorTransaction,
@@ -607,6 +608,10 @@ export class Editor {
 
   addBrush(mins: Vec3, maxs: Vec3, axis: number, ctrlKey = false): Brush {
     return addEditorBrush(this, mins, maxs, axis, ctrlKey);
+  }
+
+  createExactBrushPrimitive(parameters: ExactPrimitiveParameters): void {
+    createEditorExactBrushPrimitive(this, parameters);
   }
 
   // ── Patch creation ──
