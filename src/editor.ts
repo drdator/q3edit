@@ -5,6 +5,7 @@ import { Patch } from './patch';
 import { History } from './history';
 import { TextureManager } from './textures';
 import type { ModelManager } from './model-manager';
+import { loadDisplayPreferences, saveDisplayPreferences, setDisplayCategory, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 import { BrushVertex } from './vertex';
 import {
   addBrushToSelection as addBrushSelectionItem,
@@ -263,6 +264,7 @@ export class Editor {
   redrawRequested = true;
   textureManager: TextureManager | null = null;
   modelManager: ModelManager | null = null;
+  display = loadDisplayPreferences();
   history = new History();
   fileName = 'untitled.map';
   clipboardText = '';
@@ -319,6 +321,29 @@ export class Editor {
   selectionFilter: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
   invisibleMode: InvisibleMode = 'show';
   textureLock = true;
+
+  toggleDisplayCategory(category: DisplayCategory): void {
+    setDisplayCategory(this.display, category, !this.display.categories[category]);
+    this.redrawRequested = true;
+  }
+
+  setRendererMode(mode: RendererMode): void {
+    this.display.rendererMode = mode;
+    saveDisplayPreferences(this.display);
+    this.redrawRequested = true;
+  }
+
+  setTextureFiltering(filtering: TextureFiltering): void {
+    this.display.textureFiltering = filtering;
+    saveDisplayPreferences(this.display);
+    this.redrawRequested = true;
+  }
+
+  toggleDynamicLights(): void {
+    this.display.dynamicLights = !this.display.dynamicLights;
+    saveDisplayPreferences(this.display);
+    this.redrawRequested = true;
+  }
 
   // 3D camera state (written by Viewport3D, read by Viewport2D)
   camera3d: { position: Vec3; yaw: number; pitch: number } = {

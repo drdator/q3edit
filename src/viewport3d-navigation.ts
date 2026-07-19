@@ -76,8 +76,8 @@ function traceViewport3DPlayerBox(editor: Editor, start: Vec3, end: Vec3, mins: 
   let bestFrac = 1.0;
   let bestNormal: Vec3 = [0, 0, 1];
 
-  for (const { brush } of editor.allBrushes()) {
-    if (!editor.isBrushInRegion(brush)) continue;
+  for (const { entity, brush } of editor.allBrushes()) {
+    if (!editor.isBrushVisibleIn3D(brush, entity)) continue;
     if (brush.maxs[0] < Math.min(ts[0], te[0]) - hx || brush.mins[0] > Math.max(ts[0], te[0]) + hx ||
         brush.maxs[1] < Math.min(ts[1], te[1]) - hy || brush.mins[1] > Math.max(ts[1], te[1]) + hy ||
         brush.maxs[2] < Math.min(ts[2], te[2]) - hz || brush.mins[2] > Math.max(ts[2], te[2]) + hz) continue;
