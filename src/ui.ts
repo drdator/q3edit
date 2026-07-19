@@ -8,6 +8,8 @@ import { compileMap } from './q3map';
 import { buildMenuBar as buildMenuBarUI } from './ui-menu';
 import { buildToolbar as buildToolbarUI } from './ui-toolbar';
 import { setupKeyboard as setupKeyboardUI } from './ui-keyboard';
+import { createEditorCommandRegistry, type EditorCommandContext } from './editor-commands';
+import type { CommandRegistry } from './commands';
 import { brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
 import 'virtual:phosphor-icons.css';
@@ -52,7 +54,7 @@ const COMMON_TEXTURES = [
 export class UI {
   editor: Editor;
   private openMenu: HTMLElement | null = null;
-  private refreshMenuBarLabels: () => void = () => {};
+  private commands: CommandRegistry<EditorCommandContext>;
   private propertiesPanel: PropertiesPanel;
   private texMgr: TextureManager | null = null;
   private showTextureThumbnails = false;
@@ -70,6 +72,23 @@ export class UI {
   constructor(editor: Editor) {
     this.editor = editor;
     this.propertiesPanel = new PropertiesPanel(editor);
+    this.commands = createEditorCommandRegistry({
+      editor: this.editor,
+      handleExitVertexMode: () => this.handleExitVertexMode(),
+      openRotateDialog: () => this.openRotateDialog(),
+      openScaleDialog: () => this.openScaleDialog(),
+      compileBSP: () => this.compileBSP(),
+      quickPlay: quality => this.compileBSP(quality),
+      managePakFiles: () => this.onManagePakFiles?.(),
+      openTerrainPanel: () => this.openTerrainPanel(),
+      cycleInvisibleMode: () => this.cycleInvisibleMode(),
+      setTool: tool => this.setTool(tool),
+      setGrid: size => this.setGrid(size),
+      increaseGrid: () => this.increaseGrid(),
+      decreaseGrid: () => this.decreaseGrid(),
+      toggleSnap: () => this.toggleSnap(),
+      toggleGeoSnap: () => this.toggleGeoSnap(),
+    });
     this.buildMenuBar();
     this.buildToolbar();
     this.buildSidePanel();
@@ -83,21 +102,11 @@ export class UI {
   // ── Menu Bar ──
 
   private buildMenuBar(): void {
-    this.refreshMenuBarLabels = buildMenuBarUI({
-      editor: this.editor,
+    buildMenuBarUI({
+      commands: this.commands,
       getOpenMenu: () => this.openMenu,
       setOpenMenu: (menu) => { this.openMenu = menu; },
       closeMenus: () => this.closeMenus(),
-      openRotateDialog: () => this.openRotateDialog(),
-      openScaleDialog: () => this.openScaleDialog(),
-      compileBSP: () => this.compileBSP(),
-      quickPlay: (quality) => this.compileBSP(quality),
-      managePakFiles: () => this.onManagePakFiles?.(),
-      cycleInvisibleMode: () => this.cycleInvisibleMode(),
-      setTool: (tool) => this.setTool(tool),
-      setGrid: (size) => this.setGrid(size),
-      increaseGrid: () => this.increaseGrid(),
-      decreaseGrid: () => this.decreaseGrid(),
     });
   }
 
@@ -113,12 +122,7 @@ export class UI {
   private buildToolbar(): void {
     buildToolbarUI({
       editor: this.editor,
-      setTool: (tool) => this.setTool(tool),
-      openTerrainPanel: () => this.openTerrainPanel(),
-      increaseGrid: () => this.increaseGrid(),
-      toggleSnap: () => this.toggleSnap(),
-      toggleGeoSnap: () => this.toggleGeoSnap(),
-      cycleInvisibleMode: () => this.cycleInvisibleMode(),
+      commands: this.commands,
     });
   }
 
@@ -1629,16 +1633,8 @@ export class UI {
 
   private setupKeyboard(): void {
     setupKeyboardUI({
-      editor: this.editor,
-      handleExitVertexMode: () => this.handleExitVertexMode(),
-      openRotateDialog: () => this.openRotateDialog(),
-      openScaleDialog: () => this.openScaleDialog(),
-      setTool: (tool) => this.setTool(tool),
-      increaseGrid: () => this.increaseGrid(),
-      decreaseGrid: () => this.decreaseGrid(),
-      toggleGeoSnap: () => this.toggleGeoSnap(),
-      cycleInvisibleMode: () => this.cycleInvisibleMode(),
-      quickPlay: (quality) => this.compileBSP(quality),
+      commands: this.commands,
+      isFullscreen3d: () => this.editor.fullscreen3d,
     });
   }
 
@@ -1653,9 +1649,6 @@ export class UI {
     }
     this.editor.activeTool = tool;
     this.editor.redrawRequested = true;
-    document.querySelectorAll('.tool-btn[data-tool]').forEach(el => {
-      el.classList.toggle('active', (el as HTMLElement).dataset.tool === tool);
-    });
   }
 
   private setGrid(size: number): void {
@@ -1707,7 +1700,7 @@ export class UI {
 
   update(): void {
     const e = this.editor;
-    this.refreshMenuBarLabels();
+    this.commands.notifyStateChanged();
     this.updateTerrainPanel();
 
     document.getElementById('status-msg')!.textContent = e.statusMessage;
@@ -1780,12 +1773,7 @@ export class UI {
     }
     document.getElementById('grid-label')!.innerHTML = `<span class="tool-label">G:${e.gridSize}</span>`;
     const snapBtn = document.getElementById('snap-toggle')!;
-    const snapTitles = { off: 'Snap: off', abs: 'Snap: absolute', rel: 'Snap: relative' };
-    snapBtn.title = snapTitles[e.gridSnapMode];
-    snapBtn.classList.toggle('active', e.gridSnapMode !== 'off');
     snapBtn.classList.toggle('snap-abs', e.gridSnapMode === 'abs');
-    document.getElementById('geosnap-toggle')!.classList.toggle('active', e.snapToGeometry);
-    document.getElementById('texlock-toggle')!.classList.toggle('active', e.textureLock);
     applyBrushPrimitiveToolbarIcon(document.getElementById('tool-create') as HTMLElement | null, e.currentBrushPrimitive);
     const invisBtn = document.getElementById('invis-toggle')!;
     const invisIcons: Record<InvisibleMode, string> = {
@@ -1795,11 +1783,6 @@ export class UI {
     };
     const invisIcon = invisBtn.querySelector('i');
     if (invisIcon) invisIcon.className = invisIcons[e.invisibleMode];
-    invisBtn.classList.toggle('active', e.invisibleMode !== 'show');
-
-    // Gizmo mode toolbar buttons
-    document.getElementById('gizmo-move')?.classList.toggle('active', e.gizmoMode === 'move');
-    document.getElementById('gizmo-scale')?.classList.toggle('active', e.gizmoMode === 'scale');
 
     // Gizmo mode indicator (only when selection exists)
     const gizmoEl = document.getElementById('status-gizmo');

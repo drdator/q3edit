@@ -1,19 +1,17 @@
-import { Editor, Tool } from './editor';
+import { Editor } from './editor';
 import { BRUSH_PRIMITIVES, brushPrimitiveUsesSides } from './brush-primitives';
 import { applyBrushPrimitiveToolbarIcon, brushPrimitiveToolbarIconMarkup } from './brush-primitive-icons';
+import { formatShortcut, type CommandId, type CommandRegistry } from './commands';
+import type { EditorCommandContext } from './editor-commands';
 
 export interface ToolbarContext {
   editor: Editor;
-  setTool: (tool: Tool) => void;
-  openTerrainPanel: () => void;
-  increaseGrid: () => void;
-  toggleSnap: () => void;
-  toggleGeoSnap: () => void;
-  cycleInvisibleMode: () => void;
+  commands: CommandRegistry<EditorCommandContext>;
 }
 
 export function buildToolbar(ctx: ToolbarContext): void {
   const bar = document.getElementById('toolbar')!;
+  const refreshCommandState: (() => void)[] = [];
 
   const icon = (name: string, weight: string = 'regular'): string =>
     `<i class="ph${weight === 'regular' ? '' : '-' + weight} ph-${name}"></i>`;
@@ -30,21 +28,39 @@ export function buildToolbar(ctx: ToolbarContext): void {
 
   const addBtn = (opts: {
     id?: string;
+    commandId?: CommandId;
     icon: string;
-    title: string;
+    title?: string;
     active?: boolean;
     dataset?: Record<string, string>;
-    onClick: () => void;
+    onClick?: () => void;
   }) => {
     const btn = document.createElement('div');
     btn.className = 'tool-btn' + (opts.active ? ' active' : '');
     if (opts.id) btn.id = opts.id;
     btn.innerHTML = opts.icon;
-    btn.title = opts.title;
+    if (opts.title) btn.title = opts.title;
     if (opts.dataset) {
       for (const [k, v] of Object.entries(opts.dataset)) btn.dataset[k] = v;
     }
-    btn.addEventListener('mousedown', () => opts.onClick());
+    if (opts.commandId) {
+      btn.dataset.command = opts.commandId;
+      const refresh = () => {
+        const state = ctx.commands.getState(opts.commandId!);
+        btn.classList.toggle('active', state.checked);
+        btn.classList.toggle('disabled', !state.enabled);
+        btn.setAttribute('aria-disabled', String(!state.enabled));
+        const shortcut = state.shortcut ? ` (${formatShortcut(state.shortcut)})` : '';
+        btn.title = `${state.label}${shortcut}`;
+      };
+      refresh();
+      refreshCommandState.push(refresh);
+    }
+    btn.addEventListener('mousedown', () => {
+      if (opts.commandId && !ctx.commands.getState(opts.commandId).enabled) return;
+      if (opts.onClick) opts.onClick();
+      else if (opts.commandId) void ctx.commands.execute(opts.commandId);
+    });
     bar.appendChild(btn);
     return btn;
   };
@@ -154,25 +170,24 @@ export function buildToolbar(ctx: ToolbarContext): void {
     if (createToolPanel.classList.contains('open')) positionCreateToolPanel();
   }, true);
 
-  const tools: { id: Tool; icon: string; title: string }[] = [
-    { id: 'select', icon: icon('cursor'), title: 'Select (1)' },
-    { id: 'create', icon: brushPrimitiveToolbarIconMarkup(ctx.editor.currentBrushPrimitive), title: 'Create Brush (2)' },
-    { id: 'entity', icon: icon('map-pin'), title: 'Place Entity (3)' },
-    { id: 'clip', icon: icon('scissors'), title: 'Clip (4)' },
-    { id: 'rotate', icon: icon('arrows-clockwise'), title: 'Rotate (5)' },
+  const tools = [
+    { id: 'select', commandId: 'tool.select', icon: icon('cursor') },
+    { id: 'create', commandId: 'tool.create', icon: brushPrimitiveToolbarIconMarkup(ctx.editor.currentBrushPrimitive) },
+    { id: 'entity', commandId: 'tool.entity', icon: icon('map-pin') },
+    { id: 'clip', commandId: 'tool.clip', icon: icon('scissors') },
+    { id: 'rotate', commandId: 'tool.rotate', icon: icon('arrows-clockwise') },
   ];
 
   for (const tool of tools) {
     const btn = addBtn({
       id: tool.id === 'create' ? 'tool-create' : undefined,
+      commandId: tool.commandId,
       icon: tool.icon,
-      title: tool.title,
-      active: tool.id === ctx.editor.activeTool,
       dataset: { tool: tool.id },
       onClick: () => {
         if (tool.id === 'create') {
           if (ctx.editor.activeTool !== 'create') {
-            ctx.setTool('create');
+            void ctx.commands.execute(tool.commandId);
             openCreateToolPanel();
             return;
           }
@@ -185,7 +200,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
         }
 
         closeCreateToolPanel();
-        ctx.setTool(tool.id);
+        void ctx.commands.execute(tool.commandId);
       },
     });
     if (tool.id === 'create') {
@@ -198,120 +213,103 @@ export function buildToolbar(ctx: ToolbarContext): void {
 
   addBtn({
     id: 'terrain-panel-toggle',
+    commandId: 'terrain.open-panel',
     icon: icon('mountains'),
-    title: 'Open terrain panel',
-    onClick: () => ctx.openTerrainPanel(),
   });
 
   bar.appendChild(createSeparator());
 
   addBtn({
     id: 'gizmo-move',
+    commandId: 'gizmo.move',
     icon: icon('arrows-out-cardinal'),
-    title: 'Move mode (W)',
-    active: ctx.editor.gizmoMode === 'move',
-    onClick: () => { ctx.editor.gizmoMode = 'move'; ctx.editor.redrawRequested = true; },
   });
   addBtn({
     id: 'gizmo-scale',
+    commandId: 'gizmo.scale',
     icon: icon('resize'),
-    title: 'Scale mode (E)',
-    active: ctx.editor.gizmoMode === 'scale',
-    onClick: () => { ctx.editor.gizmoMode = 'scale'; ctx.editor.redrawRequested = true; },
   });
 
   bar.appendChild(createSeparator());
 
   addBtn({
     id: 'grid-label',
+    commandId: 'grid.larger',
     icon: `<span class="tool-label">G:${ctx.editor.gridSize}</span>`,
-    title: 'Grid size (click to increase, [ / ])',
-    onClick: () => ctx.increaseGrid(),
   });
 
   addBtn({
     id: 'snap-toggle',
+    commandId: 'view.snap-mode',
     icon: icon('magnet-straight'),
-    title: 'Cycle grid snap: off / absolute / relative',
-    active: true,
-    onClick: () => ctx.toggleSnap(),
   });
 
   addBtn({
     id: 'geosnap-toggle',
+    commandId: 'view.geometry-snap',
     icon: icon('polygon'),
-    title: 'Geometry snap (G)',
-    onClick: () => ctx.toggleGeoSnap(),
   });
 
   addBtn({
     id: 'texlock-toggle',
+    commandId: 'view.texture-lock',
     icon: `<span class="tool-label">TL</span>`,
-    title: 'Texture lock (T)',
-    active: ctx.editor.textureLock,
-    onClick: () => ctx.editor.toggleTextureLock(),
   });
 
   bar.appendChild(createSeparator());
 
   addBtn({
     id: 'invis-toggle',
+    commandId: 'view.invisible-mode',
     icon: icon('eye'),
-    title: 'Invisible geometry: show / dim / hide (I)',
-    onClick: () => ctx.cycleInvisibleMode(),
   });
 
   bar.appendChild(createSeparator());
 
   addBtn({
+    commandId: 'csg.hollow',
     icon: icon('selection'),
-    title: 'Make Hollow (Ctrl+Shift+H)',
-    onClick: () => ctx.editor.csgHollow(),
   });
   addBtn({
+    commandId: 'csg.subtract',
     icon: icon('subtract'),
-    title: 'CSG Subtract (Ctrl+Shift+S)',
-    onClick: () => ctx.editor.csgSubtract(),
   });
   addBtn({
+    commandId: 'csg.merge',
     icon: icon('unite'),
-    title: 'Merge Brushes (Ctrl+Shift+M)',
-    onClick: () => ctx.editor.csgMerge(),
   });
 
   bar.appendChild(createSeparator());
 
   addBtn({
+    commandId: 'edit.delete',
     icon: icon('trash'),
-    title: 'Delete (Del)',
-    onClick: () => ctx.editor.deleteSelection(),
   });
   addBtn({
+    commandId: 'edit.copy',
     icon: icon('copy'),
-    title: 'Copy (Ctrl+C)',
-    onClick: () => { void ctx.editor.copySelection(); },
   });
   addBtn({
+    commandId: 'edit.paste',
     icon: icon('clipboard'),
-    title: 'Paste (Ctrl+V)',
-    onClick: () => { void ctx.editor.pasteClipboard(); },
   });
   addBtn({
+    commandId: 'edit.duplicate',
     icon: icon('files'),
-    title: 'Duplicate (Ctrl+D)',
-    onClick: () => ctx.editor.duplicateSelection(),
   });
 
   bar.appendChild(createSeparator());
 
   addBtn({
+    commandId: 'edit.undo',
     icon: icon('arrow-counter-clockwise'),
-    title: 'Undo (Ctrl+Z)',
-    onClick: () => ctx.editor.undo(),
   });
   addBtn({
+    commandId: 'edit.redo',
     icon: icon('arrow-clockwise'),
-    title: 'Redo (Ctrl+Y)',
-    onClick: () => ctx.editor.redo(),
+  });
+
+  ctx.commands.subscribe(() => {
+    for (const refresh of refreshCommandState) refresh();
   });
 }

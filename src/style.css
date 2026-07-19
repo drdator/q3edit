@@ -487,6 +487,24 @@ textarea:focus-visible {
   color: var(--text-bright);
 }
 
+.menu-action.disabled {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
+.menu-action.disabled:hover {
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.menu-action.checked > span:first-child::before {
+  content: '\2713';
+  display: inline-block;
+  width: 14px;
+  margin-right: 2px;
+  color: var(--accent);
+}
+
 .menu-action .shortcut {
   color: var(--text-dim);
   margin-left: 20px;
@@ -571,6 +589,15 @@ textarea:focus-visible {
   background: var(--bg-dark);
   border-color: var(--accent-dim);
   color: var(--accent);
+}
+
+.tool-btn.disabled {
+  opacity: 0.35;
+}
+
+.tool-btn.disabled:hover {
+  background: transparent;
+  border-color: transparent;
 }
 
 .tool-btn.active-panel {
