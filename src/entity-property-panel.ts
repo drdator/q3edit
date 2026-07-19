@@ -82,7 +82,7 @@ function valueControl(
     browse.type = 'button'; browse.className = 'btn'; browse.textContent = 'Browse…';
     browse.addEventListener('click', () => openModelBrowser(editor, input.value, path => {
       input.value = path; commit(path);
-    }));
+    }, entity.properties.skin));
     wrapper.appendChild(browse);
   }
 

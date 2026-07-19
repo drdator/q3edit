@@ -1,5 +1,6 @@
 import type { Editor } from './editor';
 import type { Md3Model } from './md3';
+import { ModelPreviewRenderer } from './model-preview-renderer';
 
 export interface PreviewLine { from: [number, number]; to: [number, number] }
 
@@ -32,7 +33,12 @@ export function projectModelPreview(model: Md3Model, width: number, height: numb
   return lines;
 }
 
-export function openModelBrowser(editor: Editor, current: string, onSelect: (path: string) => void): void {
+export function openModelBrowser(
+  editor: Editor,
+  current: string,
+  onSelect: (path: string) => void,
+  skinPath?: string,
+): void {
   document.getElementById('model-browser-dialog')?.remove();
   const manager = editor.modelManager;
   if (!manager) return;
@@ -88,8 +94,13 @@ export function openModelBrowser(editor: Editor, current: string, onSelect: (pat
   canvas.height = 480;
   canvas.className = 'model-browser-preview';
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', 'Selected model wireframe preview');
-  previewFrame.appendChild(canvas);
+  canvas.setAttribute('aria-label', 'Selected textured model preview; drag to rotate');
+  const previewEmpty = document.createElement('div');
+  previewEmpty.className = 'model-browser-preview-empty';
+  const previewHint = document.createElement('div');
+  previewHint.className = 'model-browser-preview-hint';
+  previewHint.textContent = 'Drag to rotate · Wheel to zoom · Double-click to reset';
+  previewFrame.append(canvas, previewEmpty, previewHint);
   previewPane.append(previewHeader, previewFrame);
   content.append(resultsPane, previewPane);
 
@@ -105,32 +116,36 @@ export function openModelBrowser(editor: Editor, current: string, onSelect: (pat
   actions.className = 'editor-dialog-actions';
   actions.append(cancel, use);
 
+  let previewRenderer: ModelPreviewRenderer | null = null;
+  try {
+    previewRenderer = new ModelPreviewRenderer(canvas, editor.textureManager);
+  } catch { /* retain the 2D wireframe fallback below */ }
   const allModels = manager.listModels();
   let selected = current;
   const draw = () => {
-    const context = canvas.getContext('2d')!;
-    context.fillStyle = '#151515';
-    context.fillRect(0, 0, canvas.width, canvas.height);
     previewPath.textContent = selected || 'No model selected';
     previewPath.title = selected;
-    const model = manager.get(selected);
+    const resolved = selected ? manager.resolve(selected, 0, skinPath) : null;
+    const model = resolved?.model ?? null;
+    if (previewRenderer) previewRenderer.setModel(resolved);
+    previewEmpty.hidden = Boolean(model);
+    previewEmpty.textContent = selected ? 'No preview available' : 'No matching models';
     if (!model) {
       previewStats.textContent = '';
-      context.fillStyle = '#888';
-      context.font = '20px monospace';
-      context.textAlign = 'center';
-      context.fillText(selected ? 'No preview available' : 'No matching models', canvas.width / 2, canvas.height / 2);
+      if (!previewRenderer) drawWireframeFallback(canvas, null, selected ? 'No preview available' : 'No matching models');
       return;
     }
     const triangleCount = model.surfaces.reduce((sum, surface) => sum + surface.triangles.length, 0);
-    previewStats.textContent = `${model.surfaces.length} surface${model.surfaces.length === 1 ? '' : 's'} · ${triangleCount} triangle${triangleCount === 1 ? '' : 's'}`;
-    context.strokeStyle = '#57b9d8';
-    context.lineWidth = 1.5;
-    context.beginPath();
-    for (const line of projectModelPreview(model, canvas.width, canvas.height)) {
-      context.moveTo(...line.from); context.lineTo(...line.to);
-    }
-    context.stroke();
+    const surfaceTextures = resolved
+      ? [...new Set(model.surfaces.map(surface =>
+        resolved.surfaceTextures.get(surface.name.toLowerCase()) ?? surface.shaders[0] ?? '').filter(Boolean))]
+      : [];
+    const missingTextures = editor.textureManager
+      ? surfaceTextures.filter(texture => !editor.textureManager!.findImageFile(texture)).length
+      : 0;
+    const missingLabel = missingTextures > 0 ? ` · ${missingTextures} texture${missingTextures === 1 ? '' : 's'} missing` : '';
+    previewStats.textContent = `${model.surfaces.length} surface${model.surfaces.length === 1 ? '' : 's'} · ${triangleCount} triangle${triangleCount === 1 ? '' : 's'}${missingLabel}`;
+    if (!previewRenderer) drawWireframeFallback(canvas, model);
   };
   const populate = () => {
     list.innerHTML = '';
@@ -161,7 +176,40 @@ export function openModelBrowser(editor: Editor, current: string, onSelect: (pat
   list.addEventListener('keydown', event => {
     if (event.key === 'Enter' && selected) { use.click(); event.preventDefault(); }
   });
-  const close = () => overlay.remove();
+  let draggingPointer: number | null = null;
+  let previousPointer: [number, number] = [0, 0];
+  canvas.addEventListener('pointerdown', event => {
+    if (!previewRenderer || event.button !== 0) return;
+    draggingPointer = event.pointerId;
+    previousPointer = [event.clientX, event.clientY];
+    canvas.setPointerCapture(event.pointerId);
+    canvas.classList.add('dragging');
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (!previewRenderer || draggingPointer !== event.pointerId) return;
+    previewRenderer.rotate(event.clientX - previousPointer[0], event.clientY - previousPointer[1]);
+    previousPointer = [event.clientX, event.clientY];
+  });
+  const finishDrag = (event: PointerEvent) => {
+    if (draggingPointer !== event.pointerId) return;
+    draggingPointer = null;
+    canvas.classList.remove('dragging');
+  };
+  canvas.addEventListener('pointerup', finishDrag);
+  canvas.addEventListener('pointercancel', finishDrag);
+  canvas.addEventListener('wheel', event => {
+    if (!previewRenderer) return;
+    previewRenderer.zoomBy(event.deltaY);
+    event.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('dblclick', () => previewRenderer?.resetView());
+  const resizeObserver = previewRenderer ? new ResizeObserver(() => previewRenderer?.render()) : null;
+  resizeObserver?.observe(previewFrame);
+  const close = () => {
+    resizeObserver?.disconnect();
+    previewRenderer?.dispose();
+    overlay.remove();
+  };
   cancel.onclick = close;
   use.onclick = () => { if (selected) onSelect(selected); close(); };
   overlay.addEventListener('keydown', event => {
@@ -172,4 +220,24 @@ export function openModelBrowser(editor: Editor, current: string, onSelect: (pat
   document.body.appendChild(overlay);
   populate();
   search.focus();
+}
+
+function drawWireframeFallback(canvas: HTMLCanvasElement, model: Md3Model | null, message = ''): void {
+  const context = canvas.getContext('2d')!;
+  context.fillStyle = '#151515';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  if (!model) {
+    context.fillStyle = '#888';
+    context.font = '20px monospace';
+    context.textAlign = 'center';
+    context.fillText(message, canvas.width / 2, canvas.height / 2);
+    return;
+  }
+  context.strokeStyle = '#57b9d8';
+  context.lineWidth = 1.5;
+  context.beginPath();
+  for (const line of projectModelPreview(model, canvas.width, canvas.height)) {
+    context.moveTo(...line.from); context.lineTo(...line.to);
+  }
+  context.stroke();
 }

@@ -61,6 +61,11 @@ describe('ModelManager', () => {
     const resolved = manager.resolveEntity(entity)!;
     expect(resolved.frame).toBe(0);
     expect(resolved.surfaceTextures.get('body')).toBe('textures/models/red');
+    expect(manager.resolve('test', 99, 'models/red.skin')).toMatchObject({
+      path: 'models/test.md3',
+      frame: 0,
+      skinPath: 'models/red.skin',
+    });
     entity.properties.origin = '10 20 30';
     entity.properties.angle = '90';
     entity.properties.modelscale = '2';

@@ -1585,6 +1585,7 @@ textarea:focus-visible {
 }
 
 .model-browser-preview-frame {
+  position: relative;
   display: grid;
   place-items: center;
   flex: 1 1 auto;
@@ -1600,6 +1601,36 @@ textarea:focus-visible {
   height: auto;
   max-width: 100%;
   max-height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.model-browser-preview.dragging {
+  cursor: grabbing;
+}
+
+.model-browser-preview-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.model-browser-preview-empty[hidden] {
+  display: none;
+}
+
+.model-browser-preview-hint {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  padding: 2px 4px;
+  color: #777;
+  background: rgba(12, 12, 12, 0.72);
+  font-size: 8px;
+  pointer-events: none;
 }
 
 .model-browser > .editor-dialog-actions {
