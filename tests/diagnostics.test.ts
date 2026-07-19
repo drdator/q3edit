@@ -14,6 +14,12 @@ import { createEntity } from '../src/entity';
 import { loadMap } from '../src/editor-document';
 
 describe('map diagnostics', () => {
+  it('treats intrinsic worldspawn as a documented map class', () => {
+    const editor = new Editor();
+    editor.entities = [createEntity('worldspawn')];
+    expect(collectEditorDiagnostics(editor).map(item => item.code)).not.toContain('unknown-class');
+  });
+
   it('counts map contents, classes, textures, terrain/groups, and unsupported constructs', () => {
     const editor = new Editor();
     editor.entities = [createEntity('worldspawn'), createEntity('light')];
