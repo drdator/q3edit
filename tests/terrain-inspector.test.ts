@@ -4,6 +4,8 @@ import { createEntity } from '../src/entity';
 import { createTerrainDefGridPatch } from '../src/patch';
 import { inspectTerrain } from '../src/terrain-inspector';
 import { TERRAIN_MODEL_DECISION, validateTerrainMesh } from '../src/terrain-model';
+import { buildSelectionTransfer, insertTransferEntities, parseTransferEntities } from '../src/editor-transfer';
+import { serializeMap } from '../src/mapfile';
 
 function groupedTerrainEditor(): { editor: Editor; left: ReturnType<typeof createTerrainDefGridPatch>; right: ReturnType<typeof createTerrainDefGridPatch> } {
   const editor = new Editor();
@@ -61,5 +63,36 @@ describe('terrain model and inspector', () => {
     editor.selectTerrainRows();
     expect(editor.patchControlSelection).toHaveLength(6);
     expect(editor.patchControlSelection.every(selection => selection.row === 1)).toBe(true);
+  });
+
+  it('preserves terrainDef through sculpting, painting, and prefab transfer', () => {
+    const editor = new Editor();
+    const terrain = createTerrainDefGridPatch([0, 0, 0], [64, 64, 0], 'terrain/base', 3, 3);
+    editor.worldspawn.patches.push(terrain);
+    editor.selectPatch(editor.worldspawn, terrain);
+    editor.enterPatchEditMode();
+    editor.patchControlSelection = [{ dataIndex: 0, row: 1, col: 1 }];
+    editor.terrainBrushRadius = 8;
+    editor.sculptTerrain(12);
+    expect(terrain.ctrl[1][1].xyz[2]).toBe(12);
+    expect(terrain.terrainDef).toBeDefined();
+
+    editor.currentTexture = 'terrain/painted';
+    editor.terrainBrushCenter = [32, 32, 12];
+    editor.terrainBrushAxes = [0, 1];
+    expect(editor.paintTerrainTexture()).toBe(1);
+    expect(terrain.terrainDef!.surfaces.flat().some(surface => surface.texture === 'terrain/painted')).toBe(true);
+
+    editor.exitPatchEditMode();
+    editor.selectPatch(editor.worldspawn, terrain);
+    const transfer = buildSelectionTransfer(editor);
+    const parsed = parseTransferEntities(serializeMap(transfer.entities))!;
+    const target = new Editor();
+    const inserted = insertTransferEntities(target, parsed, [16, 16, 0]);
+    expect(inserted.patchCount).toBe(1);
+    const imported = target.worldspawn.patches[0];
+    expect(imported.terrainDef).toBeDefined();
+    expect(imported.ctrl[1][1].xyz[2]).toBe(12);
+    expect(imported.terrainDef!.surfaces.flat().some(surface => surface.texture === 'terrain/painted')).toBe(true);
   });
 });
