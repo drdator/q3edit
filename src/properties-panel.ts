@@ -1,6 +1,14 @@
 import { Editor } from './editor';
 import { Brush, BrushFace } from './brush';
 import { ENTITY_CLASS_SUGGESTIONS, Entity } from './entity';
+import {
+  addEntityProperty,
+  removeEntityProperty,
+  renameEntityProperty,
+  setEntityClassname,
+  setEntityProperty,
+  updateFaceProperties,
+} from './editor-properties';
 
 /** Convert Q3 "r g b" (0-1 floats) to "#rrggbb" hex */
 function q3ColorToHex(value: string): string {
@@ -65,9 +73,7 @@ export class PropertiesPanel {
             classInput.value = entity.classname;
             return;
           }
-          entity.classname = nextClassname;
-          entity.properties['classname'] = nextClassname;
-          this.editor.dirty = true;
+          setEntityClassname(this.editor, entity, nextClassname);
         });
         propsDiv.appendChild(classInput);
       }
@@ -86,19 +92,17 @@ export class PropertiesPanel {
           const newKey = keyInput.value.trim();
           if (!newKey || newKey === currentKey) { keyInput.value = currentKey; return; }
           if (newKey in entity.properties) { keyInput.value = currentKey; return; }
-          entity.properties[newKey] = entity.properties[currentKey];
-          delete entity.properties[currentKey];
-          currentKey = newKey;
-          this.editor.dirty = true;
+          if (renameEntityProperty(this.editor, entity, currentKey, newKey)) {
+            currentKey = newKey;
+          }
         });
 
         const valInput = document.createElement('input');
         valInput.type = 'text';
         valInput.value = value;
         valInput.addEventListener('change', () => {
-          entity.properties[currentKey] = valInput.value;
+          setEntityProperty(this.editor, entity, currentKey, valInput.value);
           if (colorSwatch) colorSwatch.style.backgroundColor = q3ColorToHex(valInput.value);
-          this.editor.dirty = true;
         });
 
         // Color picker for _color keys
@@ -124,9 +128,8 @@ export class PropertiesPanel {
             const b = parseInt(hex.slice(5, 7), 16) / 255;
             const q3 = `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)}`;
             valInput.value = q3;
-            entity.properties[currentKey] = q3;
+            setEntityProperty(this.editor, entity, currentKey, q3);
             colorSwatch!.style.backgroundColor = hex;
-            this.editor.dirty = true;
           });
         }
 
@@ -135,8 +138,7 @@ export class PropertiesPanel {
         delBtn.innerHTML = '<i class="ph ph-trash"></i>';
         delBtn.title = 'Remove property';
         delBtn.addEventListener('mousedown', () => {
-          delete entity.properties[currentKey];
-          this.editor.dirty = true;
+          removeEntityProperty(this.editor, entity, currentKey);
         });
 
         row.appendChild(keyInput);
@@ -151,11 +153,7 @@ export class PropertiesPanel {
       addBtn.className = 'btn';
       addBtn.innerHTML = '<i class="ph ph-plus"></i> Add Key';
       addBtn.addEventListener('mousedown', () => {
-        // Find a unique default key name
-        let n = 1;
-        while (`key${n}` in entity.properties) n++;
-        entity.properties[`key${n}`] = '';
-        this.editor.dirty = true;
+        addEntityProperty(this.editor, entity);
       });
       propsDiv.appendChild(addBtn);
     } else if (sel.some(s => s.type === 'brush')) {
@@ -263,35 +261,27 @@ export class PropertiesPanel {
 
     // Texture name
     this.addFaceField(container, 'Texture', face.texture, 'text', (val) => {
-      face.texture = val;
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, [face], 'Change face texture', { texture: val });
     }, { locateTexture: true });
 
     // Offset X/Y
     this.addFaceNumberRow(container, 'Offset', face.offsetX, face.offsetY, 'X', 'Y', (x, y) => {
-      face.offsetX = x;
-      face.offsetY = y;
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, [face], 'Edit face offset', { offsetX: x, offsetY: y });
     });
 
     // Scale X/Y
     this.addFaceNumberRow(container, 'Scale', face.scaleX, face.scaleY, 'X', 'Y', (x, y) => {
-      face.scaleX = x;
-      face.scaleY = y;
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, [face], 'Edit face scale', { scaleX: x, scaleY: y });
     });
 
     // Rotation
     this.addFaceField(container, 'Rotation', String(face.rotation), 'number', (val) => {
-      face.rotation = parseFloat(val) || 0;
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, [face], 'Edit face rotation', { rotation: parseFloat(val) || 0 });
     });
 
     // Flags
     this.addFaceNumberRow(container, 'Flags', face.surfaceFlags, face.contentFlags, 'Surf', 'Cont', (s, c) => {
-      face.surfaceFlags = s;
-      face.contentFlags = c;
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, [face], 'Edit face flags', { surfaceFlags: s, contentFlags: c });
     });
   }
 
@@ -316,9 +306,8 @@ export class PropertiesPanel {
     const textures = new Set(faces.map(f => f.texture));
     const commonTex = textures.size === 1 ? [...textures][0] : '';
     this.addFaceField(container, 'Texture', commonTex, 'text', (val) => {
-      for (const f of faces) f.texture = val;
+      updateFaceProperties(this.editor, faces, 'Change face textures', { texture: val });
       this.editor.currentTexture = val;
-      this.editor.dirty = true;
     }, { placeholder: textures.size > 1 ? `(${textures.size} textures)` : undefined, locateTexture: true });
 
     // Offset
@@ -326,8 +315,7 @@ export class PropertiesPanel {
     const sameOy = faces.every(f => f.offsetY === faces[0].offsetY);
     this.addFaceNumberRow(container, 'Offset',
       sameOx ? faces[0].offsetX : null, sameOy ? faces[0].offsetY : null, 'X', 'Y', (x, y) => {
-      for (const f of faces) { f.offsetX = x; f.offsetY = y; }
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, faces, 'Edit face offsets', { offsetX: x, offsetY: y });
     });
 
     // Scale
@@ -335,16 +323,14 @@ export class PropertiesPanel {
     const sameSy = faces.every(f => f.scaleY === faces[0].scaleY);
     this.addFaceNumberRow(container, 'Scale',
       sameSx ? faces[0].scaleX : null, sameSy ? faces[0].scaleY : null, 'X', 'Y', (x, y) => {
-      for (const f of faces) { f.scaleX = x; f.scaleY = y; }
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, faces, 'Edit face scales', { scaleX: x, scaleY: y });
     });
 
     // Rotation
     const sameRot = faces.every(f => f.rotation === faces[0].rotation);
     this.addFaceField(container, 'Rotation', sameRot ? String(faces[0].rotation) : '', 'number', (val) => {
       const r = parseFloat(val) || 0;
-      for (const f of faces) f.rotation = r;
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, faces, 'Edit face rotations', { rotation: r });
     }, sameRot ? undefined : { placeholder: '(mixed)' });
 
     // Flags
@@ -352,8 +338,7 @@ export class PropertiesPanel {
     const sameCont = faces.every(f => f.contentFlags === faces[0].contentFlags);
     this.addFaceNumberRow(container, 'Flags',
       sameSurf ? faces[0].surfaceFlags : null, sameCont ? faces[0].contentFlags : null, 'Surf', 'Cont', (s, c) => {
-      for (const f of faces) { f.surfaceFlags = s; f.contentFlags = c; }
-      this.editor.dirty = true;
+      updateFaceProperties(this.editor, faces, 'Edit face flags', { surfaceFlags: s, contentFlags: c });
     });
   }
 
