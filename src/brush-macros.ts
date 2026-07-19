@@ -3,6 +3,7 @@ import type { Editor } from './editor';
 import { getSelectedBrushItems } from './editor-selection';
 import type { Entity } from './entity';
 import type { Vec3 } from './math';
+import { rotateBrushLocked, translateBrushLocked } from './texture-lock';
 
 export const BRUSH_MACRO_VERSION = 1;
 export const Q3RADIANT_BRUSH_SCRIPT_DECISION =
@@ -83,12 +84,18 @@ export function runBrushMacro(editor: Editor, input: BrushMacro): { changed: boo
       active = active.map(record => ({ entity: record.entity, brush: cloneBrush(record.brush) }));
       records.push(...active);
     } else if (step.operation === 'translate') {
-      for (const record of active) translateBrush(record.brush, step.offset);
+      for (const record of active) {
+        if (editor.textureLock) translateBrushLocked(record.brush, step.offset);
+        else translateBrush(record.brush, step.offset);
+      }
     } else {
       const axis = { x: 0, y: 1, z: 2 }[step.axis];
       const center = selectionCenter(active);
       const radians = step.degrees * Math.PI / 180;
-      for (const record of active) rotateBrush(record.brush, center, axis, radians);
+      for (const record of active) {
+        if (editor.textureLock) rotateBrushLocked(record.brush, center, axis, radians);
+        else rotateBrush(record.brush, center, axis, radians);
+      }
     }
   }
   for (const record of records) {
@@ -96,6 +103,7 @@ export function runBrushMacro(editor: Editor, input: BrushMacro): { changed: boo
     if (!validation.valid) throw new Error(`Brush macro produced invalid geometry: ${validation.issues.join('; ')}`);
   }
 
+  const beforeRevision = editor.documentRevision;
   editor.transact(`Run brush macro: ${macro.name}`, () => {
     for (const record of records) {
       if (record.original) {
@@ -109,6 +117,9 @@ export function runBrushMacro(editor: Editor, input: BrushMacro): { changed: boo
     editor.selection = active.map(record => ({ type: 'brush' as const, entity: record.entity, brush: record.committed! }));
     editor.redrawRequested = true;
   });
-  editor.statusMessage = `Ran ${macro.name} on ${selected.length} brush${selected.length === 1 ? '' : 'es'}`;
-  return { changed: true, selectedBrushes: active.length };
+  const changed = editor.documentRevision !== beforeRevision;
+  editor.statusMessage = changed
+    ? `Ran ${macro.name} on ${selected.length} brush${selected.length === 1 ? '' : 'es'}`
+    : `${macro.name} made no changes`;
+  return { changed, selectedBrushes: active.length };
 }

@@ -42,4 +42,10 @@ describe('brush macros', () => {
     expect(() => runBrushMacro(editor, { version: 1, name: 'Bad', steps: [{ operation: 'translate', offset: [0, Number.NaN, 0] }] })).toThrow();
     expect(editor.history.canUndo).toBe(false);
   });
+
+  it('reports a zero-offset macro as a no-op without history', () => {
+    const editor = selectedEditor();
+    expect(runBrushMacro(editor, { version: 1, name: 'No-op', steps: [{ operation: 'translate', offset: [0, 0, 0] }] }).changed).toBe(false);
+    expect(editor.history.canUndo).toBe(false);
+  });
 });
