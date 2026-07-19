@@ -39,6 +39,7 @@ export function loadMap(editor: Editor, text: string): void {
     editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
   });
   editor.mapDiagnostics = result.diagnostics;
+  editor.unsupportedMapConstructs = result.unsupportedConstructs;
   editor.selection = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);
@@ -66,6 +67,7 @@ export function newMap(editor: Editor): void {
     editor.entities = [createWorldspawn()];
   });
   editor.mapDiagnostics = [];
+  editor.unsupportedMapConstructs = [];
   editor.fileName = 'untitled.map';
   editor.selection = [];
   editor.regionBounds = null;
@@ -110,6 +112,7 @@ export function createDefaultMap(editor: Editor): void {
   // command establishes its undo entry before invoking this initializer.
   editor.entities = [createWorldspawn()];
   editor.mapDiagnostics = [];
+  editor.unsupportedMapConstructs = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();

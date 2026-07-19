@@ -256,7 +256,7 @@ import {
 } from './editor-cubic-clipping';
 import type { BrushPrimitive } from './brush-primitives';
 import { createExactBrushPrimitive as createEditorExactBrushPrimitive, type ExactPrimitiveParameters } from './editor-primitives';
-import type { MapParseDiagnostic } from './mapfile';
+import type { MapParseDiagnostic, UnsupportedMapConstruct } from './mapfile';
 import {
   beginTransaction as beginEditorTransaction,
   cancelTransaction as cancelEditorTransaction,
@@ -318,6 +318,7 @@ export class Editor {
   fileName = 'untitled.map';
   clipboardText = '';
   mapDiagnostics: MapParseDiagnostic[] = [];
+  unsupportedMapConstructs: UnsupportedMapConstruct[] = [];
   documentRevision = 0;
   savedDocumentRevision = 0;
   private nextDocumentRevision = 1;

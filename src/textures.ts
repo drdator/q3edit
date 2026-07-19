@@ -499,4 +499,10 @@ export class TextureManager {
     }
     return null;
   }
+
+  hasTextureSource(name: string): boolean {
+    if (this.getTextureAsset(name)) return true;
+    const key = name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '');
+    return this.shaderImages.has(key) || this.shaderImages.has(`textures/${key}`);
+  }
 }
