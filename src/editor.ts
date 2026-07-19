@@ -130,14 +130,18 @@ import {
   paintTerrainTexture as paintEditorTerrainTexture,
   raiseTerrain as raiseEditorTerrain,
   sculptTerrain as sculptEditorTerrain,
+  selectTerrainColumns as selectEditorTerrainColumns,
+  selectTerrainRows as selectEditorTerrainRows,
   stitchSelectedTerrainControlSeams as stitchEditorSelectedTerrainControlSeams,
   splitTerrainIntoPaintTiles as splitEditorTerrainIntoPaintTiles,
   stitchTerrainSeams as stitchEditorTerrainSeams,
   smoothTerrain as smoothEditorTerrain,
   toggleTerrainBrushMode as toggleEditorTerrainBrushMode,
+  updateTerrainSample as updateEditorTerrainSample,
   type TerrainBrushMode,
   type TerrainFalloff,
   type TerrainPaintTarget,
+  type TerrainSampleChanges,
 } from './editor-terrain';
 import {
   addBrush as addEditorBrush,
@@ -1105,6 +1109,13 @@ export class Editor {
   stitchTerrainSeams(): number {
     return stitchEditorTerrainSeams(this);
   }
+
+  updateTerrainSample(patch: Patch, row: number, column: number, changes: TerrainSampleChanges): void {
+    updateEditorTerrainSample(this, patch, row, column, changes);
+  }
+
+  selectTerrainRows(): void { selectEditorTerrainRows(this); }
+  selectTerrainColumns(): void { selectEditorTerrainColumns(this); }
 
   sculptTerrain(amount: number, takeSnapshot = true, selectedOnly = false): void {
     sculptEditorTerrain(this, amount, takeSnapshot, selectedOnly);

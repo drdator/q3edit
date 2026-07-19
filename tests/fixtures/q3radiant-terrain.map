@@ -1,0 +1,23 @@
+// Q3Radiant terrainDef syntax fixture. The reference source tree contains
+// terrain.cpp but no distributable terrain .map examples.
+// entity 0
+{
+"classname" "worldspawn"
+// patch 0
+{
+terrainDef
+{
+3 3 64 64
+-64 -64 8
+0 terrain/grass 0 0 0 0.5 0.5 0 0 0
+4 terrain/grass 2 -1 10 0.5 0.5 0 1 0
+0 terrain/rock 0 0 0 0.25 0.25 1 2 3
+8 terrain/grass 0 0 0 0.5 0.5 0 0 0
+24 terrain/rock -3 7 45 0.25 0.75 4 128 9
+8 terrain/grass 0 0 0 0.5 0.5 0 0 0
+0 terrain/sand 0 0 -15 1 1 0 0 0
+4 terrain/sand 0 0 0 1 1 0 0 0
+0 terrain/sand 0 0 15 1 1 0 0 0
+}
+}
+}

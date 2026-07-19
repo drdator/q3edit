@@ -185,6 +185,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'terrain.brush-weaker', label: 'Weaker Brush', menu: menu('Terrain', 110, 'brush'), execute: ({ editor }) => editor.adjustTerrainStrength(-2) },
     { id: 'terrain.brush-stronger', label: 'Stronger Brush', menu: menu('Terrain', 120, 'brush'), execute: ({ editor }) => editor.adjustTerrainStrength(2) },
     { id: 'terrain.falloff', label: ({ editor }) => `Falloff: ${editor.terrainFalloff === 'smooth' ? 'Smooth' : 'Linear'}`, menu: menu('Terrain', 130, 'brush'), execute: ({ editor }) => editor.cycleTerrainFalloff() },
+    { id: 'terrain.select-row', label: 'Select Terrain Row', menu: menu('Terrain', 135, 'selection'), enabled: ({ editor }) => editor.patchEditMode, execute: ({ editor }) => editor.selectTerrainRows() },
+    { id: 'terrain.select-column', label: 'Select Terrain Column', menu: menu('Terrain', 136, 'selection'), enabled: ({ editor }) => editor.patchEditMode, execute: ({ editor }) => editor.selectTerrainColumns() },
 
     { id: 'tool.select', label: 'Select', defaultShortcut: '1', menu: menu('Tools', 0, 'tools'), checked: ({ editor }) => editor.activeTool === 'select', execute: ctx => ctx.setTool('select') },
     { id: 'tool.create', label: 'Create Brush', defaultShortcut: '2', menu: menu('Tools', 10, 'tools'), checked: ({ editor }) => editor.activeTool === 'create', execute: ctx => ctx.setTool('create') },
