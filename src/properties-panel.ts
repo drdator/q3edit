@@ -1,5 +1,5 @@
 import { Editor } from './editor';
-import { Brush, BrushFace } from './brush';
+import { Brush, BrushFace, classicTextureProjection, type ClassicBrushTextureProjection } from './brush';
 import { ENTITY_CLASS_SUGGESTIONS, Entity } from './entity';
 import {
   addEntityProperty,
@@ -247,6 +247,7 @@ export class PropertiesPanel {
   }
 
   private buildFacePropsUI(container: HTMLElement, face: BrushFace, brush: { faces: BrushFace[] }): void {
+    const projection = classicTextureProjection(face);
     const title = document.createElement('label');
     title.textContent = 'Face Properties';
     title.style.fontWeight = 'bold';
@@ -264,20 +265,23 @@ export class PropertiesPanel {
       updateFaceProperties(this.editor, [face], 'Change face texture', { texture: val });
     }, { locateTexture: true });
 
-    // Offset X/Y
-    this.addFaceNumberRow(container, 'Offset', face.offsetX, face.offsetY, 'X', 'Y', (x, y) => {
-      updateFaceProperties(this.editor, [face], 'Edit face offset', { offsetX: x, offsetY: y });
-    });
-
-    // Scale X/Y
-    this.addFaceNumberRow(container, 'Scale', face.scaleX, face.scaleY, 'X', 'Y', (x, y) => {
-      updateFaceProperties(this.editor, [face], 'Edit face scale', { scaleX: x, scaleY: y });
-    });
-
-    // Rotation
-    this.addFaceField(container, 'Rotation', String(face.rotation), 'number', (val) => {
-      updateFaceProperties(this.editor, [face], 'Edit face rotation', { rotation: parseFloat(val) || 0 });
-    });
+    if (projection) {
+      this.addFaceNumberRow(container, 'Offset', projection.offsetX, projection.offsetY, 'X', 'Y', (x, y) => {
+        updateFaceProperties(this.editor, [face], 'Edit face offset', { offsetX: x, offsetY: y });
+      });
+      this.addFaceNumberRow(container, 'Scale', projection.scaleX, projection.scaleY, 'X', 'Y', (x, y) => {
+        updateFaceProperties(this.editor, [face], 'Edit face scale', { scaleX: x, scaleY: y });
+      });
+      this.addFaceField(container, 'Rotation', String(projection.rotation), 'number', (val) => {
+        updateFaceProperties(this.editor, [face], 'Edit face rotation', { rotation: parseFloat(val) || 0 });
+      });
+    } else {
+      const projectionHint = document.createElement('label');
+      projectionHint.textContent = 'Brush-primitive texture matrix editing is not available yet.';
+      projectionHint.style.color = '#888';
+      projectionHint.style.fontSize = '11px';
+      container.appendChild(projectionHint);
+    }
 
     // Flags
     this.addFaceNumberRow(container, 'Flags', face.surfaceFlags, face.contentFlags, 'Surf', 'Cont', (s, c) => {
@@ -310,28 +314,39 @@ export class PropertiesPanel {
       this.editor.currentTexture = val;
     }, { placeholder: textures.size > 1 ? `(${textures.size} textures)` : undefined, locateTexture: true });
 
-    // Offset
-    const sameOx = faces.every(f => f.offsetX === faces[0].offsetX);
-    const sameOy = faces.every(f => f.offsetY === faces[0].offsetY);
-    this.addFaceNumberRow(container, 'Offset',
-      sameOx ? faces[0].offsetX : null, sameOy ? faces[0].offsetY : null, 'X', 'Y', (x, y) => {
-      updateFaceProperties(this.editor, faces, 'Edit face offsets', { offsetX: x, offsetY: y });
-    });
+    const projections = faces.map(face => classicTextureProjection(face));
+    const allClassic = projections.every((projection): projection is ClassicBrushTextureProjection => projection !== null);
 
-    // Scale
-    const sameSx = faces.every(f => f.scaleX === faces[0].scaleX);
-    const sameSy = faces.every(f => f.scaleY === faces[0].scaleY);
-    this.addFaceNumberRow(container, 'Scale',
-      sameSx ? faces[0].scaleX : null, sameSy ? faces[0].scaleY : null, 'X', 'Y', (x, y) => {
-      updateFaceProperties(this.editor, faces, 'Edit face scales', { scaleX: x, scaleY: y });
-    });
+    if (allClassic) {
+      // Offset
+      const sameOx = projections.every(projection => projection.offsetX === projections[0].offsetX);
+      const sameOy = projections.every(projection => projection.offsetY === projections[0].offsetY);
+      this.addFaceNumberRow(container, 'Offset',
+        sameOx ? projections[0].offsetX : null, sameOy ? projections[0].offsetY : null, 'X', 'Y', (x, y) => {
+        updateFaceProperties(this.editor, faces, 'Edit face offsets', { offsetX: x, offsetY: y });
+      });
 
-    // Rotation
-    const sameRot = faces.every(f => f.rotation === faces[0].rotation);
-    this.addFaceField(container, 'Rotation', sameRot ? String(faces[0].rotation) : '', 'number', (val) => {
-      const r = parseFloat(val) || 0;
-      updateFaceProperties(this.editor, faces, 'Edit face rotations', { rotation: r });
-    }, sameRot ? undefined : { placeholder: '(mixed)' });
+      // Scale
+      const sameSx = projections.every(projection => projection.scaleX === projections[0].scaleX);
+      const sameSy = projections.every(projection => projection.scaleY === projections[0].scaleY);
+      this.addFaceNumberRow(container, 'Scale',
+        sameSx ? projections[0].scaleX : null, sameSy ? projections[0].scaleY : null, 'X', 'Y', (x, y) => {
+        updateFaceProperties(this.editor, faces, 'Edit face scales', { scaleX: x, scaleY: y });
+      });
+
+      // Rotation
+      const sameRot = projections.every(projection => projection.rotation === projections[0].rotation);
+      this.addFaceField(container, 'Rotation', sameRot ? String(projections[0].rotation) : '', 'number', (val) => {
+        const r = parseFloat(val) || 0;
+        updateFaceProperties(this.editor, faces, 'Edit face rotations', { rotation: r });
+      }, sameRot ? undefined : { placeholder: '(mixed)' });
+    } else {
+      const projectionHint = document.createElement('label');
+      projectionHint.textContent = 'Texture alignment fields require classic brush projections.';
+      projectionHint.style.color = '#888';
+      projectionHint.style.fontSize = '11px';
+      container.appendChild(projectionHint);
+    }
 
     // Flags
     const sameSurf = faces.every(f => f.surfaceFlags === faces[0].surfaceFlags);

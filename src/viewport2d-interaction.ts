@@ -1,6 +1,6 @@
 import { Vec3, vec3Copy, snapAxisDelta, findNearestSnap } from './math';
 import { Editor } from './editor';
-import type { Brush } from './brush';
+import { cloneTextureProjection, type Brush } from './brush';
 import { PatchControlPoint, type Patch } from './patch';
 import { pickEdge2D, pickVertex2D } from './vertex';
 import {
@@ -297,13 +297,7 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
           dist: f.plane.dist,
         })),
         polygons: brush.faces.map(f => f.polygon.map(v => vec3Copy(v))),
-        textures: brush.faces.map(f => ({
-          offsetX: f.offsetX,
-          offsetY: f.offsetY,
-          rotation: f.rotation,
-          scaleX: f.scaleX,
-          scaleY: f.scaleY,
-        })),
+        textureProjections: brush.faces.map(face => cloneTextureProjection(face.textureProjection)),
       }));
       state.rotatePatchOriginals = getSelectedPatchItems(ctx.editor).map(({ patch }) => ({
         patch,

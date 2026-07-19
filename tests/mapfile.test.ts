@@ -8,34 +8,41 @@ const classicBrushFixture = readFileSync(
   new URL('./fixtures/classic-brush.map', import.meta.url),
   'utf8',
 );
+const brushDefFixture = readFileSync(
+  new URL('./fixtures/brushdef.map', import.meta.url),
+  'utf8',
+);
 
 describe('classic .map brushes', () => {
   test('loads face texture transforms, flags, and value', () => {
     const result = parseMapWithDiagnostics(classicBrushFixture);
 
     expect(result.diagnostics).toEqual([]);
-    expect(result.entities).toHaveLength(2);
-    expect(result.entities[0].properties).toMatchObject({
+    expect(result.document.entities).toHaveLength(2);
+    expect(result.document.entities[0].properties).toMatchObject({
       classname: 'worldspawn',
       message: 'round-trip fixture',
     });
-    expect(result.entities[1].properties).toMatchObject({
+    expect(result.document.entities[1].properties).toMatchObject({
       classname: 'info_player_start',
       origin: '32 32 24',
       angle: '90',
     });
 
-    const brush = result.entities[0].brushes[0];
+    const brush = result.document.entities[0].brushes[0];
     expect(brush.name).toBe('flagged cube');
     expect(brush.faces).toHaveLength(6);
     for (const face of brush.faces) {
       expect(face).toMatchObject({
         texture: 'textures/common/caulk',
-        offsetX: 4,
-        offsetY: -8,
-        rotation: 15,
-        scaleX: 0.25,
-        scaleY: 0.5,
+        textureProjection: {
+          kind: 'classic',
+          offsetX: 4,
+          offsetY: -8,
+          rotation: 15,
+          scaleX: 0.25,
+          scaleY: 0.5,
+        },
         contentFlags: 134217728,
         surfaceFlags: 1024,
         value: 7,
@@ -54,22 +61,14 @@ describe('classic .map brushes', () => {
     expect(second[0].brushes[0].faces.map(face => ({
       points: face.points,
       texture: face.texture,
-      offsetX: face.offsetX,
-      offsetY: face.offsetY,
-      rotation: face.rotation,
-      scaleX: face.scaleX,
-      scaleY: face.scaleY,
+      textureProjection: face.textureProjection,
       contentFlags: face.contentFlags,
       surfaceFlags: face.surfaceFlags,
       value: face.value,
     }))).toEqual(first[0].brushes[0].faces.map(face => ({
       points: face.points,
       texture: face.texture,
-      offsetX: face.offsetX,
-      offsetY: face.offsetY,
-      rotation: face.rotation,
-      scaleX: face.scaleX,
-      scaleY: face.scaleY,
+      textureProjection: face.textureProjection,
       contentFlags: face.contentFlags,
       surfaceFlags: face.surfaceFlags,
       value: face.value,
@@ -91,7 +90,7 @@ describe('patch map formats', () => {
     const result = parseMapWithDiagnostics(serializeMap([worldspawn]));
 
     expect(result.diagnostics).toEqual([]);
-    const loaded = result.entities[0].patches[0];
+    const loaded = result.document.entities[0].patches[0];
     expect(loaded).toMatchObject({
       width: 3,
       height: 3,
@@ -129,7 +128,7 @@ describe('patch map formats', () => {
     const result = parseMapWithDiagnostics(serializeMap([worldspawn]));
 
     expect(result.diagnostics).toEqual([]);
-    const loaded = result.entities[0].patches[0];
+    const loaded = result.document.entities[0].patches[0];
     expect(loaded.terrainDef).toBeDefined();
     expect(loaded.ctrl[1][1].xyz).toEqual([64, 64, 40]);
     expect(loaded.terrainDef!.surfaces[1][1]).toEqual({
@@ -147,6 +146,21 @@ describe('patch map formats', () => {
 });
 
 describe('map diagnostics', () => {
+  test('captures a Q3Radiant brushDef fixture without misreading later syntax', () => {
+    const result = parseMapWithDiagnostics(brushDefFixture);
+
+    expect(result.document.entities).toHaveLength(1);
+    expect(result.document.entities[0].brushes).toEqual([]);
+    expect(result.errors).toEqual([]);
+    expect(result.unsupportedConstructPolicy).toBe('diagnostic-only');
+    expect(result.unsupportedConstructs).toEqual([expect.objectContaining({
+      keyword: 'brushDef',
+      line: 5,
+      column: 1,
+      rawSource: expect.stringContaining('( ( 0.0078125 0 0.125 ) ( 0 0.015625 -0.25 ) )'),
+    })]);
+  });
+
   test('reports and skips unsupported map blocks without losing later entities', () => {
     const source = `
 {
@@ -166,14 +180,23 @@ brushDef
 
     const result = parseMapWithDiagnostics(source);
 
-    expect(result.entities).toHaveLength(2);
-    expect(result.entities[0].brushes).toHaveLength(0);
-    expect(result.entities[1].classname).toBe('info_player_start');
+    expect(result.document.entities).toHaveLength(2);
+    expect(result.document.entities[0].brushes).toHaveLength(0);
+    expect(result.document.entities[1].classname).toBe('info_player_start');
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       severity: 'warning',
       line: 5,
+      column: 1,
       message: expect.stringContaining("Unsupported map block 'brushDef'"),
     }));
+    expect(result.warnings).toHaveLength(1);
+    expect(result.errors).toEqual([]);
+    expect(result.unsupportedConstructs).toEqual([expect.objectContaining({
+      keyword: 'brushDef',
+      line: 5,
+      column: 1,
+      rawSource: expect.stringContaining('brushDef'),
+    })]);
   });
 
   test('reports malformed brush content', () => {
@@ -186,13 +209,51 @@ this is not a brush face
 }
 `);
 
-    expect(result.entities).toHaveLength(1);
-    expect(result.entities[0].brushes).toHaveLength(0);
+    expect(result.document.entities).toHaveLength(1);
+    expect(result.document.entities[0].brushes).toHaveLength(0);
     expect(result.diagnostics.some(diagnostic =>
       diagnostic.severity === 'warning' && diagnostic.message.includes('brush face')
     )).toBe(true);
     expect(result.diagnostics.some(diagnostic =>
       diagnostic.severity === 'warning' && diagnostic.message.includes('fewer than 4 valid faces')
     )).toBe(true);
+  });
+
+  test('reports structural errors with line and column', () => {
+    const result = parseMapWithDiagnostics('{\n"classname" worldspawn\n}');
+
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toContainEqual({
+      severity: 'warning',
+      line: 2,
+      column: 13,
+      message: "Ignored malformed entity property 'classname'",
+    });
+  });
+
+  test('parses supported syntax without depending on line boundaries', () => {
+    const source = `{ "classname" "worldspawn" {
+      ( 0 0 0 ) ( 0 0 64 ) ( 0 64 0 ) common/caulk 0 0 0 0.5 0.5
+      ( 64 0 0 ) ( 64 64 0 ) ( 64 0 64 ) common/caulk 0 0 0 0.5 0.5
+      ( 0 0 0 ) ( 64 0 0 ) ( 0 0 64 ) common/caulk 0 0 0 0.5 0.5
+      ( 0 64 0 ) ( 0 64 64 ) ( 64 64 0 ) common/caulk 0 0 0 0.5 0.5
+      ( 0 0 0 ) ( 0 64 0 ) ( 64 0 0 ) common/caulk 0 0 0 0.5 0.5
+      ( 0 0 64 ) ( 64 0 64 ) ( 0 64 64 ) common/caulk 0 0 0 0.5 0.5
+    } }`;
+
+    const result = parseMapWithDiagnostics(source);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document.entities[0].brushes[0].faces).toHaveLength(6);
+  });
+
+  test('round-trips escaped entity property strings', () => {
+    const entity = createEntity('worldspawn');
+    entity.properties.message = 'say "hello"\\world\nnext';
+
+    const result = parseMapWithDiagnostics(serializeMap([entity]));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document.entities[0].properties.message).toBe(entity.properties.message);
   });
 });

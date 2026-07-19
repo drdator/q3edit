@@ -36,7 +36,7 @@ export function serializeMap(editor: Editor): string {
 export function loadMap(editor: Editor, text: string): void {
   const result = parseMapWithDiagnostics(text);
   editor.transact('Open map', () => {
-    editor.entities = result.entities.length > 0 ? result.entities : [createWorldspawn()];
+    editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
   });
   editor.mapDiagnostics = result.diagnostics;
   editor.selection = [];
@@ -50,14 +50,14 @@ export function loadMap(editor: Editor, text: string): void {
     return;
   }
 
-  const warnings = result.diagnostics.filter(diagnostic => diagnostic.severity === 'warning').length;
-  const errors = result.diagnostics.length - warnings;
+  const warnings = result.warnings.length;
+  const errors = result.errors.length;
   const counts = [
     errors > 0 ? `${errors} error${errors === 1 ? '' : 's'}` : '',
     warnings > 0 ? `${warnings} warning${warnings === 1 ? '' : 's'}` : '',
   ].filter(Boolean).join(', ');
   const first = result.diagnostics[0];
-  editor.statusMessage = `Map loaded with ${counts} (line ${first.line}: ${first.message})`;
+  editor.statusMessage = `Map loaded with ${counts} (line ${first.line}, column ${first.column}: ${first.message})`;
   console.warn('Map parse diagnostics', result.diagnostics);
 }
 
