@@ -220,10 +220,10 @@ export class AssetIndex {
 
     const archive = this.archives[asset.source.archiveIndex];
     const files = unzipSync(new Uint8Array(archive.data), {
-      filter: file => normalizeAssetPath(file.name) === asset.normalizedPath,
+      filter: file => file.name.replace(/\\/g, '/') === asset.source.path,
     });
     const matched = Object.entries(files).find(([entryPath]) =>
-      normalizeAssetPath(entryPath) === asset.normalizedPath);
+      entryPath.replace(/\\/g, '/') === asset.source.path);
     if (!matched) throw new Error(`${asset.path} could not be decoded from ${archive.name}`);
     const data = matched[1];
     this.remember(cacheKey, data);

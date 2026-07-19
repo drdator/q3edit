@@ -36,6 +36,15 @@ describe('AssetIndex', () => {
     expect(new TextDecoder().decode(index.readBytes(winner.path)!)).toBe('override');
   });
 
+  it('decodes the winning case variant within one archive', () => {
+    const index = new AssetIndex([archive('variants.pk3', {
+      'textures/a.tga': 'lower',
+      'Textures/A.TGA': 'upper',
+    })]);
+    expect(index.get('textures/a.tga')?.path).toBe('Textures/A.TGA');
+    expect(new TextDecoder().decode(index.readBytes('textures/a.tga')!)).toBe('upper');
+  });
+
   it('honors archive order and disabled archives when rebuilt', () => {
     const low = archive('low.pk3', { 'scripts/entities.def': 'low' });
     const high = archive('high.pk3', { 'scripts/entities.def': 'high' });
