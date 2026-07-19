@@ -10,24 +10,24 @@ export function snapshot(editor: Editor): void {
 export function undo(editor: Editor): void {
   const prev = editor.history.undo(editor.entities);
   if (prev) {
-    editor.entities = prev;
+    editor.entities = prev.entities;
     editor.selection = [];
     editor.clearHiddenState();
     editor.exitVertexMode();
     editor.dirty = true;
-    editor.statusMessage = 'Undo';
+    editor.statusMessage = `Undo: ${prev.label}`;
   }
 }
 
 export function redo(editor: Editor): void {
   const next = editor.history.redo(editor.entities);
   if (next) {
-    editor.entities = next;
+    editor.entities = next.entities;
     editor.selection = [];
     editor.clearHiddenState();
     editor.exitVertexMode();
     editor.dirty = true;
-    editor.statusMessage = 'Redo';
+    editor.statusMessage = `Redo: ${next.label}`;
   }
 }
 

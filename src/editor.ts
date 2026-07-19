@@ -209,6 +209,13 @@ import {
 } from './editor-cubic-clipping';
 import type { BrushPrimitive } from './brush-primitives';
 import type { MapParseDiagnostic } from './mapfile';
+import {
+  beginTransaction as beginEditorTransaction,
+  cancelTransaction as cancelEditorTransaction,
+  commitTransaction as commitEditorTransaction,
+  transact as transactEditorDocument,
+  type TransactionOptions,
+} from './editor-transactions';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -665,6 +672,22 @@ export class Editor {
 
   snapshot(): void {
     snapshotDocument(this);
+  }
+
+  beginTransaction(label: string, options: TransactionOptions = {}): void {
+    beginEditorTransaction(this, label, options);
+  }
+
+  commitTransaction(): boolean {
+    return commitEditorTransaction(this);
+  }
+
+  cancelTransaction(): boolean {
+    return cancelEditorTransaction(this);
+  }
+
+  transact<T>(label: string, mutation: () => T, options: TransactionOptions = {}): T {
+    return transactEditorDocument(this, label, mutation, options);
   }
 
   undo(): void {
