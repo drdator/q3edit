@@ -44,6 +44,7 @@ export class Viewport3D {
   position: Vec3 = [80, 80, 120];
   yaw = Math.PI * 0.25;
   pitch = -0.2;
+  fov = Math.PI / 3;
   moveSpeed = 200;
 
   // GL resources
@@ -359,7 +360,17 @@ export class Viewport3D {
     const dt = this.lastTime ? (time - this.lastTime) / 1000 : 0;
     this.lastTime = time;
 
-    this.updateCamera(dt);
+    const cameraPose = this.editor.advanceCameraPlayback(dt);
+    if (cameraPose) {
+      this.position = [...cameraPose.position];
+      this.yaw = cameraPose.yaw;
+      this.pitch = cameraPose.pitch;
+      this.fov = cameraPose.fov * Math.PI / 180;
+      if (cameraPose.action) this.editor.statusMessage = `Camera action: ${cameraPose.action}`;
+    } else {
+      this.updateCamera(dt);
+      this.fov = Math.PI / 3;
+    }
     // Sync camera state so 2D viewports can draw the camera icon
     const cam = this.editor.camera3d;
     cam.position = this.position;
@@ -376,6 +387,7 @@ export class Viewport3D {
       fullscreen: this.fullscreen,
       fullscreenMode: this.fullscreenMode,
       position: this.position,
+      fov: this.fov,
       getForward: () => this.getForward(),
       solidProg: this.solidProg,
       solidPVLoc: this.solidPVLoc,

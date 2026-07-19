@@ -40,6 +40,7 @@ export interface Viewport3DRenderContext {
   fullscreen: boolean;
   fullscreenMode: 'walk' | 'fly' | 'edit';
   position: [number, number, number];
+  fov: number;
   getForward: () => [number, number, number];
   solidProg: WebGLProgram;
   solidPVLoc: WebGLUniformLocation;
@@ -100,7 +101,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   ctx.gl.clear(ctx.gl.COLOR_BUFFER_BIT | ctx.gl.DEPTH_BUFFER_BIT);
 
   const aspect = ctx.canvas.width / ctx.canvas.height || 1;
-  const proj = mat4Perspective(Math.PI / 3, aspect, 1, 16384);
+  const proj = mat4Perspective(ctx.fov, aspect, 1, 16384);
   const forward = ctx.getForward();
   const target = vec3Add(ctx.position, forward);
   const view = mat4LookAt(ctx.position, target, [0, 0, 1]);

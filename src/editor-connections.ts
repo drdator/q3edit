@@ -2,6 +2,7 @@ import type { Editor } from './editor';
 import type { Entity } from './entity';
 import { entityDisplayOrigin } from './editor-queries';
 import type { Vec3 } from './math';
+import { CAMERA_CLOSED_KEY, CAMERA_ORDER_KEY, CAMERA_PATH_KEY } from './camera-paths';
 
 export interface EntityLink {
   source: Entity;
@@ -82,7 +83,7 @@ function catmullRomPoint(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, t: number): Vec
   ];
 }
 
-function samplePathCurve(points: Vec3[], closed = false): Vec3[] {
+export function samplePathCurve(points: Vec3[], closed = false): Vec3[] {
   if (points.length <= 1) return points.map(point => [...point]);
   if (points.length === 2) {
     const sampled = points.map(point => [...point] as Vec3);
@@ -148,9 +149,24 @@ export function collectEntityLinks(editor: Editor): EntityLink[] {
 }
 
 export function collectEntityPathCurves(editor: Editor): EntityPathCurve[] {
+  const curves: EntityPathCurve[] = [];
+  const cameraEntities = new Set<Entity>();
+  const cameraGroups = new Map<string, Entity[]>();
+  for (const entity of editor.nonWorldspawnEntities()) {
+    if (!editor.isEntityVisible(entity)) continue;
+    const id = entity.properties[CAMERA_PATH_KEY]?.trim(); if (!id || !entityDisplayOrigin(entity)) continue;
+    const points = cameraGroups.get(id) ?? []; points.push(entity); cameraGroups.set(id, points); cameraEntities.add(entity);
+  }
+  for (const entities of cameraGroups.values()) {
+    entities.sort((a, b) => Number(a.properties[CAMERA_ORDER_KEY] ?? 0) - Number(b.properties[CAMERA_ORDER_KEY] ?? 0));
+    const points = entities.map(entity => entityDisplayOrigin(entity)!).filter(Boolean);
+    if (points.length < 2) continue;
+    const closed = entities.some(entity => entity.properties[CAMERA_CLOSED_KEY] === '1');
+    curves.push({ entities, points: samplePathCurve(points, closed), closed, highlighted: entities.some(entity => entitySelected(editor, entity)) });
+  }
   const eligible = new Map<Entity, Vec3>();
   for (const entity of editor.nonWorldspawnEntities()) {
-    if (!editor.isEntityVisible(entity) || !isPathEntity(entity)) continue;
+    if (!editor.isEntityVisible(entity) || !isPathEntity(entity) || cameraEntities.has(entity)) continue;
     const origin = entityDisplayOrigin(entity);
     if (!origin) continue;
     eligible.set(entity, origin);
@@ -181,7 +197,6 @@ export function collectEntityPathCurves(editor: Editor): EntityPathCurve[] {
     incomingCount.set(next, (incomingCount.get(next) ?? 0) + 1);
   }
 
-  const curves: EntityPathCurve[] = [];
   const visited = new Set<Entity>();
 
   const buildChain = (start: Entity) => {
