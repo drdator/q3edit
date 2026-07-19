@@ -147,15 +147,26 @@ export function getTextureFaces(editor: Editor): BrushFace[] {
   return faces;
 }
 
+function faceTextureDimensions(editor: Editor, face: BrushFace): [number, number] {
+  const texture = editor.textureManager?.getIfLoaded(face.texture);
+  return [texture?.width ?? 128, texture?.height ?? 128];
+}
+
 export function shiftTexture(editor: Editor, du: number, dv: number): void {
   const faces = getTextureFaces(editor);
   if (faces.length === 0) return;
   editor.transact('Shift texture', () => {
     for (const face of faces) {
       const projection = classicTextureProjection(face);
-      if (!projection) continue;
-      projection.offsetX += du;
-      projection.offsetY += dv;
+      if (projection) {
+        projection.offsetX += du;
+        projection.offsetY += dv;
+      } else {
+        if (face.textureProjection.kind !== 'brush-primitive') continue;
+        const [width, height] = faceTextureDimensions(editor, face);
+        face.textureProjection.matrix[0][2] += du / width;
+        face.textureProjection.matrix[1][2] += dv / height;
+      }
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'shift-texture' });
@@ -167,9 +178,24 @@ export function scaleTexture(editor: Editor, ds: number): void {
   editor.transact('Scale texture', () => {
     for (const face of faces) {
       const projection = classicTextureProjection(face);
-      if (!projection) continue;
-      projection.scaleX = Math.max(0.01, projection.scaleX + ds);
-      projection.scaleY = Math.max(0.01, projection.scaleY + ds);
+      if (projection) {
+        projection.scaleX = Math.max(0.01, projection.scaleX + ds);
+        projection.scaleY = Math.max(0.01, projection.scaleY + ds);
+      } else {
+        if (face.textureProjection.kind !== 'brush-primitive') continue;
+        const [width, height] = faceTextureDimensions(editor, face);
+        const [uRow, vRow] = face.textureProjection.matrix;
+        const uScale = 1 / Math.max(1e-9, Math.hypot(uRow[0], uRow[1]) * width);
+        const vScale = 1 / Math.max(1e-9, Math.hypot(vRow[0], vRow[1]) * height);
+        const nextUScale = Math.max(0.01, uScale + ds);
+        const nextVScale = Math.max(0.01, vScale + ds);
+        const uFactor = uScale / nextUScale;
+        const vFactor = vScale / nextVScale;
+        uRow[0] *= uFactor;
+        uRow[1] *= uFactor;
+        vRow[0] *= vFactor;
+        vRow[1] *= vFactor;
+      }
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'scale-texture' });
@@ -181,8 +207,22 @@ export function rotateTexture(editor: Editor, angle: number): void {
   editor.transact('Rotate texture', () => {
     for (const face of faces) {
       const projection = classicTextureProjection(face);
-      if (!projection) continue;
-      projection.rotation = ((projection.rotation + angle) % 360 + 360) % 360;
+      if (projection) {
+        projection.rotation = ((projection.rotation + angle) % 360 + 360) % 360;
+      } else {
+        if (face.textureProjection.kind !== 'brush-primitive') continue;
+        const [width, height] = faceTextureDimensions(editor, face);
+        const radians = angle * Math.PI / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        const [uRow, vRow] = face.textureProjection.matrix;
+        const uPixels = uRow.map(value => value * width);
+        const vPixels = vRow.map(value => value * height);
+        for (let index = 0; index < 3; index++) {
+          uRow[index] = (cos * uPixels[index] - sin * vPixels[index]) / width;
+          vRow[index] = (sin * uPixels[index] + cos * vPixels[index]) / height;
+        }
+      }
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'rotate-texture' });
@@ -194,12 +234,17 @@ export function resetTextureAlignment(editor: Editor): void {
   editor.transact('Reset texture alignment', () => {
     for (const face of faces) {
       const projection = classicTextureProjection(face);
-      if (!projection) continue;
-      projection.offsetX = 0;
-      projection.offsetY = 0;
-      projection.rotation = 0;
-      projection.scaleX = 0.5;
-      projection.scaleY = 0.5;
+      if (projection) {
+        projection.offsetX = 0;
+        projection.offsetY = 0;
+        projection.rotation = 0;
+        projection.scaleX = 0.5;
+        projection.scaleY = 0.5;
+      } else {
+        if (face.textureProjection.kind !== 'brush-primitive') continue;
+        const [width, height] = faceTextureDimensions(editor, face);
+        face.textureProjection.matrix = [[2 / width, 0, 0], [0, 2 / height, 0]];
+      }
     }
     editor.redrawRequested = true;
     editor.statusMessage = 'Texture alignment reset';
@@ -208,15 +253,12 @@ export function resetTextureAlignment(editor: Editor): void {
 
 export function fitTexture(editor: Editor): void {
   const faces = getTextureFaces(editor);
-  if (faces.length === 0 || !editor.textureManager) return;
+  if (faces.length === 0) return;
   editor.transact('Fit texture', () => {
     for (const face of faces) {
       const projection = classicTextureProjection(face);
-      if (!projection) continue;
       if (face.polygon.length < 3) continue;
-      const texInfo = editor.textureManager!.getIfLoaded(face.texture);
-      const textureWidth = texInfo?.width ?? 128;
-      const textureHeight = texInfo?.height ?? 128;
+      const [textureWidth, textureHeight] = faceTextureDimensions(editor, face);
 
       const [sv, tv] = textureAxisFromPlane(face.plane.normal);
 
@@ -237,11 +279,19 @@ export function fitTexture(editor: Editor): void {
       const tRange = maxT - minT;
       if (sRange < 0.001 || tRange < 0.001) continue;
 
-      projection.scaleX = sRange / textureWidth;
-      projection.scaleY = tRange / textureHeight;
-      projection.rotation = 0;
-      projection.offsetX = -minS / projection.scaleX;
-      projection.offsetY = -minT / projection.scaleY;
+      if (projection) {
+        projection.scaleX = sRange / textureWidth;
+        projection.scaleY = tRange / textureHeight;
+        projection.rotation = 0;
+        projection.offsetX = -minS / projection.scaleX;
+        projection.offsetY = -minT / projection.scaleY;
+      } else {
+        if (face.textureProjection.kind !== 'brush-primitive') continue;
+        face.textureProjection.matrix = [
+          [1 / sRange, 0, -minS / sRange],
+          [0, 1 / tRange, -minT / tRange],
+        ];
+      }
     }
     editor.redrawRequested = true;
     editor.statusMessage = 'Texture fit to face';

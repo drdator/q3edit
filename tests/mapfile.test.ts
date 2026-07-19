@@ -235,6 +235,25 @@ brushDef3
     expect(() => serializeMap([entity])).toThrow('mixed classic and brush-primitive projections');
   });
 
+  test('preserves separate classic and brush-primitive brushes in one map', () => {
+    const entity = createEntity('worldspawn');
+    const classic = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    const primitive = createBoxBrush([80, 0, 0], [144, 64, 64]);
+    for (const face of primitive.faces) {
+      face.textureProjection = {
+        kind: 'brush-primitive',
+        matrix: [[1 / 128, 0, 0], [0, 1 / 128, 0]],
+      };
+    }
+    entity.brushes.push(classic, primitive);
+
+    const result = parseMapWithDiagnostics(serializeMap([entity]));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.document.entities[0].brushes.map(brush => brush.faces[0].textureProjection.kind))
+      .toEqual(['classic', 'brush-primitive']);
+  });
+
   test('reports malformed brushDef matrices at their source location', () => {
     const source = `{\n"classname" "worldspawn"\n{\nbrushDef\n{\n( 0 0 0 ) ( 0 0 64 ) ( 0 64 0 ) ( ( nope 0 0 ) ( 0 1 0 ) ) common/caulk 0 0 0\n}\n}\n}`;
     const result = parseMapWithDiagnostics(source);

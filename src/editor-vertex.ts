@@ -4,6 +4,10 @@ import type { Vec3 } from './math';
 import { getSelectedBrushItems } from './editor-selection';
 import { collectBrushVertices, moveVertices } from './vertex';
 import type { Editor } from './editor';
+import {
+  captureBrushPrimitiveVertexTextureState,
+  restoreBrushPrimitiveVertexTextureState,
+} from './texture-lock';
 
 export function enterVertexMode(editor: Editor): void {
   const brushItems = getSelectedBrushItems(editor);
@@ -118,7 +122,11 @@ export function moveSelectedVertices(editor: Editor, delta: Vec3): void {
 
     for (const [dataIndex, indices] of byBrush) {
       const data = editor.vertexData[dataIndex];
+      const textureState = editor.textureLock
+        ? captureBrushPrimitiveVertexTextureState(data.brush)
+        : null;
       moveVertices(data.brush, data.vertices, indices, delta);
+      if (textureState) restoreBrushPrimitiveVertexTextureState(textureState);
     }
 
     refreshVertexData(editor);

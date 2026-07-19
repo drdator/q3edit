@@ -1,4 +1,4 @@
-import { Brush, BrushFace, clipBrush, computeBrushGeometry, validateBrush } from './brush';
+import { Brush, BrushFace, clipBrush, cloneTextureProjection, computeBrushGeometry, validateBrush } from './brush';
 import { Plane, Vec3, planePointDistance, vec3Copy, vec3Scale, vec3Sub } from './math';
 
 const ON_EPSILON = 0.1;
@@ -67,6 +67,7 @@ function cloneFace(face: BrushFace): BrushFace {
     points: [vec3Copy(face.points[0]), vec3Copy(face.points[1]), vec3Copy(face.points[2])],
     plane: { normal: vec3Copy(face.plane.normal), dist: face.plane.dist },
     polygon: face.polygon.map(vec3Copy),
+    textureProjection: cloneTextureProjection(face.textureProjection),
   };
 }
 
@@ -222,6 +223,12 @@ export function hollowBrush(brush: Brush, thickness: number): Brush[] {
  */
 export function mergeBrushes(brushes: Brush[]): Brush | null {
   if (brushes.length < 2) return null;
+  const projectionKinds = new Set(brushes.flatMap(brush =>
+    brush.faces.map(face => face.textureProjection.kind),
+  ));
+  if (projectionKinds.size > 1) return null;
+  const propertySignatures = new Set(brushes.map(brush => JSON.stringify(brush.properties ?? {})));
+  if (propertySignatures.size > 1) return null;
 
   // Radiant rejects overlapping brushes for CSG merge.
   for (let i = 0; i < brushes.length; i++) {
@@ -258,7 +265,12 @@ export function mergeBrushes(brushes: Brush[]): Brush | null {
     mergedFaces.push(cloneFace(face));
   }
 
-  const newBrush: Brush = { faces: mergedFaces, mins: [0, 0, 0], maxs: [0, 0, 0] };
+  const newBrush: Brush = {
+    faces: mergedFaces,
+    properties: brushes[0].properties ? { ...brushes[0].properties } : undefined,
+    mins: [0, 0, 0],
+    maxs: [0, 0, 0],
+  };
   computeBrushGeometry(newBrush);
 
   // Remove faces clipped to nothing.
