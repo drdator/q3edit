@@ -1,17 +1,9 @@
 import type { Editor } from './editor';
 import { getEntityClassRegistry } from './entity-definitions';
-import { createEntityClassPicker } from './entity-class-picker';
 
 export function buildEntityPanel(body: HTMLElement, editor: Editor): void {
   body.innerHTML = '';
   const registry = getEntityClassRegistry();
-
-  const label = document.createElement('label');
-  label.textContent = 'Entity Class';
-  body.appendChild(label);
-
-  const picker = createEntityClassPicker(editor, { idPrefix: 'entity-class' });
-  body.appendChild(picker.element);
 
   const brushLabel = document.createElement('label');
   brushLabel.textContent = 'Brush Entity Class';

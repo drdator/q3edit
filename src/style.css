@@ -755,10 +755,6 @@ textarea:focus-visible {
   font: 10px/1.4 monospace;
 }
 
-#entity-panel .entity-class-description {
-  margin: -1px 0 7px;
-}
-
 /* ── Viewport Container ── */
 #viewport-container {
   flex: 1;
