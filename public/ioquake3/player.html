@@ -194,15 +194,34 @@
         return basename.replace(/[^a-zA-Z0-9._-]/g, '_');
       }
 
-      async function installFiles(module, launch) {
+      async function loadLaunchAssets() {
         const stored = await loadStoredConfiguration();
-        const archives = stored.openArenaEnabled ? await loadOpenArenaArchives() : [];
-        archives.push(...stored.archives);
-        if (archives.length === 0) {
-          throw new Error('No PK3 files are enabled. Add PK3 files or enable OpenArena in the editor.');
+
+        // A retail pak0 and OpenArena's pak0 have the same filename. Mixing the
+        // two would overwrite one of them in the virtual filesystem and launch
+        // the resulting, incompatible archive set as baseoa. A user-provided
+        // base pack therefore selects a coherent retail baseq3 installation.
+        const hasRetailBase = stored.archives.some(
+          (archive) => safeFileName(archive.name).toLowerCase() === 'pak0.pk3',
+        );
+        if (hasRetailBase) {
+          return { archives: stored.archives, gameDir: 'baseq3' };
         }
 
-        const gameDir = stored.openArenaEnabled ? 'baseoa' : 'baseq3';
+        if (stored.openArenaEnabled) {
+          const archives = await loadOpenArenaArchives();
+          archives.push(...stored.archives);
+          return { archives, gameDir: 'baseoa' };
+        }
+
+        if (stored.archives.length > 0) {
+          throw new Error('The enabled PK3 files do not include pak0.pk3. Add the retail base pack or enable OpenArena in the editor.');
+        }
+        throw new Error('No PK3 files are enabled. Add PK3 files or enable OpenArena in the editor.');
+      }
+
+      function installFiles(module, launch, assets) {
+        const { archives, gameDir } = assets;
         const root = `/${gameDir}`;
         module.FS.mkdirTree(`${root}/maps`);
 
@@ -213,52 +232,46 @@
           module.FS.writeFile(`${root}/${name}`, new Uint8Array(archive.data));
         }
         module.FS.writeFile(`${root}/maps/${launch.mapName}.bsp`, new Uint8Array(launch.bsp));
-        return gameDir;
       }
 
       async function start(launch) {
-        setStatus('Loading ioquake3 WebAssembly runtime...');
-        const ioquake3 = (await import('./ioquake3.js')).default;
-        let gameDir = 'baseq3';
-        void ioquake3({
-          canvas,
-          arguments: [
-            '+set', 'sv_pure', '0',
-            '+set', 'net_enabled', '0',
-            '+set', 'con_notifytime', '0',
-            '+set', 'r_mode', '-2',
-            '+set', 'r_fullscreen', '0',
-            '+set', 'r_allowResize', '1',
-            '+set', 'com_basegame', gameDir,
-            '+devmap', launch.mapName,
-          ],
-          locateFile: (file) => new URL(file, import.meta.url).href,
-          preRun: [async (module) => {
-            module.addRunDependency('q3edit-assets');
-            try {
-              gameDir = await installFiles(module, launch);
-              const basegameIndex = module.arguments.indexOf('com_basegame') + 1;
-              module.arguments[basegameIndex] = gameDir;
+        try {
+          setStatus('Preparing browser-local PK3 files...');
+          const assets = await loadLaunchAssets();
+          setStatus('Loading ioquake3 WebAssembly runtime...');
+          const ioquake3 = (await import('./ioquake3.js')).default;
+          await ioquake3({
+            canvas,
+            arguments: [
+              '+set', 'sv_pure', '0',
+              '+set', 'net_enabled', '0',
+              '+set', 'con_notifytime', '0',
+              '+set', 'r_mode', '-2',
+              '+set', 'r_fullscreen', '0',
+              '+set', 'r_allowResize', '1',
+              '+set', 'com_basegame', assets.gameDir,
+              '+devmap', launch.mapName,
+            ],
+            locateFile: (file) => new URL(file, import.meta.url).href,
+            preRun: [(module) => {
+              installFiles(module, launch, assets);
               setStatus(`Starting ${launch.mapName}...`);
-            } catch (error) {
-              fail(error);
-              throw error;
-            } finally {
-              module.removeRunDependency('q3edit-assets');
-            }
-          }],
-          onRuntimeInitialized: () => {
-            setStatus(`Starting ${launch.mapName}...`);
-          },
-          postRun: [() => {
-            window.setTimeout(() => {
-              loading.hidden = true;
-              send('q3edit-player:running', { mapName: launch.mapName });
-            }, 300);
-          }],
-          print: (message) => console.log(message),
-          printErr: (message) => console.error(message),
-        }).catch(fail);
+            }],
+            onRuntimeInitialized: () => {
+              setStatus(`Starting ${launch.mapName}...`);
+            },
+            postRun: [() => {
+              window.setTimeout(() => {
+                loading.hidden = true;
+                send('q3edit-player:running', { mapName: launch.mapName });
+              }, 300);
+            }],
+            print: (message) => console.log(message),
+            printErr: (message) => console.error(message),
+          });
+        } catch (error) {
+          fail(error);
+        }
       }
 
       window.addEventListener('message', (event) => {
