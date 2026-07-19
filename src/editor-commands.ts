@@ -30,9 +30,10 @@ const MENU_ORDER: Record<string, number> = {
   Pointfile: 4,
   Path: 5,
   Terrain: 6,
-  Tools: 7,
-  CSG: 8,
-  Grid: 9,
+  Patch: 7,
+  Tools: 8,
+  CSG: 9,
+  Grid: 10,
 };
 
 const menu = (name: string, order: number, group: string, submenu?: string): CommandMenuPlacement => ({
@@ -205,12 +206,25 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
       else if (getSelectedPatchItems(editor).length > 0) editor.enterPatchEditMode();
       else if (editor.selection.length > 0) editor.enterVertexMode();
     } },
-    { id: 'patch.create-flat', label: 'Create Flat Patch', defaultShortcut: 'P', enabled: hasSelection, execute: ({ editor }) => editor.createPatch('flat') },
-    { id: 'patch.create-cylinder', label: 'Create Cylinder Patch', defaultShortcut: 'Shift+P', enabled: hasSelection, execute: ({ editor }) => editor.createPatch('cylinder') },
-    { id: 'patch.create-cone', label: 'Create Cone Patch', defaultShortcut: 'Mod+P', enabled: hasSelection, execute: ({ editor }) => editor.createPatch('cone') },
-    { id: 'patch.create-bevel', label: 'Create Bevel Patch', defaultShortcut: 'Mod+Shift+P', enabled: hasSelection, execute: ({ editor }) => editor.createPatch('bevel') },
-    { id: 'patch.subdivide-more', label: 'Increase Patch Subdivisions', defaultShortcut: 'Plus', alternateShortcuts: ['='], enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(1) },
-    { id: 'patch.subdivide-less', label: 'Decrease Patch Subdivisions', defaultShortcut: 'Minus', alternateShortcuts: ['Shift+_'], enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(-1) },
+    { id: 'patch.create-flat', label: 'Create Flat Patch', defaultShortcut: 'P', menu: menu('Patch', 0, 'create'), enabled: hasSelection, execute: ({ editor }) => editor.createPatch('flat') },
+    { id: 'patch.create-cylinder', label: 'Create Cylinder Patch', defaultShortcut: 'Shift+P', menu: menu('Patch', 10, 'create'), enabled: hasSelection, execute: ({ editor }) => editor.createPatch('cylinder') },
+    { id: 'patch.create-cone', label: 'Create Cone Patch', defaultShortcut: 'Mod+P', menu: menu('Patch', 20, 'create'), enabled: hasSelection, execute: ({ editor }) => editor.createPatch('cone') },
+    { id: 'patch.create-bevel', label: 'Create Bevel Patch', defaultShortcut: 'Mod+Shift+P', menu: menu('Patch', 30, 'create'), enabled: hasSelection, execute: ({ editor }) => editor.createPatch('bevel') },
+    { id: 'patch.create-endcap', label: 'Create End Cap', menu: menu('Patch', 40, 'create'), enabled: hasSelection, execute: ({ editor }) => editor.createPatch('endcap') },
+    { id: 'patch.create-square', label: 'Create Square 5x5', menu: menu('Patch', 50, 'matrix'), enabled: hasSelection, execute: ({ editor }) => editor.createMatrixPatch(5, 5) },
+    { id: 'patch.create-dense', label: 'Create Dense 9x9', menu: menu('Patch', 60, 'matrix'), enabled: hasSelection, execute: ({ editor }) => editor.createMatrixPatch(9, 9) },
+    { id: 'patch.create-arbitrary', label: 'Create Arbitrary Matrix...', menu: menu('Patch', 70, 'matrix'), enabled: hasSelection, execute: ({ editor }) => {
+      const value = globalThis.prompt?.('Patch dimensions (odd, 3-31)', '5x3'); if (!value) return;
+      const match = value.match(/^\s*(\d+)\s*[x, ]\s*(\d+)\s*$/i); if (match) editor.createMatrixPatch(Number(match[1]), Number(match[2]));
+    } },
+    { id: 'patch.insert-rows', label: 'Insert Rows', menu: menu('Patch', 80, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('insert-rows') },
+    { id: 'patch.delete-rows', label: 'Delete Rows', menu: menu('Patch', 90, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('delete-rows') },
+    { id: 'patch.insert-columns', label: 'Insert Columns', menu: menu('Patch', 100, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('insert-columns') },
+    { id: 'patch.delete-columns', label: 'Delete Columns', menu: menu('Patch', 110, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('delete-columns') },
+    ...(['transpose','invert','redisperse-rows','redisperse-columns','cycle-cap','naturalize','fit','shift-u','shift-v','scale-up','scale-down','rotate'] as const).map((operation, index) => ({ id: `patch.${operation}`, label: `Patch ${operation.replace(/-/g, ' ')}`, menu: menu('Patch', 120 + index, operation.includes('row') || operation.includes('column') ? 'grid' : 'texture'), enabled: hasSelectedPatches, execute: ({ editor }: EditorCommandContext) => editor.applyPatchOperation(operation) })),
+    { id: 'patch.thicken', label: 'Thicken With Caps', menu: menu('Patch', 150, 'shape'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.thickenPatches() },
+    { id: 'patch.subdivide-more', label: 'Increase Patch Subdivisions', defaultShortcut: 'Plus', alternateShortcuts: ['='], menu: menu('Patch', 160, 'subdivision'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(1) },
+    { id: 'patch.subdivide-less', label: 'Decrease Patch Subdivisions', defaultShortcut: 'Minus', alternateShortcuts: ['Shift+_'], menu: menu('Patch', 170, 'subdivision'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(-1) },
     { id: 'clip.execute', label: 'Execute Clip', defaultShortcut: 'Enter', enabled: ({ editor }) => editor.activeTool === 'clip', execute: ({ editor }) => editor.executeClip() },
     { id: 'clip.cycle-mode', label: 'Cycle Clip Mode', defaultShortcut: 'Tab', enabled: ({ editor }) => editor.activeTool === 'clip', execute: ({ editor }) => editor.cycleClipMode() },
     { id: 'view.geometry-snap', label: 'Geometry Snap', defaultShortcut: 'G', checked: ({ editor }) => editor.snapToGeometry, execute: ctx => ctx.toggleGeoSnap() },

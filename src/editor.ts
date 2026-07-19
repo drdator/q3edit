@@ -99,6 +99,11 @@ import {
 } from './editor-vertex';
 import {
   changeSubdivisions as changeEditorPatchSubdivisions,
+  applyPatchOperation as applyEditorPatchOperation,
+  createMatrixPatch as createEditorMatrixPatch,
+  thickenSelectedPatches as thickenEditorPatches,
+  updatePatchProperties as updateEditorPatchProperties,
+  type PatchOperation,
   clearControlPointSelection as clearEditorControlPointSelection,
   createPatch as createEditorPatch,
   enterPatchEditMode as enterEditorPatchEditMode,
@@ -593,6 +598,13 @@ export class Editor {
 
   changeSubdivisions(delta: number): void {
     changeEditorPatchSubdivisions(this, delta);
+  }
+
+  applyPatchOperation(operation: PatchOperation): void { applyEditorPatchOperation(this, operation); }
+  createMatrixPatch(width: number, height: number): void { createEditorMatrixPatch(this, width, height); }
+  thickenPatches(amount = 16): void { thickenEditorPatches(this, amount); }
+  updatePatchProperties(patch: Patch, changes: Partial<Pick<Patch, 'texture' | 'subdivisions' | 'contentFlags' | 'surfaceFlags' | 'value'>>): void {
+    updateEditorPatchProperties(this, patch, changes);
   }
 
   deleteSelection(): void {
