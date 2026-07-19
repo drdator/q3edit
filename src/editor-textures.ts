@@ -124,7 +124,7 @@ export function setTexture(editor: Editor, texture: string): void {
 
   editor.currentTexture = nextTexture;
   if (editor.patchEditMode && editor.terrainBrushMode === 'texture') {
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Terrain paint texture: ${nextTexture}`;
     return;
   }
@@ -136,7 +136,7 @@ export function setTexture(editor: Editor, texture: string): void {
     }
   });
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function getTextureFaces(editor: Editor): BrushFace[] {
@@ -155,7 +155,7 @@ export function shiftTexture(editor: Editor, du: number, dv: number): void {
       face.offsetX += du;
       face.offsetY += dv;
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'shift-texture' });
 }
 
@@ -167,7 +167,7 @@ export function scaleTexture(editor: Editor, ds: number): void {
       face.scaleX = Math.max(0.01, face.scaleX + ds);
       face.scaleY = Math.max(0.01, face.scaleY + ds);
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'scale-texture' });
 }
 
@@ -178,7 +178,7 @@ export function rotateTexture(editor: Editor, angle: number): void {
     for (const face of faces) {
       face.rotation = ((face.rotation + angle) % 360 + 360) % 360;
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'rotate-texture' });
 }
 
@@ -193,7 +193,7 @@ export function resetTextureAlignment(editor: Editor): void {
       face.scaleX = 0.5;
       face.scaleY = 0.5;
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = 'Texture alignment reset';
   });
 }
@@ -233,7 +233,7 @@ export function fitTexture(editor: Editor): void {
       face.offsetX = -minS / face.scaleX;
       face.offsetY = -minT / face.scaleY;
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = 'Texture fit to face';
   });
 }
@@ -289,7 +289,7 @@ export function replaceTextures(
   }
 
   editor.currentTexture = replace;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Replaced ${replaced} surface${replaced === 1 ? '' : 's'} in ${scope === 'map' ? 'map' : 'selection'}`;
   return replaced;
 }

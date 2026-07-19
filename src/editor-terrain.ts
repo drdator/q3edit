@@ -551,7 +551,7 @@ function stitchTerrainGroups(
   }
 
   if (stitched > 0) {
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }
   return stitched;
 }
@@ -603,7 +603,7 @@ export function createTerrainPatch(editor: Editor): void {
   editor.patchControlSelection = [{ dataIndex: 0, row: centerRow, col: centerCol }];
   editor.terrainBrushCenter = null;
   editor.terrainBrushAxes = null;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   const paintHint = terrainPaintNeedsPreparation(patch)
     ? ' (Use Prepare Terrain For Texture Paint for local texture painting)'
     : '';
@@ -667,7 +667,7 @@ export function splitTerrainIntoPaintTiles(editor: Editor): void {
   editor.selection = nextSelection;
   editor.enterPatchEditMode();
   editor.patchControlSelection = [];
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Prepared terrain for texture paint (${tileCount} tiles, click any tile to work on the whole set)`;
   editor.commitTransaction();
 }
@@ -733,7 +733,7 @@ export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = tru
     amount > 0 ? 'raise' : 'lower',
   );
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `${amount > 0 ? 'Raised' : 'Lowered'} terrain (${Math.abs(amount).toFixed(1)}, r=${radius}, s=${terrainStrength(editor)}, ${falloff})`;
   if (takeSnapshot) editor.commitTransaction();
 }
@@ -796,7 +796,7 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
     return 0;
   }
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
   const parts: string[] = [];
   if (paintedCells > 0) parts.push(`${paintedCells} ${paintedCells === 1 ? 'cell' : 'cells'}`);
   if (paintedPatches > 0) parts.push(`${paintedPatches} ${paintedPatches === 1 ? 'patch' : 'patches'}`);
@@ -913,7 +913,7 @@ export function smoothTerrain(editor: Editor): void {
 
   stitchTerrainGroups(editor, editor.patchEditData.map(data => data.patch), touchedTargetsFromPatchEditData(editor, touched));
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Smoothed terrain (r=${radius}, ${falloff})`;
   editor.commitTransaction();
 }
@@ -972,7 +972,7 @@ export function noiseTerrain(editor: Editor): void {
 
   stitchTerrainGroups(editor, editor.patchEditData.map(data => data.patch), touchedTargetsFromPatchEditData(editor, touched));
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = anchored
     ? `Applied terrain noise (r=${radius}, s=${strength}, ${falloff})`
     : `Applied terrain noise (full terrain, s=${strength})`;
@@ -1049,7 +1049,7 @@ export function erodeTerrain(editor: Editor): void {
 
   stitchTerrainGroups(editor, editor.patchEditData.map(data => data.patch), touchedTargetsFromPatchEditData(editor, touched));
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = anchored
     ? `Eroded terrain (r=${radius}, s=${strength}, ${falloff})`
     : `Eroded terrain (full terrain, s=${strength})`;
@@ -1091,7 +1091,7 @@ export function adjustTerrainRadius(editor: Editor, delta: number): void {
   const next = Math.max(8, Math.min(1024, editor.terrainBrushRadius + delta));
   if (next === editor.terrainBrushRadius) return;
   editor.terrainBrushRadius = next;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Terrain radius: ${editor.terrainBrushRadius}`;
 }
 
@@ -1099,18 +1099,18 @@ export function adjustTerrainStrength(editor: Editor, delta: number): void {
   const next = Math.max(1, Math.min(256, editor.terrainBrushStrength + delta));
   if (next === editor.terrainBrushStrength) return;
   editor.terrainBrushStrength = next;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Terrain strength: ${editor.terrainBrushStrength}`;
 }
 
 export function cycleTerrainFalloff(editor: Editor): void {
   editor.terrainFalloff = editor.terrainFalloff === 'smooth' ? 'linear' : 'smooth';
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Terrain falloff: ${editor.terrainFalloff}`;
 }
 
 export function toggleTerrainBrushMode(editor: Editor): void {
   editor.terrainBrushMode = editor.terrainBrushMode === 'height' ? 'texture' : 'height';
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Terrain brush mode: ${editor.terrainBrushMode}`;
 }

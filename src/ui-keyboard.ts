@@ -58,7 +58,7 @@ export function setupKeyboard(ctx: KeyboardContext): void {
         ctx.editor.cancelClip();
       } else if (ctx.editor.activeTool === 'rotate' && ctx.editor.rotateAnchor) {
         ctx.editor.rotateAnchor = null;
-        ctx.editor.dirty = true;
+        ctx.editor.redrawRequested = true;
       } else {
         ctx.editor.clearSelection();
       }
@@ -136,8 +136,8 @@ export function setupKeyboard(ctx: KeyboardContext): void {
 
     if (e.key === 'f' && !ctrl) { ctx.editor.centerOnSelection(); return; }
 
-    if (e.key === 'w' && !ctrl) { ctx.editor.gizmoMode = 'move'; ctx.editor.dirty = true; return; }
-    if (e.key === 'e' && !ctrl) { ctx.editor.gizmoMode = 'scale'; ctx.editor.dirty = true; return; }
+    if (e.key === 'w' && !ctrl) { ctx.editor.gizmoMode = 'move'; ctx.editor.redrawRequested = true; return; }
+    if (e.key === 'e' && !ctrl) { ctx.editor.gizmoMode = 'scale'; ctx.editor.redrawRequested = true; return; }
 
     if (e.key === 'r' && !ctrl) { ctx.editor.rotateSelection(90); return; }
     if (e.key === 'R' && !ctrl) { ctx.editor.rotateSelection(15); return; }

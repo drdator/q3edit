@@ -75,7 +75,7 @@ export function makeDetail(editor: Editor): void {
       patch.contentFlags = (patch.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL;
     }
 
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Marked ${total} item${total === 1 ? '' : 's'} detail`;
   });
 }
@@ -99,7 +99,7 @@ export function makeStructural(editor: Editor): void {
       patch.contentFlags &= ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
     }
 
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Marked ${total} item${total === 1 ? '' : 's'} structural`;
   });
 }

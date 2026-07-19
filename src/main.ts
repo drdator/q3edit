@@ -42,6 +42,11 @@ function setLoadingStatus(msg: string) {
 async function init() {
   const editor = new Editor();
   editor.createDefaultMap();
+  window.addEventListener('beforeunload', event => {
+    if (!editor.hasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 
   // Get canvases
   const xyCanvas = document.querySelector('#vp-xy canvas') as HTMLCanvasElement;
@@ -111,11 +116,11 @@ async function init() {
     registerColorTex('__entity_#cc44ff', 204, 68, 255);
     registerColorTex('__entity_#888888', 136, 136, 136);
 
-    texMgr.onTextureLoaded = () => { editor.dirty = true; };
+    texMgr.onTextureLoaded = () => { editor.redrawRequested = true; };
     editor.textureManager = texMgr;
     activeTextureManager = texMgr;
     ui.updateTextureBrowser(texMgr);
-    editor.dirty = true;
+    editor.redrawRequested = true;
     return texMgr;
   };
 
@@ -203,7 +208,7 @@ async function init() {
     vpXZ.render();
     vpYZ.render();
     ui.update();
-    editor.dirty = false;
+    editor.redrawRequested = false;
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

@@ -9,9 +9,10 @@ import {
 
 export function undo(editor: Editor): void {
   commitTransaction(editor);
-  const prev = editor.history.undo(editor.entities);
+  const prev = editor.history.undo(editor.entities, editor.documentRevision);
   if (prev) {
     editor.entities = prev.entities;
+    editor.restoreDocumentRevision(prev.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Undo: ${prev.label}`;
   }
@@ -19,9 +20,10 @@ export function undo(editor: Editor): void {
 
 export function redo(editor: Editor): void {
   commitTransaction(editor);
-  const next = editor.history.redo(editor.entities);
+  const next = editor.history.redo(editor.entities, editor.documentRevision);
   if (next) {
     editor.entities = next.entities;
+    editor.restoreDocumentRevision(next.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Redo: ${next.label}`;
   }
@@ -41,7 +43,8 @@ export function loadMap(editor: Editor, text: string): void {
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();
-  editor.dirty = true;
+  editor.redrawRequested = true;
+  editor.markDocumentSaved();
   if (result.diagnostics.length === 0) {
     editor.statusMessage = 'Map loaded';
     return;
@@ -63,11 +66,12 @@ export function newMap(editor: Editor): void {
     editor.entities = [createWorldspawn()];
   });
   editor.mapDiagnostics = [];
+  editor.fileName = 'untitled.map';
   editor.selection = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'New map';
 }
 
@@ -80,6 +84,7 @@ export function saveMapToFile(editor: Editor): void {
   link.download = editor.fileName;
   link.click();
   URL.revokeObjectURL(url);
+  editor.markDocumentSaved();
   editor.statusMessage = `Saved ${editor.fileName}`;
 }
 
@@ -129,6 +134,6 @@ export function createDefaultMap(editor: Editor): void {
   light.properties['light'] = '300';
   editor.entities.push(light);
 
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'Default map created';
 }

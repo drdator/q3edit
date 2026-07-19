@@ -248,7 +248,7 @@ export function connectSelectedEntities(editor: Editor): void {
     source.properties['target'] = linkName;
     target.properties['targetname'] = linkName;
     editor.selection = [{ type: 'entity', entity: target }];
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Connected ${entityLabel(source)} -> ${entityLabel(target)} (${linkName})`;
   });
 }
@@ -271,7 +271,7 @@ export function connectSelectedEntitiesAsPath(editor: Editor): void {
       source.properties['target'] = linkName;
       target.properties['targetname'] = linkName;
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Connected ${entities.length} entities as a path`;
   });
 }
@@ -294,7 +294,7 @@ export function connectSelectedEntitiesAsClosedPath(editor: Editor): void {
       source.properties['target'] = linkName;
       target.properties['targetname'] = linkName;
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Connected ${entities.length} entities as a closed path`;
   });
 }

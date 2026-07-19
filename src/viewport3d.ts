@@ -169,7 +169,7 @@ export class Viewport3D {
           this.pitch = Math.asin(Math.max(-1, Math.min(1, dz / len)));
         }
       }
-      this.editor.dirty = true;
+      this.editor.redrawRequested = true;
     });
   }
 
@@ -194,7 +194,7 @@ export class Viewport3D {
     this.savedCamera = enterState.savedCamera;
     this.setFullscreenMode('walk');
     this.physicsAccum = enterState.physicsAccum;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
   }
 
   private setFullscreenMode(mode: Viewport3DFullscreenMode): void {
@@ -230,14 +230,14 @@ export class Viewport3D {
     this.pitch = exitState.pitch;
     this.savedCamera = exitState.savedCamera;
     this.fullscreen = exitState.fullscreen;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
   }
 
   centerOnSelection(): void {
     const position = centerViewport3DOnSelection(this.editor, this.yaw, this.pitch);
     if (position) {
       this.position = position;
-      this.editor.dirty = true;
+      this.editor.redrawRequested = true;
     }
   }
 
@@ -357,7 +357,7 @@ export class Viewport3D {
     cam.position = this.position;
     cam.yaw = this.yaw;
     cam.pitch = this.pitch;
-    if (this.editor.dirty) {
+    if (this.editor.redrawRequested) {
       this.buildGeometry();
     }
     this.gizmo.build(this.position);
@@ -456,7 +456,7 @@ export class Viewport3D {
     this.walkLandChange = result.walkLandChange;
     this.walkLandTime = result.walkLandTime;
     this.walkBobCycle = result.walkBobCycle;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
   }
 
   // ── Ray picking in 3D ──
@@ -509,7 +509,7 @@ export class Viewport3D {
     if (this.terrainHoverMatchesOwnedState()) {
       this.editor.terrainBrushCenter = null;
       this.editor.terrainBrushAxes = null;
-      this.editor.dirty = true;
+      this.editor.redrawRequested = true;
     }
     this.terrainHoverOwned = false;
     this.terrainHoverCenter = null;
@@ -546,7 +546,7 @@ export class Viewport3D {
     this.terrainHoverCenter = center;
     this.editor.terrainBrushAxes = [axes[0], axes[1]];
     this.editor.terrainBrushCenter = [center[0], center[1], center[2]];
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
   }
 
   pickBrushAt(screenX: number, screenY: number): { entity: Entity; brush: Brush; face: BrushFace } | null {
@@ -661,7 +661,7 @@ export class Viewport3D {
       this.pitch = Math.max(-Math.PI * 0.49, Math.min(Math.PI * 0.49,
         this.pitch - dy * sensitivity
       ));
-      this.editor.dirty = true;
+      this.editor.redrawRequested = true;
     });
 
     // Detect pointer lock loss in fullscreen → exit fullscreen (but not in edit mode)
@@ -721,7 +721,7 @@ export class Viewport3D {
         this.position = vec3Add(this.position, vec3Scale(forward, -e.deltaY * 0.5));
         this.position = vec3Add(this.position, vec3Scale(right, e.deltaX * 0.5));
       }
-      this.editor.dirty = true;
+      this.editor.redrawRequested = true;
     }, { passive: false });
 
     el.addEventListener('contextmenu', (e) => e.preventDefault());

@@ -134,11 +134,11 @@ export function buildToolbar(ctx: ToolbarContext): void {
     ctx.editor.currentBrushPrimitive = primitiveSelect.value as typeof ctx.editor.currentBrushPrimitive;
     syncCreateToolPanel();
     setCreateToolButtonIcon();
-    ctx.editor.dirty = true;
+    ctx.editor.redrawRequested = true;
   });
   sidesSelect.addEventListener('change', () => {
     ctx.editor.currentBrushSides = Number(sidesSelect.value);
-    ctx.editor.dirty = true;
+    ctx.editor.redrawRequested = true;
   });
 
   document.addEventListener('mousedown', (event) => {
@@ -210,14 +210,14 @@ export function buildToolbar(ctx: ToolbarContext): void {
     icon: icon('arrows-out-cardinal'),
     title: 'Move mode (W)',
     active: ctx.editor.gizmoMode === 'move',
-    onClick: () => { ctx.editor.gizmoMode = 'move'; ctx.editor.dirty = true; },
+    onClick: () => { ctx.editor.gizmoMode = 'move'; ctx.editor.redrawRequested = true; },
   });
   addBtn({
     id: 'gizmo-scale',
     icon: icon('resize'),
     title: 'Scale mode (E)',
     active: ctx.editor.gizmoMode === 'scale',
-    onClick: () => { ctx.editor.gizmoMode = 'scale'; ctx.editor.dirty = true; },
+    onClick: () => { ctx.editor.gizmoMode = 'scale'; ctx.editor.redrawRequested = true; },
   });
 
   bar.appendChild(createSeparator());

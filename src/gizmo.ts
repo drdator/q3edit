@@ -327,7 +327,7 @@ export class Gizmo {
     this.dragging = false;
     this.axis = -1;
     this.geoSnapTargets = null;
-    this.editor.dirty = true;
+    this.editor.redrawRequested = true;
   }
 
   private worldToScreen(p: Vec3, pv: Mat4, rect: DOMRect): [number, number] | null {

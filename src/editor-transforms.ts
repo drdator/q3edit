@@ -149,7 +149,7 @@ export function scaleGeometryFromOriginals(
     for (const { patch, origCtrl } of patches) {
       scalePatchControlPoints(patch, origCtrl, origin, scale);
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'resize-selection' });
 }
 
@@ -186,7 +186,7 @@ export function rotateGeometryFromOriginals(
       }
       rotatePatch(patch, center, axis, angle);
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'rotate-selection-preview' });
 }
 
@@ -222,7 +222,7 @@ export function addBrush(editor: Editor, mins: Vec3, maxs: Vec3, axis: number, c
       editor.currentBrushSides,
     );
     editor.worldspawn.brushes.push(brush);
-    editor.dirty = true;
+    editor.redrawRequested = true;
     return brush;
   });
 }
@@ -248,7 +248,7 @@ export function deleteSelection(editor: Editor): void {
 
     editor.reconcileHiddenState();
     editor.selection = [];
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = 'Deleted';
   });
 }
@@ -268,7 +268,7 @@ export function moveSelection(editor: Editor, delta: Vec3): void {
         translateEditorEntity(editor, item.entity, delta);
       }
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'move-selection' });
 }
 
@@ -298,7 +298,7 @@ export function rotateSelection(editor: Editor, angleDeg: number): void {
       }
     }
 
-    editor.dirty = true;
+    editor.redrawRequested = true;
     const axisName = ['X', 'Y', 'Z'][axis];
     editor.statusMessage = `Rotated ${angleDeg}° around ${axisName}`;
   });
@@ -324,7 +324,7 @@ export function flipSelection(editor: Editor, axis: number): void {
       }
     }
 
-    editor.dirty = true;
+    editor.redrawRequested = true;
     const axisName = ['X', 'Y', 'Z'][axis];
     editor.statusMessage = `Flipped along ${axisName}`;
   });
@@ -382,7 +382,7 @@ export function scaleSelection(editor: Editor, scale: Vec3): void {
       }
     }
 
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Scaled x${scale[0].toFixed(2)} y${scale[1].toFixed(2)} z${scale[2].toFixed(2)}`;
   });
 }
@@ -415,7 +415,7 @@ export function duplicateSelection(editor: Editor): void {
     }
 
     editor.selection = newSelection;
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = 'Duplicated';
   });
 }
@@ -473,7 +473,7 @@ export function snapSelectionToGrid(editor: Editor): void {
       }
     }
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = 'Snapped to grid';
   });
 }
@@ -500,7 +500,7 @@ export function duplicateSelectionInPlace(editor: Editor): void {
       }
     }
     editor.selection = newSelection;
-    editor.dirty = true;
+    editor.redrawRequested = true;
   });
 }
 
@@ -515,7 +515,7 @@ export function addEntity(editor: Editor, classname: string, origin: Vec3, ctrlK
       }
     }
     editor.entities.push(entity);
-    editor.dirty = true;
+    editor.redrawRequested = true;
     return entity;
   });
 }

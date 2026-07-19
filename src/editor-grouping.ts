@@ -102,7 +102,7 @@ export function groupSelectionIntoEntity(editor: Editor, classname = 'func_group
     removeEmptyGeometryEntities(editor, sourceEntities, new Set([entity]));
     editor.reconcileHiddenState();
     editor.selection = [{ type: 'entity', entity }];
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Grouped ${total} item${total === 1 ? '' : 's'} into ${classname}`;
   });
 }
@@ -135,7 +135,7 @@ export function moveSelectionToWorldspawn(editor: Editor): void {
       ...selectedBrushes.map(({ brush }) => ({ type: 'brush' as const, entity: worldspawn, brush })),
       ...selectedPatches.map(({ patch }) => ({ type: 'patch' as const, entity: worldspawn, patch })),
     ];
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Moved ${total} item${total === 1 ? '' : 's'} to worldspawn`;
   });
 }

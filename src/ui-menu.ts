@@ -99,7 +99,7 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
         label: 'Render Selected Only',
         action: () => {
           ctx.editor.renderSelectedOnly = !ctx.editor.renderSelectedOnly;
-          ctx.editor.dirty = true;
+          ctx.editor.redrawRequested = true;
         },
       },
       { separator: true },

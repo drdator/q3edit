@@ -35,7 +35,7 @@ export function isPatchDirectlySelected(editor: Editor, patch: Patch): boolean {
 export function clearSelection(editor: Editor): void {
   editor.selection = [];
   editor.exitVertexMode();
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function selectBrush(editor: Editor, entity: Entity, brush: Brush, additive = false): void {
@@ -56,7 +56,7 @@ export function selectBrushDirect(editor: Editor, entity: Entity, brush: Brush, 
     return;
   }
   editor.selection.push({ type: 'brush', entity, brush });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function selectEntity(editor: Editor, entity: Entity, additive = false): void {
@@ -69,7 +69,7 @@ export function selectEntity(editor: Editor, entity: Entity, additive = false): 
     return;
   }
   editor.selection.push({ type: 'entity', entity });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function isBrushSelected(editor: Editor, brush: Brush, entity?: Entity): boolean {
@@ -94,13 +94,13 @@ export function addBrushToSelection(editor: Editor, entity: Entity, brush: Brush
 export function addBrushDirectToSelection(editor: Editor, entity: Entity, brush: Brush): void {
   if (isBrushSelected(editor, brush, entity)) return;
   editor.selection.push({ type: 'brush', entity, brush });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function addEntityToSelection(editor: Editor, entity: Entity): void {
   if (isEntitySelected(editor, entity)) return;
   editor.selection.push({ type: 'entity', entity });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additive = false): void {
@@ -121,7 +121,7 @@ export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additi
         editor.selection.push({ type: 'patch', entity, patch: groupedPatch });
       }
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
     return;
   }
   selectPatchDirect(editor, entity, patch, additive);
@@ -137,7 +137,7 @@ export function selectPatchDirect(editor: Editor, entity: Entity, patch: Patch, 
     return;
   }
   editor.selection.push({ type: 'patch', entity, patch });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function isPatchSelected(editor: Editor, patch: Patch, entity?: Entity): boolean {
@@ -165,7 +165,7 @@ export function addPatchToSelection(editor: Editor, entity: Entity, patch: Patch
 export function addPatchDirectToSelection(editor: Editor, entity: Entity, patch: Patch): void {
   if (isPatchSelected(editor, patch, entity)) return;
   editor.selection.push({ type: 'patch', entity, patch });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function selectFace(
@@ -190,7 +190,7 @@ export function selectFace(
   } else {
     editor.selection = [{ type: 'face', entity, brush, face }];
   }
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function isFaceSelected(editor: Editor, face: BrushFace): boolean {
@@ -340,7 +340,7 @@ function replaceSelection(editor: Editor, items: SelectableItem[], statusMessage
   if (editor.patchEditMode) editor.exitPatchEditMode();
   if (editor.vertexMode) editor.exitVertexMode();
   editor.selection = items;
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = statusMessage;
 }
 
@@ -492,5 +492,5 @@ export function selectAll(editor: Editor): void {
     if (!editor.isEntityInRegion(entity)) continue;
     editor.selection.push({ type: 'entity', entity });
   }
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }

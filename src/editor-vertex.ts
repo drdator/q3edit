@@ -23,7 +23,7 @@ export function enterVertexMode(editor: Editor): void {
 
   editor.vertexMode = true;
   editor.vertexSelection = [];
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'Vertex mode';
 }
 
@@ -43,7 +43,7 @@ export function exitVertexMode(
   editor.vertexMode = false;
   editor.vertexData = [];
   editor.vertexSelection = [];
-  editor.dirty = true;
+  editor.redrawRequested = true;
 
   if (invalidBrushes.length > 0) {
     return { invalidBrushes };
@@ -56,7 +56,7 @@ export function rebuildBrushes(editor: Editor, brushes: Brush[]): void {
     for (const brush of brushes) {
       rebuildBrush(brush);
     }
-    editor.dirty = true;
+    editor.redrawRequested = true;
   });
 }
 
@@ -74,7 +74,7 @@ export function splitBrushesConvex(editor: Editor, invalidBrushes: { brush: Brus
     }
     editor.reconcileHiddenState();
     editor.selection = [];
-    editor.dirty = true;
+    editor.redrawRequested = true;
   });
 }
 
@@ -88,12 +88,12 @@ export function selectVertex(editor: Editor, dataIndex: number, vertexIndex: num
     return;
   }
   editor.vertexSelection.push({ dataIndex, vertexIndex });
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function clearVertexSelection(editor: Editor): void {
   editor.vertexSelection = [];
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function isVertexSelected(editor: Editor, dataIndex: number, vertexIndex: number): boolean {
@@ -122,7 +122,7 @@ export function moveSelectedVertices(editor: Editor, delta: Vec3): void {
     }
 
     refreshVertexData(editor);
-    editor.dirty = true;
+    editor.redrawRequested = true;
   }, { coalesceKey: 'move-brush-vertices' });
 }
 

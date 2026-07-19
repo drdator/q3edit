@@ -152,7 +152,7 @@ export function insertTransferEntities(editor: Editor, entities: Entity[], delta
 
   editor.reconcileHiddenState();
   editor.selection = selection;
-  editor.dirty = true;
+  editor.redrawRequested = true;
 
   return {
     selection,

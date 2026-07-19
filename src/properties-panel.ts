@@ -28,7 +28,7 @@ export class PropertiesPanel {
   }
 
   update(): void {
-    if (!this.editor.dirty) return;
+    if (!this.editor.redrawRequested) return;
     const propsDiv = document.getElementById('entity-props')!;
     const sel = this.editor.selection;
 

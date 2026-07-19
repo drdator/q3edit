@@ -8,19 +8,19 @@ export function addClipPoint(editor: Editor, point: Vec3, depthAxis: number): vo
   if (editor.clipPoints.length >= 2) editor.clipPoints = [];
   editor.clipPoints.push(point);
   editor.clipDepthAxis = depthAxis;
-  editor.dirty = true;
+  editor.redrawRequested = true;
 }
 
 export function cycleClipMode(editor: Editor): void {
   const modes = ['front', 'back', 'both'] as const;
   editor.clipMode = modes[(modes.indexOf(editor.clipMode) + 1) % modes.length];
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = `Clip: ${editor.clipMode}`;
 }
 
 export function cancelClip(editor: Editor): void {
   editor.clipPoints = [];
-  editor.dirty = true;
+  editor.redrawRequested = true;
   editor.statusMessage = 'Clip cancelled';
 }
 
@@ -63,7 +63,7 @@ export function executeClip(editor: Editor): void {
     editor.reconcileHiddenState();
     editor.selection = newSelection;
     editor.clipPoints = [];
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `Clipped (${editor.clipMode})`;
   });
 }
@@ -111,7 +111,7 @@ export function csgSubtract(editor: Editor): void {
 
     editor.reconcileHiddenState();
     editor.selection = newSelection;
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = totalFragments > 0
       ? `CSG Subtract: ${totalFragments} fragments created`
       : 'CSG Subtract: no intersections found';
@@ -143,7 +143,7 @@ export function csgHollow(editor: Editor): void {
 
     editor.reconcileHiddenState();
     editor.selection = newSelection;
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `CSG Hollow: ${newSelection.length} shell pieces (wall thickness: ${editor.gridSize})`;
   });
 }
@@ -176,7 +176,7 @@ export function csgMerge(editor: Editor): void {
     entity.brushes.push(merged);
     editor.reconcileHiddenState();
     editor.selection = [{ type: 'brush', entity, brush: merged }];
-    editor.dirty = true;
+    editor.redrawRequested = true;
     editor.statusMessage = `CSG Merge: ${brushItems.length} brushes merged into 1`;
   });
 }

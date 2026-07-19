@@ -278,7 +278,7 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       state.dragging = true;
       state.hasDragged = false;
       ctx.editor.statusMessage = 'Drag to position anchor';
-      ctx.editor.dirty = true;
+      ctx.editor.redrawRequested = true;
     } else if (ctx.editor.selection.length > 0) {
       const anchor = ctx.editor.rotateAnchor;
       state.rotateStartAngle = Math.atan2(wy - anchor[ctx.axisV], wx - anchor[ctx.axisH]);
@@ -655,13 +655,13 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     const dy = (my - state.panStart[1]) / ctx.zoom;
     ctx.centerX = state.panCenterStart[0] - dx;
     ctx.centerY = state.panCenterStart[1] + dy;
-    ctx.editor.dirty = true;
+    ctx.editor.redrawRequested = true;
     return;
   }
 
   if (state.rubberBanding) {
     state.rubberBandEnd = [mx, my];
-    ctx.editor.dirty = true;
+    ctx.editor.redrawRequested = true;
     return;
   }
 
@@ -807,7 +807,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
       state.rotateAppliedAngle = totalAngle;
       const degrees = totalAngle * 180 / Math.PI;
       ctx.editor.statusMessage = `Rotating ${degrees.toFixed(1)}°`;
-      ctx.editor.dirty = true;
+      ctx.editor.redrawRequested = true;
     }
     return;
   }
@@ -816,7 +816,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     const anchor = snapPlanarPoint(ctx, wx, wy, e.ctrlKey, false, state.geoSnapTargets);
     ctx.editor.rotateAnchor![ctx.axisH] = anchor[ctx.axisH];
     ctx.editor.rotateAnchor![ctx.axisV] = anchor[ctx.axisV];
-    ctx.editor.dirty = true;
+    ctx.editor.redrawRequested = true;
     return;
   }
 
@@ -826,7 +826,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     snapped[ctx.axisH] = Math.round(wx / grid) * grid;
     snapped[ctx.axisV] = Math.round(wy / grid) * grid;
     ctx.editor.createEnd = snapped;
-    ctx.editor.dirty = true;
+    ctx.editor.redrawRequested = true;
     return;
   }
 
@@ -1050,7 +1050,7 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
         }
       }
     }
-    ctx.editor.dirty = true;
+    ctx.editor.redrawRequested = true;
     return;
   }
 
@@ -1164,5 +1164,5 @@ export function handleViewport2DWheel(ctx: Viewport2DInteractionContext, e: Whee
     ctx.centerY -= e.deltaY * panSpeed;
   }
 
-  ctx.editor.dirty = true;
+  ctx.editor.redrawRequested = true;
 }
