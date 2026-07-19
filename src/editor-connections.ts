@@ -244,12 +244,13 @@ export function connectSelectedEntities(editor: Editor): void {
     ?? trimProperty(target.properties['targetname'])
     ?? nextTargetName(editor);
 
-  editor.snapshot();
-  source.properties['target'] = linkName;
-  target.properties['targetname'] = linkName;
-  editor.selection = [{ type: 'entity', entity: target }];
-  editor.dirty = true;
-  editor.statusMessage = `Connected ${entityLabel(source)} -> ${entityLabel(target)} (${linkName})`;
+  editor.transact('Connect entities', () => {
+    source.properties['target'] = linkName;
+    target.properties['targetname'] = linkName;
+    editor.selection = [{ type: 'entity', entity: target }];
+    editor.dirty = true;
+    editor.statusMessage = `Connected ${entityLabel(source)} -> ${entityLabel(target)} (${linkName})`;
+  });
 }
 
 export function connectSelectedEntitiesAsPath(editor: Editor): void {
@@ -259,19 +260,20 @@ export function connectSelectedEntitiesAsPath(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
-  const reserved = new Set<string>();
-  for (let i = 0; i < entities.length - 1; i++) {
-    const source = entities[i];
-    const target = entities[i + 1];
-    const linkName = trimProperty(target.properties['targetname'])
-      ?? nextTargetName(editor, reserved);
-    reserved.add(linkName);
-    source.properties['target'] = linkName;
-    target.properties['targetname'] = linkName;
-  }
-  editor.dirty = true;
-  editor.statusMessage = `Connected ${entities.length} entities as a path`;
+  editor.transact('Connect entity path', () => {
+    const reserved = new Set<string>();
+    for (let i = 0; i < entities.length - 1; i++) {
+      const source = entities[i];
+      const target = entities[i + 1];
+      const linkName = trimProperty(target.properties['targetname'])
+        ?? nextTargetName(editor, reserved);
+      reserved.add(linkName);
+      source.properties['target'] = linkName;
+      target.properties['targetname'] = linkName;
+    }
+    editor.dirty = true;
+    editor.statusMessage = `Connected ${entities.length} entities as a path`;
+  });
 }
 
 export function connectSelectedEntitiesAsClosedPath(editor: Editor): void {
@@ -281,17 +283,18 @@ export function connectSelectedEntitiesAsClosedPath(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
-  const reserved = new Set<string>();
-  for (let i = 0; i < entities.length; i++) {
-    const source = entities[i];
-    const target = entities[(i + 1) % entities.length];
-    const linkName = trimProperty(target.properties['targetname'])
-      ?? nextTargetName(editor, reserved);
-    reserved.add(linkName);
-    source.properties['target'] = linkName;
-    target.properties['targetname'] = linkName;
-  }
-  editor.dirty = true;
-  editor.statusMessage = `Connected ${entities.length} entities as a closed path`;
+  editor.transact('Connect closed entity path', () => {
+    const reserved = new Set<string>();
+    for (let i = 0; i < entities.length; i++) {
+      const source = entities[i];
+      const target = entities[(i + 1) % entities.length];
+      const linkName = trimProperty(target.properties['targetname'])
+        ?? nextTargetName(editor, reserved);
+      reserved.add(linkName);
+      source.properties['target'] = linkName;
+      target.properties['targetname'] = linkName;
+    }
+    editor.dirty = true;
+    editor.statusMessage = `Connected ${entities.length} entities as a closed path`;
+  });
 }

@@ -93,8 +93,9 @@ export function importPrefabFromFile(editor: Editor): void {
         return;
       }
 
-      editor.snapshot();
-      const result = insertTransferEntities(editor, entities, transferOffset(editor));
+      const result = editor.transact('Import prefab', () =>
+        insertTransferEntities(editor, entities, transferOffset(editor))
+      );
 
       if (result.totalItems === 0) {
         editor.statusMessage = 'Prefab file contained no insertable items';

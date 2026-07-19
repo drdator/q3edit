@@ -64,8 +64,9 @@ export async function pasteClipboard(editor: Editor): Promise<void> {
     return;
   }
 
-  editor.snapshot();
-  const result = insertTransferEntities(editor, entities, transferOffset(editor));
+  const result = editor.transact('Paste', () =>
+    insertTransferEntities(editor, entities, transferOffset(editor))
+  );
 
   if (result.totalItems === 0) {
     editor.statusMessage = 'Clipboard contained no pasteable items';

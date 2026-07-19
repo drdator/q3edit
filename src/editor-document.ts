@@ -36,9 +36,10 @@ export function serializeMap(editor: Editor): string {
 }
 
 export function loadMap(editor: Editor, text: string): void {
-  snapshot(editor);
   const result = parseMapWithDiagnostics(text);
-  editor.entities = result.entities;
+  editor.transact('Open map', () => {
+    editor.entities = result.entities;
+  });
   editor.mapDiagnostics = result.diagnostics;
   editor.selection = [];
   editor.regionBounds = null;
@@ -62,8 +63,9 @@ export function loadMap(editor: Editor, text: string): void {
 }
 
 export function newMap(editor: Editor): void {
-  snapshot(editor);
-  editor.entities = [];
+  editor.transact('New map', () => {
+    editor.entities = [];
+  });
   editor.mapDiagnostics = [];
   editor.selection = [];
   editor.regionBounds = null;
