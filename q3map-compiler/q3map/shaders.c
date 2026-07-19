@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 Q3Edit modifications:
 - 2026-03-23: enabled portable JPEG loading for the WebAssembly build.
 - 2026-07-18: made the shader-file list grow dynamically for larger game data sets.
+- 2026-07-19: detect explicitly named JPEG shader images before decoding.
 */
 
 #include <string.h>
@@ -127,6 +128,7 @@ LoadShaderImage
 byte* LoadImageFile(char *filename, qboolean *bTGA)
 {
   byte *buffer = NULL;
+  const char *extension;
   int nLen = 0;
   *bTGA = qtrue;
   if (FileExists(filename))
@@ -155,7 +157,11 @@ byte* LoadImageFile(char *filename, qboolean *bTGA)
       PakLoadAnyFile(filename, &buffer);
     }
 #endif
-    if ( buffer )
+  }
+  if ( buffer )
+  {
+    extension = strrchr(filename, '.');
+    if ( extension && (!Q_stricmp(extension, ".jpg") || !Q_stricmp(extension, ".jpeg")) )
     {
       *bTGA = qfalse;
     }
