@@ -15,6 +15,7 @@ import { applyBrushPrimitiveToolbarIcon } from './brush-primitive-icons';
 import { PakManagerModel, type PakManagerEntry, type PakManagerResult } from './pak-manager';
 import { buildEntityPanel as buildEntityPanelUI } from './entity-panel';
 import { buildGroupsPanel as buildGroupsPanelUI } from './groups-panel';
+import { buildCameraPanel as buildCameraPanelUI } from './camera-panel';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -60,6 +61,8 @@ export class UI {
   private importedPakNames: string[] = [];
   private collapsedBrushPanelEntities = new WeakSet<Entity>();
   private collapsedBrushPanelTerrainGroups = new Set<string>();
+  private groupsPanelRevision = -1;
+  private cameraPanelSignature = '';
 
   constructor(editor: Editor) {
     this.editor = editor;
@@ -138,6 +141,7 @@ export class UI {
 
     this.buildBrushPanel();
     this.buildGroupsPanel();
+    this.buildCameraPanel();
     this.buildEntityPanel();
     this.buildTexturePanel();
     this.buildTerrainPanel();
@@ -572,8 +576,26 @@ export class UI {
   }
 
   private buildGroupsPanel(): void {
+    if (this.groupsPanelRevision === this.editor.documentRevision) return;
+    this.groupsPanelRevision = this.editor.documentRevision;
     const body = document.getElementById('groups-body')!;
     buildGroupsPanelUI(body, this.editor);
+  }
+
+  private buildCameraPanel(): void {
+    const selected = this.editor.selection.map(item => this.editor.entities.indexOf(item.entity)).join(',');
+    const signature = `${this.editor.documentRevision}:${selected}:${this.editor.cameraPlayback?.pathId ?? ''}:${this.editor.cameraPlayback?.playing ? 1 : 0}`;
+    if (signature === this.cameraPanelSignature) {
+      const playback = this.editor.cameraPlayback;
+      for (const timeline of document.querySelectorAll<HTMLInputElement>('[data-camera-path-id]')) {
+        if (document.activeElement === timeline) continue;
+        if (playback && timeline.dataset.cameraPathId === playback.pathId) timeline.value = String(playback.elapsed);
+      }
+      return;
+    }
+    this.cameraPanelSignature = signature;
+    const body = document.getElementById('camera-body')!;
+    buildCameraPanelUI(body, this.editor);
   }
 
   updateEntityDefinitions(): void {
@@ -1721,6 +1743,7 @@ export class UI {
     // Update panels
     this.updateBrushPanel();
     this.buildGroupsPanel();
+    this.buildCameraPanel();
     this.propertiesPanel.update();
   }
 

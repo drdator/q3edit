@@ -31,6 +31,7 @@ export function resetEditorStateAfterDocumentReplacement(editor: Editor): void {
   editor.patchControlSelection = [];
   editor.terrainBrushCenter = null;
   editor.terrainBrushAxes = null;
+  editor.cameraPlayback = null;
   editor.redrawRequested = true;
 }
 

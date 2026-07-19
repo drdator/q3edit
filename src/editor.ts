@@ -181,6 +181,24 @@ import {
   type EntityLink,
 } from './editor-connections';
 import {
+  advanceCameraPlayback as advanceEditorCameraPlayback,
+  collectCameraPaths as collectEditorCameraPaths,
+  createCameraPathFromCurrentCamera as createEditorCameraPathFromCurrentCamera,
+  createCameraPathFromSelection as createEditorCameraPathFromSelection,
+  createSmartPath as createEditorSmartPath,
+  createSmartTrainPath as createEditorSmartTrainPath,
+  reorderCameraPoint as reorderEditorCameraPoint,
+  seekCameraPlayback as seekEditorCameraPlayback,
+  setCameraPathClosed as setEditorCameraPathClosed,
+  startCameraPlayback as startEditorCameraPlayback,
+  stopCameraPlayback as stopEditorCameraPlayback,
+  updateCameraPoint as updateEditorCameraPoint,
+  type CameraPath,
+  type CameraPlaybackState,
+  type CameraPointChanges,
+  type CameraPose,
+} from './camera-paths';
+import {
   addClipPoint as addEditorClipPoint,
   cancelClip as cancelEditorClip,
   csgHollow as hollowEditorBrushes,
@@ -377,6 +395,7 @@ export class Editor {
   camera3d: { position: Vec3; yaw: number; pitch: number } = {
     position: [80, 80, 120], yaw: Math.PI * 0.25, pitch: -0.2,
   };
+  cameraPlayback: CameraPlaybackState | null = null;
 
   // Fullscreen 3D walkthrough mode (set by Viewport3D)
   fullscreen3d = false;
@@ -740,6 +759,19 @@ export class Editor {
   connectSelectedEntitiesAsClosedPath(): void {
     connectEditorSelectedEntitiesAsClosedPath(this);
   }
+
+  cameraPaths(): CameraPath[] { return collectEditorCameraPaths(this); }
+  createCameraPathFromSelection(name = 'Camera Path', closed = false): CameraPath | null { return createEditorCameraPathFromSelection(this, name, closed); }
+  createCameraPathFromCurrentCamera(name = 'Camera Path'): CameraPath { return createEditorCameraPathFromCurrentCamera(this, name); }
+  updateCameraPoint(entity: Entity, changes: CameraPointChanges): void { updateEditorCameraPoint(this, entity, changes); }
+  reorderCameraPoint(entity: Entity, delta: -1 | 1): void { reorderEditorCameraPoint(this, entity, delta); }
+  setCameraPathClosed(id: string, closed: boolean): void { setEditorCameraPathClosed(this, id, closed); }
+  startCameraPlayback(id: string): void { startEditorCameraPlayback(this, id); }
+  stopCameraPlayback(): void { stopEditorCameraPlayback(this); }
+  seekCameraPlayback(elapsed: number): CameraPose | null { return seekEditorCameraPlayback(this, elapsed); }
+  advanceCameraPlayback(deltaSeconds: number): CameraPose | null { return advanceEditorCameraPlayback(this, deltaSeconds); }
+  createSmartPath(count = 4, spacing = 128, closed = false): Entity[] { return createEditorSmartPath(this, count, spacing, closed); }
+  createSmartTrainPath(count = 4, spacing = 128): Entity[] { return createEditorSmartTrainPath(this, count, spacing); }
 
   collectEntityLinks(): EntityLink[] {
     return collectEditorEntityLinks(this);
