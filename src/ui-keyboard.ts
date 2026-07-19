@@ -171,7 +171,6 @@ export function setupKeyboard(ctx: KeyboardContext): void {
       else if (e.key === 'ArrowLeft') delta[h] = -grid;
       else if (e.key === 'ArrowUp') delta[v] = grid;
       else if (e.key === 'ArrowDown') delta[v] = -grid;
-      ctx.editor.snapshot();
       if (ctx.editor.vertexMode && ctx.editor.vertexSelection.length > 0) {
         ctx.editor.moveSelectedVertices(delta);
       } else if (ctx.editor.patchEditMode && ctx.editor.patchControlSelection.length > 0) {

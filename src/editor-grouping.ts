@@ -87,24 +87,24 @@ export function groupSelectionIntoEntity(editor: Editor, classname = 'func_group
     return;
   }
 
-  editor.snapshot();
+  editor.transact(`Group selection into ${classname}`, () => {
+    const entity = createEntity(classname);
+    for (const { source, brush } of brushes) {
+      removeBrushFromEntity(source, brush);
+      entity.brushes.push(brush);
+    }
+    for (const { source, patch } of patches) {
+      removePatchFromEntity(source, patch);
+      entity.patches.push(patch);
+    }
 
-  const entity = createEntity(classname);
-  for (const { source, brush } of brushes) {
-    removeBrushFromEntity(source, brush);
-    entity.brushes.push(brush);
-  }
-  for (const { source, patch } of patches) {
-    removePatchFromEntity(source, patch);
-    entity.patches.push(patch);
-  }
-
-  editor.entities.push(entity);
-  removeEmptyGeometryEntities(editor, sourceEntities, new Set([entity]));
-  editor.reconcileHiddenState();
-  editor.selection = [{ type: 'entity', entity }];
-  editor.dirty = true;
-  editor.statusMessage = `Grouped ${total} item${total === 1 ? '' : 's'} into ${classname}`;
+    editor.entities.push(entity);
+    removeEmptyGeometryEntities(editor, sourceEntities, new Set([entity]));
+    editor.reconcileHiddenState();
+    editor.selection = [{ type: 'entity', entity }];
+    editor.dirty = true;
+    editor.statusMessage = `Grouped ${total} item${total === 1 ? '' : 's'} into ${classname}`;
+  });
 }
 
 export function moveSelectionToWorldspawn(editor: Editor): void {
@@ -119,23 +119,23 @@ export function moveSelectionToWorldspawn(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
+  editor.transact('Move selection to worldspawn', () => {
+    for (const { source, brush } of selectedBrushes) {
+      removeBrushFromEntity(source, brush);
+      worldspawn.brushes.push(brush);
+    }
+    for (const { source, patch } of selectedPatches) {
+      removePatchFromEntity(source, patch);
+      worldspawn.patches.push(patch);
+    }
 
-  for (const { source, brush } of selectedBrushes) {
-    removeBrushFromEntity(source, brush);
-    worldspawn.brushes.push(brush);
-  }
-  for (const { source, patch } of selectedPatches) {
-    removePatchFromEntity(source, patch);
-    worldspawn.patches.push(patch);
-  }
-
-  removeEmptyGeometryEntities(editor, sourceEntities, new Set([worldspawn]));
-  editor.reconcileHiddenState();
-  editor.selection = [
-    ...selectedBrushes.map(({ brush }) => ({ type: 'brush' as const, entity: worldspawn, brush })),
-    ...selectedPatches.map(({ patch }) => ({ type: 'patch' as const, entity: worldspawn, patch })),
-  ];
-  editor.dirty = true;
-  editor.statusMessage = `Moved ${total} item${total === 1 ? '' : 's'} to worldspawn`;
+    removeEmptyGeometryEntities(editor, sourceEntities, new Set([worldspawn]));
+    editor.reconcileHiddenState();
+    editor.selection = [
+      ...selectedBrushes.map(({ brush }) => ({ type: 'brush' as const, entity: worldspawn, brush })),
+      ...selectedPatches.map(({ patch }) => ({ type: 'patch' as const, entity: worldspawn, patch })),
+    ];
+    editor.dirty = true;
+    editor.statusMessage = `Moved ${total} item${total === 1 ? '' : 's'} to worldspawn`;
+  });
 }

@@ -17,6 +17,12 @@ export function createEntity(classname: string, origin?: Vec3): Entity {
   return { classname, properties, brushes: [], patches: [] };
 }
 
+export function createWorldspawn(): Entity {
+  const worldspawn = createEntity('worldspawn');
+  worldspawn.properties.message = 'Q3 Map Editor';
+  return worldspawn;
+}
+
 export function entityOrigin(entity: Entity): Vec3 | null {
   const o = entity.properties['origin'];
   if (!o) return null;

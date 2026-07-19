@@ -1,9 +1,14 @@
 import { Vec3, vec3Copy, snapAxisDelta, findNearestSnap } from './math';
 import { Editor } from './editor';
-import { Brush, scaleBrushFaces, rotateBrush } from './brush';
-import { Patch, PatchControlPoint, scalePatchControlPoints, rotatePatch } from './patch';
+import type { Brush } from './brush';
+import { PatchControlPoint, type Patch } from './patch';
 import { pickEdge2D, pickVertex2D } from './vertex';
-import { rotateBrushLocked } from './texture-lock';
+import {
+  rotateGeometryFromOriginals,
+  scaleGeometryFromOriginals,
+  type BrushRotationOriginal,
+  type PatchRotationOriginal,
+} from './editor-transforms';
 import {
   getSelectedBrushItems,
   getSelectedPatchItems,
@@ -17,19 +22,6 @@ import {
   pickAt as pickAt2D,
   ResizeEdges,
 } from './viewport2d-picking';
-
-interface RotateBrushOriginal {
-  brush: Brush;
-  points: [Vec3, Vec3, Vec3][];
-  planes: { normal: Vec3; dist: number }[];
-  polygons: Vec3[][];
-  textures: { offsetX: number; offsetY: number; rotation: number; scaleX: number; scaleY: number }[];
-}
-
-interface RotatePatchOriginal {
-  patch: Patch;
-  ctrl: { xyz: Vec3; uv: [number, number] }[][];
-}
 
 type TerrainSculptMode = 'locked' | 'paintRaise' | 'paintLower' | 'paintTexture';
 
@@ -66,8 +58,8 @@ export interface Viewport2DInteractionState {
   rotating: boolean;
   rotateStartAngle: number;
   rotateAppliedAngle: number;
-  rotateBrushOriginals: RotateBrushOriginal[];
-  rotatePatchOriginals: RotatePatchOriginal[];
+  rotateBrushOriginals: BrushRotationOriginal[];
+  rotatePatchOriginals: PatchRotationOriginal[];
   rotateSnapshotTaken: boolean;
   anchorDragging: boolean;
 }
@@ -263,7 +255,6 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
   }
 
   if (ctx.editor.activeTool === 'entity') {
-    ctx.editor.snapshot();
     const origin = snapPlanarPoint(ctx, wx, wy, e.ctrlKey, false);
     origin[ctx.axisDepth] = 0;
     const entity = ctx.editor.addEntity(ctx.editor.currentEntityClass, origin, e.ctrlKey);
@@ -435,8 +426,9 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       state.dragging = true;
       state.hasDragged = false;
       if (state.terrainSculptMode === 'paintTexture') {
-        const painted = ctx.editor.paintTerrainTexture(true);
-        state.terrainSculptSnapshotTaken = painted > 0;
+        ctx.editor.beginTransaction('Paint terrain texture');
+        state.terrainSculptSnapshotTaken = true;
+        const painted = ctx.editor.paintTerrainTexture(false);
         state.hasDragged = painted > 0;
       }
       return;
@@ -679,7 +671,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     const grid = ctx.editor.effectiveGrid(e.ctrlKey);
 
     if (!state.resizeSnapshotTaken) {
-      ctx.editor.snapshot();
+      ctx.editor.beginTransaction('Resize selection');
       state.resizeSnapshotTaken = true;
     }
 
@@ -767,13 +759,13 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
       scaleOrigin[V] = (origMins[V] + origMaxs[V]) / 2;
     }
 
-    for (const { brush, origPoints } of state.resizeBrushes) {
-      scaleBrushFaces(brush, origPoints, scaleOrigin, scale);
-    }
-    for (const { patch, origCtrl } of state.resizePatches) {
-      scalePatchControlPoints(patch, origCtrl, scaleOrigin, scale);
-    }
-    ctx.editor.dirty = true;
+    scaleGeometryFromOriginals(
+      ctx.editor,
+      state.resizeBrushes,
+      state.resizePatches,
+      scaleOrigin,
+      scale,
+    );
     return;
   }
 
@@ -791,7 +783,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
 
     if (totalAngle !== state.rotateAppliedAngle) {
       if (!state.rotateSnapshotTaken) {
-        ctx.editor.snapshot();
+        ctx.editor.beginTransaction('Rotate selection');
         state.rotateSnapshotTaken = true;
       }
       state.hasDragged = true;
@@ -803,33 +795,14 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
       const selCenter = ctx.editor.selectionCenter();
       if (selCenter) center3d[ctx.axisDepth] = selCenter[ctx.axisDepth];
 
-      for (const { brush, points, planes, polygons, textures } of state.rotateBrushOriginals) {
-        for (let fi = 0; fi < brush.faces.length; fi++) {
-          brush.faces[fi].points[0] = vec3Copy(points[fi][0]);
-          brush.faces[fi].points[1] = vec3Copy(points[fi][1]);
-          brush.faces[fi].points[2] = vec3Copy(points[fi][2]);
-          brush.faces[fi].plane = { normal: vec3Copy(planes[fi].normal), dist: planes[fi].dist };
-          brush.faces[fi].polygon = polygons[fi].map(v => vec3Copy(v));
-          brush.faces[fi].offsetX = textures[fi].offsetX;
-          brush.faces[fi].offsetY = textures[fi].offsetY;
-          brush.faces[fi].rotation = textures[fi].rotation;
-          brush.faces[fi].scaleX = textures[fi].scaleX;
-          brush.faces[fi].scaleY = textures[fi].scaleY;
-        }
-        if (ctx.editor.textureLock) {
-          rotateBrushLocked(brush, center3d, axis, totalAngle);
-        } else {
-          rotateBrush(brush, center3d, axis, totalAngle);
-        }
-      }
-      for (const { patch, ctrl } of state.rotatePatchOriginals) {
-        for (let r = 0; r < patch.height; r++) {
-          for (let c = 0; c < patch.width; c++) {
-            patch.ctrl[r][c].xyz = vec3Copy(ctrl[r][c].xyz);
-          }
-        }
-        rotatePatch(patch, center3d, axis, totalAngle);
-      }
+      rotateGeometryFromOriginals(
+        ctx.editor,
+        state.rotateBrushOriginals,
+        state.rotatePatchOriginals,
+        center3d,
+        axis,
+        totalAngle,
+      );
 
       state.rotateAppliedAngle = totalAngle;
       const degrees = totalAngle * 180 / Math.PI;
@@ -888,7 +861,9 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
 
     if (snappedDx !== 0 || snappedDy !== 0) {
       if (!state.vertexDragSnapshotTaken) {
-        ctx.editor.snapshot();
+        ctx.editor.beginTransaction(ctx.editor.patchEditMode
+          ? 'Move patch control points'
+          : 'Move brush vertices');
         state.vertexDragSnapshotTaken = true;
       }
       state.hasDragged = true;
@@ -912,9 +887,12 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     if (state.terrainSculptMode === 'paintTexture') {
       const moved = wx !== state.terrainSculptLastWorld[0] || wy !== state.terrainSculptLastWorld[1];
       if (moved) {
-        const painted = ctx.editor.paintTerrainTexture(!state.terrainSculptSnapshotTaken);
-        if (painted > 0) {
+        if (!state.terrainSculptSnapshotTaken) {
+          ctx.editor.beginTransaction('Paint terrain texture');
           state.terrainSculptSnapshotTaken = true;
+        }
+        const painted = ctx.editor.paintTerrainTexture(false);
+        if (painted > 0) {
           state.hasDragged = true;
         }
         state.terrainSculptLastWorld = [wx, wy];
@@ -937,7 +915,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     }
     if (amount !== 0) {
       if (!state.terrainSculptSnapshotTaken) {
-        ctx.editor.snapshot();
+        ctx.editor.beginTransaction('Sculpt terrain');
         state.terrainSculptSnapshotTaken = true;
       }
       state.hasDragged = true;
@@ -983,7 +961,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
   if (snappedDx === 0 && snappedDy === 0) return;
 
   if (!state.moveSnapshotTaken) {
-    ctx.editor.snapshot();
+    ctx.editor.beginTransaction(e.altKey ? 'Duplicate and move selection' : 'Move selection');
     if (e.altKey) {
       ctx.editor.duplicateSelectionInPlace();
     }
@@ -1083,6 +1061,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
   }
 
   if (state.resizing) {
+    if (state.resizeSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.resizeSnapshotTaken = false;
+    }
     state.resizing = false;
     state.resizeBrushes = [];
     state.resizePatches = [];
@@ -1104,6 +1086,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     return;
   }
   if (state.rotating) {
+    if (state.rotateSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.rotateSnapshotTaken = false;
+    }
     state.rotating = false;
     state.dragging = false;
     state.rotateBrushOriginals = [];
@@ -1115,12 +1101,20 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     return;
   }
   if (state.vertexDragging) {
+    if (state.vertexDragSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.vertexDragSnapshotTaken = false;
+    }
     state.vertexDragging = false;
     state.dragging = false;
     if (state.hasDragged) ctx.editor.statusMessage = 'Vertex moved';
     return;
   }
   if (state.terrainSculpting) {
+    if (state.terrainSculptSnapshotTaken) {
+      ctx.editor.commitTransaction();
+      state.terrainSculptSnapshotTaken = false;
+    }
     state.terrainSculpting = false;
     state.terrainSculptMode = 'locked';
     state.dragging = false;
@@ -1128,7 +1122,6 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
   }
   if (ctx.editor.creating) {
     ctx.editor.creating = false;
-    ctx.editor.snapshot();
     const mins: Vec3 = [0, 0, 0];
     const maxs: Vec3 = [0, 0, 0];
     mins[ctx.axisH] = Math.min(ctx.editor.createStart[ctx.axisH], ctx.editor.createEnd[ctx.axisH]);
@@ -1146,6 +1139,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
       ctx.editor.selectBrush(ctx.editor.worldspawn, brush);
       ctx.editor.statusMessage = `${ctx.editor.currentBrushPrimitive} brush created`;
     }
+  }
+  if (state.moveSnapshotTaken) {
+    ctx.editor.commitTransaction();
+    state.moveSnapshotTaken = false;
   }
   state.dragging = false;
 }

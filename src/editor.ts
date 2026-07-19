@@ -1,6 +1,6 @@
 import { Vec3, vec3, vec3Add, vec3Sub, vec3Copy, vec3Scale, vec3Min, vec3Max } from './math';
 import { Brush, BrushFace, computeBrushGeometry, brushCenter, BrushValidationResult } from './brush';
-import { Entity, createEntity } from './entity';
+import { Entity, createEntity, createWorldspawn } from './entity';
 import { Patch } from './patch';
 import { History } from './history';
 import { TextureManager } from './textures';
@@ -54,7 +54,6 @@ import {
   redo as redoDocument,
   saveMapToFile as saveEditorMapToFile,
   serializeMap as serializeEditorMap,
-  snapshot as snapshotDocument,
   undo as undoDocument,
 } from './editor-document';
 import {
@@ -209,6 +208,13 @@ import {
 } from './editor-cubic-clipping';
 import type { BrushPrimitive } from './brush-primitives';
 import type { MapParseDiagnostic } from './mapfile';
+import {
+  beginTransaction as beginEditorTransaction,
+  cancelTransaction as cancelEditorTransaction,
+  commitTransaction as commitEditorTransaction,
+  transact as transactEditorDocument,
+  type TransactionOptions,
+} from './editor-transactions';
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -234,7 +240,7 @@ export type SelectionItem = {
 }
 
 export class Editor {
-  entities: Entity[] = [];
+  entities: Entity[] = [createWorldspawn()];
   selection: SelectionItem[] = [];
   activeTool: Tool = 'select';
   gridSize = 16;
@@ -330,12 +336,9 @@ export class Editor {
   private locatePointCallbacks: ((point: Vec3, lookAt: Vec3 | null) => void)[] = [];
 
   get worldspawn(): Entity {
-    if (this.entities.length === 0) {
-      const ws = createEntity('worldspawn');
-      ws.properties['message'] = 'Q3 Map Editor';
-      this.entities.push(ws);
-    }
-    return this.entities[0];
+    const worldspawn = this.entities[0];
+    if (!worldspawn) throw new Error('Editor document is missing worldspawn');
+    return worldspawn;
   }
 
   // ── Selection ──
@@ -663,8 +666,20 @@ export class Editor {
 
   // ── History ──
 
-  snapshot(): void {
-    snapshotDocument(this);
+  beginTransaction(label: string, options: TransactionOptions = {}): void {
+    beginEditorTransaction(this, label, options);
+  }
+
+  commitTransaction(): boolean {
+    return commitEditorTransaction(this);
+  }
+
+  cancelTransaction(): boolean {
+    return cancelEditorTransaction(this);
+  }
+
+  transact<T>(label: string, mutation: () => T, options: TransactionOptions = {}): T {
+    return transactEditorDocument(this, label, mutation, options);
   }
 
   undo(): void {

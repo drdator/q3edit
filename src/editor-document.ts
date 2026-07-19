@@ -1,33 +1,29 @@
 import { createBoxBrush } from './brush';
-import { createEntity } from './entity';
+import { createEntity, createWorldspawn } from './entity';
 import { parseMapWithDiagnostics, serializeMap as serializeEntities } from './mapfile';
 import type { Editor } from './editor';
-
-export function snapshot(editor: Editor): void {
-  editor.history.snapshot(editor.entities);
-}
+import {
+  commitTransaction,
+  resetEditorStateAfterDocumentReplacement,
+} from './editor-transactions';
 
 export function undo(editor: Editor): void {
+  commitTransaction(editor);
   const prev = editor.history.undo(editor.entities);
   if (prev) {
-    editor.entities = prev;
-    editor.selection = [];
-    editor.clearHiddenState();
-    editor.exitVertexMode();
-    editor.dirty = true;
-    editor.statusMessage = 'Undo';
+    editor.entities = prev.entities;
+    resetEditorStateAfterDocumentReplacement(editor);
+    editor.statusMessage = `Undo: ${prev.label}`;
   }
 }
 
 export function redo(editor: Editor): void {
+  commitTransaction(editor);
   const next = editor.history.redo(editor.entities);
   if (next) {
-    editor.entities = next;
-    editor.selection = [];
-    editor.clearHiddenState();
-    editor.exitVertexMode();
-    editor.dirty = true;
-    editor.statusMessage = 'Redo';
+    editor.entities = next.entities;
+    resetEditorStateAfterDocumentReplacement(editor);
+    editor.statusMessage = `Redo: ${next.label}`;
   }
 }
 
@@ -36,9 +32,10 @@ export function serializeMap(editor: Editor): string {
 }
 
 export function loadMap(editor: Editor, text: string): void {
-  snapshot(editor);
   const result = parseMapWithDiagnostics(text);
-  editor.entities = result.entities;
+  editor.transact('Open map', () => {
+    editor.entities = result.entities.length > 0 ? result.entities : [createWorldspawn()];
+  });
   editor.mapDiagnostics = result.diagnostics;
   editor.selection = [];
   editor.regionBounds = null;
@@ -62,8 +59,9 @@ export function loadMap(editor: Editor, text: string): void {
 }
 
 export function newMap(editor: Editor): void {
-  snapshot(editor);
-  editor.entities = [];
+  editor.transact('New map', () => {
+    editor.entities = [createWorldspawn()];
+  });
   editor.mapDiagnostics = [];
   editor.selection = [];
   editor.regionBounds = null;
@@ -103,7 +101,9 @@ export function openMapFromFile(editor: Editor): void {
 }
 
 export function createDefaultMap(editor: Editor): void {
-  editor.entities = [];
+  // Startup/default-map initialization is deliberately non-undoable. The New
+  // command establishes its undo entry before invoking this initializer.
+  editor.entities = [createWorldspawn()];
   editor.mapDiagnostics = [];
   editor.regionBounds = null;
   editor.clearPointfile(false);

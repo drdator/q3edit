@@ -562,11 +562,13 @@ export function stitchSelectedTerrainControlSeams(editor: Editor): number {
     row: item.row,
     col: item.col,
   }));
-  return stitchTerrainGroups(
-    editor,
-    editor.patchEditData.map(data => data.patch),
-    touchedTargetsFromPatchEditData(editor, touched),
-    'neutral',
+  return editor.transact('Stitch terrain control seams', () =>
+    stitchTerrainGroups(
+      editor,
+      editor.patchEditData.map(data => data.patch),
+      touchedTargetsFromPatchEditData(editor, touched),
+      'neutral',
+    )
   );
 }
 
@@ -583,7 +585,7 @@ export function createTerrainPatch(editor: Editor): void {
   const width = terrainSubPatchesForExtent(bounds.maxs[axisH] - bounds.mins[axisH], editor.gridSize) * 2 + 1;
   const height = terrainSubPatchesForExtent(bounds.maxs[axisV] - bounds.mins[axisV], editor.gridSize) * 2 + 1;
 
-  editor.snapshot();
+  editor.beginTransaction('Create terrain');
   const terrainDefCompatible =
     axisDepth === 2
     && ((axisH === 0 && axisV === 1) || (axisH === 1 && axisV === 0));
@@ -608,6 +610,7 @@ export function createTerrainPatch(editor: Editor): void {
   editor.statusMessage = terrainDefCompatible
     ? `Created terrainDef terrain ${width}x${height}${paintHint}`
     : `Created terrain patch ${width}x${height}${paintHint}`;
+  editor.commitTransaction();
 }
 
 export function splitTerrainIntoPaintTiles(editor: Editor): void {
@@ -620,7 +623,8 @@ export function splitTerrainIntoPaintTiles(editor: Editor): void {
   const wasPatchEditMode = editor.patchEditMode;
   if (wasPatchEditMode) editor.exitPatchEditMode();
 
-  let snapshotTaken = false;
+  editor.beginTransaction('Prepare terrain for texture paint');
+  let changed = false;
   let tileCount = 0;
   const nextSelection: { type: 'patch'; entity: typeof patchItems[number]['entity']; patch: Patch }[] = [];
 
@@ -643,10 +647,7 @@ export function splitTerrainIntoPaintTiles(editor: Editor): void {
       continue;
     }
 
-    if (!snapshotTaken) {
-      editor.snapshot();
-      snapshotTaken = true;
-    }
+    changed = true;
 
     const patchIndex = item.entity.patches.indexOf(item.patch);
     if (patchIndex >= 0) {
@@ -656,7 +657,8 @@ export function splitTerrainIntoPaintTiles(editor: Editor): void {
     tileCount += tiles.length;
   }
 
-  if (!snapshotTaken) {
+  if (!changed) {
+    editor.commitTransaction();
     if (wasPatchEditMode) editor.enterPatchEditMode();
     editor.statusMessage = 'Selected terrain is already ready for texture paint';
     return;
@@ -667,6 +669,7 @@ export function splitTerrainIntoPaintTiles(editor: Editor): void {
   editor.patchControlSelection = [];
   editor.dirty = true;
   editor.statusMessage = `Prepared terrain for texture paint (${tileCount} tiles, click any tile to work on the whole set)`;
+  editor.commitTransaction();
 }
 
 export function raiseTerrain(editor: Editor): void {
@@ -693,7 +696,7 @@ export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = tru
   }
   const selectedPointsByPatch = selectedOnly ? selectedTerrainPointSets(editor) : null;
 
-  if (takeSnapshot) editor.snapshot();
+  if (takeSnapshot) editor.beginTransaction('Sculpt terrain');
 
   for (const [dataIndex, patchAnchors] of anchorsByPatch) {
     const data = editor.patchEditData[dataIndex];
@@ -732,6 +735,7 @@ export function sculptTerrain(editor: Editor, amount: number, takeSnapshot = tru
 
   editor.dirty = true;
   editor.statusMessage = `${amount > 0 ? 'Raised' : 'Lowered'} terrain (${Math.abs(amount).toFixed(1)}, r=${radius}, s=${terrainStrength(editor)}, ${falloff})`;
+  if (takeSnapshot) editor.commitTransaction();
 }
 
 export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number {
@@ -752,8 +756,8 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
     return 0;
   }
 
+  if (takeSnapshot) editor.beginTransaction('Paint terrain texture');
   let painted = 0;
-  let snapshotTaken = false;
   let paintedCells = 0;
   let paintedPatches = 0;
   for (const target of targets) {
@@ -768,10 +772,6 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
       ].filter((surface): surface is NonNullable<typeof surface> => !!surface);
       changed = surfaces.some(surface => surface.texture !== texture);
       if (changed) {
-        if (takeSnapshot && !snapshotTaken) {
-          editor.snapshot();
-          snapshotTaken = true;
-        }
         for (const surface of surfaces) {
           surface.texture = texture;
         }
@@ -783,10 +783,6 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
         ? target.patch.terrainDef.surfaces.some(row => row.some(surface => surface.texture !== texture))
         : target.patch.texture !== texture;
       if (changed) {
-        if (takeSnapshot && !snapshotTaken) {
-          editor.snapshot();
-          snapshotTaken = true;
-        }
         setPatchTexture(target.patch, texture);
         paintedPatches++;
       }
@@ -795,6 +791,7 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
   }
 
   if (painted === 0) {
+    if (takeSnapshot) editor.commitTransaction();
     editor.statusMessage = 'No terrain patches changed';
     return 0;
   }
@@ -804,6 +801,7 @@ export function paintTerrainTexture(editor: Editor, takeSnapshot = true): number
   if (paintedCells > 0) parts.push(`${paintedCells} ${paintedCells === 1 ? 'cell' : 'cells'}`);
   if (paintedPatches > 0) parts.push(`${paintedPatches} ${paintedPatches === 1 ? 'patch' : 'patches'}`);
   editor.statusMessage = `Painted ${parts.join(' and ')} with ${texture}`;
+  if (takeSnapshot) editor.commitTransaction();
   return painted;
 }
 
@@ -872,7 +870,7 @@ export function smoothTerrain(editor: Editor): void {
     anchorsByPatch.set(anchor.dataIndex, items);
   }
 
-  editor.snapshot();
+  editor.beginTransaction('Smooth terrain');
 
   for (const [dataIndex, patchAnchors] of anchorsByPatch) {
     const data = editor.patchEditData[dataIndex];
@@ -917,6 +915,7 @@ export function smoothTerrain(editor: Editor): void {
 
   editor.dirty = true;
   editor.statusMessage = `Smoothed terrain (r=${radius}, ${falloff})`;
+  editor.commitTransaction();
 }
 
 export function noiseTerrain(editor: Editor): void {
@@ -937,7 +936,7 @@ export function noiseTerrain(editor: Editor): void {
     anchorsByPatch.set(anchor.dataIndex, items);
   }
 
-  editor.snapshot();
+  editor.beginTransaction('Apply terrain noise');
 
   const patchEntries: Array<[number, TerrainBrushAnchor[]]> = anchored
     ? Array.from(anchorsByPatch.entries())
@@ -977,6 +976,7 @@ export function noiseTerrain(editor: Editor): void {
   editor.statusMessage = anchored
     ? `Applied terrain noise (r=${radius}, s=${strength}, ${falloff})`
     : `Applied terrain noise (full terrain, s=${strength})`;
+  editor.commitTransaction();
 }
 
 export function erodeTerrain(editor: Editor): void {
@@ -998,7 +998,7 @@ export function erodeTerrain(editor: Editor): void {
     anchorsByPatch.set(anchor.dataIndex, items);
   }
 
-  editor.snapshot();
+  editor.beginTransaction('Erode terrain');
 
   const patchEntries: Array<[number, TerrainBrushAnchor[]]> = anchored
     ? Array.from(anchorsByPatch.entries())
@@ -1053,6 +1053,7 @@ export function erodeTerrain(editor: Editor): void {
   editor.statusMessage = anchored
     ? `Eroded terrain (r=${radius}, s=${strength}, ${falloff})`
     : `Eroded terrain (full terrain, s=${strength})`;
+  editor.commitTransaction();
 }
 
 export function stitchTerrainSeams(editor: Editor, takeSnapshot = true, updateStatus = true): number {
@@ -1065,14 +1066,16 @@ export function stitchTerrainSeams(editor: Editor, takeSnapshot = true, updateSt
     return 0;
   }
 
-  if (takeSnapshot) editor.snapshot();
+  if (takeSnapshot) editor.beginTransaction('Stitch terrain seams');
   const stitched = stitchTerrainGroups(editor, patches, null);
   if (stitched === 0) {
+    if (takeSnapshot) editor.commitTransaction();
     if (updateStatus) editor.statusMessage = 'No terrain seams needed stitching';
     return 0;
   }
 
   if (updateStatus) editor.statusMessage = `Stitched ${stitched} terrain seam${stitched === 1 ? '' : 's'}`;
+  if (takeSnapshot) editor.commitTransaction();
   return stitched;
 }
 

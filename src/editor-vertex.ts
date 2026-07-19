@@ -52,26 +52,30 @@ export function exitVertexMode(
 }
 
 export function rebuildBrushes(editor: Editor, brushes: Brush[]): void {
-  for (const brush of brushes) {
-    rebuildBrush(brush);
-  }
-  editor.dirty = true;
+  editor.transact('Rebuild brush geometry', () => {
+    for (const brush of brushes) {
+      rebuildBrush(brush);
+    }
+    editor.dirty = true;
+  });
 }
 
 export function splitBrushesConvex(editor: Editor, invalidBrushes: { brush: Brush; entity: Entity }[]): void {
-  for (const { brush, entity } of invalidBrushes) {
-    const pieces = splitBrushConvex(brush);
-    if (pieces.length <= 1) continue;
+  editor.transact('Split brushes into convex pieces', () => {
+    for (const { brush, entity } of invalidBrushes) {
+      const pieces = splitBrushConvex(brush);
+      if (pieces.length <= 1) continue;
 
-    const idx = entity.brushes.indexOf(brush);
-    if (idx >= 0) entity.brushes.splice(idx, 1);
-    for (const piece of pieces) {
-      entity.brushes.push(piece);
+      const idx = entity.brushes.indexOf(brush);
+      if (idx >= 0) entity.brushes.splice(idx, 1);
+      for (const piece of pieces) {
+        entity.brushes.push(piece);
+      }
     }
-  }
-  editor.reconcileHiddenState();
-  editor.selection = [];
-  editor.dirty = true;
+    editor.reconcileHiddenState();
+    editor.selection = [];
+    editor.dirty = true;
+  });
 }
 
 export function selectVertex(editor: Editor, dataIndex: number, vertexIndex: number, additive = false): void {
@@ -101,23 +105,25 @@ export function isVertexSelected(editor: Editor, dataIndex: number, vertexIndex:
 export function moveSelectedVertices(editor: Editor, delta: Vec3): void {
   if (editor.vertexSelection.length === 0) return;
 
-  const byBrush = new Map<number, number[]>();
-  for (const vertexSelection of editor.vertexSelection) {
-    let indices = byBrush.get(vertexSelection.dataIndex);
-    if (!indices) {
-      indices = [];
-      byBrush.set(vertexSelection.dataIndex, indices);
+  editor.transact('Move brush vertices', () => {
+    const byBrush = new Map<number, number[]>();
+    for (const vertexSelection of editor.vertexSelection) {
+      let indices = byBrush.get(vertexSelection.dataIndex);
+      if (!indices) {
+        indices = [];
+        byBrush.set(vertexSelection.dataIndex, indices);
+      }
+      indices.push(vertexSelection.vertexIndex);
     }
-    indices.push(vertexSelection.vertexIndex);
-  }
 
-  for (const [dataIndex, indices] of byBrush) {
-    const data = editor.vertexData[dataIndex];
-    moveVertices(data.brush, data.vertices, indices, delta);
-  }
+    for (const [dataIndex, indices] of byBrush) {
+      const data = editor.vertexData[dataIndex];
+      moveVertices(data.brush, data.vertices, indices, delta);
+    }
 
-  refreshVertexData(editor);
-  editor.dirty = true;
+    refreshVertexData(editor);
+    editor.dirty = true;
+  }, { coalesceKey: 'move-brush-vertices' });
 }
 
 export function refreshVertexData(editor: Editor): void {

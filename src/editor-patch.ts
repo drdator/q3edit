@@ -22,35 +22,37 @@ export function createPatch(
     editor.statusMessage = 'Select a brush first';
     return;
   }
-  editor.snapshot();
-  const { mins, maxs } = bounds;
-  const texture = editor.currentTexture;
-  const creators = {
-    flat: createFlatPatch,
-    cylinder: createCylinderPatch,
-    cone: createConePatch,
-    bevel: createBevelPatch,
-    endcap: createEndcapPatch,
-  };
-  const patch = creators[preset](mins, maxs, texture);
-  editor.worldspawn.patches.push(patch);
-  editor.selection = [{ type: 'patch', entity: editor.worldspawn, patch }];
-  editor.dirty = true;
-  editor.statusMessage = `Created ${preset} patch`;
+  editor.transact(`Create ${preset} patch`, () => {
+    const { mins, maxs } = bounds;
+    const texture = editor.currentTexture;
+    const creators = {
+      flat: createFlatPatch,
+      cylinder: createCylinderPatch,
+      cone: createConePatch,
+      bevel: createBevelPatch,
+      endcap: createEndcapPatch,
+    };
+    const patch = creators[preset](mins, maxs, texture);
+    editor.worldspawn.patches.push(patch);
+    editor.selection = [{ type: 'patch', entity: editor.worldspawn, patch }];
+    editor.dirty = true;
+    editor.statusMessage = `Created ${preset} patch`;
+  });
 }
 
 export function changeSubdivisions(editor: Editor, delta: number): void {
   const patchItems = getSelectedPatchItems(editor);
   if (patchItems.length === 0) return;
-  editor.snapshot();
-  for (const item of patchItems) {
-    const subdivisions = Math.max(1, Math.min(24, item.patch.subdivisions + delta));
-    item.patch.subdivisions = subdivisions;
-    tessellatePatch(item.patch);
-  }
-  const level = patchItems[0].patch.subdivisions;
-  editor.dirty = true;
-  editor.statusMessage = `Subdivisions: ${level}`;
+  editor.transact('Change patch subdivisions', () => {
+    for (const item of patchItems) {
+      const subdivisions = Math.max(1, Math.min(24, item.patch.subdivisions + delta));
+      item.patch.subdivisions = subdivisions;
+      tessellatePatch(item.patch);
+    }
+    const level = patchItems[0].patch.subdivisions;
+    editor.dirty = true;
+    editor.statusMessage = `Subdivisions: ${level}`;
+  }, { coalesceKey: 'patch-subdivisions' });
 }
 
 export function enterPatchEditMode(editor: Editor): void {
@@ -119,22 +121,24 @@ export function isControlPointSelected(editor: Editor, dataIndex: number, row: n
 export function moveSelectedControlPoints(editor: Editor, delta: Vec3): void {
   if (editor.patchControlSelection.length === 0) return;
 
-  const affectedPatches = new Set<number>();
-  for (const controlPoint of editor.patchControlSelection) {
-    const data = editor.patchEditData[controlPoint.dataIndex];
-    if (!data) continue;
-    const point = data.patch.ctrl[controlPoint.row][controlPoint.col];
-    point.xyz[0] += delta[0];
-    point.xyz[1] += delta[1];
-    point.xyz[2] += delta[2];
-    affectedPatches.add(controlPoint.dataIndex);
-  }
+  editor.transact('Move patch control points', () => {
+    const affectedPatches = new Set<number>();
+    for (const controlPoint of editor.patchControlSelection) {
+      const data = editor.patchEditData[controlPoint.dataIndex];
+      if (!data) continue;
+      const point = data.patch.ctrl[controlPoint.row][controlPoint.col];
+      point.xyz[0] += delta[0];
+      point.xyz[1] += delta[1];
+      point.xyz[2] += delta[2];
+      affectedPatches.add(controlPoint.dataIndex);
+    }
 
-  for (const dataIndex of affectedPatches) {
-    tessellatePatch(editor.patchEditData[dataIndex].patch);
-  }
-  stitchSelectedTerrainControlSeams(editor);
-  editor.dirty = true;
+    for (const dataIndex of affectedPatches) {
+      tessellatePatch(editor.patchEditData[dataIndex].patch);
+    }
+    stitchSelectedTerrainControlSeams(editor);
+    editor.dirty = true;
+  }, { coalesceKey: 'move-patch-control-points' });
 }
 
 export function patchControlSelectionCenter(editor: Editor): Vec3 | null {

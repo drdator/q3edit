@@ -64,20 +64,20 @@ export function makeDetail(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
-
-  for (const brush of brushes) {
-    for (const face of brush.faces) {
-      face.contentFlags = (face.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL;
+  editor.transact('Make detail', () => {
+    for (const brush of brushes) {
+      for (const face of brush.faces) {
+        face.contentFlags = (face.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL;
+      }
     }
-  }
 
-  for (const patch of patches) {
-    patch.contentFlags = (patch.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL;
-  }
+    for (const patch of patches) {
+      patch.contentFlags = (patch.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL;
+    }
 
-  editor.dirty = true;
-  editor.statusMessage = `Marked ${total} item${total === 1 ? '' : 's'} detail`;
+    editor.dirty = true;
+    editor.statusMessage = `Marked ${total} item${total === 1 ? '' : 's'} detail`;
+  });
 }
 
 export function makeStructural(editor: Editor): void {
@@ -88,18 +88,18 @@ export function makeStructural(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
-
-  for (const brush of brushes) {
-    for (const face of brush.faces) {
-      face.contentFlags &= ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
+  editor.transact('Make structural', () => {
+    for (const brush of brushes) {
+      for (const face of brush.faces) {
+        face.contentFlags &= ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
+      }
     }
-  }
 
-  for (const patch of patches) {
-    patch.contentFlags &= ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
-  }
+    for (const patch of patches) {
+      patch.contentFlags &= ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
+    }
 
-  editor.dirty = true;
-  editor.statusMessage = `Marked ${total} item${total === 1 ? '' : 's'} structural`;
+    editor.dirty = true;
+    editor.statusMessage = `Marked ${total} item${total === 1 ? '' : 's'} structural`;
+  });
 }

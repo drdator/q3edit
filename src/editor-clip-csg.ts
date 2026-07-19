@@ -37,34 +37,35 @@ export function executeClip(editor: Editor): void {
   const frontPoints: [Vec3, Vec3, Vec3] = [p1, p2, p3];
   const backPoints: [Vec3, Vec3, Vec3] = [p2, p1, p3];
 
-  editor.snapshot();
-  const newSelection: SelectionItem[] = [];
-  const brushItems = getSelectedBrushItems(editor);
+  editor.transact('Clip selection', () => {
+    const newSelection: SelectionItem[] = [];
+    const brushItems = getSelectedBrushItems(editor);
 
-  for (const item of brushItems) {
-    const idx = item.entity.brushes.indexOf(item.brush);
-    if (idx < 0) continue;
+    for (const item of brushItems) {
+      const idx = item.entity.brushes.indexOf(item.brush);
+      if (idx < 0) continue;
 
-    const front = clipBrush(item.brush, frontPoints);
-    const back = clipBrush(item.brush, backPoints);
+      const front = clipBrush(item.brush, frontPoints);
+      const back = clipBrush(item.brush, backPoints);
 
-    item.entity.brushes.splice(idx, 1);
+      item.entity.brushes.splice(idx, 1);
 
-    if ((editor.clipMode === 'front' || editor.clipMode === 'both') && front) {
-      item.entity.brushes.push(front);
-      newSelection.push({ type: 'brush', entity: item.entity, brush: front });
+      if ((editor.clipMode === 'front' || editor.clipMode === 'both') && front) {
+        item.entity.brushes.push(front);
+        newSelection.push({ type: 'brush', entity: item.entity, brush: front });
+      }
+      if ((editor.clipMode === 'back' || editor.clipMode === 'both') && back) {
+        item.entity.brushes.push(back);
+        newSelection.push({ type: 'brush', entity: item.entity, brush: back });
+      }
     }
-    if ((editor.clipMode === 'back' || editor.clipMode === 'both') && back) {
-      item.entity.brushes.push(back);
-      newSelection.push({ type: 'brush', entity: item.entity, brush: back });
-    }
-  }
 
-  editor.reconcileHiddenState();
-  editor.selection = newSelection;
-  editor.clipPoints = [];
-  editor.dirty = true;
-  editor.statusMessage = `Clipped (${editor.clipMode})`;
+    editor.reconcileHiddenState();
+    editor.selection = newSelection;
+    editor.clipPoints = [];
+    editor.dirty = true;
+    editor.statusMessage = `Clipped (${editor.clipMode})`;
+  });
 }
 
 export function csgSubtract(editor: Editor): void {
@@ -74,46 +75,47 @@ export function csgSubtract(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
-  const carverSet = new Set(brushItems.map(item => item.brush));
-  const newSelection: SelectionItem[] = [];
-  let totalFragments = 0;
+  editor.transact('CSG subtract', () => {
+    const carverSet = new Set(brushItems.map(item => item.brush));
+    const newSelection: SelectionItem[] = [];
+    let totalFragments = 0;
 
-  for (const entity of editor.entities) {
-    const newBrushes: Brush[] = [];
-    for (const brush of entity.brushes) {
-      if (carverSet.has(brush)) continue;
+    for (const entity of editor.entities) {
+      const newBrushes: Brush[] = [];
+      for (const brush of entity.brushes) {
+        if (carverSet.has(brush)) continue;
 
-      let pieces: Brush[] = [brush];
-      for (const carverBrush of carverSet) {
-        const next: Brush[] = [];
-        for (const piece of pieces) {
-          const fragments = subtractBrush(piece, carverBrush);
-          if (fragments !== null) {
-            next.push(...fragments);
-          } else {
-            next.push(piece);
+        let pieces: Brush[] = [brush];
+        for (const carverBrush of carverSet) {
+          const next: Brush[] = [];
+          for (const piece of pieces) {
+            const fragments = subtractBrush(piece, carverBrush);
+            if (fragments !== null) {
+              next.push(...fragments);
+            } else {
+              next.push(piece);
+            }
+          }
+          pieces = next;
+        }
+        newBrushes.push(...pieces);
+        if (pieces.length > 1 || (pieces.length === 1 && pieces[0] !== brush)) {
+          totalFragments += pieces.length;
+          for (const piece of pieces) {
+            newSelection.push({ type: 'brush', entity, brush: piece });
           }
         }
-        pieces = next;
       }
-      newBrushes.push(...pieces);
-      if (pieces.length > 1 || (pieces.length === 1 && pieces[0] !== brush)) {
-        totalFragments += pieces.length;
-        for (const piece of pieces) {
-          newSelection.push({ type: 'brush', entity, brush: piece });
-        }
-      }
+      entity.brushes = newBrushes;
     }
-    entity.brushes = newBrushes;
-  }
 
-  editor.reconcileHiddenState();
-  editor.selection = newSelection;
-  editor.dirty = true;
-  editor.statusMessage = totalFragments > 0
-    ? `CSG Subtract: ${totalFragments} fragments created`
-    : 'CSG Subtract: no intersections found';
+    editor.reconcileHiddenState();
+    editor.selection = newSelection;
+    editor.dirty = true;
+    editor.statusMessage = totalFragments > 0
+      ? `CSG Subtract: ${totalFragments} fragments created`
+      : 'CSG Subtract: no intersections found';
+  });
 }
 
 export function csgHollow(editor: Editor): void {
@@ -123,26 +125,27 @@ export function csgHollow(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
-  const newSelection: SelectionItem[] = [];
+  editor.transact('CSG hollow', () => {
+    const newSelection: SelectionItem[] = [];
 
-  for (const item of brushItems) {
-    const shells = hollowBrush(item.brush, editor.gridSize);
-    if (shells.length === 0) continue;
+    for (const item of brushItems) {
+      const shells = hollowBrush(item.brush, editor.gridSize);
+      if (shells.length === 0) continue;
 
-    const idx = item.entity.brushes.indexOf(item.brush);
-    if (idx >= 0) item.entity.brushes.splice(idx, 1);
+      const idx = item.entity.brushes.indexOf(item.brush);
+      if (idx >= 0) item.entity.brushes.splice(idx, 1);
 
-    for (const shell of shells) {
-      item.entity.brushes.push(shell);
-      newSelection.push({ type: 'brush', entity: item.entity, brush: shell });
+      for (const shell of shells) {
+        item.entity.brushes.push(shell);
+        newSelection.push({ type: 'brush', entity: item.entity, brush: shell });
+      }
     }
-  }
 
-  editor.reconcileHiddenState();
-  editor.selection = newSelection;
-  editor.dirty = true;
-  editor.statusMessage = `CSG Hollow: ${newSelection.length} shell pieces (wall thickness: ${editor.gridSize})`;
+    editor.reconcileHiddenState();
+    editor.selection = newSelection;
+    editor.dirty = true;
+    editor.statusMessage = `CSG Hollow: ${newSelection.length} shell pieces (wall thickness: ${editor.gridSize})`;
+  });
 }
 
 export function csgMerge(editor: Editor): void {
@@ -164,15 +167,16 @@ export function csgMerge(editor: Editor): void {
     return;
   }
 
-  editor.snapshot();
-  for (const item of brushItems) {
-    const idx = entity.brushes.indexOf(item.brush);
-    if (idx >= 0) entity.brushes.splice(idx, 1);
-  }
+  editor.transact('CSG merge', () => {
+    for (const item of brushItems) {
+      const idx = entity.brushes.indexOf(item.brush);
+      if (idx >= 0) entity.brushes.splice(idx, 1);
+    }
 
-  entity.brushes.push(merged);
-  editor.reconcileHiddenState();
-  editor.selection = [{ type: 'brush', entity, brush: merged }];
-  editor.dirty = true;
-  editor.statusMessage = `CSG Merge: ${brushItems.length} brushes merged into 1`;
+    entity.brushes.push(merged);
+    editor.reconcileHiddenState();
+    editor.selection = [{ type: 'brush', entity, brush: merged }];
+    editor.dirty = true;
+    editor.statusMessage = `CSG Merge: ${brushItems.length} brushes merged into 1`;
+  });
 }
