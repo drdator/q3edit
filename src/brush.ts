@@ -35,6 +35,8 @@ export interface BrushFace {
 export interface Brush {
   faces: BrushFace[];
   name?: string;
+  /** Brush-local epairs used by brushDef. */
+  properties?: Record<string, string>;
   // Computed AABB
   mins: Vec3;
   maxs: Vec3;
@@ -249,6 +251,7 @@ export function cloneBrush(brush: Brush): Brush {
   return {
     faces,
     name: brush.name,
+    properties: brush.properties ? { ...brush.properties } : undefined,
     mins: vec3Copy(brush.mins),
     maxs: vec3Copy(brush.maxs),
   };

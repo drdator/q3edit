@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { createEntity } from '../src/entity';
+import { createBoxBrush } from '../src/brush';
 import { parseMap, parseMapWithDiagnostics, serializeMap } from '../src/mapfile';
 import { createFlatPatch, createTerrainDefGridPatch } from '../src/patch';
 
@@ -146,19 +147,42 @@ describe('patch map formats', () => {
 });
 
 describe('map diagnostics', () => {
-  test('captures a Q3Radiant brushDef fixture without misreading later syntax', () => {
+  test('loads and round-trips a Q3Radiant brushDef fixture', () => {
     const result = parseMapWithDiagnostics(brushDefFixture);
 
     expect(result.document.entities).toHaveLength(1);
-    expect(result.document.entities[0].brushes).toEqual([]);
+    expect(result.document.entities[0].brushes).toHaveLength(1);
     expect(result.errors).toEqual([]);
-    expect(result.unsupportedConstructPolicy).toBe('diagnostic-only');
-    expect(result.unsupportedConstructs).toEqual([expect.objectContaining({
-      keyword: 'brushDef',
-      line: 5,
-      column: 1,
-      rawSource: expect.stringContaining('( ( 0.0078125 0 0.125 ) ( 0 0.015625 -0.25 ) )'),
-    })]);
+    expect(result.warnings).toEqual([]);
+    expect(result.unsupportedConstructs).toEqual([]);
+    const brush = result.document.entities[0].brushes[0];
+    expect(brush.properties).toEqual({ editor_note: 'primitive cube' });
+    expect(brush.faces).toHaveLength(6);
+    for (const face of brush.faces) {
+      expect(face.textureProjection).toEqual({
+        kind: 'brush-primitive',
+        matrix: [[0.0078125, 0, 0.125], [0, 0.015625, -0.25]],
+      });
+      expect(face).toMatchObject({
+        texture: 'textures/common/caulk',
+        contentFlags: 134217728,
+        surfaceFlags: 1024,
+        value: 7,
+      });
+    }
+
+    const roundTripped = parseMapWithDiagnostics(serializeMap(result.document.entities));
+    expect(roundTripped.diagnostics).toEqual([]);
+    expect(roundTripped.document.entities[0].brushes[0]).toMatchObject({
+      properties: brush.properties,
+      faces: brush.faces.map(face => ({
+        texture: face.texture,
+        textureProjection: face.textureProjection,
+        contentFlags: face.contentFlags,
+        surfaceFlags: face.surfaceFlags,
+        value: face.value,
+      })),
+    });
   });
 
   test('reports and skips unsupported map blocks without losing later entities', () => {
@@ -166,7 +190,7 @@ describe('map diagnostics', () => {
 {
 "classname" "worldspawn"
 {
-brushDef
+brushDef3
 {
 ( 0 0 1 -64 ) ( ( 0.5 0 0 ) ( 0 0.5 0 ) ) common/caulk 0 0 0
 }
@@ -187,16 +211,40 @@ brushDef
       severity: 'warning',
       line: 5,
       column: 1,
-      message: expect.stringContaining("Unsupported map block 'brushDef'"),
+      message: expect.stringContaining("Unsupported map block 'brushDef3'"),
     }));
     expect(result.warnings).toHaveLength(1);
     expect(result.errors).toEqual([]);
     expect(result.unsupportedConstructs).toEqual([expect.objectContaining({
-      keyword: 'brushDef',
+      keyword: 'brushDef3',
       line: 5,
       column: 1,
       rawSource: expect.stringContaining('brushDef'),
     })]);
+  });
+
+  test('rejects mixed projection formats instead of silently converting them', () => {
+    const entity = createEntity('worldspawn');
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    brush.faces[0].textureProjection = {
+      kind: 'brush-primitive',
+      matrix: [[0.01, 0, 0], [0, 0.01, 0]],
+    };
+    entity.brushes.push(brush);
+
+    expect(() => serializeMap([entity])).toThrow('mixed classic and brush-primitive projections');
+  });
+
+  test('reports malformed brushDef matrices at their source location', () => {
+    const source = `{\n"classname" "worldspawn"\n{\nbrushDef\n{\n( 0 0 0 ) ( 0 0 64 ) ( 0 64 0 ) ( ( nope 0 0 ) ( 0 1 0 ) ) common/caulk 0 0 0\n}\n}\n}`;
+    const result = parseMapWithDiagnostics(source);
+
+    expect(result.errors).toContainEqual(expect.objectContaining({
+      line: 6,
+      column: 37,
+      message: expect.stringContaining('brushDef texture matrix row 1'),
+    }));
+    expect(result.document.entities[0].brushes).toEqual([]);
   });
 
   test('reports malformed brush content', () => {

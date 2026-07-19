@@ -1,6 +1,6 @@
 import type { Vec3 } from './math';
 import type { Entity } from './entity';
-import { classicTextureProjection } from './brush';
+import { classicTextureProjection, type Brush, type BrushFace } from './brush';
 import {
   type Patch,
   type TerrainDefSurface,
@@ -33,21 +33,7 @@ export function serializeMap(entities: Entity[]): string {
       const brush = entity.brushes[brushIndex];
       lines.push(brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
       lines.push('{');
-      for (const face of brush.faces) {
-        const projection = classicTextureProjection(face);
-        if (!projection) {
-          throw new Error('brush-primitive texture projections require brushDef serialization');
-        }
-        const [point1, point2, point3] = face.points;
-        const formatPoint = (value: Vec3) => `( ${fmtNum(value[0])} ${fmtNum(value[1])} ${fmtNum(value[2])} )`;
-        // Swap point2/point3 back to standard Q3 inward-facing winding.
-        lines.push(
-          `${formatPoint(point1)} ${formatPoint(point3)} ${formatPoint(point2)} ` +
-          `${face.texture} ${fmtNum(projection.offsetX)} ${fmtNum(projection.offsetY)} ` +
-          `${fmtNum(projection.rotation)} ${fmtNum(projection.scaleX)} ${fmtNum(projection.scaleY)} ` +
-          `${face.contentFlags} ${face.surfaceFlags} ${face.value}`,
-        );
-      }
+      serializeBrush(lines, brush);
       lines.push('}');
     }
 
@@ -66,6 +52,58 @@ export function serializeMap(entities: Entity[]): string {
     lines.push('}');
   }
   return lines.join('\n') + '\n';
+}
+
+function serializeBrush(lines: string[], brush: Brush): void {
+  const projectionKinds = new Set(brush.faces.map(face => face.textureProjection.kind));
+  if (projectionKinds.size > 1) {
+    throw new Error('Cannot serialize a brush containing mixed classic and brush-primitive projections');
+  }
+  if (projectionKinds.has('brush-primitive')) {
+    serializeBrushDef(lines, brush);
+    return;
+  }
+  if (brush.properties && Object.keys(brush.properties).length > 0) {
+    throw new Error('Classic brush syntax cannot preserve brush-local properties');
+  }
+  for (const face of brush.faces) serializeClassicFace(lines, face);
+}
+
+function serializeClassicFace(lines: string[], face: BrushFace): void {
+  const projection = classicTextureProjection(face);
+  if (!projection) throw new Error('Expected a classic texture projection');
+  const [point1, point2, point3] = face.points;
+  lines.push(
+    `${formatPoint(point1)} ${formatPoint(point3)} ${formatPoint(point2)} ` +
+    `${face.texture} ${fmtNum(projection.offsetX)} ${fmtNum(projection.offsetY)} ` +
+    `${fmtNum(projection.rotation)} ${fmtNum(projection.scaleX)} ${fmtNum(projection.scaleY)} ` +
+    `${face.contentFlags} ${face.surfaceFlags} ${face.value}`,
+  );
+}
+
+function serializeBrushDef(lines: string[], brush: Brush): void {
+  lines.push('brushDef');
+  lines.push('{');
+  for (const [key, value] of Object.entries(brush.properties ?? {})) {
+    lines.push(`${quoteMapString(key)} ${quoteMapString(value)}`);
+  }
+  for (const face of brush.faces) {
+    if (face.textureProjection.kind !== 'brush-primitive') {
+      throw new Error('Expected a brush-primitive texture projection');
+    }
+    const [point1, point2, point3] = face.points;
+    const [row0, row1] = face.textureProjection.matrix;
+    lines.push(
+      `${formatPoint(point1)} ${formatPoint(point3)} ${formatPoint(point2)} ` +
+      `( ( ${row0.map(fmtNum).join(' ')} ) ( ${row1.map(fmtNum).join(' ')} ) ) ` +
+      `${face.texture} ${face.contentFlags} ${face.surfaceFlags} ${face.value}`,
+    );
+  }
+  lines.push('}');
+}
+
+function formatPoint(value: Vec3): string {
+  return `( ${fmtNum(value[0])} ${fmtNum(value[1])} ${fmtNum(value[2])} )`;
 }
 
 function serializePatchDef2(lines: string[], patch: Patch): void {
@@ -111,7 +149,7 @@ function quoteMapString(value: string): string {
 
 function fmtNum(value: number): string {
   if (Number.isInteger(value)) return value.toString();
-  return value.toFixed(6).replace(/\.?0+$/, '');
+  return value.toFixed(9).replace(/\.?0+$/, '');
 }
 
 function defaultTerrainSurface(patch: Patch): TerrainDefSurface {
