@@ -703,6 +703,58 @@ textarea:focus-visible {
   overflow: visible;
 }
 
+.panel.floating-panel.entity-tool-popover {
+  width: 286px;
+  max-height: min(78vh, 560px);
+}
+
+.entity-tool-popover .panel-body {
+  overflow: hidden;
+  padding: 7px;
+}
+
+.entity-class-picker {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.entity-class-picker input[type="search"] {
+  height: 25px;
+  padding: 3px 7px;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  border-top-color: var(--border-light);
+  border-left-color: var(--border-light);
+  color: var(--text);
+  font: 11px/1 monospace;
+  outline: none;
+}
+
+.entity-class-picker input[type="search"]:focus,
+.entity-class-picker select:focus {
+  border-color: var(--accent);
+}
+
+.entity-class-picker select.entity-class-results {
+  min-height: 238px;
+  margin-bottom: 5px;
+  padding: 2px;
+  overflow-y: auto;
+}
+
+.entity-class-picker select.entity-class-results option {
+  padding: 3px 5px;
+}
+
+.entity-class-description {
+  min-height: 28px;
+  max-height: 45px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font: 10px/1.4 monospace;
+}
+
 /* ── Viewport Container ── */
 #viewport-container {
   flex: 1;
@@ -871,6 +923,7 @@ textarea:focus-visible {
 }
 
 .panel-body input[type="text"],
+.panel-body input[type="search"],
 .panel-body input[type="number"],
 .panel-body select {
   width: 100%;
@@ -954,6 +1007,90 @@ textarea:focus-visible {
   overflow: hidden;
   box-shadow: inset 0 0 0 1px #222222;
   box-sizing: border-box;
+}
+
+.entity-defined-property {
+  margin-bottom: 7px;
+}
+
+.entity-defined-property > label {
+  margin-bottom: 3px;
+}
+
+.entity-property-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.entity-property-controls > select,
+.entity-property-controls > .entity-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.entity-property-controls > select {
+  width: auto;
+  height: 18px;
+  box-sizing: border-box;
+}
+
+.entity-property-controls > .btn {
+  margin: 0;
+}
+
+.entity-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.entity-value > input[type="text"],
+.entity-value > input[type="number"] {
+  flex: 1 1 100px;
+  min-width: 0;
+  width: auto;
+  height: 18px;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
+.entity-value > input[type="color"] {
+  flex: 0 0 25px;
+  width: 25px;
+  height: 18px;
+  padding: 1px;
+  border: 1px solid var(--border-dark);
+  background: var(--bg-light);
+}
+
+.entity-value > .btn {
+  margin: 0;
+  height: 18px;
+  box-sizing: border-box;
+}
+
+.entity-angle-directions {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  flex: 1 0 100%;
+  gap: 2px;
+}
+
+.entity-angle-directions > .btn {
+  justify-content: center;
+  min-width: 0;
+  padding: 2px;
+  margin: 0;
+}
+
+.entity-property-help {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.35;
 }
 
 .brush-list {

@@ -147,15 +147,19 @@ export function buildDefinedEntityProperties(
     label.textContent = property.name || property.key;
     label.title = property.key;
     row.appendChild(label);
+    const controls = document.createElement('div');
+    controls.className = 'entity-property-controls';
     if (hasValue) {
-      row.appendChild(valueControl(editor, entity, property, entity.properties[property.key]));
+      controls.appendChild(valueControl(editor, entity, property, entity.properties[property.key]));
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn icon-btn kv-del';
+      remove.title = `Remove ${property.name || property.key}`;
+      remove.setAttribute('aria-label', remove.title);
       remove.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.remove;
       remove.innerHTML = '<i class="ph ph-trash"></i>';
       remove.addEventListener('click', () => removeEntityProperty(editor, entity, property.key));
-      row.appendChild(remove);
+      controls.appendChild(remove);
     } else {
       const add = document.createElement('button');
       add.type = 'button';
@@ -163,8 +167,9 @@ export function buildDefinedEntityProperties(
       add.textContent = `Add ${property.name || property.key}`;
       add.addEventListener('click', () => setTypedEntityProperty(
         editor, entity, property.key, property.default ?? definition.defaults[property.key] ?? '', property.type));
-      row.appendChild(add);
+      controls.appendChild(add);
     }
+    row.appendChild(controls);
     addHelp(row, property);
     container.appendChild(row);
   }

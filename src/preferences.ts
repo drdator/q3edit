@@ -29,6 +29,7 @@ export interface ThemeColors {
 export interface GlobalPreferences {
   version: typeof PREFERENCES_VERSION;
   shortcuts: Record<string, string | null>;
+  collapsedPanels: Record<string, boolean>;
   theme: { preset: ThemePreset; colors: ThemeColors };
   viewportLayout: ViewportLayout;
   editorDefaults: {
@@ -57,6 +58,7 @@ export const DEFAULT_THEME_COLORS: ThemeColors = {
 export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
   version: PREFERENCES_VERSION,
   shortcuts: {},
+  collapsedPanels: {},
   theme: { preset: 'dark', colors: DEFAULT_THEME_COLORS },
   viewportLayout: 'quad',
   editorDefaults: {
@@ -111,6 +113,12 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
       if (typeof shortcut === 'string' || shortcut === null) shortcuts[id] = shortcut;
     }
   }
+  const collapsedPanels: Record<string, boolean> = {};
+  if (isRecord(value.collapsedPanels)) {
+    for (const [id, collapsed] of Object.entries(value.collapsedPanels)) {
+      if (typeof collapsed === 'boolean') collapsedPanels[id] = collapsed;
+    }
+  }
   const presets: ThemePreset[] = ['dark', 'light', 'high-contrast', 'custom'];
   const layouts: ViewportLayout[] = ['quad', 'wide-3d', 'wide-2d'];
   const snapModes: GridSnapMode[] = ['off', 'abs', 'rel'];
@@ -119,6 +127,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   return {
     version: PREFERENCES_VERSION,
     shortcuts,
+    collapsedPanels,
     theme: {
       preset: presets.includes(theme.preset as ThemePreset) ? theme.preset as ThemePreset : defaults.theme.preset,
       colors: {

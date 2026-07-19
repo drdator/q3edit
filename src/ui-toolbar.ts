@@ -3,6 +3,7 @@ import { BRUSH_PRIMITIVES, brushPrimitiveSideRange, brushPrimitiveUsesSides } fr
 import { applyBrushPrimitiveToolbarIcon, brushPrimitiveToolbarIconMarkup } from './brush-primitive-icons';
 import { formatShortcut, type CommandId, type CommandRegistry } from './commands';
 import type { EditorCommandContext } from './editor-commands';
+import { createEntityClassPicker } from './entity-class-picker';
 
 export interface ToolbarContext {
   editor: Editor;
@@ -109,6 +110,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
   document.body.appendChild(createToolPanel);
 
   let createToolButton: HTMLElement | null = null;
+  let entityToolButton: HTMLElement | null = null;
 
   const syncCreateToolPanel = () => {
     primitiveSelect.value = ctx.editor.currentBrushPrimitive;
@@ -138,11 +140,56 @@ export function buildToolbar(ctx: ToolbarContext): void {
 
   const openCreateToolPanel = () => {
     if (!createToolButton) return;
+    closeEntityToolPanel();
     syncCreateToolPanel();
     setCreateToolButtonIcon();
     createToolPanel.classList.add('open');
     createToolButton.classList.add('active-panel');
     positionCreateToolPanel();
+  };
+
+  const entityToolPanel = document.createElement('div');
+  entityToolPanel.className = 'panel floating-panel tool-popover-panel entity-tool-popover';
+  entityToolPanel.id = 'entity-tool-panel';
+  const entityToolHeader = document.createElement('div');
+  entityToolHeader.className = 'panel-header';
+  entityToolHeader.textContent = 'Place Entity';
+  const entityToolBody = document.createElement('div');
+  entityToolBody.className = 'panel-body';
+  entityToolPanel.append(entityToolHeader, entityToolBody);
+
+  const closeEntityToolPanel = () => {
+    entityToolPanel.classList.remove('open');
+    entityToolButton?.classList.remove('active-panel');
+  };
+  const updateEntityToolButtonTitle = (classname = ctx.editor.currentEntityClass) => {
+    const shortcut = ctx.commands.getState('tool.entity').shortcut;
+    if (entityToolButton) entityToolButton.title = `Place Entity: ${classname}${shortcut ? ` (${formatShortcut(shortcut)})` : ''}`;
+  };
+  const entityPicker = createEntityClassPicker(ctx.editor, {
+    idPrefix: 'toolbar-entity-class',
+    listSize: 11,
+    onConfirm: () => closeEntityToolPanel(),
+    onSelectionChanged: updateEntityToolButtonTitle,
+  });
+  entityToolBody.appendChild(entityPicker.element);
+  document.body.appendChild(entityToolPanel);
+
+  const positionEntityToolPanel = () => {
+    if (!entityToolButton) return;
+    const rect = entityToolButton.getBoundingClientRect();
+    entityToolPanel.style.left = `${rect.right + 8}px`;
+    const maxTop = Math.max(8, window.innerHeight - entityToolPanel.offsetHeight - 8);
+    entityToolPanel.style.top = `${Math.min(maxTop, Math.max(8, rect.top))}px`;
+  };
+  const openEntityToolPanel = () => {
+    if (!entityToolButton) return;
+    closeCreateToolPanel();
+    entityPicker.refresh();
+    entityToolPanel.classList.add('open');
+    entityToolButton.classList.add('active-panel');
+    positionEntityToolPanel();
+    entityPicker.focus();
   };
 
   primitiveSelect.addEventListener('change', () => {
@@ -163,16 +210,22 @@ export function buildToolbar(ctx: ToolbarContext): void {
 
   document.addEventListener('mousedown', (event) => {
     const target = event.target as Node | null;
-    if (!createToolPanel.classList.contains('open')) return;
-    if (target && (createToolPanel.contains(target) || createToolButton?.contains(target))) return;
-    closeCreateToolPanel();
+    if (createToolPanel.classList.contains('open') &&
+        !(target && (createToolPanel.contains(target) || createToolButton?.contains(target)))) closeCreateToolPanel();
+    if (entityToolPanel.classList.contains('open') &&
+        !(target && (entityToolPanel.contains(target) || entityToolButton?.contains(target)))) closeEntityToolPanel();
   });
   window.addEventListener('resize', () => {
     if (createToolPanel.classList.contains('open')) positionCreateToolPanel();
+    if (entityToolPanel.classList.contains('open')) positionEntityToolPanel();
   });
   window.addEventListener('scroll', () => {
     if (createToolPanel.classList.contains('open')) positionCreateToolPanel();
+    if (entityToolPanel.classList.contains('open')) positionEntityToolPanel();
   }, true);
+  entityToolPanel.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { closeEntityToolPanel(); entityToolButton?.focus(); }
+  });
 
   const tools = [
     { id: 'select', commandId: 'tool.select', icon: icon('cursor') },
@@ -184,7 +237,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
 
   for (const tool of tools) {
     const btn = addBtn({
-      id: tool.id === 'create' ? 'tool-create' : undefined,
+      id: tool.id === 'create' ? 'tool-create' : tool.id === 'entity' ? 'tool-entity' : undefined,
       commandId: tool.commandId,
       icon: tool.icon,
       dataset: { tool: tool.id },
@@ -203,13 +256,29 @@ export function buildToolbar(ctx: ToolbarContext): void {
           return;
         }
 
+        if (tool.id === 'entity') {
+          if (ctx.editor.activeTool !== 'entity') {
+            void ctx.commands.execute(tool.commandId);
+            openEntityToolPanel();
+            return;
+          }
+          if (entityToolPanel.classList.contains('open')) closeEntityToolPanel();
+          else openEntityToolPanel();
+          return;
+        }
+
         closeCreateToolPanel();
+        closeEntityToolPanel();
         void ctx.commands.execute(tool.commandId);
       },
     });
     if (tool.id === 'create') {
       createToolButton = btn;
       setCreateToolButtonIcon();
+    } else if (tool.id === 'entity') {
+      entityToolButton = btn;
+      entityPicker.refresh();
+      refreshCommandState.push(updateEntityToolButtonTitle);
     }
   }
 

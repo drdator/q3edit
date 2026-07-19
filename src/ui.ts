@@ -19,6 +19,7 @@ import { buildCameraPanel as buildCameraPanelUI } from './camera-panel';
 import { applyAppearancePreferences, openPreferencesDialog } from './preferences-dialog';
 import type { ProjectConfiguration } from './project-config';
 import { openDiagnosticsDialog, type DiagnosticsTab } from './diagnostics-dialog';
+import { refreshEntityClassPickers } from './entity-class-picker';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -135,15 +136,17 @@ export class UI {
     // Add collapse toggles to all panel headers
     for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
       const panel = header.parentElement as HTMLElement | null;
-      if (panel?.id === 'terrain-panel') continue;
+      if (!panel || panel.id === 'terrain-panel') continue;
       const toggle = document.createElement('span');
       toggle.className = 'panel-toggle';
-      toggle.textContent = '\u2212';
       header.appendChild(toggle);
+      this.setPanelCollapsed(panel, this.editor.preferences.collapsedPanels[panel.id] ?? false);
       header.addEventListener('mousedown', () => {
         const owningPanel = header.parentElement!;
-        owningPanel.classList.toggle('collapsed');
-        toggle.textContent = owningPanel.classList.contains('collapsed') ? '+' : '\u2212';
+        const collapsed = !owningPanel.classList.contains('collapsed');
+        this.setPanelCollapsed(owningPanel, collapsed);
+        this.editor.preferences.collapsedPanels[owningPanel.id] = collapsed;
+        this.editor.persistCurrentPreferences();
       });
     }
 
@@ -608,6 +611,7 @@ export class UI {
 
   updateEntityDefinitions(): void {
     this.buildEntityPanel();
+    refreshEntityClassPickers(this.editor);
     this.editor.redrawRequested = true;
   }
 
@@ -1765,6 +1769,10 @@ export class UI {
     if (e.activeTool !== 'create') {
       createPanel?.classList.remove('open');
       document.getElementById('tool-create')?.classList.remove('active-panel');
+    }
+    if (e.activeTool !== 'entity') {
+      document.getElementById('entity-tool-panel')?.classList.remove('open');
+      document.getElementById('tool-entity')?.classList.remove('active-panel');
     }
 
     // Update panels
