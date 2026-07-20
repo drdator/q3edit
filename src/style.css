@@ -477,6 +477,39 @@ textarea:focus-visible {
   user-select: none;
 }
 
+.menubar-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  margin: 0 2px 0 auto;
+  padding: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 15px;
+  cursor: default;
+}
+
+.menubar-icon-button:hover,
+.menubar-icon-button:focus-visible {
+  color: var(--text-bright);
+  background: var(--bg-light);
+  border-color: var(--border-dark);
+  outline: none;
+}
+
+.menubar-icon-button.active {
+  color: var(--accent);
+}
+
+.menubar-sidebar-toggle i {
+  display: block;
+  transform: scaleX(-1);
+}
+
 .menu-item {
   position: relative;
   padding: 2px 8px;

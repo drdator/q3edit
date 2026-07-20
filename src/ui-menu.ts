@@ -149,6 +149,27 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
     bar.appendChild(menuItem);
   }
 
+  const sidebarToggle = document.createElement('button');
+  sidebarToggle.type = 'button';
+  sidebarToggle.className = 'menubar-icon-button menubar-sidebar-toggle';
+  sidebarToggle.dataset.command = 'view.sidebar';
+  sidebarToggle.innerHTML = '<i class="ph ph-sidebar-simple"></i>';
+  const refreshSidebarToggle = () => {
+    const state = ctx.commands.getState('view.sidebar');
+    sidebarToggle.classList.toggle('active', state.checked);
+    sidebarToggle.title = state.checked ? 'Hide right sidebar' : 'Show right sidebar';
+    sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+    sidebarToggle.setAttribute('aria-pressed', String(state.checked));
+  };
+  refreshSidebarToggle();
+  refreshState.push(refreshSidebarToggle);
+  sidebarToggle.addEventListener('mousedown', event => {
+    event.stopPropagation();
+    ctx.closeMenus();
+    void ctx.commands.execute('view.sidebar');
+  });
+  bar.appendChild(sidebarToggle);
+
   document.addEventListener('mousedown', () => ctx.closeMenus());
   const refresh = () => { for (const update of refreshState) update(); };
   ctx.commands.subscribe(refresh);
