@@ -164,9 +164,6 @@ export class UI {
         this.toggleSoloPanel(panel);
       });
       header.appendChild(solo);
-      const toggle = document.createElement('span');
-      toggle.className = 'panel-toggle';
-      header.appendChild(toggle);
       this.setPanelCollapsed(panel, this.editor.preferences.collapsedPanels[panel.id] ?? false);
       header.addEventListener('mousedown', () => {
         const owningPanel = header.parentElement!;
@@ -319,8 +316,6 @@ export class UI {
 
   private setPanelCollapsed(panel: HTMLElement, collapsed: boolean): void {
     panel.classList.toggle('collapsed', collapsed);
-    const toggle = panel.querySelector('.panel-toggle');
-    if (toggle) toggle.textContent = collapsed ? '+' : '\u2212';
   }
 
   private positionTerrainPanel(): void {
