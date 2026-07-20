@@ -23,6 +23,13 @@ import {
 import { vec3Dot, type Vec3 } from './math';
 import { clonePatch, mirrorPatch, rotatePatch, translatePatch, type Patch } from './patch';
 import { CONTENTS_DETAIL, CONTENTS_STRUCTURAL } from './map-flags';
+import {
+  GROUP_ID_KEY,
+  GROUP_INFO_CLASSNAME,
+  GROUP_NAME_KEY,
+  isGroupInfoEntity,
+  listNamedGroups,
+} from './named-groups';
 
 export type MapObjectRef = `E${number}` | `E${number}:B${number}` | `E${number}:P${number}`;
 export type MapFaceRef = `E${number}:B${number}:F${number}`;
@@ -173,6 +180,18 @@ export interface SetBrushClassificationOperation {
   classification: 'detail' | 'structural';
 }
 
+export interface AssignGroupOperation {
+  type: 'assign_group';
+  targets: MapTargetRef[];
+  group: string;
+  groupId?: string;
+}
+
+export interface RemoveFromGroupOperation {
+  type: 'remove_from_group';
+  targets: MapTargetRef[];
+}
+
 export interface DeleteObjectsOperation {
   type: 'delete';
   targets: MapTargetRef[];
@@ -195,6 +214,8 @@ export type MapOperation =
   | SetTextureOperation
   | EditFacesOperation
   | SetBrushClassificationOperation
+  | AssignGroupOperation
+  | RemoveFromGroupOperation
   | DeleteObjectsOperation;
 
 export interface MapOperationResult {
@@ -527,6 +548,45 @@ function classifyBrushes(targets: ResolvedObject[], classification: 'detail' | '
   return [...brushes];
 }
 
+function generatedGroupId(editor: Editor, name: string): string {
+  const base = `mcp-${name.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '') || 'group'}`.slice(0, 120);
+  const used = new Set(listNamedGroups(editor.entities).map(group => group.id));
+  if (!used.has(base)) return base;
+  let suffix = 2;
+  while (used.has(`${base}-${suffix}`)) suffix++;
+  return `${base}-${suffix}`;
+}
+
+function ensureGroup(editor: Editor, name: string, requestedId?: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('group must not be empty');
+  const existing = listNamedGroups(editor.entities).find(group => group.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) {
+    if (requestedId && existing.id !== requestedId) throw new Error(`Group ${trimmed} already exists with id ${existing.id}`);
+    return existing.id;
+  }
+  if (requestedId && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestedId)) throw new Error(`Invalid groupId ${requestedId}`);
+  const groupId = requestedId ?? generatedGroupId(editor, trimmed);
+  if (listNamedGroups(editor.entities).some(group => group.id === groupId)) throw new Error(`Group id ${groupId} already exists`);
+  const entity = createEntity(GROUP_INFO_CLASSNAME);
+  entity.properties[GROUP_ID_KEY] = groupId;
+  entity.properties[GROUP_NAME_KEY] = trimmed;
+  editor.entities.push(entity);
+  return groupId;
+}
+
+function setResolvedGroup(target: ResolvedObject, groupId: string | undefined): void {
+  if (target.kind === 'entity') {
+    if (isGroupInfoEntity(target.entity)) throw new Error('group_info entities cannot be assigned to groups');
+    if (groupId) target.entity.properties[GROUP_ID_KEY] = groupId;
+    else delete target.entity.properties[GROUP_ID_KEY];
+  } else if (target.kind === 'brush') {
+    target.brush.editorGroupId = groupId;
+  } else {
+    target.patch.editorGroupId = groupId;
+  }
+}
+
 function applyTranslation(editor: Editor, targets: ResolvedObject[], delta: Vec3): void {
   assertVector('delta', delta);
   const entities = new Set(targets.filter(item => item.kind === 'entity').map(item => item.entity));
@@ -709,6 +769,19 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         for (const brush of brushes) {
           const entity = editor.entities.find(candidate => candidate.brushes.includes(brush));
           if (entity) changedHandles.add({ kind: 'brush', entity, brush });
+        }
+      } else if (operation.type === 'assign_group') {
+        const targets = resolveTargets(editor, operation.targets, aliases);
+        const groupId = ensureGroup(editor, operation.group, operation.groupId);
+        for (const target of targets) {
+          setResolvedGroup(target, groupId);
+          changedHandles.add(objectHandle(target));
+        }
+      } else if (operation.type === 'remove_from_group') {
+        const targets = resolveTargets(editor, operation.targets, aliases);
+        for (const target of targets) {
+          setResolvedGroup(target, undefined);
+          changedHandles.add(objectHandle(target));
         }
       } else if (operation.type === 'delete') {
         const targets = resolveTargets(editor, operation.targets, aliases);

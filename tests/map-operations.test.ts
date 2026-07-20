@@ -3,6 +3,7 @@ import { Editor } from '../src/editor';
 import { createEntity, entityOrigin } from '../src/entity';
 import { createBoxBrush } from '../src/brush';
 import { CONTENTS_DETAIL } from '../src/map-flags';
+import { listNamedGroups } from '../src/named-groups';
 import { applyMapOperations } from '../src/map-operations';
 
 function emptyEditor(): Editor {
@@ -191,6 +192,25 @@ describe('serializable map operations', () => {
 
     editor.undo();
     expect(editor.worldspawn.brushes).toHaveLength(0);
+  });
+
+  test('assigns symbolic collections to persistent named groups', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      { type: 'create_room', id: 'reactor', mins: [0, 0, 0], maxs: [256, 256, 128] },
+      { type: 'assign_group', targets: ['@reactor'], group: 'Reactor Core', groupId: 'mcp-reactor-core' },
+    ]);
+
+    expect(listNamedGroups(editor.entities)).toEqual([
+      expect.objectContaining({ id: 'mcp-reactor-core', name: 'Reactor Core' }),
+    ]);
+    expect(editor.worldspawn.brushes.every(brush => brush.editorGroupId === 'mcp-reactor-core')).toBe(true);
+    expect(result.changed).toEqual(['E0:B0', 'E0:B1', 'E0:B2', 'E0:B3', 'E0:B4', 'E0:B5']);
+
+    const reloaded = emptyEditor();
+    reloaded.loadMap(editor.serializeMap());
+    expect(listNamedGroups(reloaded.entities)[0]).toMatchObject({ id: 'mcp-reactor-core', name: 'Reactor Core' });
+    expect(reloaded.worldspawn.brushes.every(brush => brush.editorGroupId === 'mcp-reactor-core')).toBe(true);
   });
 
   test('rejects unknown and duplicate symbolic references transactionally', () => {

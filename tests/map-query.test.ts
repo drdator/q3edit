@@ -3,6 +3,8 @@ import { queryMap } from '../bridge/map-query';
 import { createBoxBrush } from '../src/brush';
 import { createEntity } from '../src/entity';
 import { serializeMap } from '../src/mapfile';
+import { GROUP_ID_KEY, GROUP_INFO_CLASSNAME, GROUP_NAME_KEY } from '../src/named-groups';
+import { inspectMapGroups } from '../bridge/map-query';
 
 function queryFixture(): string {
   const world = createEntity('worldspawn');
@@ -49,5 +51,22 @@ describe('map spatial query', () => {
     expect(queryMap(queryFixture(), {
       kind: 'entity', classname: 'light', bounds: { mins: [0, 0, 80], maxs: [64, 64, 128] },
     })).toEqual([expect.objectContaining({ ref: 'E2' })]);
+  });
+
+  test('queries persistent named groups and lists their members', () => {
+    const world = createEntity('worldspawn');
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/metal');
+    brush.editorGroupId = 'mcp-reactor';
+    world.brushes.push(brush);
+    const group = createEntity(GROUP_INFO_CLASSNAME);
+    group.properties[GROUP_ID_KEY] = 'mcp-reactor';
+    group.properties[GROUP_NAME_KEY] = 'Reactor Core';
+    const mapText = serializeMap([world, group]);
+
+    expect(queryMap(mapText, { kind: 'brush', group: 'Reactor Core' }))
+      .toEqual([expect.objectContaining({ ref: 'E0:B0', group: { id: 'mcp-reactor', name: 'Reactor Core' } })]);
+    expect(inspectMapGroups(mapText)).toEqual([
+      expect.objectContaining({ id: 'mcp-reactor', name: 'Reactor Core', memberCount: 1, members: ['E0:B0'] }),
+    ]);
   });
 });

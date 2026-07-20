@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 import type { BridgeHub } from './bridge-hub';
 import { inspectMapObjects } from './map-inspection';
-import { queryMap, type MapQueryOptions } from './map-query';
+import { inspectMapGroups, queryMap, type MapQueryOptions } from './map-query';
 import type { MapDocumentRef, MapOperation } from '../src/map-operations';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
@@ -112,6 +112,13 @@ const mapOperation = z.discriminatedUnion('type', [
     targets: z.array(operationRef).min(1),
     classification: z.enum(['detail', 'structural']),
   }),
+  z.object({
+    type: z.literal('assign_group'),
+    targets: z.array(operationRef).min(1),
+    group: z.string().min(1).max(120),
+    groupId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/).optional(),
+  }),
+  z.object({ type: z.literal('remove_from_group'), targets: z.array(operationRef).min(1) }),
   z.object({ type: z.literal('delete'), targets: z.array(operationRef).min(1) }),
 ]);
 
@@ -136,6 +143,8 @@ const compatibleMapOperationInput = z.object({
     'set_texture',
     'edit_faces',
     'set_brush_classification',
+    'assign_group',
+    'remove_from_group',
     'delete',
   ]),
   id: symbolicId.optional(),
@@ -176,6 +185,8 @@ const compatibleMapOperationInput = z.object({
   surfaceFlags: z.number().int().optional(),
   value: z.number().int().optional(),
   classification: z.enum(['detail', 'structural']).optional(),
+  group: z.string().optional(),
+  groupId: z.string().optional(),
 });
 
 function toolError(error: unknown) {
@@ -192,7 +203,7 @@ function toolResult(value: unknown, text?: string) {
 
 export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
-    instructions: 'Inspect map_status before editing. Use map_query and the texture/entity discovery tools instead of guessing object, asset, or classname data. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references are revision-sensitive. Creation operations may declare id and later operations in the same batch may target @id.',
+    instructions: 'Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references are revision-sensitive. Creation operations may declare id and later operations in the same batch may target @id. Use assign_group when objects need a stable identity across later revisions or reloads.',
   });
 
   server.registerTool('map_status', {
@@ -268,6 +279,20 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('map_groups', {
+    title: 'List persistent map groups',
+    description: 'List stable named groups and their current member references. Group names and IDs survive revisions, save, and reload.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async () => {
+    try {
+      const snapshot = hub.snapshot();
+      return toolResult({ revision: snapshot.revision, groups: inspectMapGroups(snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_query', {
     title: 'Query live map objects',
     description: 'Find entities, brushes, or patches by classname, texture, entity property, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
@@ -277,13 +302,14 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       texture: z.string().optional().describe('Case-insensitive texture name substring'),
       propertyKey: z.string().optional().describe('Entity property key that must exist'),
       propertyValue: z.string().optional().describe('Case-insensitive value substring; requires propertyKey'),
+      group: z.string().optional().describe('Exact persistent group name or ID'),
       mins: compatibleVec3.optional().describe('Minimum world-space bounds; must be provided together with maxs'),
       maxs: compatibleVec3.optional().describe('Maximum world-space bounds; must be provided together with mins'),
       boundsMode: z.enum(['intersects', 'inside']).optional().default('intersects'),
       limit: z.number().int().min(1).max(500).optional().default(100),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ kind, classname, texture, propertyKey, propertyValue, mins, maxs, boundsMode, limit }) => {
+  }, async ({ kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit }) => {
     try {
       if ((mins && !maxs) || (!mins && maxs)) throw new Error('mins and maxs must be provided together');
       if (propertyValue !== undefined && !propertyKey) throw new Error('propertyValue requires propertyKey');
@@ -294,6 +320,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
         texture,
         propertyKey,
         propertyValue,
+        group,
         bounds: mins && maxs ? {
           mins: mins as [number, number, number],
           maxs: maxs as [number, number, number],
@@ -454,7 +481,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. Geometry includes primitives, wedges, stairs, and convex plane brushes. Transform operations include translate, rotate, mirror, clone, and array. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Use the advertised schema for exact fields.',
+    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, and convex plane brushes. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Use the advertised schema for exact fields.',
     inputSchema: {
       expectedRevision: z.number().int().nonnegative(),
       label: z.string().min(1).max(120).describe('Undo label, for example MCP: Add side room'),
@@ -471,11 +498,15 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
         return parsed.data as MapOperation;
       });
       const applied = await hub.applyOperations(expectedRevision, label, validatedOperations);
-      return toolResult({
+      const value = {
         ...applied.result,
         mapInfo: applied.snapshot.mapInfo,
         diagnostics: applied.snapshot.diagnostics,
-      }, `${applied.result.summary}\nRevision: ${applied.result.revision}`);
+      };
+      const aliases = Object.keys(applied.result.aliases).length > 0
+        ? `\nAliases: ${JSON.stringify(applied.result.aliases)}`
+        : '';
+      return toolResult(value, `${applied.result.summary}\nRevision: ${applied.result.revision}${aliases}`);
     } catch (error) {
       return toolError(error);
     }

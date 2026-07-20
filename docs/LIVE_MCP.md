@@ -57,6 +57,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_validate` returns current editor diagnostics.
 - `map_compile` runs the live map through q3map at fast, normal, or full quality and returns compiler/leak diagnostics.
 - `map_query` finds entities, brushes, and patches by bounds, kind, classname, texture, or entity property.
+- `map_groups` lists persistent named groups and their current member references; `map_query` accepts a group name or ID.
 - `texture_search` searches the live PK3 asset index and `texture_preview` returns an image for an exact result.
 - `entity_class_search` searches loaded entity definitions and `entity_class_schema` returns typed properties, defaults, and spawnflags.
 - `editor_select` selects referenced objects in Q3Edit and `editor_frame_objects` selects and frames them in every viewport.
@@ -84,6 +85,7 @@ Initial `map_apply` operations are:
 - `set_texture`
 - `edit_faces` for per-face texture, shift, scale, rotation, fit, and compile flags
 - `set_brush_classification` (`detail` or `structural`)
+- `assign_group` and `remove_from_group`
 - `delete`
 
 Object references use the current document indices: `E1`, `E0:B2`, `E0:B2:F4`, and `E0:P0`. Face references can be inspected, queried, selected, framed, or passed to `edit_faces`. References are revision-sensitive, so call `map_status`, `map_query`, or `map_entities` again after a revision conflict.
@@ -141,6 +143,19 @@ Creation operations can also declare a symbolic `id`. Later operations in the sa
   ]
 }
 ```
+
+Symbolic IDs last only for the current batch. Assign a persistent group when later agent turns need to find, frame, or edit the generated objects:
+
+```json
+{
+  "type": "assign_group",
+  "targets": ["@north_room"],
+  "group": "North Room",
+  "groupId": "mcp-north-room"
+}
+```
+
+Later, call `map_query` with `{ "group": "North Room" }`. Group membership is serialized into the `.map` document and survives save/reload. `map_apply` includes its complete symbolic alias mapping in both structured and normal text output for MCP clients that expose only one result representation.
 
 ## Manual tool calls
 

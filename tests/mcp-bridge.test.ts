@@ -50,6 +50,9 @@ class FakeEditorSocket extends EventEmitter {
     const request = JSON.parse(data);
     if (request.type === 'apply_operations') {
       const next = snapshot(request.expectedRevision + 1);
+      const aliases = Object.fromEntries(request.operations
+        .filter((operation: { id?: string }) => operation.id)
+        .map((operation: { id: string }) => [`@${operation.id}`, ['E0:B0']]));
       queueMicrotask(() => this.emitMessage({
         type: 'operation_result',
         requestId: request.requestId,
@@ -58,7 +61,7 @@ class FakeEditorSocket extends EventEmitter {
           operationCount: request.operations.length,
           created: ['E0:B0'],
           changed: [],
-          aliases: {},
+          aliases,
           summary: '1 operation · 1 object created',
         },
         snapshot: next,
@@ -177,6 +180,7 @@ describe('live MCP bridge', () => {
         'map_inspect',
         'map_validate',
         'map_compile',
+        'map_groups',
         'map_query',
         'texture_search',
         'texture_preview',
@@ -199,6 +203,9 @@ describe('live MCP bridge', () => {
 
       const compiled = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast' } });
       expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
+
+      const groups = await client.callTool({ name: 'map_groups', arguments: {} });
+      expect(groups.structuredContent).toMatchObject({ revision: 4, groups: [] });
 
       const textures = await client.callTool({ name: 'texture_search', arguments: { query: 'metal' } });
       expect(textures.structuredContent).toMatchObject({ matches: [{ name: 'base_wall/metal' }] });
@@ -248,6 +255,9 @@ describe('live MCP bridge', () => {
         },
       });
       expect(richerGeometry.isError).not.toBe(true);
+      expect(richerGeometry.content).toEqual(expect.arrayContaining([
+        expect.objectContaining({ text: expect.stringContaining('Aliases: {"@stairs"') }),
+      ]));
 
       const faceEdit = await client.callTool({
         name: 'map_apply',

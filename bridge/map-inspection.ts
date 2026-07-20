@@ -1,8 +1,10 @@
 import { parseMapWithDiagnostics } from '../src/mapfile';
 import type { MapDocumentRef } from '../src/map-operations';
+import { entityGroupId, groupNameMap } from '../src/named-groups';
 
 export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], includeGeometry = false): unknown[] {
   const parsed = parseMapWithDiagnostics(mapText);
+  const groupNames = groupNameMap(parsed.document.entities);
   return refs.map(ref => {
     const match = /^E(\d+)(?::([BP])(\d+))?(?::F(\d+))?$/.exec(ref);
     if (!match) throw new Error(`Invalid object reference ${ref}`);
@@ -11,6 +13,7 @@ export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], inclu
     if (!entity) throw new Error(`Entity ${ref} does not exist`);
 
     if (!match[2]) {
+      const groupId = entityGroupId(entity);
       return {
         ref,
         kind: 'entity',
@@ -18,6 +21,7 @@ export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], inclu
         properties: entity.properties,
         brushes: entity.brushes.map((_, index) => `E${entityIndex}:B${index}`),
         patches: entity.patches.map((_, index) => `E${entityIndex}:P${index}`),
+        group: groupId ? { id: groupId, name: groupNames.get(groupId) ?? groupId } : null,
       };
     }
 
@@ -25,6 +29,7 @@ export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], inclu
     if (match[2] === 'B') {
       const brush = entity.brushes[objectIndex];
       if (!brush) throw new Error(`Brush ${ref} does not exist`);
+      const groupId = brush.editorGroupId ?? entityGroupId(entity);
       if (match[4] !== undefined) {
         const face = brush.faces[Number(match[4])];
         if (!face) throw new Error(`Face ${ref} does not exist`);
@@ -39,6 +44,7 @@ export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], inclu
           surfaceFlags: face.surfaceFlags,
           value: face.value,
           plane: face.plane,
+          group: groupId ? { id: groupId, name: groupNames.get(groupId) ?? groupId } : null,
           ...(includeGeometry ? { points: face.points, polygon: face.polygon } : {}),
         };
       }
@@ -52,6 +58,7 @@ export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], inclu
         properties: brush.properties,
         faceCount: brush.faces.length,
         textures: [...new Set(brush.faces.map(face => face.texture))],
+        group: groupId ? { id: groupId, name: groupNames.get(groupId) ?? groupId } : null,
         ...(includeGeometry ? {
           faces: brush.faces.map(face => ({
             points: face.points,
@@ -80,6 +87,10 @@ export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], inclu
       contentFlags: patch.contentFlags,
       surfaceFlags: patch.surfaceFlags,
       value: patch.value,
+      group: (patch.editorGroupId ?? entityGroupId(entity)) ? {
+        id: patch.editorGroupId ?? entityGroupId(entity),
+        name: groupNames.get(patch.editorGroupId ?? entityGroupId(entity) ?? '') ?? patch.editorGroupId ?? entityGroupId(entity),
+      } : null,
       ...(includeGeometry ? { controlPoints: patch.ctrl } : {}),
     };
   });
