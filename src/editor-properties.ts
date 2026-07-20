@@ -30,12 +30,27 @@ function objectId(value: object): number {
   return id;
 }
 
+function uniqueEntities(entities: readonly Entity[]): Entity[] {
+  return [...new Set(entities)];
+}
+
+function entitySetId(entities: readonly Entity[]): string {
+  return uniqueEntities(entities).map(entity => objectId(entity)).sort((a, b) => a - b).join(',');
+}
+
 export function setEntityClassname(editor: Editor, entity: Entity, classname: string): boolean {
+  return setEntityClassnames(editor, [entity], classname);
+}
+
+export function setEntityClassnames(editor: Editor, entities: readonly Entity[], classname: string): boolean {
   const nextClassname = classname.trim();
-  if (!nextClassname) return false;
-  editor.transact('Change entity classname', () => {
-    entity.classname = nextClassname;
-    entity.properties.classname = nextClassname;
+  const targets = uniqueEntities(entities);
+  if (!nextClassname || targets.length === 0) return false;
+  editor.transact(targets.length === 1 ? 'Change entity classname' : 'Change entity classnames', () => {
+    for (const entity of targets) {
+      entity.classname = nextClassname;
+      entity.properties.classname = nextClassname;
+    }
   });
   return true;
 }
@@ -58,10 +73,21 @@ export function renameEntityProperty(
 }
 
 export function setEntityProperty(editor: Editor, entity: Entity, key: string, value: string): void {
-  editor.transact('Edit entity property', () => {
-    entity.properties[key] = value;
+  setEntityProperties(editor, [entity], key, value);
+}
+
+export function setEntityProperties(
+  editor: Editor,
+  entities: readonly Entity[],
+  key: string,
+  value: string,
+): void {
+  const targets = uniqueEntities(entities);
+  if (targets.length === 0) return;
+  editor.transact(targets.length === 1 ? 'Edit entity property' : 'Edit entity properties', () => {
+    for (const entity of targets) entity.properties[key] = value;
   }, {
-    coalesceKey: `entity-property:${objectId(entity)}:${key}`,
+    coalesceKey: `entity-properties:${entitySetId(targets)}:${key}`,
   });
 }
 
@@ -70,16 +96,30 @@ export function setTypedEntityProperty(
   entity: Entity,
   key: string,
   value: string,
+  type: EntityPropertyType,
+): void {
+  setTypedEntityProperties(editor, [entity], key, value, type);
+}
+
+export function setTypedEntityProperties(
+  editor: Editor,
+  entities: readonly Entity[],
+  key: string,
+  value: string,
   _type: EntityPropertyType,
 ): void {
-  editor.transact('Edit entity property', () => {
-    entity.properties[key] = value;
-    if (entity.classname === 'misc_model' && key === 'angle') delete entity.properties.angles;
-    if (entity.classname === 'misc_model' && key === 'angles') delete entity.properties.angle;
-    if (entity.classname === 'misc_model' && key === 'modelscale') delete entity.properties.modelscale_vec;
-    if (entity.classname === 'misc_model' && key === 'modelscale_vec') delete entity.properties.modelscale;
+  const targets = uniqueEntities(entities);
+  if (targets.length === 0) return;
+  editor.transact(targets.length === 1 ? 'Edit entity property' : 'Edit entity properties', () => {
+    for (const entity of targets) {
+      entity.properties[key] = value;
+      if (entity.classname === 'misc_model' && key === 'angle') delete entity.properties.angles;
+      if (entity.classname === 'misc_model' && key === 'angles') delete entity.properties.angle;
+      if (entity.classname === 'misc_model' && key === 'modelscale') delete entity.properties.modelscale_vec;
+      if (entity.classname === 'misc_model' && key === 'modelscale_vec') delete entity.properties.modelscale;
+    }
   }, {
-    coalesceKey: `entity-property:${objectId(entity)}:${key}`,
+    coalesceKey: `entity-properties:${entitySetId(targets)}:${key}`,
   });
 }
 
@@ -89,23 +129,52 @@ export function setEntitySpawnflag(
   bit: number,
   enabled: boolean,
 ): void {
-  const current = Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0;
-  const next = enabled ? (current | bit) : (current & ~bit);
-  setEntityProperty(editor, entity, 'spawnflags', String(next));
+  setEntitySpawnflags(editor, [entity], bit, enabled);
+}
+
+export function setEntitySpawnflags(
+  editor: Editor,
+  entities: readonly Entity[],
+  bit: number,
+  enabled: boolean,
+): void {
+  const targets = uniqueEntities(entities);
+  if (targets.length === 0) return;
+  editor.transact(targets.length === 1 ? 'Edit entity property' : 'Edit entity properties', () => {
+    for (const entity of targets) {
+      const current = Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0;
+      const next = enabled ? (current | bit) : (current & ~bit);
+      entity.properties.spawnflags = String(next);
+    }
+  }, {
+    coalesceKey: `entity-properties:${entitySetId(targets)}:spawnflags`,
+  });
 }
 
 export function removeEntityProperty(editor: Editor, entity: Entity, key: string): void {
-  editor.transact('Remove entity property', () => {
-    delete entity.properties[key];
+  removeEntityProperties(editor, [entity], key);
+}
+
+export function removeEntityProperties(editor: Editor, entities: readonly Entity[], key: string): void {
+  const targets = uniqueEntities(entities);
+  if (targets.length === 0) return;
+  editor.transact(targets.length === 1 ? 'Remove entity property' : 'Remove entity properties', () => {
+    for (const entity of targets) delete entity.properties[key];
   });
 }
 
 export function addEntityProperty(editor: Editor, entity: Entity): string {
+  return addEntityProperties(editor, [entity]);
+}
+
+export function addEntityProperties(editor: Editor, entities: readonly Entity[]): string {
+  const targets = uniqueEntities(entities);
+  if (targets.length === 0) return '';
   let n = 1;
-  while (`key${n}` in entity.properties) n++;
+  while (targets.some(entity => `key${n}` in entity.properties)) n++;
   const key = `key${n}`;
-  editor.transact('Add entity property', () => {
-    entity.properties[key] = '';
+  editor.transact(targets.length === 1 ? 'Add entity property' : 'Add entity properties', () => {
+    for (const entity of targets) entity.properties[key] = '';
   });
   return key;
 }

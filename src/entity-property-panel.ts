@@ -1,5 +1,9 @@
 import type { Editor } from './editor';
-import { removeEntityProperty, setEntitySpawnflag, setTypedEntityProperty } from './editor-properties';
+import {
+  removeEntityProperties,
+  setEntitySpawnflags,
+  setTypedEntityProperties,
+} from './editor-properties';
 import type { Entity } from './entity';
 import type { EntityClassDefinition, EntityPropertyDefinition } from './entity-definitions';
 import { openModelBrowser } from './model-browser';
@@ -36,18 +40,23 @@ function entityReferenceList(editor: Editor, key: string): string {
 
 function valueControl(
   editor: Editor,
-  entity: Entity,
+  entities: readonly Entity[],
   definition: EntityPropertyDefinition,
   value: string,
+  mixed: boolean,
 ): HTMLElement {
-  const commit = (next: string) => setTypedEntityProperty(editor, entity, definition.key, next, definition.type);
+  const commit = (next: string) => setTypedEntityProperties(editor, entities, definition.key, next, definition.type);
   if (definition.type === 'choice' && definition.choices?.length) {
     const select = document.createElement('select');
-    if (value && !definition.choices.some(choice => choice.value === value)) {
+    if (mixed) {
+      const option = new Option('(mixed)', '');
+      option.disabled = true;
+      select.appendChild(option);
+    } else if (value && !definition.choices.some(choice => choice.value === value)) {
       select.appendChild(new Option(`${value} (custom)`, value));
     }
     for (const choice of definition.choices) select.appendChild(new Option(choice.label, choice.value));
-    select.value = value;
+    select.value = mixed ? '' : value;
     select.addEventListener('change', () => commit(select.value));
     return select;
   }
@@ -57,10 +66,11 @@ function valueControl(
   const input = document.createElement('input');
   input.type = definition.type === 'number' || definition.type === 'angle' ? 'number' : 'text';
   input.value = value;
+  if (mixed) input.placeholder = '(mixed)';
   input.spellcheck = false;
   input.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.set;
-  if (definition.type === 'vector' || definition.type === 'color') input.placeholder = 'x y z';
-  if (definition.type === 'asset') input.placeholder = 'path/to/asset';
+  if (!mixed && (definition.type === 'vector' || definition.type === 'color')) input.placeholder = 'x y z';
+  if (!mixed && definition.type === 'asset') input.placeholder = 'path/to/asset';
   if (definition.type === 'asset') {
     const choices = definition.key.toLowerCase() === 'skin'
       ? editor.modelManager?.listSkins()
@@ -82,14 +92,14 @@ function valueControl(
     browse.type = 'button'; browse.className = 'btn'; browse.textContent = 'Browse…';
     browse.addEventListener('click', () => openModelBrowser(editor, input.value, path => {
       input.value = path; commit(path);
-    }, entity.properties.skin));
+    }, commonValue(entities.map(entity => entity.properties.skin)) ?? undefined));
     wrapper.appendChild(browse);
   }
 
   if (definition.type === 'color') {
     const picker = document.createElement('input');
     picker.type = 'color';
-    const parts = value.trim().split(/\s+/).map(Number);
+    const parts = mixed ? [] : value.trim().split(/\s+/).map(Number);
     const hex = parts.length >= 3 && parts.every(Number.isFinite)
       ? `#${parts.slice(0, 3).map(part => Math.round(Math.max(0, Math.min(1, part)) * 255).toString(16).padStart(2, '0')).join('')}`
       : '#ffffff';
@@ -122,9 +132,11 @@ function valueControl(
 export function buildDefinedEntityProperties(
   container: HTMLElement,
   editor: Editor,
-  entity: Entity,
+  entityOrEntities: Entity | readonly Entity[],
   definition: EntityClassDefinition,
 ): void {
+  const entities = Array.isArray(entityOrEntities) ? entityOrEntities : [entityOrEntities];
+  if (entities.length === 0) return;
   if (definition.description) {
     const description = document.createElement('p');
     description.className = 'entity-class-description';
@@ -163,9 +175,11 @@ export function buildDefinedEntityProperties(
       description: 'Q3Map2-compatible non-uniform XYZ scale. Adding this replaces Model Scale.',
     };
   }
-  const modelRotationKey = 'angles' in entity.properties ? 'angles' : 'angle';
+  const modelRotationKey = entities.some(entity => 'angles' in entity.properties) ? 'angles' : 'angle';
   for (const property of Object.values(definedProperties)) {
-    const hasValue = property.key in entity.properties;
+    const present = entities.map(entity => property.key in entity.properties);
+    const hasValue = present.some(Boolean);
+    const allHaveValue = present.every(Boolean);
     const alwaysShowControl = definition.classname === 'misc_model'
       && (property.key === 'model' || property.key === 'skin' || property.key === modelRotationKey);
     const row = document.createElement('div');
@@ -177,11 +191,11 @@ export function buildDefinedEntityProperties(
     const controls = document.createElement('div');
     controls.className = 'entity-property-controls';
     if (hasValue || alwaysShowControl) {
-      const value = entity.properties[property.key]
-        ?? property.default
-        ?? definition.defaults[property.key]
-        ?? '';
-      controls.appendChild(valueControl(editor, entity, property, value));
+      const fallback = property.default ?? definition.defaults[property.key] ?? '';
+      const values = entities.map(entity => entity.properties[property.key] ?? fallback);
+      const common = commonValue(values);
+      const mixed = common === null || (hasValue && !allHaveValue);
+      controls.appendChild(valueControl(editor, entities, property, mixed ? '' : common ?? '', mixed));
     }
     if (hasValue) {
       const remove = document.createElement('button');
@@ -191,15 +205,15 @@ export function buildDefinedEntityProperties(
       remove.setAttribute('aria-label', remove.title);
       remove.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.remove;
       remove.innerHTML = '<i class="ph ph-trash"></i>';
-      remove.addEventListener('click', () => removeEntityProperty(editor, entity, property.key));
+      remove.addEventListener('click', () => removeEntityProperties(editor, entities, property.key));
       controls.appendChild(remove);
     } else if (!alwaysShowControl) {
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'btn';
       add.textContent = `Add ${property.name || property.key}`;
-      add.addEventListener('click', () => setTypedEntityProperty(
-        editor, entity, property.key, property.default ?? definition.defaults[property.key] ?? '', property.type));
+      add.addEventListener('click', () => setTypedEntityProperties(
+        editor, entities, property.key, property.default ?? definition.defaults[property.key] ?? '', property.type));
       controls.appendChild(add);
     }
     row.appendChild(controls);
@@ -213,15 +227,18 @@ export function buildDefinedEntityProperties(
     const legend = document.createElement('legend');
     legend.textContent = 'Spawnflags';
     flags.appendChild(legend);
-    const current = Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0;
+    const currentValues = entities.map(entity => Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0);
+    const current = currentValues[0];
+    const mixedCurrent = currentValues.some(value => value !== current);
     const rawRow = document.createElement('label');
     rawRow.textContent = 'Raw value';
     const rawInput = document.createElement('input');
     rawInput.type = 'number';
-    rawInput.value = String(current);
+    rawInput.value = mixedCurrent ? '' : String(current);
+    if (mixedCurrent) rawInput.placeholder = '(mixed)';
     rawInput.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.set;
-    rawInput.addEventListener('change', () => setTypedEntityProperty(
-      editor, entity, 'spawnflags', rawInput.value, 'number'));
+    rawInput.addEventListener('change', () => setTypedEntityProperties(
+      editor, entities, 'spawnflags', rawInput.value, 'number'));
     rawRow.appendChild(rawInput);
     flags.appendChild(rawRow);
     for (const flag of definition.spawnflags) {
@@ -229,12 +246,20 @@ export function buildDefinedEntityProperties(
       label.title = flag.description ?? '';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
-      checkbox.checked = (current & flag.bit) !== 0;
+      const enabled = currentValues.map(value => (value & flag.bit) !== 0);
+      checkbox.checked = enabled.every(Boolean);
+      checkbox.indeterminate = enabled.some(Boolean) && !enabled.every(Boolean);
       checkbox.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.spawnflag;
-      checkbox.addEventListener('change', () => setEntitySpawnflag(editor, entity, flag.bit, checkbox.checked));
+      checkbox.addEventListener('change', () => setEntitySpawnflags(editor, entities, flag.bit, checkbox.checked));
       label.append(checkbox, document.createTextNode(flag.name));
       flags.appendChild(label);
     }
     container.appendChild(flags);
   }
+}
+
+function commonValue(values: readonly (string | undefined)[]): string | null {
+  if (values.length === 0) return null;
+  const first = values[0];
+  return values.every(value => value === first) ? first ?? '' : null;
 }
