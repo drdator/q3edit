@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 import type { BridgeHub } from './bridge-hub';
-import type { MapOperation } from '../src/map-operations';
+import { inspectMapObjects } from './map-inspection';
+import type { MapObjectRef, MapOperation } from '../src/map-operations';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const objectRef = z.string().regex(/^E\d+(?::[BP]\d+)?$/, 'Expected an object reference such as E1, E0:B2, or E0:P0');
@@ -80,6 +81,26 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const snapshot = hub.snapshot();
       const entities = classname ? snapshot.entities.filter(entity => entity.classname === classname) : snapshot.entities;
       return toolResult({ revision: snapshot.revision, entities });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_inspect', {
+    title: 'Inspect live map objects',
+    description: 'Return properties, bounds, textures, and optional geometry for current revision object references.',
+    inputSchema: {
+      refs: z.array(objectRef).min(1).max(50),
+      includeGeometry: z.boolean().optional().default(false),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ refs, includeGeometry }) => {
+    try {
+      const snapshot = hub.snapshot();
+      return toolResult({
+        revision: snapshot.revision,
+        objects: inspectMapObjects(snapshot.mapText, refs as MapObjectRef[], includeGeometry),
+      });
     } catch (error) {
       return toolError(error);
     }

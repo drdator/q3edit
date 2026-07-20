@@ -129,7 +129,11 @@ export class BridgeHub {
     }
 
     if ('snapshot' in message) this.currentSnapshot = message.snapshot;
-    if (message.type === 'editor_ready' || message.type === 'document_changed') return;
+    if (message.type === 'editor_ready') {
+      this.activeMapPath = null;
+      return;
+    }
+    if (message.type === 'document_changed') return;
 
     const requestId = message.requestId;
     const pending = this.pending.get(requestId);
