@@ -139,10 +139,15 @@ export function buildDefinedEntityProperties(
   if ((definition.classname === 'misc_model' || definition.model) && !definedProperties.skin) {
     definedProperties.skin = { key: 'skin', name: 'Skin', type: 'asset', description: 'Optional surface-to-shader skin file.' };
   }
+  if (definition.classname === 'misc_model' && !definedProperties.angle) {
+    definedProperties.angle = {
+      key: 'angle', name: 'Angle', type: 'angle', default: '0', description: 'Yaw rotation around the vertical axis.',
+    };
+  }
   for (const property of Object.values(definedProperties)) {
     const hasValue = property.key in entity.properties;
     const alwaysShowControl = definition.classname === 'misc_model'
-      && (property.key === 'model' || property.key === 'skin');
+      && (property.key === 'model' || property.key === 'skin' || property.key === 'angle');
     const row = document.createElement('div');
     row.className = 'entity-defined-property';
     const label = document.createElement('label');
@@ -152,7 +157,11 @@ export function buildDefinedEntityProperties(
     const controls = document.createElement('div');
     controls.className = 'entity-property-controls';
     if (hasValue || alwaysShowControl) {
-      controls.appendChild(valueControl(editor, entity, property, entity.properties[property.key] ?? ''));
+      const value = entity.properties[property.key]
+        ?? property.default
+        ?? definition.defaults[property.key]
+        ?? '';
+      controls.appendChild(valueControl(editor, entity, property, value));
     }
     if (hasValue) {
       const remove = document.createElement('button');

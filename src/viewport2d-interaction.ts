@@ -2,11 +2,13 @@ import { Vec3, vec3Copy, snapAxisDelta, findNearestSnap } from './math';
 import { Editor } from './editor';
 import { cloneTextureProjection, type Brush } from './brush';
 import { PatchControlPoint, type Patch } from './patch';
+import { entityOrigin } from './entity';
 import { pickEdge2D, pickVertex2D } from './vertex';
 import {
   rotateGeometryFromOriginals,
   scaleGeometryFromOriginals,
   type BrushRotationOriginal,
+  type EntityRotationOriginal,
   type PatchRotationOriginal,
 } from './editor-transforms';
 import {
@@ -60,6 +62,7 @@ export interface Viewport2DInteractionState {
   rotateAppliedAngle: number;
   rotateBrushOriginals: BrushRotationOriginal[];
   rotatePatchOriginals: PatchRotationOriginal[];
+  rotateEntityOriginals: EntityRotationOriginal[];
   rotateSnapshotTaken: boolean;
   anchorDragging: boolean;
 }
@@ -114,6 +117,7 @@ export function createViewport2DInteractionState(): Viewport2DInteractionState {
     rotateAppliedAngle: 0,
     rotateBrushOriginals: [],
     rotatePatchOriginals: [],
+    rotateEntityOriginals: [],
     rotateSnapshotTaken: false,
     anchorDragging: false,
   };
@@ -313,6 +317,14 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
           row.map(cp => ({ xyz: vec3Copy(cp.xyz), uv: [cp.uv[0], cp.uv[1]] as [number, number] }))
         ),
       }));
+      state.rotateEntityOriginals = ctx.editor.selection
+        .filter(item => item.type === 'entity' && item.entity.classname === 'misc_model')
+        .map(item => ({
+          entity: item.entity,
+          origin: entityOrigin(item.entity),
+          angle: item.entity.properties.angle ?? '0',
+          angles: item.entity.properties.angles,
+        }));
     }
     return;
   }
@@ -801,6 +813,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
         ctx.editor,
         state.rotateBrushOriginals,
         state.rotatePatchOriginals,
+        state.rotateEntityOriginals,
         center3d,
         axis,
         totalAngle,
@@ -1096,6 +1109,7 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     state.dragging = false;
     state.rotateBrushOriginals = [];
     state.rotatePatchOriginals = [];
+    state.rotateEntityOriginals = [];
     if (state.hasDragged) {
       const degrees = (state.rotateAppliedAngle * 180 / Math.PI).toFixed(1);
       ctx.editor.statusMessage = `Rotated ${degrees}°`;

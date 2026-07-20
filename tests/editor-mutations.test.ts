@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { createBoxBrush } from '../src/brush';
 import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
+import { rotateGeometryFromOriginals } from '../src/editor-transforms';
 
 function editorWithBrush(): Editor {
   const editor = new Editor();
@@ -47,6 +48,40 @@ describe('transactional editor mutations', () => {
     editor.snapSelectionToGrid();
 
     expect(editor.history.canUndo).toBe(false);
+  });
+
+  test('rotates misc_model yaw with the rotation commands', () => {
+    const editor = new Editor();
+    const worldspawn = createEntity('worldspawn');
+    const model = createEntity('misc_model', [32, 0, 0]);
+    model.properties.angle = '350';
+    editor.entities = [worldspawn, model];
+    editor.selection = [{ type: 'entity', entity: model }];
+    editor.rotationAxis = 2;
+
+    editor.rotateSelection(15);
+
+    expect(model.properties.angle).toBe('5');
+    editor.undo();
+    expect(editor.entities[1].properties.angle).toBe('350');
+  });
+
+  test('rotates misc_model yaw and origin from an interactive-tool snapshot', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [32, 0, 0]);
+    editor.entities = [createEntity('worldspawn'), model];
+
+    rotateGeometryFromOriginals(editor, [], [], [{
+      entity: model,
+      origin: [32, 0, 0],
+      angle: '350',
+    }], [0, 0, 0], 2, Math.PI / 2);
+
+    const origin = model.properties.origin.split(' ').map(Number);
+    expect(origin[0]).toBeCloseTo(0);
+    expect(origin[1]).toBeCloseTo(32);
+    expect(origin[2]).toBeCloseTo(0);
+    expect(model.properties.angle).toBe('80');
   });
 
   test('makes terrain creation one undoable command', () => {

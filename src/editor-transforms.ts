@@ -49,6 +49,13 @@ export interface PatchRotationOriginal {
   ctrl: PatchControlPoint[][];
 }
 
+export interface EntityRotationOriginal {
+  entity: Entity;
+  origin: Vec3 | null;
+  angle?: string;
+  angles?: string;
+}
+
 function selectedEntitySet(editor: Editor): Set<Entity> {
   return new Set(
     editor.selection
@@ -71,6 +78,29 @@ function rotateEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: num
     return;
   }
   rotateBrush(brush, center, axis, angle);
+}
+
+function normalizedAngle(value: number): string {
+  const normalized = ((value % 360) + 360) % 360;
+  const rounded = Math.abs(normalized - Math.round(normalized)) < 1e-6
+    ? Math.round(normalized)
+    : Number(normalized.toFixed(6));
+  return String(rounded);
+}
+
+function rotateMiscModelYaw(entity: Entity, angle: number, originalAngle?: string, originalAngles?: string): void {
+  if (entity.classname !== 'misc_model') return;
+  const vector = originalAngles?.trim().split(/\s+/).map(Number);
+  const scalar = Number(originalAngle ?? entity.properties.angle ?? 0);
+  const baseYaw = vector?.length === 3 && vector.every(Number.isFinite)
+    ? vector[1]
+    : Number.isFinite(scalar) ? scalar : 0;
+  const yaw = normalizedAngle(baseYaw + angle * 180 / Math.PI);
+  entity.properties.angle = yaw;
+  if (vector?.length === 3 && vector.every(Number.isFinite)) {
+    vector[1] = Number(yaw);
+    entity.properties.angles = vector.join(' ');
+  }
 }
 
 function mirrorEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: number): void {
@@ -116,6 +146,7 @@ function translateEditorEntity(editor: Editor, entity: Entity, delta: Vec3): voi
 function rotateEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number, angle: number): void {
   if (!editor.textureLock) {
     rotateEntity(entity, center, axis, angle);
+    if (axis === 2) rotateMiscModelYaw(entity, angle);
     return;
   }
 
@@ -129,6 +160,7 @@ function rotateEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: 
   for (const patch of entity.patches) {
     rotatePatch(patch, center, axis, angle);
   }
+  if (axis === 2) rotateMiscModelYaw(entity, angle);
 }
 
 function mirrorEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number): void {
@@ -179,6 +211,7 @@ export function rotateGeometryFromOriginals(
   editor: Editor,
   brushes: BrushRotationOriginal[],
   patches: PatchRotationOriginal[],
+  entities: EntityRotationOriginal[],
   center: Vec3,
   axis: number,
   angle: number,
@@ -203,6 +236,14 @@ export function rotateGeometryFromOriginals(
         }
       }
       rotatePatch(patch, center, axis, angle);
+    }
+    for (const original of entities) {
+      if (original.origin) {
+        setEntityOrigin(original.entity, vec3RotateAxis(original.origin, center, axis, angle));
+      }
+      if (axis === 2) {
+        rotateMiscModelYaw(original.entity, angle, original.angle, original.angles);
+      }
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'rotate-selection-preview' });
