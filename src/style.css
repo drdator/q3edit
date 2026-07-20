@@ -1556,9 +1556,7 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px;
-  background: var(--bg-dark);
-  border: 1px solid var(--border-dark);
+  padding-top: 2px;
 }
 
 .exact-primitive-field {
