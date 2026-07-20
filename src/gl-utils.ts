@@ -1,4 +1,4 @@
-import { DYNAMIC_LIGHT_AMBIENT } from './dynamic-lighting';
+import { DYNAMIC_LIGHT_AMBIENT, DYNAMIC_LIGHT_LIMIT } from './dynamic-lighting';
 
 // ── Shaders ──
 
@@ -32,9 +32,9 @@ uniform float uAlphaOverride; // 0.0 = no override, >0 = forced alpha
 uniform float uSolidOverride; // 1.0 = replace texture with solid color
 uniform float uDynamicLightingEnabled;
 uniform int uDynamicLightCount;
-uniform vec3 uDynamicLightPos[4];
-uniform vec3 uDynamicLightColor[4];
-uniform float uDynamicLightRadius[4];
+uniform vec3 uDynamicLightPos[${DYNAMIC_LIGHT_LIMIT}];
+uniform vec3 uDynamicLightColor[${DYNAMIC_LIGHT_LIMIT}];
+uniform float uDynamicLightRadius[${DYNAMIC_LIGHT_LIMIT}];
 out vec4 fragColor;
 void main() {
   vec3 n = normalize(vNormal);
@@ -44,7 +44,7 @@ void main() {
   vec4 texColor = texture(uTexture, vUV);
   float baseLight = mix(diff, ${DYNAMIC_LIGHT_AMBIENT.toFixed(2)}, uDynamicLightingEnabled);
   vec3 color = texColor.rgb * baseLight;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < ${DYNAMIC_LIGHT_LIMIT}; i++) {
     if (i >= uDynamicLightCount) break;
     float radius = max(uDynamicLightRadius[i], 1.0);
     float attenuation = max(0.0, 1.0 - distance(vWorldPos, uDynamicLightPos[i]) / radius);

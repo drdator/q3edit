@@ -2,7 +2,11 @@ import { Mat4, mat4LookAt, mat4Multiply, mat4Perspective, vec3Add } from './math
 import { Editor } from './editor';
 import { BlendMode } from './textures';
 import { entityOrigin, parseLightColor } from './entity';
-import { effectiveDynamicLightRadius } from './dynamic-lighting';
+import {
+  DYNAMIC_LIGHT_LIMIT,
+  effectiveDynamicLightRadius,
+  selectDynamicLightInfluences,
+} from './dynamic-lighting';
 
 export interface DrawGroup {
   textureName: string;
@@ -123,14 +127,23 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.uniformMatrix4fv(ctx.solidPVLoc, false, pv);
     ctx.gl.uniform1i(ctx.solidTexLoc, 0);
     const dynamicLightingEnabled = ctx.editor.display.dynamicLights;
-    const lights = dynamicLightingEnabled
-      ? [...ctx.editor.pointEntities()].filter(entity => entity.classname === 'light' && ctx.editor.isEntityVisibleIn3D(entity)).slice(0, 4)
+    const lightCandidates = dynamicLightingEnabled
+      ? [...ctx.editor.pointEntities()].flatMap(entity => {
+          if (entity.classname !== 'light' || !ctx.editor.isEntityVisibleIn3D(entity)) return [];
+          const origin = entityOrigin(entity);
+          if (!origin) return [];
+          const radius = effectiveDynamicLightRadius(Number(entity.properties.light) || 300);
+          return [{ value: entity, origin, radius }];
+        })
       : [];
-    const positions = new Float32Array(12); const colors = new Float32Array(12); const radii = new Float32Array(4);
-    lights.forEach((entity, index) => {
-      const origin = entityOrigin(entity) ?? [0, 0, 0]; const color = parseLightColor(entity) ?? [1, 1, 1];
-      positions.set(origin, index * 3); colors.set(color, index * 3);
-      radii[index] = effectiveDynamicLightRadius(Number(entity.properties.light) || 300);
+    const lights = selectDynamicLightInfluences(lightCandidates, ctx.position);
+    const positions = new Float32Array(DYNAMIC_LIGHT_LIMIT * 3);
+    const colors = new Float32Array(DYNAMIC_LIGHT_LIMIT * 3);
+    const radii = new Float32Array(DYNAMIC_LIGHT_LIMIT);
+    lights.forEach((light, index) => {
+      const color = parseLightColor(light.value) ?? [1, 1, 1];
+      positions.set(light.origin, index * 3); colors.set(color, index * 3);
+      radii[index] = light.radius;
     });
     ctx.gl.uniform1f(ctx.solidDynamicLightingEnabledLoc, dynamicLightingEnabled ? 1 : 0);
     ctx.gl.uniform1i(ctx.solidDynamicLightCountLoc, lights.length);
