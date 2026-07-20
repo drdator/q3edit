@@ -18,6 +18,7 @@ export interface EditorCommandContext {
   openProjectSettings: () => void;
   openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
   openTerrainPanel: () => void;
+  toggleSidebar: () => void;
   cycleInvisibleMode: () => void;
   setTool: (tool: Tool) => void;
   setGrid: (size: number) => void;
@@ -174,6 +175,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'view.cubic-clip', label: ({ editor }) => editor.cubicClipEnabled ? `Cubic Clipping: ${editor.cubicClipSize} cube` : 'Cubic Clipping: Off', menu: menu('View', 30, 'clipping'), checked: ({ editor }) => editor.cubicClipEnabled, execute: ({ editor }) => editor.toggleCubicClip() },
     { id: 'view.cubic-clip-smaller', label: 'Smaller Clip Cube', menu: menu('View', 40, 'clipping'), execute: ({ editor }) => editor.adjustCubicClipSize(-1) },
     { id: 'view.cubic-clip-larger', label: 'Larger Clip Cube', menu: menu('View', 50, 'clipping'), execute: ({ editor }) => editor.adjustCubicClipSize(1) },
+    { id: 'view.sidebar', label: 'Right Sidebar', menu: menu('View', 60, 'layout'), checked: ({ editor }) => editor.preferences.sidebar.visible, execute: ctx => ctx.toggleSidebar() },
     { id: 'view.dynamic-lights', label: 'Dynamic Light Preview', menu: menu('View', 220, 'renderer'), checked: ({ editor }) => editor.display.dynamicLights, execute: ({ editor }) => editor.toggleDynamicLights() },
     ...displayCommands,
     ...rendererCommands,

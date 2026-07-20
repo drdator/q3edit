@@ -7,6 +7,7 @@ import {
 } from './display-policy';
 import type { BrushPrimitive } from './brush-primitives';
 import type { InvisibleMode } from './editor';
+import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH } from './sidebar-layout';
 
 export const PREFERENCES_VERSION = 2;
 export const PREFERENCES_STORAGE_KEY = 'q3edit.preferences.v2';
@@ -30,6 +31,7 @@ export interface GlobalPreferences {
   version: typeof PREFERENCES_VERSION;
   shortcuts: Record<string, string | null>;
   collapsedPanels: Record<string, boolean>;
+  sidebar: { visible: boolean; width: number };
   theme: { preset: ThemePreset; colors: ThemeColors };
   viewportLayout: ViewportLayout;
   editorDefaults: {
@@ -59,6 +61,7 @@ export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
   version: PREFERENCES_VERSION,
   shortcuts: {},
   collapsedPanels: {},
+  sidebar: { visible: true, width: DEFAULT_SIDEBAR_WIDTH },
   theme: { preset: 'dark', colors: DEFAULT_THEME_COLORS },
   viewportLayout: 'quad',
   editorDefaults: {
@@ -102,6 +105,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   if (!isRecord(value)) return defaults;
   const editor = isRecord(value.editorDefaults) ? value.editorDefaults : value;
   const theme = isRecord(value.theme) ? value.theme : {};
+  const sidebar = isRecord(value.sidebar) ? value.sidebar : {};
   const colors = isRecord(theme.colors) ? theme.colors : {};
   const rawGrid = Number(editor.gridSize);
   const gridSize = Number.isFinite(rawGrid) ? Math.min(256, Math.max(1, Math.round(rawGrid))) : defaults.editorDefaults.gridSize;
@@ -128,6 +132,10 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
     version: PREFERENCES_VERSION,
     shortcuts,
     collapsedPanels,
+    sidebar: {
+      visible: typeof sidebar.visible === 'boolean' ? sidebar.visible : defaults.sidebar.visible,
+      width: clampSidebarWidth(Number(sidebar.width)),
+    },
     theme: {
       preset: presets.includes(theme.preset as ThemePreset) ? theme.preset as ThemePreset : defaults.theme.preset,
       colors: {

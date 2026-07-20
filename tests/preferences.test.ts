@@ -21,6 +21,7 @@ describe('global preferences', () => {
     preferences.editorDefaults.gridSize = 999;
     preferences.shortcuts['file.save'] = 'Ctrl+Shift+S';
     preferences.collapsedPanels['entity-panel'] = true;
+    preferences.sidebar = { visible: false, width: 420 };
     saveGlobalPreferences(preferences, storage);
 
     const loaded = loadGlobalPreferences(storage);
@@ -28,6 +29,7 @@ describe('global preferences', () => {
     expect(loaded.preferences.editorDefaults.gridSize).toBe(256);
     expect(loaded.preferences.shortcuts['file.save']).toBe('Ctrl+Shift+S');
     expect(loaded.preferences.collapsedPanels).toEqual({ 'entity-panel': true });
+    expect(loaded.preferences.sidebar).toEqual({ visible: false, width: 420 });
   });
 
   it('ignores invalid persisted panel states', () => {
@@ -40,6 +42,19 @@ describe('global preferences', () => {
     expect(loadGlobalPreferences(storage).preferences.collapsedPanels).toEqual({
       'entity-panel': true,
       'groups-panel': false,
+    });
+  });
+
+  it('normalizes persisted sidebar visibility and width', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 2,
+      sidebar: { visible: 'yes', width: 5000 },
+    }));
+
+    expect(loadGlobalPreferences(storage).preferences.sidebar).toEqual({
+      visible: true,
+      width: 600,
     });
   });
 

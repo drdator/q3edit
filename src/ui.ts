@@ -20,6 +20,14 @@ import { applyAppearancePreferences, openPreferencesDialog, openProjectSettingsD
 import type { ProjectConfiguration } from './project-config';
 import { openDiagnosticsDialog, type DiagnosticsTab } from './diagnostics-dialog';
 import { refreshEntityClassPickers } from './entity-class-picker';
+import {
+  clampSidebarWidth,
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  resizedSidebarWidth,
+} from './sidebar-layout';
+import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -67,6 +75,8 @@ export class UI {
   private collapsedBrushPanelTerrainGroups = new Set<string>();
   private groupsPanelSignature = '';
   private cameraPanelSignature = '';
+  private soloedPanelId: string | null = null;
+  private preSoloPanelStates: PanelCollapseState | null = null;
 
   constructor(editor: Editor) {
     this.editor = editor;
@@ -83,6 +93,7 @@ export class UI {
       openProjectSettings: () => this.openProjectSettings(),
       openDiagnostics: tab => this.openDiagnostics(tab),
       openTerrainPanel: () => this.openTerrainPanel(),
+      toggleSidebar: () => this.toggleSidebar(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: tool => this.setTool(tool),
       setGrid: size => this.setGrid(size),
@@ -134,16 +145,29 @@ export class UI {
   // ── Side Panel ──
 
   private buildSidePanel(): void {
+    this.setupSidePanelLayout();
+
     // Add collapse toggles to all panel headers
     for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
       const panel = header.parentElement as HTMLElement | null;
       if (!panel || panel.id === 'terrain-panel') continue;
-      const toggle = document.createElement('span');
-      toggle.className = 'panel-toggle';
-      header.appendChild(toggle);
+      const solo = document.createElement('button');
+      solo.type = 'button';
+      solo.className = 'panel-solo-button';
+      solo.title = 'Solo panel';
+      solo.setAttribute('aria-label', `Solo ${header.textContent?.trim() || 'panel'}`);
+      solo.setAttribute('aria-pressed', 'false');
+      solo.innerHTML = '<i class="ph ph-arrows-out-line-vertical"></i>';
+      solo.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleSoloPanel(panel);
+      });
+      header.appendChild(solo);
       this.setPanelCollapsed(panel, this.editor.preferences.collapsedPanels[panel.id] ?? false);
       header.addEventListener('mousedown', () => {
         const owningPanel = header.parentElement!;
+        this.clearPanelSoloState();
         const collapsed = !owningPanel.classList.contains('collapsed');
         this.setPanelCollapsed(owningPanel, collapsed);
         this.editor.preferences.collapsedPanels[owningPanel.id] = collapsed;
@@ -160,10 +184,138 @@ export class UI {
     this.setupTerrainPopover();
   }
 
+  private dockedSidePanels(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>('#sidepanel > .panel:not(#terrain-panel)')];
+  }
+
+  private currentPanelCollapseState(): PanelCollapseState {
+    return Object.fromEntries(this.dockedSidePanels().map(panel => [panel.id, panel.classList.contains('collapsed')]));
+  }
+
+  private applyPanelCollapseState(state: PanelCollapseState): void {
+    for (const panel of this.dockedSidePanels()) {
+      const collapsed = state[panel.id] ?? false;
+      this.setPanelCollapsed(panel, collapsed);
+      this.editor.preferences.collapsedPanels[panel.id] = collapsed;
+    }
+    this.editor.persistCurrentPreferences();
+    this.editor.redrawRequested = true;
+  }
+
+  private toggleSoloPanel(panel: HTMLElement): void {
+    if (this.soloedPanelId === panel.id && this.preSoloPanelStates) {
+      const restore = this.preSoloPanelStates;
+      this.soloedPanelId = null;
+      this.preSoloPanelStates = null;
+      this.applyPanelCollapseState(restore);
+      this.refreshPanelSoloButtons();
+      return;
+    }
+
+    if (!this.preSoloPanelStates) this.preSoloPanelStates = this.currentPanelCollapseState();
+    this.soloedPanelId = panel.id;
+    const panelIds = this.dockedSidePanels().map(candidate => candidate.id);
+    this.applyPanelCollapseState(soloPanelCollapseState(panelIds, panel.id));
+    this.refreshPanelSoloButtons();
+  }
+
+  private clearPanelSoloState(): void {
+    if (!this.soloedPanelId && !this.preSoloPanelStates) return;
+    this.soloedPanelId = null;
+    this.preSoloPanelStates = null;
+    this.refreshPanelSoloButtons();
+  }
+
+  private refreshPanelSoloButtons(): void {
+    for (const panel of this.dockedSidePanels()) {
+      const button = panel.querySelector<HTMLButtonElement>('.panel-solo-button');
+      if (!button) continue;
+      const active = panel.id === this.soloedPanelId;
+      button.classList.toggle('active', active);
+      button.title = active ? 'Restore panel layout' : 'Solo panel';
+      button.setAttribute('aria-pressed', String(active));
+      button.innerHTML = `<i class="ph ${active ? 'ph-arrows-in-line-vertical' : 'ph-arrows-out-line-vertical'}"></i>`;
+    }
+  }
+
+  private setupSidePanelLayout(): void {
+    const resizer = document.getElementById('sidepanel-resizer');
+    if (!resizer) return;
+    resizer.title = 'Drag to resize the right sidebar. Double-click to reset.';
+    resizer.setAttribute('aria-valuemin', String(MIN_SIDEBAR_WIDTH));
+    resizer.setAttribute('aria-valuemax', String(MAX_SIDEBAR_WIDTH));
+    this.applySidePanelLayout();
+
+    resizer.addEventListener('mousedown', event => {
+      if (event.button !== 0 || !this.editor.preferences.sidebar.visible) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = this.editor.preferences.sidebar.width;
+      document.body.classList.add('sidepanel-resizing');
+
+      const move = (moveEvent: MouseEvent) => {
+        this.editor.preferences.sidebar.width = resizedSidebarWidth(startWidth, startX, moveEvent.clientX);
+        this.applySidePanelLayout();
+      };
+      const finish = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', finish);
+        document.body.classList.remove('sidepanel-resizing');
+        this.editor.persistCurrentPreferences();
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', finish);
+    });
+
+    resizer.addEventListener('dblclick', () => {
+      this.setSidePanelWidth(DEFAULT_SIDEBAR_WIDTH);
+    });
+
+    resizer.addEventListener('keydown', event => {
+      const step = event.shiftKey ? 32 : 10;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        this.setSidePanelWidth(this.editor.preferences.sidebar.width + step);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        this.setSidePanelWidth(this.editor.preferences.sidebar.width - step);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        this.setSidePanelWidth(DEFAULT_SIDEBAR_WIDTH);
+      }
+    });
+  }
+
+  private setSidePanelWidth(width: number): void {
+    this.editor.preferences.sidebar.width = clampSidebarWidth(width);
+    this.applySidePanelLayout();
+    this.editor.persistCurrentPreferences();
+  }
+
+  private toggleSidebar(): void {
+    this.editor.preferences.sidebar.visible = !this.editor.preferences.sidebar.visible;
+    this.applySidePanelLayout();
+    this.editor.persistCurrentPreferences();
+    this.commands.notifyStateChanged();
+    this.editor.statusMessage = `${this.editor.preferences.sidebar.visible ? 'Shown' : 'Hidden'} right sidebar`;
+    this.closeMenus();
+  }
+
+  private applySidePanelLayout(): void {
+    const container = document.getElementById('viewport-container');
+    const resizer = document.getElementById('sidepanel-resizer');
+    if (!container) return;
+    const width = clampSidebarWidth(this.editor.preferences.sidebar.width);
+    this.editor.preferences.sidebar.width = width;
+    container.style.setProperty('--sidepanel-width', `${width}px`);
+    container.classList.toggle('sidepanel-hidden', !this.editor.preferences.sidebar.visible);
+    resizer?.setAttribute('aria-valuenow', String(width));
+    resizer?.setAttribute('aria-hidden', String(!this.editor.preferences.sidebar.visible));
+    this.editor.redrawRequested = true;
+  }
+
   private setPanelCollapsed(panel: HTMLElement, collapsed: boolean): void {
     panel.classList.toggle('collapsed', collapsed);
-    const toggle = panel.querySelector('.panel-toggle');
-    if (toggle) toggle.textContent = collapsed ? '+' : '\u2212';
   }
 
   private positionTerrainPanel(): void {
