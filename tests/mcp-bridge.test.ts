@@ -227,10 +227,23 @@ describe('live MCP bridge', () => {
       expect(applied.isError).not.toBe(true);
       expect(applied.structuredContent).toMatchObject({ revision: 5, operationCount: 1 });
 
-      const invalid = await client.callTool({
+      const richerGeometry = await client.callTool({
         name: 'map_apply',
         arguments: {
           expectedRevision: 5,
+          label: 'MCP: Add stairs',
+          operations: [{
+            type: 'create_stairs', id: 'stairs', mins: [0, 0, 0], maxs: [256, 128, 128],
+            direction: 'x+', steps: 8, texture: 'base_floor/stone',
+          }],
+        },
+      });
+      expect(richerGeometry.isError).not.toBe(true);
+
+      const invalid = await client.callTool({
+        name: 'map_apply',
+        arguments: {
+          expectedRevision: 6,
           label: 'MCP: Invalid box',
           operations: [{ type: 'create_box', mins: [0, 0, 0] }],
         },

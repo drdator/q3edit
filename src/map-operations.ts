@@ -1,8 +1,17 @@
-import { createBoxBrush, translateBrush, type Brush } from './brush';
+import { cloneBrush, computeBrushGeometry, createBoxBrush, createFace, validateBrush, type Brush } from './brush';
+import { createBrushPrimitive, createWedgeBrush, type BrushPrimitive, type WedgeDirection } from './brush-primitives';
 import type { Editor } from './editor';
-import { createEntity, translateEntity, type Entity } from './entity';
+import { cloneEntity, createEntity, type Entity } from './entity';
+import {
+  mirrorEditorBrush,
+  mirrorEditorEntity,
+  rotateEditorBrush,
+  rotateEditorEntity,
+  translateEditorBrush,
+  translateEditorEntity,
+} from './editor-transforms';
 import type { Vec3 } from './math';
-import { translatePatch, type Patch } from './patch';
+import { clonePatch, mirrorPatch, rotatePatch, translatePatch, type Patch } from './patch';
 
 export type MapObjectRef = `E${number}` | `E${number}:B${number}` | `E${number}:P${number}`;
 export type MapSymbolicRef = `@${string}`;
@@ -47,9 +56,82 @@ export interface CreateRoomOperation {
   };
 }
 
+export type MapAxis = 'x' | 'y' | 'z';
+
+export interface CreatePrimitiveOperation {
+  type: 'create_primitive';
+  id?: string;
+  parent?: MapTargetRef;
+  primitive: BrushPrimitive;
+  mins: Vec3;
+  maxs: Vec3;
+  texture?: string;
+  axis?: MapAxis;
+  sides?: number;
+}
+
+export interface CreateWedgeOperation {
+  type: 'create_wedge';
+  id?: string;
+  parent?: MapTargetRef;
+  mins: Vec3;
+  maxs: Vec3;
+  texture?: string;
+  direction?: WedgeDirection;
+}
+
+export interface CreateStairsOperation {
+  type: 'create_stairs';
+  id?: string;
+  parent?: MapTargetRef;
+  mins: Vec3;
+  maxs: Vec3;
+  texture?: string;
+  direction?: WedgeDirection;
+  steps: number;
+}
+
+export interface CreateBrushOperation {
+  type: 'create_brush';
+  id?: string;
+  parent?: MapTargetRef;
+  texture?: string;
+  faces: Array<{ points: [Vec3, Vec3, Vec3]; texture?: string }>;
+}
+
 export interface TranslateObjectsOperation {
   type: 'translate';
   targets: MapTargetRef[];
+  delta: Vec3;
+}
+
+export interface RotateObjectsOperation {
+  type: 'rotate';
+  targets: MapTargetRef[];
+  center: Vec3;
+  axis: MapAxis;
+  angleDegrees: number;
+}
+
+export interface MirrorObjectsOperation {
+  type: 'mirror';
+  targets: MapTargetRef[];
+  center: Vec3;
+  axis: MapAxis;
+}
+
+export interface CloneObjectsOperation {
+  type: 'clone';
+  id?: string;
+  targets: MapTargetRef[];
+  delta?: Vec3;
+}
+
+export interface ArrayObjectsOperation {
+  type: 'array';
+  id?: string;
+  targets: MapTargetRef[];
+  copies: number;
   delta: Vec3;
 }
 
@@ -69,7 +151,15 @@ export type MapOperation =
   | SetEntityPropertiesOperation
   | CreateBoxOperation
   | CreateRoomOperation
+  | CreatePrimitiveOperation
+  | CreateWedgeOperation
+  | CreateStairsOperation
+  | CreateBrushOperation
   | TranslateObjectsOperation
+  | RotateObjectsOperation
+  | MirrorObjectsOperation
+  | CloneObjectsOperation
+  | ArrayObjectsOperation
   | SetTextureOperation
   | DeleteObjectsOperation;
 
@@ -184,6 +274,78 @@ function addBox(entity: Entity, mins: Vec3, maxs: Vec3, texture: string): Brush 
   return brush;
 }
 
+function axisIndex(axis: MapAxis): number {
+  return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+}
+
+function addPrimitive(entity: Entity, operation: CreatePrimitiveOperation): Brush {
+  assertBounds(operation.mins, operation.maxs);
+  const brush = createBrushPrimitive(
+    operation.primitive,
+    operation.mins,
+    operation.maxs,
+    operation.texture ?? 'common/caulk',
+    axisIndex(operation.axis ?? 'z'),
+    operation.sides ?? 8,
+  );
+  entity.brushes.push(brush);
+  return brush;
+}
+
+function addWedge(entity: Entity, operation: CreateWedgeOperation): Brush {
+  assertBounds(operation.mins, operation.maxs);
+  const brush = createWedgeBrush(
+    operation.mins, operation.maxs, operation.texture ?? 'common/caulk', operation.direction ?? 'x+',
+  );
+  entity.brushes.push(brush);
+  return brush;
+}
+
+function addStairs(entity: Entity, operation: CreateStairsOperation): ObjectHandle[] {
+  assertBounds(operation.mins, operation.maxs);
+  if (!Number.isInteger(operation.steps) || operation.steps < 2 || operation.steps > 64) {
+    throw new Error('steps must be an integer from 2 to 64');
+  }
+  const direction = operation.direction ?? 'x+';
+  const travelAxis = direction[0] === 'x' ? 0 : 1;
+  const positive = direction.endsWith('+');
+  const run = (operation.maxs[travelAxis] - operation.mins[travelAxis]) / operation.steps;
+  const rise = (operation.maxs[2] - operation.mins[2]) / operation.steps;
+  const handles: ObjectHandle[] = [];
+  for (let step = 0; step < operation.steps; step++) {
+    const mins = [...operation.mins] as Vec3;
+    const maxs = [...operation.maxs] as Vec3;
+    if (positive) {
+      mins[travelAxis] = operation.mins[travelAxis] + step * run;
+      maxs[travelAxis] = operation.mins[travelAxis] + (step + 1) * run;
+    } else {
+      mins[travelAxis] = operation.maxs[travelAxis] - (step + 1) * run;
+      maxs[travelAxis] = operation.maxs[travelAxis] - step * run;
+    }
+    maxs[2] = operation.mins[2] + (step + 1) * rise;
+    handles.push({
+      kind: 'brush', entity,
+      brush: addBox(entity, mins, maxs, operation.texture ?? 'common/caulk'),
+    });
+  }
+  return handles;
+}
+
+function addPlaneBrush(entity: Entity, operation: CreateBrushOperation): Brush {
+  if (operation.faces.length < 4 || operation.faces.length > 128) throw new Error('faces must contain 4 to 128 planes');
+  const faces = operation.faces.map((face, index) => {
+    if (face.points.length !== 3) throw new Error(`face ${index + 1} must contain exactly three points`);
+    face.points.forEach((point, pointIndex) => assertVector(`face ${index + 1} point ${pointIndex + 1}`, point));
+    return createFace(face.points[0], face.points[1], face.points[2], face.texture ?? operation.texture ?? 'common/caulk');
+  });
+  const brush: Brush = { faces, mins: [0, 0, 0], maxs: [0, 0, 0] };
+  computeBrushGeometry(brush);
+  const validation = validateBrush(brush);
+  if (!validation.valid) throw new Error(`Invalid plane brush: ${validation.issues.join('; ')}`);
+  entity.brushes.push(brush);
+  return brush;
+}
+
 function applyCreateRoom(editor: Editor, operation: CreateRoomOperation, aliases: SymbolicReferences): ObjectHandle[] {
   assertBounds(operation.mins, operation.maxs);
   const { entity } = resolveEntity(editor, operation.parent, aliases);
@@ -216,14 +378,58 @@ function setObjectTexture(resolved: ResolvedObject, texture: string): void {
   for (const patch of patches) patch.texture = texture;
 }
 
-function applyTranslation(targets: ResolvedObject[], delta: Vec3): void {
+function applyTranslation(editor: Editor, targets: ResolvedObject[], delta: Vec3): void {
   assertVector('delta', delta);
   const entities = new Set(targets.filter(item => item.kind === 'entity').map(item => item.entity));
   for (const item of targets) {
-    if (item.kind === 'entity') translateEntity(item.entity, delta);
-    else if (!entities.has(item.entity) && item.kind === 'brush') translateBrush(item.brush, delta);
+    if (item.kind === 'entity') translateEditorEntity(editor, item.entity, delta);
+    else if (!entities.has(item.entity) && item.kind === 'brush') translateEditorBrush(editor, item.brush, delta);
     else if (!entities.has(item.entity) && item.kind === 'patch') translatePatch(item.patch, delta);
   }
+}
+
+function applyRotation(editor: Editor, targets: ResolvedObject[], center: Vec3, axis: MapAxis, angleDegrees: number): void {
+  assertVector('center', center);
+  if (!Number.isFinite(angleDegrees)) throw new Error('angleDegrees must be finite');
+  const index = axisIndex(axis);
+  const angle = angleDegrees * Math.PI / 180;
+  const entities = new Set(targets.filter(item => item.kind === 'entity').map(item => item.entity));
+  for (const item of targets) {
+    if (item.kind === 'entity') rotateEditorEntity(editor, item.entity, center, index, angle);
+    else if (!entities.has(item.entity) && item.kind === 'brush') rotateEditorBrush(editor, item.brush, center, index, angle);
+    else if (!entities.has(item.entity) && item.kind === 'patch') rotatePatch(item.patch, center, index, angle);
+  }
+}
+
+function applyMirror(editor: Editor, targets: ResolvedObject[], center: Vec3, axis: MapAxis): void {
+  assertVector('center', center);
+  const index = axisIndex(axis);
+  const entities = new Set(targets.filter(item => item.kind === 'entity').map(item => item.entity));
+  for (const item of targets) {
+    if (item.kind === 'entity') mirrorEditorEntity(editor, item.entity, center, index);
+    else if (!entities.has(item.entity) && item.kind === 'brush') mirrorEditorBrush(editor, item.brush, center, index);
+    else if (!entities.has(item.entity) && item.kind === 'patch') mirrorPatch(item.patch, center, index);
+  }
+}
+
+function cloneResolved(editor: Editor, target: ResolvedObject, delta: Vec3): ObjectHandle {
+  if (target.kind === 'entity') {
+    if (target.entityIndex === 0) throw new Error('Worldspawn cannot be cloned as an entity');
+    const entity = cloneEntity(target.entity);
+    translateEditorEntity(editor, entity, delta);
+    editor.entities.push(entity);
+    return { kind: 'entity', entity };
+  }
+  if (target.kind === 'brush') {
+    const brush = cloneBrush(target.brush);
+    translateEditorBrush(editor, brush, delta);
+    target.entity.brushes.push(brush);
+    return { kind: 'brush', entity: target.entity, brush };
+  }
+  const patch = clonePatch(target.patch);
+  translatePatch(patch, delta);
+  target.entity.patches.push(patch);
+  return { kind: 'patch', entity: target.entity, patch };
 }
 
 function applyDeletion(editor: Editor, resolved: ResolvedObject[]): void {
@@ -285,10 +491,57 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const handles = applyCreateRoom(editor, operation, aliases);
         createdHandles.push(...handles);
         registerAlias(aliases, operation.id, handles);
+      } else if (operation.type === 'create_primitive') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addPrimitive(entity, operation) };
+        createdHandles.push(handle);
+        registerAlias(aliases, operation.id, [handle]);
+      } else if (operation.type === 'create_wedge') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addWedge(entity, operation) };
+        createdHandles.push(handle);
+        registerAlias(aliases, operation.id, [handle]);
+      } else if (operation.type === 'create_stairs') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handles = addStairs(entity, operation);
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
+      } else if (operation.type === 'create_brush') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addPlaneBrush(entity, operation) };
+        createdHandles.push(handle);
+        registerAlias(aliases, operation.id, [handle]);
       } else if (operation.type === 'translate') {
         const targets = resolveTargets(editor, operation.targets, aliases);
-        applyTranslation(targets, operation.delta);
+        applyTranslation(editor, targets, operation.delta);
         targets.forEach(target => changedHandles.add(objectHandle(target)));
+      } else if (operation.type === 'rotate') {
+        const targets = resolveTargets(editor, operation.targets, aliases);
+        applyRotation(editor, targets, operation.center, operation.axis, operation.angleDegrees);
+        targets.forEach(target => changedHandles.add(objectHandle(target)));
+      } else if (operation.type === 'mirror') {
+        const targets = resolveTargets(editor, operation.targets, aliases);
+        applyMirror(editor, targets, operation.center, operation.axis);
+        targets.forEach(target => changedHandles.add(objectHandle(target)));
+      } else if (operation.type === 'clone') {
+        const delta = operation.delta ?? [0, 0, 0];
+        assertVector('delta', delta);
+        const handles = resolveTargets(editor, operation.targets, aliases).map(target => cloneResolved(editor, target, delta));
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
+      } else if (operation.type === 'array') {
+        assertVector('delta', operation.delta);
+        if (!Number.isInteger(operation.copies) || operation.copies < 1 || operation.copies > 64) {
+          throw new Error('copies must be an integer from 1 to 64');
+        }
+        const sources = resolveTargets(editor, operation.targets, aliases);
+        const handles: ObjectHandle[] = [];
+        for (let copy = 1; copy <= operation.copies; copy++) {
+          const delta: Vec3 = operation.delta.map(value => value * copy) as Vec3;
+          handles.push(...sources.map(target => cloneResolved(editor, target, delta)));
+        }
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
       } else if (operation.type === 'set_texture') {
         for (const target of resolveTargets(editor, operation.targets, aliases)) {
           setObjectTexture(target, operation.texture);

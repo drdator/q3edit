@@ -71,7 +71,15 @@ Initial `map_apply` operations are:
 - `set_entity_properties`
 - `create_box`
 - `create_room`
+- `create_primitive` (`box`, `cylinder`, `cone`, `sphere`, or `pyramid`)
+- `create_wedge`
+- `create_stairs`
+- `create_brush` from arbitrary convex face planes
 - `translate`
+- `rotate`
+- `mirror`
+- `clone`
+- `array`
 - `set_texture`
 - `delete`
 

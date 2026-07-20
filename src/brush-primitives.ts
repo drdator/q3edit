@@ -79,6 +79,38 @@ function createBrushFromPolygons(polygons: Vec3[][], texture: string): Brush {
   return brush;
 }
 
+export type WedgeDirection = 'x+' | 'x-' | 'y+' | 'y-';
+
+/** Create a right triangular ramp whose high end faces direction. */
+export function createWedgeBrush(mins: Vec3, maxs: Vec3, texture: string, direction: WedgeDirection): Brush {
+  validateBrushPrimitiveParameters('box', mins, maxs, 2, 4);
+  const travelAxis = direction[0] === 'x' ? 0 : 1;
+  const sideAxis = travelAxis === 0 ? 1 : 0;
+  const highTravel = direction.endsWith('+') ? maxs[travelAxis] : mins[travelAxis];
+  const lowTravel = direction.endsWith('+') ? mins[travelAxis] : maxs[travelAxis];
+  const point = (travel: number, side: number, height: number): Vec3 => {
+    const value: Vec3 = [0, 0, height];
+    value[travelAxis] = travel;
+    value[sideAxis] = side;
+    return value;
+  };
+  const lowSide = mins[sideAxis];
+  const highSide = maxs[sideAxis];
+  const low0 = point(lowTravel, lowSide, mins[2]);
+  const low1 = point(lowTravel, highSide, mins[2]);
+  const high0 = point(highTravel, lowSide, mins[2]);
+  const high1 = point(highTravel, highSide, mins[2]);
+  const top0 = point(highTravel, lowSide, maxs[2]);
+  const top1 = point(highTravel, highSide, maxs[2]);
+  return createBrushFromPolygons([
+    [low0, low1, high1, high0],
+    [high0, high1, top1, top0],
+    [low0, high0, top0],
+    [low1, top1, high1],
+    [low0, top0, top1, low1],
+  ], texture);
+}
+
 function makeAxisPoint(axis: number, axisValue: number, uAxis: number, uValue: number, vAxis: number, vValue: number): Vec3 {
   const point: Vec3 = [0, 0, 0];
   point[axis] = axisValue;

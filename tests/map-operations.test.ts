@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { Editor } from '../src/editor';
 import { createEntity, entityOrigin } from '../src/entity';
+import { createBoxBrush } from '../src/brush';
 import { applyMapOperations } from '../src/map-operations';
 
 function emptyEditor(): Editor {
@@ -107,6 +108,63 @@ describe('serializable map operations', () => {
     expect(editor.entities[0].brushes.every(brush => brush.faces.every(face => face.texture === 'base_wall/metal'))).toBe(true);
     expect(editor.entities[1].properties.light).toBe('650');
     expect(entityOrigin(editor.entities[1])).toEqual([128, 128, 96]);
+  });
+
+  test('creates richer primitives, ramps, and stairs with symbolic collections', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      {
+        type: 'create_primitive', id: 'column', primitive: 'cylinder',
+        mins: [0, 0, 0], maxs: [64, 64, 128], axis: 'z', sides: 12, texture: 'base_wall/metal',
+      },
+      {
+        type: 'create_wedge', id: 'ramp', mins: [96, 0, 0], maxs: [224, 96, 64],
+        direction: 'x+', texture: 'base_floor/stone',
+      },
+      {
+        type: 'create_stairs', id: 'stairs', mins: [0, 128, 0], maxs: [256, 256, 128],
+        direction: 'x+', steps: 4, texture: 'base_floor/stone',
+      },
+    ]);
+
+    expect(editor.worldspawn.brushes).toHaveLength(6);
+    expect(editor.worldspawn.brushes[0].faces).toHaveLength(14);
+    expect(editor.worldspawn.brushes[1].faces).toHaveLength(5);
+    expect(result.aliases['@column']).toHaveLength(1);
+    expect(result.aliases['@ramp']).toHaveLength(1);
+    expect(result.aliases['@stairs']).toHaveLength(4);
+  });
+
+  test('creates convex brushes from explicit face planes', () => {
+    const editor = emptyEditor();
+    const source = createBoxBrush([0, 0, 0], [64, 96, 128], 'common/caulk');
+    const result = applyMapOperations(editor, [{
+      type: 'create_brush', id: 'plane_box',
+      faces: source.faces.map(face => ({
+        points: face.points.map(point => [...point]) as [[number, number, number], [number, number, number], [number, number, number]],
+        texture: face.texture,
+      })),
+    }]);
+
+    expect(result.aliases['@plane_box']).toEqual(['E0:B0']);
+    expect(editor.worldspawn.brushes[0].mins).toEqual([0, 0, 0]);
+    expect(editor.worldspawn.brushes[0].maxs).toEqual([64, 96, 128]);
+  });
+
+  test('rotates, mirrors, clones, and arrays objects in one batch', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      { type: 'create_box', id: 'source', mins: [0, 0, 0], maxs: [64, 32, 32] },
+      { type: 'rotate', targets: ['@source'], center: [0, 0, 0], axis: 'z', angleDegrees: 90 },
+      { type: 'mirror', targets: ['@source'], center: [0, 0, 0], axis: 'x' },
+      { type: 'clone', id: 'copy', targets: ['@source'], delta: [96, 0, 0] },
+      { type: 'array', id: 'row', targets: ['@source'], copies: 3, delta: [0, 64, 0] },
+    ]);
+
+    expect(editor.worldspawn.brushes).toHaveLength(5);
+    expect(result.aliases['@copy']).toHaveLength(1);
+    expect(result.aliases['@row']).toHaveLength(3);
+    expect(editor.worldspawn.brushes.slice(2).map(brush => brush.mins[1])).toEqual([64, 128, 192]);
   });
 
   test('rejects unknown and duplicate symbolic references transactionally', () => {
