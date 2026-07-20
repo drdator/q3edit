@@ -8,10 +8,14 @@ import { buildTerrainInspector } from './terrain-inspector';
 import { isTerrainMesh } from './terrain-model';
 import {
   addEntityProperty,
+  addEntityProperties,
   removeEntityProperty,
+  removeEntityProperties,
   renameEntityProperty,
   setEntityClassname,
+  setEntityClassnames,
   setEntityProperty,
+  setEntityProperties,
   updateBrushPrimitiveMatrixEntry,
   updateFaceProperties,
 } from './editor-properties';
@@ -37,6 +41,7 @@ export class PropertiesPanel {
     if (!this.editor.redrawRequested) return;
     const propsDiv = document.getElementById('entity-props')!;
     const sel = this.editor.selection;
+    const entityItems = sel.filter((item): item is Extract<typeof sel[number], { type: 'entity' }> => item.type === 'entity');
 
     propsDiv.innerHTML = '';
 
@@ -45,6 +50,8 @@ export class PropertiesPanel {
       this.buildFacePropsUI(propsDiv, faceItems[0].face, faceItems[0].brush);
     } else if (faceItems.length > 1) {
       this.buildMultiFacePropsUI(propsDiv, faceItems.map(f => f.face));
+    } else if (entityItems.length > 1 && entityItems.length === sel.length) {
+      this.buildMultiEntityPropsUI(propsDiv, entityItems.map(item => item.entity));
     } else if (sel.length === 1 && sel[0].type === 'entity') {
       const entity = sel[0].entity;
       const isWorldspawn = this.editor.entities[0] === entity;
@@ -175,6 +182,113 @@ export class PropertiesPanel {
     } else {
       propsDiv.innerHTML = '<label style="color: #666">No selection</label>';
     }
+  }
+
+  private buildMultiEntityPropsUI(container: HTMLElement, entities: Entity[]): void {
+    const title = document.createElement('label');
+    title.textContent = `Properties: ${entities.length} entities`;
+    title.style.fontWeight = 'bold';
+    container.appendChild(title);
+
+    const classLabel = document.createElement('label');
+    classLabel.textContent = 'Classname';
+    classLabel.style.marginTop = '4px';
+    classLabel.style.fontSize = '11px';
+    container.appendChild(classLabel);
+
+    const commonClassname = entities.every(entity => entity.classname === entities[0].classname)
+      ? entities[0].classname
+      : null;
+    const classInput = document.createElement('input');
+    classInput.type = 'text';
+    classInput.value = commonClassname ?? '';
+    classInput.placeholder = commonClassname ? '' : '(mixed)';
+    classInput.spellcheck = false;
+    classInput.autocomplete = 'off';
+    classInput.setAttribute('list', this.ensureEntityClassDatalist());
+    classInput.addEventListener('change', () => {
+      const nextClassname = classInput.value.trim();
+      if (!nextClassname) {
+        classInput.value = commonClassname ?? '';
+        return;
+      }
+      setEntityClassnames(this.editor, entities, nextClassname);
+    });
+    container.appendChild(classInput);
+
+    const classDefinition = commonClassname ? getEntityClassRegistry().get(commonClassname) : undefined;
+    if (classDefinition) buildDefinedEntityProperties(container, this.editor, entities, classDefinition);
+
+    const customKeys = new Set(entities.flatMap(entity => Object.keys(entity.properties)));
+    for (const key of [...customKeys].sort()) {
+      if (key === 'classname' || key === 'spawnflags' || classDefinition?.properties[key]) continue;
+      const values = entities.map(entity => entity.properties[key]);
+      const commonValue = values.every(value => value === values[0]) ? values[0] : undefined;
+      const mixed = commonValue === undefined;
+      const row = document.createElement('div');
+      row.className = 'kv-row';
+
+      const keyInput = document.createElement('input');
+      keyInput.type = 'text';
+      keyInput.value = key;
+      keyInput.readOnly = true;
+      keyInput.title = 'Property keys cannot be renamed while editing multiple entities';
+      keyInput.style.flex = '0.6';
+
+      const valInput = document.createElement('input');
+      valInput.type = 'text';
+      valInput.value = mixed ? '' : commonValue;
+      valInput.placeholder = mixed ? '(mixed)' : '';
+      valInput.addEventListener('change', () => {
+        setEntityProperties(this.editor, entities, key, valInput.value);
+        if (colorSwatch) colorSwatch.style.background = q3ColorToHex(valInput.value);
+      });
+
+      let colorSwatch: HTMLElement | null = null;
+      if (key === '_color') {
+        colorSwatch = document.createElement('div');
+        colorSwatch.className = 'kv-color';
+        colorSwatch.style.background = mixed
+          ? 'linear-gradient(135deg, #fff 0 45%, #777 45% 55%, #222 55% 100%)'
+          : q3ColorToHex(commonValue);
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'color';
+        hiddenInput.style.position = 'absolute';
+        hiddenInput.style.opacity = '0';
+        hiddenInput.style.width = '0';
+        hiddenInput.style.height = '0';
+        hiddenInput.style.pointerEvents = 'none';
+        hiddenInput.value = mixed ? '#ffffff' : q3ColorToHex(commonValue);
+        colorSwatch.appendChild(hiddenInput);
+        colorSwatch.addEventListener('mousedown', event => { event.stopPropagation(); hiddenInput.click(); });
+        hiddenInput.addEventListener('input', () => {
+          const hex = hiddenInput.value;
+          const rgb = [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16) / 255);
+          const q3 = rgb.map(component => component.toFixed(3)).join(' ');
+          valInput.value = q3;
+          setEntityProperties(this.editor, entities, key, q3);
+          colorSwatch!.style.background = hex;
+        });
+      }
+
+      const delBtn = document.createElement('div');
+      delBtn.className = 'btn icon-btn kv-del';
+      delBtn.innerHTML = '<i class="ph ph-trash"></i>';
+      delBtn.title = 'Remove property from selected entities';
+      delBtn.addEventListener('mousedown', () => removeEntityProperties(this.editor, entities, key));
+
+      row.appendChild(keyInput);
+      row.appendChild(valInput);
+      if (colorSwatch) row.appendChild(colorSwatch);
+      row.appendChild(delBtn);
+      container.appendChild(row);
+    }
+
+    const addBtn = document.createElement('div');
+    addBtn.className = 'btn';
+    addBtn.innerHTML = '<i class="ph ph-plus"></i> Add Key to Selection';
+    addBtn.addEventListener('mousedown', () => addEntityProperties(this.editor, entities));
+    container.appendChild(addBtn);
   }
 
   private ensureEntityClassDatalist(): string {

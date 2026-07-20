@@ -4,12 +4,18 @@ import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
 import {
   addEntityProperty,
+  addEntityProperties,
   removeEntityProperty,
+  removeEntityProperties,
   renameEntityProperty,
   setEntityClassname,
+  setEntityClassnames,
   setEntityProperty,
+  setEntityProperties,
   setEntitySpawnflag,
+  setEntitySpawnflags,
   setTypedEntityProperty,
+  setTypedEntityProperties,
   updateFaceProperties,
   updateBrushPrimitiveMatrixEntry,
 } from '../src/editor-properties';
@@ -52,6 +58,60 @@ describe('transactional property editing', () => {
     editor.undo();
     expect(editor.entities[1].properties.light).toBe('300');
     vi.useRealTimers();
+  });
+
+  test('edits multiple entities in one undoable property transaction', () => {
+    vi.useFakeTimers();
+    const editor = new Editor();
+    const first = createEntity('light', [0, 0, 32]);
+    const second = createEntity('light', [64, 0, 32]);
+    first.properties.light = '200';
+    second.properties.light = '400';
+    editor.entities = [createEntity('worldspawn'), first, second];
+
+    setEntityProperties(editor, [first, second], 'light', '500');
+    vi.advanceTimersByTime(100);
+    setEntityProperties(editor, [first, second], 'light', '600');
+
+    expect(first.properties.light).toBe('600');
+    expect(second.properties.light).toBe('600');
+    expect(editor.history.undoCount).toBe(1);
+    editor.undo();
+    expect(editor.entities[1].properties.light).toBe('200');
+    expect(editor.entities[2].properties.light).toBe('400');
+    vi.useRealTimers();
+  });
+
+  test('applies multi-entity classname, typed, flag, add, and remove edits as batches', () => {
+    const editor = new Editor();
+    const first = createEntity('misc_model');
+    const second = createEntity('misc_model');
+    first.properties.angle = '45';
+    second.properties.angle = '90';
+    first.properties.spawnflags = '128';
+    second.properties.spawnflags = '256';
+    editor.entities = [createEntity('worldspawn'), first, second];
+
+    setTypedEntityProperties(editor, [first, second], 'angles', '10 20 30', 'vector');
+    expect(first.properties.angle).toBeUndefined();
+    expect(second.properties.angle).toBeUndefined();
+    expect(first.properties.angles).toBe('10 20 30');
+    expect(second.properties.angles).toBe('10 20 30');
+
+    setEntitySpawnflags(editor, [first, second], 4, true);
+    expect(first.properties.spawnflags).toBe('132');
+    expect(second.properties.spawnflags).toBe('260');
+
+    const key = addEntityProperties(editor, [first, second]);
+    expect(first.properties[key]).toBe('');
+    expect(second.properties[key]).toBe('');
+    removeEntityProperties(editor, [first, second], key);
+    expect(first.properties[key]).toBeUndefined();
+    expect(second.properties[key]).toBeUndefined();
+
+    expect(setEntityClassnames(editor, [first, second], 'info_notnull')).toBe(true);
+    expect(first.classname).toBe('info_notnull');
+    expect(second.classname).toBe('info_notnull');
   });
 
   test('updates multiple face fields in one labeled undo entry', () => {
