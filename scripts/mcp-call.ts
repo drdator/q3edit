@@ -10,7 +10,9 @@ async function main(): Promise<void> {
   const transport = new StreamableHTTPClientTransport(new URL(url));
   await client.connect(transport);
   try {
-    const result = await client.callTool({ name: tool, arguments: JSON.parse(rawArguments) });
+    const result = tool === '--list'
+      ? await client.listTools()
+      : await client.callTool({ name: tool, arguments: JSON.parse(rawArguments) });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     if (result.isError) process.exitCode = 1;
   } finally {

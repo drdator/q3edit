@@ -139,6 +139,9 @@ describe('live MCP bridge', () => {
         'map_open',
         'map_save',
       ]);
+      const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
+      expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
+      expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ editorConnected: true, snapshot: { revision: 4 } });
@@ -153,6 +156,19 @@ describe('live MCP bridge', () => {
       });
       expect(applied.isError).not.toBe(true);
       expect(applied.structuredContent).toMatchObject({ revision: 5, operationCount: 1 });
+
+      const invalid = await client.callTool({
+        name: 'map_apply',
+        arguments: {
+          expectedRevision: 5,
+          label: 'MCP: Invalid box',
+          operations: [{ type: 'create_box', mins: [0, 0, 0] }],
+        },
+      });
+      expect(invalid.isError).toBe(true);
+      expect(invalid.content).toEqual(expect.arrayContaining([
+        expect.objectContaining({ text: expect.stringContaining('Invalid operation 1') }),
+      ]));
     } finally {
       await client.close();
       await server.close();

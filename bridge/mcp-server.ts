@@ -5,6 +5,7 @@ import { inspectMapObjects } from './map-inspection';
 import type { MapObjectRef, MapOperation } from '../src/map-operations';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
+const compatibleVec3 = z.array(z.number()).length(3);
 const objectRef = z.string().regex(/^E\d+(?::[BP]\d+)?$/, 'Expected an object reference such as E1, E0:B2, or E0:P0');
 
 const mapOperation = z.discriminatedUnion('type', [
@@ -44,6 +45,38 @@ const mapOperation = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set_texture'), targets: z.array(objectRef).min(1), texture: z.string().min(1) }),
   z.object({ type: z.literal('delete'), targets: z.array(objectRef).min(1) }),
 ]);
+
+// Keep the client-facing schema flat. Some MCP hosts omit tools whose JSON
+// Schema contains nested oneOf/anyOf unions. Strict per-operation validation
+// still happens in the handler through mapOperation below.
+const compatibleMapOperationInput = z.object({
+  type: z.enum([
+    'create_entity',
+    'set_entity_properties',
+    'create_box',
+    'create_room',
+    'translate',
+    'set_texture',
+    'delete',
+  ]),
+  classname: z.string().optional(),
+  origin: compatibleVec3.optional(),
+  properties: z.record(z.string(), z.string()).optional(),
+  unset: z.array(z.string()).optional(),
+  target: objectRef.optional(),
+  targets: z.array(objectRef).optional(),
+  parent: objectRef.optional(),
+  mins: compatibleVec3.optional(),
+  maxs: compatibleVec3.optional(),
+  texture: z.string().optional(),
+  wallThickness: z.number().optional(),
+  textures: z.object({
+    walls: z.string().optional(),
+    floor: z.string().optional(),
+    ceiling: z.string().optional(),
+  }).optional(),
+  delta: compatibleVec3.optional(),
+});
 
 function toolError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -122,16 +155,23 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch of entity and brush operations in the connected Q3Edit browser.',
+    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Supported operation types: create_entity(classname, origin?, properties?), set_entity_properties(target, classname?, properties?, unset?), create_box(parent?, mins, maxs, texture?), create_room(parent?, mins, maxs, wallThickness?, textures?), translate(targets, delta), set_texture(targets, texture), delete(targets).',
     inputSchema: {
       expectedRevision: z.number().int().nonnegative(),
       label: z.string().min(1).max(120).describe('Undo label, for example MCP: Add side room'),
-      operations: z.array(mapOperation).min(1).max(128),
+      operations: z.array(compatibleMapOperationInput).min(1).max(128),
     },
     annotations: { destructiveHint: true, openWorldHint: false },
   }, async ({ expectedRevision, label, operations }) => {
     try {
-      const applied = await hub.applyOperations(expectedRevision, label, operations as MapOperation[]);
+      const validatedOperations = operations.map((operation, index) => {
+        const parsed = mapOperation.safeParse(operation);
+        if (!parsed.success) {
+          throw new Error(`Invalid operation ${index + 1}: ${z.prettifyError(parsed.error)}`);
+        }
+        return parsed.data as MapOperation;
+      });
+      const applied = await hub.applyOperations(expectedRevision, label, validatedOperations);
       return toolResult({
         ...applied.result,
         mapInfo: applied.snapshot.mapInfo,

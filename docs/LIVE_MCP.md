@@ -79,6 +79,12 @@ The included development client is useful for checking the bridge without an age
 npm run mcp:call -- map_status '{}'
 ```
 
+List the exact tools and schemas advertised by the server:
+
+```bash
+npm run mcp:call -- --list
+```
+
 ```bash
 npm run mcp:call -- map_apply '{
   "expectedRevision": 0,
