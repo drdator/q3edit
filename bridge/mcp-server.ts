@@ -21,6 +21,15 @@ const creationMetadataSchema = {
   group: z.string().min(1).max(120).optional(),
   groupId: groupId.optional(),
 };
+const screenshotBounds = z.object({ mins: vec3, maxs: vec3 });
+const MAX_BATCH_OPERATIONS = 128;
+const SUPPORTED_MAP_OPERATIONS = [
+  'create_entity', 'set_entity_properties', 'create_box', 'create_room', 'create_primitive',
+  'create_wedge', 'create_stairs', 'create_brush', 'translate', 'rotate', 'mirror', 'clone',
+  'array', 'set_texture', 'edit_faces', 'set_brush_classification', 'clip_brushes',
+  'hollow_brushes', 'csg_subtract', 'create_jump_pad', 'create_teleporter', 'delete',
+  'assign_group',
+] as const;
 
 const mapOperation = z.discriminatedUnion('type', [
   z.object({
@@ -256,7 +265,7 @@ const mapOperationBatchInputSchema = {
   ...sessionInput,
   expectedRevision: z.number().int().nonnegative(),
   label: z.string().min(1).max(120).describe('Undo or preview label, for example MCP: Add side room'),
-  operations: z.array(compatibleMapOperationInput).min(1).max(128),
+  operations: z.array(compatibleMapOperationInput).min(1).max(MAX_BATCH_OPERATIONS),
 };
 
 function toolError(error: unknown) {
@@ -320,6 +329,38 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     try {
       const resolved = session(sessionId);
       return toolResult(hub.status(resolved));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_capabilities', {
+    title: 'Describe Q3Edit MCP capabilities and limits',
+    description: 'Return batch limits, supported operation versions, screenshot constraints, compiler availability, and the selected editor’s loaded project/game profile.',
+    inputSchema: { ...sessionInput },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const editor = await hub.editorCapabilities(resolved);
+      return toolResult({
+        sessionId: resolved,
+        protocolVersion: 2,
+        operations: { version: 1, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        coordinates: {
+          finiteNumbersRequired: true,
+          enforcedRange: null,
+          recommendedRange: [-32768, 32768],
+          note: 'Q3Edit accepts finite coordinates; the recommended range avoids common Quake III compiler and precision problems.',
+        },
+        screenshots: {
+          minWidth: 64, minHeight: 64, maxWidth: 2048, maxHeight: 2048,
+          modes: ['perspective', 'top', 'front', 'side'],
+          controls: ['frameBounds', 'frameGroup', 'hideGroups', 'hideToolBrushes', 'hideSkyBrushes', 'sectionBounds', 'xray'],
+        },
+        compiler: { available: hub.compilerAvailable, qualities: ['fast', 'normal', 'full'] },
+        editor,
+      });
     } catch (error) {
       return toolError(error);
     }
@@ -676,22 +717,30 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   });
 
   server.registerTool('editor_screenshot', {
-    title: 'Capture the Q3Edit 3D viewport',
-    description: 'Render and return a PNG of the live textured 3D viewport for visual review. Use editor_frame_objects or editor_set_camera first to control the view.',
+    title: 'Capture a controlled Q3Edit viewport',
+    description: 'Render a perspective or orthographic PNG. The call can frame bounds/a named group and temporarily hide groups, entity markers, tool/sky brushes, or objects outside sectionBounds without modifying the document. xray produces a depth-free wireframe perspective.',
     inputSchema: {
       ...sessionInput,
+      mode: z.enum(['perspective', 'top', 'front', 'side']).optional().default('perspective'),
       width: z.number().int().min(64).max(2048).optional(),
       height: z.number().int().min(64).max(2048).optional(),
       hideEntityMarkers: z.boolean().optional().default(false),
+      hideGroups: z.array(z.string().min(1)).max(64).optional(),
+      hideToolBrushes: z.boolean().optional().default(false),
+      hideSkyBrushes: z.boolean().optional().default(false),
+      sectionBounds: screenshotBounds.optional(),
+      frameBounds: screenshotBounds.optional(),
+      frameGroup: z.string().min(1).optional(),
+      xray: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, width, height, hideEntityMarkers }) => {
+  }, async ({ sessionId, ...options }) => {
     try {
       const resolved = session(sessionId);
-      const screenshot = await hub.screenshot(width, height, hideEntityMarkers, resolved);
+      const screenshot = await hub.screenshot(options, resolved);
       return {
         content: [
-          { type: 'text' as const, text: `Q3Edit 3D viewport · ${screenshot.width} × ${screenshot.height}` },
+          { type: 'text' as const, text: `Q3Edit ${options.mode} viewport · ${screenshot.width} × ${screenshot.height}` },
           { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
         ],
         structuredContent: {
@@ -699,6 +748,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
           mimeType: screenshot.mimeType,
           width: screenshot.width,
           height: screenshot.height,
+          mode: options.mode,
         },
       };
     } catch (error) {

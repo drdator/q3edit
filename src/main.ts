@@ -69,7 +69,18 @@ async function init() {
   const ui = new UI(editor);
   connectConfiguredLiveBridge(editor, {
     setCamera: (position, yaw, pitch) => vp3D.setCamera(position, yaw, pitch),
-    captureScreenshot: (width, height) => vp3D.capturePng(width, height),
+    frameBounds: bounds => {
+      vp3D.frameBounds(bounds);
+      vpXY.frameBounds(bounds);
+      vpXZ.frameBounds(bounds);
+      vpYZ.frameBounds(bounds);
+    },
+    captureScreenshot: (mode, width, height, xray) => {
+      if (mode === 'top') return vpXY.capturePng(width, height);
+      if (mode === 'front') return vpXZ.capturePng(width, height);
+      if (mode === 'side') return vpYZ.capturePng(width, height);
+      return vp3D.capturePng(width, height, xray);
+    },
     launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
     captureBspPreview: () => ui.captureBspPreview(),
   });

@@ -131,6 +131,7 @@ export class Viewport3D {
   private lastMouse: [number, number] = [0, 0];
   private keys = new Set<string>();
   private lastTime = 0;
+  private captureXray = false;
   private lastPV: Mat4 = mat4Identity();
   private terrainHoverOwned = false;
   private terrainHoverCenter: Vec3 | null = null;
@@ -263,8 +264,39 @@ export class Viewport3D {
     this.editor.redrawRequested = true;
   }
 
-  capturePng(width?: number, height?: number): { mimeType: string; data: string; width: number; height: number } {
-    this.render(performance.now());
+  frameBounds(bounds: { mins: Vec3; maxs: Vec3 }): void {
+    const center: Vec3 = [
+      (bounds.mins[0] + bounds.maxs[0]) / 2,
+      (bounds.mins[1] + bounds.maxs[1]) / 2,
+      (bounds.mins[2] + bounds.maxs[2]) / 2,
+    ];
+    const size = Math.hypot(
+      bounds.maxs[0] - bounds.mins[0],
+      bounds.maxs[1] - bounds.mins[1],
+      bounds.maxs[2] - bounds.mins[2],
+    );
+    const forward = this.getForward();
+    const distance = Math.max(size * 1.5, 128);
+    this.position = [
+      center[0] - forward[0] * distance,
+      center[1] - forward[1] * distance,
+      center[2] - forward[2] * distance,
+    ];
+    this.editor.camera3d = { position: [...this.position], yaw: this.yaw, pitch: this.pitch };
+    this.editor.cameraPlayback = null;
+    this.editor.redrawRequested = true;
+  }
+
+  capturePng(width?: number, height?: number, xray = false): { mimeType: string; data: string; width: number; height: number } {
+    const rendererMode = this.editor.display.rendererMode;
+    if (xray) this.editor.display.rendererMode = 'wireframe';
+    try {
+      this.captureXray = xray;
+      this.render(performance.now());
+    } finally {
+      this.captureXray = false;
+      if (xray) this.editor.display.rendererMode = rendererMode;
+    }
     const sourceWidth = this.gl.drawingBufferWidth;
     const sourceHeight = this.gl.drawingBufferHeight;
     if (sourceWidth < 1 || sourceHeight < 1) throw new Error('The 3D viewport has no drawable area');
@@ -494,6 +526,7 @@ export class Viewport3D {
         dragging: this.gizmo.dragging,
         axis: this.gizmo.axis,
       },
+      xray: this.captureXray,
     });
   }
 

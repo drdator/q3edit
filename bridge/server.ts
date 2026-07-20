@@ -30,7 +30,7 @@ const distPath = resolve(projectRoot, 'dist');
 const q3mapDistPath = resolve(projectRoot, 'q3map-compiler/dist');
 if (!existsSync(distPath)) throw new Error(`Missing ${distPath}; run npm run build first`);
 
-const hub = new BridgeHub();
+const hub = new BridgeHub(existsSync(q3mapDistPath));
 const app = createMcpExpressApp({ host: options.host });
 const transports = new Map<string, StreamableHTTPServerTransport>();
 

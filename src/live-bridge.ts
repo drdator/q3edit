@@ -1,7 +1,7 @@
 import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from './diagnostics';
 import { Editor, type SelectionItem } from './editor';
 import type { Vec3 } from './math';
-import type { BridgeToEditorMessage, EditorToBridgeMessage, LiveMapSnapshot } from './live-bridge-protocol';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, LiveMapSnapshot, ScreenshotBounds } from './live-bridge-protocol';
 import { applyMapOperations } from './map-operations';
 import { getEntityClassRegistry } from './entity-definitions';
 import { collectCompileModelFiles, compileMap } from './q3map';
@@ -9,14 +9,56 @@ import { structureCompilerOutput } from './compile-diagnostics';
 import { cloneMapSnapshot } from './history';
 import { entityBounds } from './editor-queries';
 import { createWorldspawn } from './entity';
+import type { Entity } from './entity';
+import type { Brush } from './brush';
+import type { Patch } from './patch';
+import {
+  GROUP_HIDDEN_KEY,
+  entityGroupId,
+  isGroupInfoEntity,
+  listNamedGroups,
+} from './named-groups';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export interface LiveBridgeEditorControls {
   setCamera(position: Vec3, yaw: number, pitch: number): void;
-  captureScreenshot(width?: number, height?: number): { mimeType: string; data: string; width: number; height: number };
+  frameBounds(bounds: ScreenshotBounds): void;
+  captureScreenshot(mode: NonNullable<EditorScreenshotOptions['mode']>, width?: number, height?: number, xray?: boolean): { mimeType: string; data: string; width: number; height: number };
   launchBspPreview(mapName: string, bsp: Uint8Array, noclip: boolean): void;
   captureBspPreview(): { mimeType: string; data: string; width: number; height: number };
+}
+
+function intersectsBounds(a: ScreenshotBounds, b: ScreenshotBounds): boolean {
+  return a.mins.every((value, axis) => value <= b.maxs[axis] && a.maxs[axis] >= b.mins[axis]);
+}
+
+function mergeBounds(bounds: ScreenshotBounds[]): ScreenshotBounds | null {
+  if (bounds.length === 0) return null;
+  return bounds.slice(1).reduce<ScreenshotBounds>((result, item) => ({
+    mins: result.mins.map((value, axis) => Math.min(value, item.mins[axis])) as Vec3,
+    maxs: result.maxs.map((value, axis) => Math.max(value, item.maxs[axis])) as Vec3,
+  }), { mins: [...bounds[0].mins], maxs: [...bounds[0].maxs] });
+}
+
+function groupBounds(editor: Editor, requested: string): ScreenshotBounds {
+  const query = requested.trim().toLowerCase();
+  const group = listNamedGroups(editor.entities).find(item => item.id.toLowerCase() === query || item.name.toLowerCase() === query);
+  if (!group) throw new Error(`Named group ${requested} was not found`);
+  const bounds: ScreenshotBounds[] = [];
+  for (const entity of editor.entities) {
+    if (isGroupInfoEntity(entity)) continue;
+    if (entityGroupId(entity) === group.id) {
+      const entityBox = entityBounds(entity);
+      if (entityBox) bounds.push(entityBox);
+      continue;
+    }
+    for (const brush of entity.brushes) if (brush.editorGroupId === group.id) bounds.push({ mins: brush.mins, maxs: brush.maxs });
+    for (const patch of entity.patches) if (patch.editorGroupId === group.id) bounds.push({ mins: patch.mins, maxs: patch.maxs });
+  }
+  const merged = mergeBounds(bounds);
+  if (!merged) throw new Error(`Named group ${group.name} has no objects to frame`);
+  return merged;
 }
 
 function selectionForRef(editor: Editor, ref: string): SelectionItem {
@@ -434,22 +476,103 @@ export class LiveMapBridge {
       return;
     }
 
+    if (message.type === 'editor_capabilities') {
+      const registry = getEntityClassRegistry();
+      this.send({
+        type: 'capability_result', requestId: message.requestId,
+        result: {
+          project: {
+            name: this.editor.projectConfiguration.name,
+            gameDirectory: this.editor.projectConfiguration.game.gameDirectory,
+            assetsConfigured: this.editor.projectConfiguration.assets.configured,
+            openArenaEnabled: this.editor.projectConfiguration.assets.openArenaEnabled,
+            archiveCount: this.editor.projectConfiguration.assets.archives.length,
+            searchPathCount: this.editor.projectConfiguration.assets.searchPaths.length,
+          },
+          assets: {
+            texturesLoaded: this.editor.textureManager?.listTextures().length ?? 0,
+            entityClassesLoaded: registry.list().length,
+          },
+          document: { fileName: this.editor.fileName, revision: this.editor.documentRevision },
+        },
+      });
+      return;
+    }
+
     if (message.type === 'editor_screenshot') {
       try {
         const categories = this.editor.display.categories;
         const markers = { entities: categories.entities, lights: categories.lights, paths: categories.paths };
+        const addedBrushes = new Set<Brush>();
+        const addedPatches = new Set<Patch>();
+        const addedEntities = new Set<Entity>();
+        const restoredGroups = new Map<Entity, string | undefined>();
+        const hiddenGroups = (message.hideGroups ?? []).map(requested => {
+          const query = requested.trim().toLowerCase();
+          const group = listNamedGroups(this.editor.entities).find(item => item.id.toLowerCase() === query || item.name.toLowerCase() === query);
+          if (!group) throw new Error(`Named group ${requested} was not found`);
+          return group;
+        });
+        const frame = message.frameBounds ?? (message.frameGroup ? groupBounds(this.editor, message.frameGroup) : null);
         if (message.hideEntityMarkers) {
           categories.entities = false; categories.lights = false; categories.paths = false;
           this.editor.redrawRequested = true;
         }
+        for (const group of hiddenGroups) {
+          if (!restoredGroups.has(group.entity)) restoredGroups.set(group.entity, group.entity.properties[GROUP_HIDDEN_KEY]);
+          group.entity.properties[GROUP_HIDDEN_KEY] = '1';
+        }
+        const normalizedTexture = (texture: string): string => {
+          return texture.toLowerCase().replace(/^textures\//, '');
+        };
+        const isSkyTexture = (texture: string): boolean => {
+          const normalized = normalizedTexture(texture);
+          return normalized.includes('/sky') || normalized.startsWith('skies/');
+        };
+        const isToolTexture = (texture: string): boolean => {
+          const normalized = texture.toLowerCase().replace(/^textures\//, '');
+          return normalized.startsWith('common/') || normalized.startsWith('system/');
+        };
+        for (const { brush } of this.editor.allBrushes()) {
+          const outsideSection = message.sectionBounds && !intersectsBounds({ mins: brush.mins, maxs: brush.maxs }, message.sectionBounds);
+          const hiddenByTexture = (message.hideSkyBrushes && brush.faces.some(face => isSkyTexture(face.texture))) ||
+            (message.hideToolBrushes && brush.faces.length > 0 && brush.faces.every(face => isToolTexture(face.texture)));
+          if ((outsideSection || hiddenByTexture) && !this.editor.hiddenBrushes.has(brush)) {
+            this.editor.hiddenBrushes.add(brush); addedBrushes.add(brush);
+          }
+        }
+        for (const { patch } of this.editor.allPatches()) {
+          const outsideSection = message.sectionBounds && !intersectsBounds({ mins: patch.mins, maxs: patch.maxs }, message.sectionBounds);
+          const hiddenByTexture = (message.hideSkyBrushes && isSkyTexture(patch.texture)) ||
+            (message.hideToolBrushes && isToolTexture(patch.texture));
+          if ((outsideSection || hiddenByTexture) && !this.editor.hiddenPatches.has(patch)) {
+            this.editor.hiddenPatches.add(patch); addedPatches.add(patch);
+          }
+        }
+        if (message.sectionBounds) {
+          for (const entity of this.editor.entities) {
+            if (isGroupInfoEntity(entity) || entity.brushes.length > 0 || entity.patches.length > 0) continue;
+            const bounds = entityBounds(entity);
+            if (bounds && !intersectsBounds(bounds, message.sectionBounds) && !this.editor.hiddenEntities.has(entity)) {
+              this.editor.hiddenEntities.add(entity); addedEntities.add(entity);
+            }
+          }
+        }
+        if (frame) this.controls.frameBounds(frame);
+        this.editor.redrawRequested = true;
         let screenshot: { mimeType: string; data: string; width: number; height: number };
         try {
-          screenshot = this.controls.captureScreenshot(message.width, message.height);
+          screenshot = this.controls.captureScreenshot(message.mode ?? 'perspective', message.width, message.height, message.xray);
         } finally {
-          if (message.hideEntityMarkers) {
-            categories.entities = markers.entities; categories.lights = markers.lights; categories.paths = markers.paths;
-            this.editor.redrawRequested = true;
+          categories.entities = markers.entities; categories.lights = markers.lights; categories.paths = markers.paths;
+          for (const brush of addedBrushes) this.editor.hiddenBrushes.delete(brush);
+          for (const patch of addedPatches) this.editor.hiddenPatches.delete(patch);
+          for (const entity of addedEntities) this.editor.hiddenEntities.delete(entity);
+          for (const [entity, value] of restoredGroups) {
+            if (value === undefined) delete entity.properties[GROUP_HIDDEN_KEY];
+            else entity.properties[GROUP_HIDDEN_KEY] = value;
           }
+          this.editor.redrawRequested = true;
         }
         this.send({
           type: 'capability_result', requestId: message.requestId,

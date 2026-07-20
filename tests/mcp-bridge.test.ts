@@ -118,6 +118,15 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: { mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==', width: request.width ?? 800, height: request.height ?? 600 },
       }));
+    } else if (request.type === 'editor_capabilities') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: {
+          project: { name: 'Quake III Arena', gameDirectory: 'baseq3', assetsConfigured: true },
+          assets: { texturesLoaded: 1200, entityClassesLoaded: 80 },
+          document: { fileName: 'live.map', revision: 4 },
+        },
+      }));
     } else if (request.type === 'map_compile') {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
@@ -212,7 +221,7 @@ describe('live MCP bridge', () => {
   });
 
   test('exposes status and live editing through MCP', async () => {
-    const { hub } = connectedHub();
+    const { hub, socket } = connectedHub();
     const server = createQ3EditMcpServer(hub);
     const client = new Client({ name: 'q3edit-test', version: '0.1.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -225,6 +234,7 @@ describe('live MCP bridge', () => {
         'editor_sessions',
         'editor_session_select',
         'map_status',
+        'map_capabilities',
         'map_entities',
         'map_inspect',
         'map_validate',
@@ -258,6 +268,15 @@ describe('live MCP bridge', () => {
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });
+
+      const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
+      expect(capabilities.structuredContent).toMatchObject({
+        sessionId: 'editor-a', protocolVersion: 2,
+        operations: { maxPerBatch: 128 },
+        screenshots: { maxWidth: 2048, modes: ['perspective', 'top', 'front', 'side'] },
+        compiler: { available: false },
+        editor: { project: { gameDirectory: 'baseq3' } },
+      });
 
       const sessions = await client.callTool({ name: 'editor_sessions', arguments: {} });
       expect(sessions.structuredContent).toMatchObject({
@@ -334,10 +353,16 @@ describe('live MCP bridge', () => {
       });
       expect(lookAt.structuredContent).toMatchObject({ yawDegrees: 90, pitchDegrees: 45 });
 
-      const screenshot = await client.callTool({ name: 'editor_screenshot', arguments: { width: 640, height: 360 } });
+      const screenshot = await client.callTool({
+        name: 'editor_screenshot',
+        arguments: { mode: 'top', width: 640, height: 360, frameGroup: 'reactor', hideSkyBrushes: true },
+      });
       expect(screenshot.content).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: 'image', mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==' }),
       ]));
+      expect(JSON.parse(socket.sent.find(value => JSON.parse(value).type === 'editor_screenshot')!)).toMatchObject({
+        type: 'editor_screenshot', mode: 'top', frameGroup: 'reactor', hideSkyBrushes: true,
+      });
 
       const applied = await client.callTool({
         name: 'map_apply',

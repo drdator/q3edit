@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { WebSocket } from 'ws';
-import type { BridgeToEditorMessage, EditorToBridgeMessage, LiveMapSnapshot } from '../src/live-bridge-protocol';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, LiveMapSnapshot } from '../src/live-bridge-protocol';
 import type { MapOperation, MapOperationResult } from '../src/map-operations';
 
 interface PendingRequest {
@@ -40,6 +40,8 @@ interface EditorSession {
 
 export class BridgeHub {
   private sessions = new Map<string, EditorSession>();
+
+  constructor(readonly compilerAvailable = false) {}
 
   attachEditor(socket: WebSocket, requestedSessionId: string = randomUUID()): string {
     const sessionId = requestedSessionId.trim() || randomUUID();
@@ -208,8 +210,12 @@ export class BridgeHub {
     return this.capabilityRequest(sessionId, { type: 'editor_set_camera', requestId: randomUUID(), position, yaw, pitch });
   }
 
-  async screenshot(width?: number, height?: number, hideEntityMarkers?: boolean, sessionId?: string): Promise<{ mimeType: string; data: string; width: number; height: number }> {
-    return await this.capabilityRequest(sessionId, { type: 'editor_screenshot', requestId: randomUUID(), width, height, hideEntityMarkers }) as {
+  async editorCapabilities(sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'editor_capabilities', requestId: randomUUID() });
+  }
+
+  async screenshot(options: EditorScreenshotOptions, sessionId?: string): Promise<{ mimeType: string; data: string; width: number; height: number }> {
+    return await this.capabilityRequest(sessionId, { type: 'editor_screenshot', requestId: randomUUID(), ...options }) as {
       mimeType: string; data: string; width: number; height: number;
     };
   }

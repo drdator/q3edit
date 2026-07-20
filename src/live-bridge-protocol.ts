@@ -11,6 +11,25 @@ export interface LiveMapSnapshot {
   diagnostics: EditorDiagnostic[];
 }
 
+export interface ScreenshotBounds {
+  mins: Vec3;
+  maxs: Vec3;
+}
+
+export interface EditorScreenshotOptions {
+  mode?: 'perspective' | 'top' | 'front' | 'side';
+  width?: number;
+  height?: number;
+  hideEntityMarkers?: boolean;
+  hideGroups?: string[];
+  hideToolBrushes?: boolean;
+  hideSkyBrushes?: boolean;
+  sectionBounds?: ScreenshotBounds;
+  frameBounds?: ScreenshotBounds;
+  frameGroup?: string;
+  xray?: boolean;
+}
+
 export type BridgeToEditorMessage =
   | {
       type: 'apply_operations';
@@ -49,7 +68,8 @@ export type BridgeToEditorMessage =
   | { type: 'editor_select'; requestId: string; refs: string[]; replace: boolean }
   | { type: 'editor_frame_objects'; requestId: string; refs: string[] }
   | { type: 'editor_set_camera'; requestId: string; position: Vec3; yaw: number; pitch: number }
-  | { type: 'editor_screenshot'; requestId: string; width?: number; height?: number; hideEntityMarkers?: boolean }
+  | ({ type: 'editor_screenshot'; requestId: string } & EditorScreenshotOptions)
+  | { type: 'editor_capabilities'; requestId: string }
   | { type: 'map_compile'; requestId: string; quality: 'fast' | 'normal' | 'full' }
   | { type: 'map_play'; requestId: string; noclip: boolean }
   | { type: 'game_screenshot'; requestId: string }

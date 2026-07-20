@@ -52,6 +52,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 ## Tools
 
 - `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
+- `map_capabilities` advertises the batch limit and supported operation version/types, coordinate guidance, screenshot dimensions and modes, compiler availability, and the targeted editor's active game/project and loaded asset counts.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
@@ -66,7 +67,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `editor_select` selects referenced objects in Q3Edit and `editor_frame_objects` selects and frames them in every viewport.
 - `editor_set_camera` positions the 3D camera using world coordinates and yaw/pitch in degrees.
 - `editor_look_at` positions the camera and calculates the yaw/pitch needed to face a target point.
-- `editor_screenshot` returns a PNG rendered from the current textured 3D viewport and can temporarily hide entity/light/path markers.
+- `editor_screenshot` returns a PNG from the perspective, top, front, or side viewport. It can frame world bounds or a named group and temporarily hide named groups, entity markers, tool/sky brushes, or objects outside section bounds. Perspective captures can use a depth-free wireframe x-ray mode. All visibility changes are restored after capture and do not dirty the map.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
 - `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, and diagnostics without changing the document.
 - `map_create_jump_pad` and `map_create_teleporter` create complete, correctly linked trigger/destination pairs and persistently group them for later edits.
