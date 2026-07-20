@@ -56,6 +56,7 @@ export class Viewport3D {
   private solidUseAlphaLoc!: WebGLUniformLocation;
   private solidAlphaOverrideLoc!: WebGLUniformLocation;
   private solidSolidOverrideLoc!: WebGLUniformLocation;
+  private solidDynamicLightingEnabledLoc!: WebGLUniformLocation;
   private solidDynamicLightCountLoc!: WebGLUniformLocation;
   private solidDynamicLightPosLoc!: WebGLUniformLocation;
   private solidDynamicLightColorLoc!: WebGLUniformLocation;
@@ -259,6 +260,7 @@ export class Viewport3D {
     this.solidUseAlphaLoc = gl.getUniformLocation(this.solidProg, 'uUseAlpha')!;
     this.solidAlphaOverrideLoc = gl.getUniformLocation(this.solidProg, 'uAlphaOverride')!;
     this.solidSolidOverrideLoc = gl.getUniformLocation(this.solidProg, 'uSolidOverride')!;
+    this.solidDynamicLightingEnabledLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightingEnabled')!;
     this.solidDynamicLightCountLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightCount')!;
     this.solidDynamicLightPosLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightPos[0]')!;
     this.solidDynamicLightColorLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightColor[0]')!;
@@ -397,6 +399,7 @@ export class Viewport3D {
       solidUseAlphaLoc: this.solidUseAlphaLoc,
       solidAlphaOverrideLoc: this.solidAlphaOverrideLoc,
       solidSolidOverrideLoc: this.solidSolidOverrideLoc,
+      solidDynamicLightingEnabledLoc: this.solidDynamicLightingEnabledLoc,
       solidDynamicLightCountLoc: this.solidDynamicLightCountLoc,
       solidDynamicLightPosLoc: this.solidDynamicLightPosLoc,
       solidDynamicLightColorLoc: this.solidDynamicLightColorLoc,

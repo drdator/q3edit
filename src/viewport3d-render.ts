@@ -2,6 +2,7 @@ import { Mat4, mat4LookAt, mat4Multiply, mat4Perspective, vec3Add } from './math
 import { Editor } from './editor';
 import { BlendMode } from './textures';
 import { entityOrigin, parseLightColor } from './entity';
+import { effectiveDynamicLightRadius } from './dynamic-lighting';
 
 export interface DrawGroup {
   textureName: string;
@@ -50,6 +51,7 @@ export interface Viewport3DRenderContext {
   solidUseAlphaLoc: WebGLUniformLocation;
   solidAlphaOverrideLoc: WebGLUniformLocation;
   solidSolidOverrideLoc: WebGLUniformLocation;
+  solidDynamicLightingEnabledLoc: WebGLUniformLocation;
   solidDynamicLightCountLoc: WebGLUniformLocation;
   solidDynamicLightPosLoc: WebGLUniformLocation;
   solidDynamicLightColorLoc: WebGLUniformLocation;
@@ -120,15 +122,17 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.useProgram(ctx.solidProg);
     ctx.gl.uniformMatrix4fv(ctx.solidPVLoc, false, pv);
     ctx.gl.uniform1i(ctx.solidTexLoc, 0);
-    const lights = ctx.editor.display.dynamicLights
+    const dynamicLightingEnabled = ctx.editor.display.dynamicLights;
+    const lights = dynamicLightingEnabled
       ? [...ctx.editor.pointEntities()].filter(entity => entity.classname === 'light' && ctx.editor.isEntityVisibleIn3D(entity)).slice(0, 4)
       : [];
     const positions = new Float32Array(12); const colors = new Float32Array(12); const radii = new Float32Array(4);
     lights.forEach((entity, index) => {
       const origin = entityOrigin(entity) ?? [0, 0, 0]; const color = parseLightColor(entity) ?? [1, 1, 1];
       positions.set(origin, index * 3); colors.set(color, index * 3);
-      radii[index] = Math.max(1, Number(entity.properties.light) || 300);
+      radii[index] = effectiveDynamicLightRadius(Number(entity.properties.light) || 300);
     });
+    ctx.gl.uniform1f(ctx.solidDynamicLightingEnabledLoc, dynamicLightingEnabled ? 1 : 0);
     ctx.gl.uniform1i(ctx.solidDynamicLightCountLoc, lights.length);
     ctx.gl.uniform3fv(ctx.solidDynamicLightPosLoc, positions);
     ctx.gl.uniform3fv(ctx.solidDynamicLightColorLoc, colors);

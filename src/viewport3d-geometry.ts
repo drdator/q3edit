@@ -1,4 +1,5 @@
 import { Vec3 } from './math';
+import { effectiveDynamicLightRadius } from './dynamic-lighting';
 import { Editor } from './editor';
 import { BrushFace, computeFaceUV } from './brush';
 import { entityColor, entityOrigin, parseLightColor } from './entity';
@@ -461,8 +462,9 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     if (entity.classname !== 'light' || !entity.properties['light']) continue;
     if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
     if (!ctx.editor.isEntitySelected(entity)) continue;
-    const radius = parseFloat(entity.properties['light']);
-    if (!(radius > 0)) continue;
+    const intensity = parseFloat(entity.properties['light']);
+    if (!(intensity > 0)) continue;
+    const radius = effectiveDynamicLightRadius(intensity);
     const origin = entityOrigin(entity);
     if (!origin || !ctx.editor.isPointVisibleIn3D(origin)) continue;
     const color: [number, number, number] = parseLightColor(entity) ?? [1.0, 1.0, 0.4];

@@ -1,3 +1,5 @@
+import { DYNAMIC_LIGHT_AMBIENT } from './dynamic-lighting';
+
 // ── Shaders ──
 
 export const VERT_SRC = `#version 300 es
@@ -28,6 +30,7 @@ uniform float uFaceSelected;
 uniform float uUseAlpha;
 uniform float uAlphaOverride; // 0.0 = no override, >0 = forced alpha
 uniform float uSolidOverride; // 1.0 = replace texture with solid color
+uniform float uDynamicLightingEnabled;
 uniform int uDynamicLightCount;
 uniform vec3 uDynamicLightPos[4];
 uniform vec3 uDynamicLightColor[4];
@@ -39,7 +42,8 @@ void main() {
   float diff = abs(dot(n, lightDir)) * 0.5 + 0.45;
 
   vec4 texColor = texture(uTexture, vUV);
-  vec3 color = texColor.rgb * diff;
+  float baseLight = mix(diff, ${DYNAMIC_LIGHT_AMBIENT.toFixed(2)}, uDynamicLightingEnabled);
+  vec3 color = texColor.rgb * baseLight;
   for (int i = 0; i < 4; i++) {
     if (i >= uDynamicLightCount) break;
     float radius = max(uDynamicLightRadius[i], 1.0);
