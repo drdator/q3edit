@@ -40,9 +40,14 @@ export type MapSymbolicRef = `@${string}`;
 export type MapTargetRef = MapObjectRef | MapSymbolicRef;
 export type MapFaceTargetRef = MapFaceRef | MapSymbolicRef | `${MapSymbolicRef}:F${number}`;
 
-export interface CreateEntityOperation {
-  type: 'create_entity';
+interface CreationMetadata {
   id?: string;
+  group?: string;
+  groupId?: string;
+}
+
+export interface CreateEntityOperation extends CreationMetadata {
+  type: 'create_entity';
   classname: string;
   origin?: Vec3;
   properties?: Record<string, string>;
@@ -56,18 +61,16 @@ export interface SetEntityPropertiesOperation {
   unset?: string[];
 }
 
-export interface CreateBoxOperation {
+export interface CreateBoxOperation extends CreationMetadata {
   type: 'create_box';
-  id?: string;
   parent?: MapTargetRef;
   mins: Vec3;
   maxs: Vec3;
   texture?: string;
 }
 
-export interface CreateRoomOperation {
+export interface CreateRoomOperation extends CreationMetadata {
   type: 'create_room';
-  id?: string;
   parent?: MapTargetRef;
   mins: Vec3;
   maxs: Vec3;
@@ -81,9 +84,8 @@ export interface CreateRoomOperation {
 
 export type MapAxis = 'x' | 'y' | 'z';
 
-export interface CreatePrimitiveOperation {
+export interface CreatePrimitiveOperation extends CreationMetadata {
   type: 'create_primitive';
-  id?: string;
   parent?: MapTargetRef;
   primitive: BrushPrimitive;
   mins: Vec3;
@@ -93,9 +95,8 @@ export interface CreatePrimitiveOperation {
   sides?: number;
 }
 
-export interface CreateWedgeOperation {
+export interface CreateWedgeOperation extends CreationMetadata {
   type: 'create_wedge';
-  id?: string;
   parent?: MapTargetRef;
   mins: Vec3;
   maxs: Vec3;
@@ -103,9 +104,8 @@ export interface CreateWedgeOperation {
   direction?: WedgeDirection;
 }
 
-export interface CreateStairsOperation {
+export interface CreateStairsOperation extends CreationMetadata {
   type: 'create_stairs';
-  id?: string;
   parent?: MapTargetRef;
   mins: Vec3;
   maxs: Vec3;
@@ -114,9 +114,8 @@ export interface CreateStairsOperation {
   steps: number;
 }
 
-export interface CreateBrushOperation {
+export interface CreateBrushOperation extends CreationMetadata {
   type: 'create_brush';
-  id?: string;
   parent?: MapTargetRef;
   texture?: string;
   faces: Array<{ points: [Vec3, Vec3, Vec3]; texture?: string }>;
@@ -143,16 +142,14 @@ export interface MirrorObjectsOperation {
   axis: MapAxis;
 }
 
-export interface CloneObjectsOperation {
+export interface CloneObjectsOperation extends CreationMetadata {
   type: 'clone';
-  id?: string;
   targets: MapTargetRef[];
   delta?: Vec3;
 }
 
-export interface ArrayObjectsOperation {
+export interface ArrayObjectsOperation extends CreationMetadata {
   type: 'array';
-  id?: string;
   targets: MapTargetRef[];
   copies: number;
   delta: Vec3;
@@ -207,6 +204,25 @@ export interface CsgSubtractOperation {
   deleteCarvers?: boolean;
 }
 
+export interface CreateJumpPadOperation extends CreationMetadata {
+  type: 'create_jump_pad';
+  mins: Vec3;
+  maxs: Vec3;
+  apex: Vec3;
+  targetname?: string;
+  texture?: string;
+}
+
+export interface CreateTeleporterOperation extends CreationMetadata {
+  type: 'create_teleporter';
+  mins: Vec3;
+  maxs: Vec3;
+  destination: Vec3;
+  exitAngle?: number;
+  targetname?: string;
+  texture?: string;
+}
+
 export interface AssignGroupOperation {
   type: 'assign_group';
   targets: MapTargetRef[];
@@ -244,6 +260,8 @@ export type MapOperation =
   | ClipBrushesOperation
   | HollowBrushesOperation
   | CsgSubtractOperation
+  | CreateJumpPadOperation
+  | CreateTeleporterOperation
   | AssignGroupOperation
   | RemoveFromGroupOperation
   | DeleteObjectsOperation;
@@ -706,6 +724,69 @@ function setResolvedGroup(target: ResolvedObject, groupId: string | undefined): 
   }
 }
 
+function recordCreated(
+  editor: Editor,
+  operation: CreationMetadata,
+  handles: ObjectHandle[],
+  createdHandles: ObjectHandle[],
+  aliases: SymbolicReferences,
+  groupHandles = handles,
+): void {
+  if (operation.groupId && !operation.group) throw new Error('groupId requires group');
+  createdHandles.push(...handles);
+  registerAlias(aliases, operation.id, handles);
+  if (!operation.group) return;
+  const groupId = ensureGroup(editor, operation.group, operation.groupId);
+  for (const handle of groupHandles) setResolvedGroup(resolveHandle(editor, handle), groupId);
+}
+
+function generatedTargetName(editor: Editor, kind: 'jump' | 'teleport', id: string | undefined, sequence: number): string {
+  const stem = id?.toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || String(sequence);
+  const base = `mcp_${kind}_${stem}`;
+  const used = new Set(editor.entities.map(entity => entity.properties.targetname).filter(Boolean));
+  if (!used.has(base)) return base;
+  let suffix = 2;
+  while (used.has(`${base}_${suffix}`)) suffix++;
+  return `${base}_${suffix}`;
+}
+
+function createGameplayLink(
+  editor: Editor,
+  operation: CreateJumpPadOperation | CreateTeleporterOperation,
+  sequence: number,
+): { handles: ObjectHandle[]; groupHandles: ObjectHandle[] } {
+  assertBounds(operation.mins, operation.maxs);
+  const endpoint = operation.type === 'create_jump_pad' ? operation.apex : operation.destination;
+  assertVector(operation.type === 'create_jump_pad' ? 'apex' : 'destination', endpoint);
+  if (operation.type === 'create_teleporter' && operation.exitAngle !== undefined && !Number.isFinite(operation.exitAngle)) {
+    throw new Error('exitAngle must be finite');
+  }
+  const requestedTargetName = operation.targetname?.trim();
+  if (operation.targetname !== undefined && !requestedTargetName) throw new Error('targetname must not be empty');
+  if (requestedTargetName && editor.entities.some(entity => entity.properties.targetname === requestedTargetName)) {
+    throw new Error(`targetname ${requestedTargetName} already exists`);
+  }
+  const targetname = requestedTargetName ?? generatedTargetName(
+    editor, operation.type === 'create_jump_pad' ? 'jump' : 'teleport', operation.id, sequence,
+  );
+  const trigger = createEntity(operation.type === 'create_jump_pad' ? 'trigger_push' : 'trigger_teleport');
+  trigger.properties.target = targetname;
+  editor.entities.push(trigger);
+  const brush = addBox(trigger, operation.mins, operation.maxs, operation.texture ?? 'common/trigger');
+  const destination = createEntity(
+    operation.type === 'create_jump_pad' ? 'target_position' : 'misc_teleporter_dest', endpoint,
+  );
+  destination.properties.targetname = targetname;
+  if (operation.type === 'create_teleporter') destination.properties.angle = String(operation.exitAngle ?? 0);
+  editor.entities.push(destination);
+  const triggerHandle: ObjectHandle = { kind: 'entity', entity: trigger };
+  const destinationHandle: ObjectHandle = { kind: 'entity', entity: destination };
+  return {
+    handles: [triggerHandle, { kind: 'brush', entity: trigger, brush }, destinationHandle],
+    groupHandles: [triggerHandle, destinationHandle],
+  };
+}
+
 function applyTranslation(editor: Editor, targets: ResolvedObject[], delta: Vec3): void {
   assertVector('delta', delta);
   const entities = new Set(targets.filter(item => item.kind === 'entity').map(item => item.entity));
@@ -783,6 +864,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
   const changedFaceRefs = new Set<MapFaceRef>();
   const deletedRefs = new Set<MapObjectRef>();
   const aliases: SymbolicReferences = new Map();
+  let gameplayLinkSequence = 0;
 
   editor.transact(label, () => {
     for (const operation of operations) {
@@ -793,8 +875,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         Object.assign(entity.properties, operation.properties ?? {}, { classname: operation.classname });
         editor.entities.push(entity);
         const handle: ObjectHandle = { kind: 'entity', entity };
-        createdHandles.push(handle);
-        registerAlias(aliases, operation.id, [handle]);
+        recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'set_entity_properties') {
         const targets = resolveTargets(editor, [operation.target], aliases);
         if (targets.length !== 1) throw new Error(`${operation.target} does not resolve to a single object`);
@@ -814,32 +895,29 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
       } else if (operation.type === 'create_box') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handle: ObjectHandle = { kind: 'brush', entity, brush: addBox(entity, operation.mins, operation.maxs, operation.texture ?? 'common/caulk') };
-        createdHandles.push(handle);
-        registerAlias(aliases, operation.id, [handle]);
+        recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_room') {
         const handles = applyCreateRoom(editor, operation, aliases);
-        createdHandles.push(...handles);
-        registerAlias(aliases, operation.id, handles);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'create_primitive') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handle: ObjectHandle = { kind: 'brush', entity, brush: addPrimitive(entity, operation) };
-        createdHandles.push(handle);
-        registerAlias(aliases, operation.id, [handle]);
+        recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_wedge') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handle: ObjectHandle = { kind: 'brush', entity, brush: addWedge(entity, operation) };
-        createdHandles.push(handle);
-        registerAlias(aliases, operation.id, [handle]);
+        recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_stairs') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handles = addStairs(entity, operation);
-        createdHandles.push(...handles);
-        registerAlias(aliases, operation.id, handles);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'create_brush') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handle: ObjectHandle = { kind: 'brush', entity, brush: addPlaneBrush(entity, operation) };
-        createdHandles.push(handle);
-        registerAlias(aliases, operation.id, [handle]);
+        recordCreated(editor, operation, [handle], createdHandles, aliases);
+      } else if (operation.type === 'create_jump_pad' || operation.type === 'create_teleporter') {
+        const created = createGameplayLink(editor, operation, ++gameplayLinkSequence);
+        recordCreated(editor, operation, created.handles, createdHandles, aliases, created.groupHandles);
       } else if (operation.type === 'translate') {
         const targets = resolveTargets(editor, operation.targets, aliases);
         applyTranslation(editor, targets, operation.delta);
@@ -856,8 +934,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const delta = operation.delta ?? [0, 0, 0];
         assertVector('delta', delta);
         const handles = resolveTargets(editor, operation.targets, aliases).map(target => cloneResolved(editor, target, delta));
-        createdHandles.push(...handles);
-        registerAlias(aliases, operation.id, handles);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'array') {
         assertVector('delta', operation.delta);
         if (!Number.isInteger(operation.copies) || operation.copies < 1 || operation.copies > 64) {
@@ -869,8 +946,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           const delta: Vec3 = operation.delta.map(value => value * copy) as Vec3;
           handles.push(...sources.map(target => cloneResolved(editor, target, delta)));
         }
-        createdHandles.push(...handles);
-        registerAlias(aliases, operation.id, handles);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'set_texture') {
         for (const target of resolveTargets(editor, operation.targets, aliases)) {
           setObjectTexture(target, operation.texture);

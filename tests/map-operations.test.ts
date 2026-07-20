@@ -242,6 +242,49 @@ describe('serializable map operations', () => {
     expect(reloaded.worldspawn.brushes.every(brush => brush.editorGroupId === 'mcp-reactor-core')).toBe(true);
   });
 
+  test('honors persistent groups directly on creation operations', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      {
+        type: 'create_box', id: 'trim', mins: [0, 0, 0], maxs: [64, 64, 64],
+        group: 'Arena Details', groupId: 'arena-details',
+      },
+      { type: 'create_entity', classname: 'light', origin: [32, 32, 96], group: 'Arena Details' },
+    ]);
+
+    expect(listNamedGroups(editor.entities)).toEqual([
+      expect.objectContaining({ id: 'arena-details', name: 'Arena Details' }),
+    ]);
+    expect(editor.worldspawn.brushes[0].editorGroupId).toBe('arena-details');
+    expect(editor.entities.find(entity => entity.classname === 'light')?.properties._q3edit_group_id).toBe('arena-details');
+  });
+
+  test('creates multiple wired gameplay helpers atomically in one batch', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      {
+        type: 'create_jump_pad', id: 'rail_jump', mins: [0, 0, 0], maxs: [64, 64, 16], apex: [256, 32, 192],
+        group: 'Traversal', groupId: 'traversal',
+      },
+      {
+        type: 'create_teleporter', id: 'return_portal', mins: [128, 0, 0], maxs: [192, 64, 96],
+        destination: [32, 256, 32], exitAngle: 90, group: 'Traversal',
+      },
+    ]);
+
+    expect(result.operationCount).toBe(2);
+    expect(result.aliases['@rail_jump']).toHaveLength(3);
+    expect(result.aliases['@return_portal']).toHaveLength(3);
+    const jump = editor.entities.find(entity => entity.classname === 'trigger_push')!;
+    const apex = editor.entities.find(entity => entity.classname === 'target_position')!;
+    expect(jump.properties.target).toBe(apex.properties.targetname);
+    const teleport = editor.entities.find(entity => entity.classname === 'trigger_teleport')!;
+    const destination = editor.entities.find(entity => entity.classname === 'misc_teleporter_dest')!;
+    expect(teleport.properties.target).toBe(destination.properties.targetname);
+    expect(destination.properties.angle).toBe('90');
+    expect([jump, apex, teleport, destination].every(entity => entity.properties._q3edit_group_id === 'traversal')).toBe(true);
+  });
+
   test('rejects unknown and duplicate symbolic references transactionally', () => {
     const editor = emptyEditor();
     expect(() => applyMapOperations(editor, [

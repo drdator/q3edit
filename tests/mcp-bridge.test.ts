@@ -293,7 +293,10 @@ describe('live MCP bridge', () => {
         name: 'map_create_jump_pad',
         arguments: { expectedRevision: 4, mins: [0, 0, 0], maxs: [64, 64, 16], apex: [160, 0, 192] },
       });
-      expect(jumpPad.structuredContent).toMatchObject({ revision: 5, operationCount: 4, targetname: 'mcp_jump_4' });
+      expect(jumpPad.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 5, operationCount: 1, targetname: 'mcp_jump_4',
+        aliases: { '@jump_pad': ['E0:B0'] },
+      });
 
       const textures = await client.callTool({ name: 'texture_search', arguments: { query: 'metal' } });
       expect(textures.structuredContent).toMatchObject({ matches: [{ name: 'base_wall/metal' }] });
@@ -357,10 +360,23 @@ describe('live MCP bridge', () => {
         expect.objectContaining({ text: expect.stringContaining('Aliases: {"@stairs"') }),
       ]));
 
-      const faceEdit = await client.callTool({
+      const gameplayBatch = await client.callTool({
         name: 'map_apply',
         arguments: {
           expectedRevision: 6,
+          label: 'MCP: Add traversal',
+          operations: [{
+            type: 'create_jump_pad', id: 'rail_jump', mins: [0, 0, 0], maxs: [64, 64, 16],
+            apex: [256, 32, 192], group: 'Traversal', groupId: 'traversal',
+          }],
+        },
+      });
+      expect(gameplayBatch.isError).not.toBe(true);
+
+      const faceEdit = await client.callTool({
+        name: 'map_apply',
+        arguments: {
+          expectedRevision: 7,
           label: 'MCP: Texture and classify trim',
           operations: [
             { type: 'edit_faces', targets: ['E0:B0:F4'], texture: 'base_trim/metal', fit: true },
@@ -373,7 +389,7 @@ describe('live MCP bridge', () => {
       const invalid = await client.callTool({
         name: 'map_apply',
         arguments: {
-          expectedRevision: 7,
+          expectedRevision: 8,
           label: 'MCP: Invalid box',
           operations: [{ type: 'create_box', mins: [0, 0, 0] }],
         },

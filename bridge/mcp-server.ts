@@ -15,11 +15,17 @@ const compatibleTargetRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?(?::F\d+)?|@[
 const symbolicId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
 const editorSessionId = z.string().min(1).max(160);
 const sessionInput = { sessionId: editorSessionId.optional().describe('Explicit editor session; otherwise uses this MCP connection’s selected session or the sole connected editor') };
+const groupId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+const creationMetadataSchema = {
+  id: symbolicId.optional(),
+  group: z.string().min(1).max(120).optional(),
+  groupId: groupId.optional(),
+};
 
 const mapOperation = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('create_entity'),
-    id: symbolicId.optional(),
+    ...creationMetadataSchema,
     classname: z.string().min(1),
     origin: vec3.optional(),
     properties: z.record(z.string(), z.string()).optional(),
@@ -33,7 +39,7 @@ const mapOperation = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('create_box'),
-    id: symbolicId.optional(),
+    ...creationMetadataSchema,
     parent: operationRef.optional(),
     mins: vec3,
     maxs: vec3,
@@ -41,7 +47,7 @@ const mapOperation = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('create_room'),
-    id: symbolicId.optional(),
+    ...creationMetadataSchema,
     parent: operationRef.optional(),
     mins: vec3,
     maxs: vec3,
@@ -54,7 +60,7 @@ const mapOperation = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('create_primitive'),
-    id: symbolicId.optional(),
+    ...creationMetadataSchema,
     parent: operationRef.optional(),
     primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'pyramid']),
     mins: vec3,
@@ -65,7 +71,7 @@ const mapOperation = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('create_wedge'),
-    id: symbolicId.optional(),
+    ...creationMetadataSchema,
     parent: operationRef.optional(),
     mins: vec3,
     maxs: vec3,
@@ -74,7 +80,7 @@ const mapOperation = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('create_stairs'),
-    id: symbolicId.optional(),
+    ...creationMetadataSchema,
     parent: operationRef.optional(),
     mins: vec3,
     maxs: vec3,
@@ -84,7 +90,7 @@ const mapOperation = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('create_brush'),
-    id: symbolicId.optional(),
+    ...creationMetadataSchema,
     parent: operationRef.optional(),
     texture: z.string().min(1).optional(),
     faces: z.array(z.object({
@@ -95,8 +101,8 @@ const mapOperation = z.discriminatedUnion('type', [
   z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
   z.object({ type: z.literal('rotate'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']), angleDegrees: z.number() }),
   z.object({ type: z.literal('mirror'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']) }),
-  z.object({ type: z.literal('clone'), id: symbolicId.optional(), targets: z.array(operationRef).min(1), delta: vec3.optional() }),
-  z.object({ type: z.literal('array'), id: symbolicId.optional(), targets: z.array(operationRef).min(1), copies: z.number().int().min(1).max(64), delta: vec3 }),
+  z.object({ type: z.literal('clone'), ...creationMetadataSchema, targets: z.array(operationRef).min(1), delta: vec3.optional() }),
+  z.object({ type: z.literal('array'), ...creationMetadataSchema, targets: z.array(operationRef).min(1), copies: z.number().int().min(1).max(64), delta: vec3 }),
   z.object({ type: z.literal('set_texture'), targets: z.array(operationRef).min(1), texture: z.string().min(1) }),
   z.object({
     type: z.literal('edit_faces'),
@@ -137,10 +143,29 @@ const mapOperation = z.discriminatedUnion('type', [
     deleteCarvers: z.boolean().optional(),
   }),
   z.object({
+    type: z.literal('create_jump_pad'),
+    ...creationMetadataSchema,
+    mins: vec3,
+    maxs: vec3,
+    apex: vec3,
+    targetname: z.string().min(1).max(64).optional(),
+    texture: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('create_teleporter'),
+    ...creationMetadataSchema,
+    mins: vec3,
+    maxs: vec3,
+    destination: vec3,
+    exitAngle: z.number().optional(),
+    targetname: z.string().min(1).max(64).optional(),
+    texture: z.string().min(1).optional(),
+  }),
+  z.object({
     type: z.literal('assign_group'),
     targets: z.array(operationRef).min(1),
     group: z.string().min(1).max(120),
-    groupId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/).optional(),
+    groupId: groupId.optional(),
   }),
   z.object({ type: z.literal('remove_from_group'), targets: z.array(operationRef).min(1) }),
   z.object({ type: z.literal('delete'), targets: z.array(operationRef).min(1) }),
@@ -170,6 +195,8 @@ const compatibleMapOperationInput = z.object({
     'clip_brushes',
     'hollow_brushes',
     'csg_subtract',
+    'create_jump_pad',
+    'create_teleporter',
     'assign_group',
     'remove_from_group',
     'delete',
@@ -217,6 +244,10 @@ const compatibleMapOperationInput = z.object({
   thickness: z.number().optional(),
   carvers: z.array(operationRef).optional(),
   deleteCarvers: z.boolean().optional(),
+  apex: compatibleVec3.optional(),
+  destination: compatibleVec3.optional(),
+  exitAngle: z.number().optional(),
+  targetname: z.string().optional(),
   group: z.string().optional(),
   groupId: z.string().optional(),
 });
@@ -728,10 +759,10 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const resolved = session(sessionId);
       const link = targetname ?? `mcp_jump_${expectedRevision}`;
       const applied = await hub.applyOperations(expectedRevision, 'MCP: Create jump pad', [
-        { type: 'create_entity', id: 'jump_trigger', classname: 'trigger_push', properties: { target: link } },
-        { type: 'create_box', id: 'jump_volume', parent: '@jump_trigger', mins: mins as [number, number, number], maxs: maxs as [number, number, number], texture: 'common/trigger' },
-        { type: 'create_entity', id: 'jump_apex', classname: 'target_position', origin: apex as [number, number, number], properties: { targetname: link } },
-        { type: 'assign_group', targets: ['@jump_trigger', '@jump_apex'], group },
+        {
+          type: 'create_jump_pad', id: 'jump_pad', mins: mins as [number, number, number],
+          maxs: maxs as [number, number, number], apex: apex as [number, number, number], targetname: link, group,
+        },
       ], resolved);
       return toolResult({ sessionId: resolved, ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
     } catch (error) {
@@ -758,10 +789,11 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const resolved = session(sessionId);
       const link = targetname ?? `mcp_teleport_${expectedRevision}`;
       const applied = await hub.applyOperations(expectedRevision, 'MCP: Create teleporter', [
-        { type: 'create_entity', id: 'teleport_trigger', classname: 'trigger_teleport', properties: { target: link } },
-        { type: 'create_box', id: 'teleport_volume', parent: '@teleport_trigger', mins: mins as [number, number, number], maxs: maxs as [number, number, number], texture: 'common/trigger' },
-        { type: 'create_entity', id: 'teleport_destination', classname: 'misc_teleporter_dest', origin: destination as [number, number, number], properties: { targetname: link, angle: String(exitAngle) } },
-        { type: 'assign_group', targets: ['@teleport_trigger', '@teleport_destination'], group },
+        {
+          type: 'create_teleporter', id: 'teleporter', mins: mins as [number, number, number],
+          maxs: maxs as [number, number, number], destination: destination as [number, number, number],
+          exitAngle, targetname: link, group,
+        },
       ], resolved);
       return toolResult({ sessionId: resolved, ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
     } catch (error) {

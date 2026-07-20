@@ -51,6 +51,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 
 ## Tools
 
+- `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
@@ -82,6 +83,7 @@ Initial `map_apply` operations are:
 - `create_wedge`
 - `create_stairs`
 - `create_brush` from arbitrary convex face planes
+- `create_jump_pad` and `create_teleporter` as composable, wired gameplay operations
 - `translate`
 - `rotate`
 - `mirror`
@@ -95,6 +97,8 @@ Initial `map_apply` operations are:
 - `csg_subtract` with optional carver removal
 - `assign_group` and `remove_from_group`
 - `delete`
+
+Creation operations accept `group` and an optional stable `groupId`. The created objects are assigned immediately, without a separate `assign_group` operation.
 
 Object references use the current document indices: `E1`, `E0:B2`, `E0:B2:F4`, and `E0:P0`. Face references can be inspected, queried, selected, framed, or passed to `edit_faces`. References are revision-sensitive, so call `map_status`, `map_query`, or `map_entities` again after a revision conflict.
 
