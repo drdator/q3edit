@@ -219,10 +219,18 @@ export function cameraPathDuration(path: CameraPath): number {
   return total;
 }
 
+function normalizeCameraPathTime(path: CameraPath, requestedTime: number): number {
+  const totalDuration = cameraPathDuration(path);
+  if (totalDuration <= 0) return 0;
+  return path.closed
+    ? ((requestedTime % totalDuration) + totalDuration) % totalDuration
+    : Math.max(0, Math.min(totalDuration, requestedTime));
+}
+
 export function sampleCameraPath(path: CameraPath, requestedTime: number): CameraPose | null {
   if (path.points.length < 2) return null;
   const totalDuration = cameraPathDuration(path); if (totalDuration <= 0) return null;
-  let elapsed = path.closed ? ((requestedTime % totalDuration) + totalDuration) % totalDuration : Math.max(0, Math.min(totalDuration, requestedTime));
+  let elapsed = normalizeCameraPathTime(path, requestedTime);
   const timelineElapsed = elapsed;
   const segmentCount = path.closed ? path.points.length : path.points.length - 1;
   let segment = Math.max(0, segmentCount - 1), t = 1, action = '';
@@ -259,9 +267,10 @@ export function stopCameraPlayback(editor: Editor): void {
 
 export function seekCameraPlayback(editor: Editor, elapsed: number): CameraPose | null {
   if (!editor.cameraPlayback) return null;
-  editor.cameraPlayback.elapsed = Math.max(0, elapsed);
   const path = collectCameraPaths(editor).find(item => item.id === editor.cameraPlayback?.pathId);
-  return path ? sampleCameraPath(path, editor.cameraPlayback.elapsed) : null;
+  if (!path) return null;
+  editor.cameraPlayback.elapsed = normalizeCameraPathTime(path, elapsed);
+  return sampleCameraPath(path, editor.cameraPlayback.elapsed);
 }
 
 export function advanceCameraPlayback(editor: Editor, deltaSeconds: number): CameraPose | null {
@@ -270,7 +279,8 @@ export function advanceCameraPlayback(editor: Editor, deltaSeconds: number): Cam
   if (!path) { editor.cameraPlayback = null; editor.statusMessage = 'Camera path reference is invalid'; return null; }
   state.elapsed += Math.max(0, deltaSeconds);
   const duration = cameraPathDuration(path);
-  if (!path.closed && state.elapsed >= duration) { state.elapsed = duration; state.playing = false; editor.statusMessage = `Finished camera path ${path.name}`; }
+  if (path.closed) state.elapsed = normalizeCameraPathTime(path, state.elapsed);
+  else if (state.elapsed >= duration) { state.elapsed = duration; state.playing = false; editor.statusMessage = `Finished camera path ${path.name}`; }
   return sampleCameraPath(path, state.elapsed);
 }
 

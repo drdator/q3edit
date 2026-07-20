@@ -1369,7 +1369,7 @@ textarea:focus-visible {
   margin-top: 2px;
 }
 
-.panel-body input.terrain-slider[type="range"] {
+.panel-body input.panel-slider[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
@@ -1379,7 +1379,7 @@ textarea:focus-visible {
   cursor: default;
 }
 
-.panel-body input.terrain-slider[type="range"]::-webkit-slider-runnable-track {
+.panel-body input.panel-slider[type="range"]::-webkit-slider-runnable-track {
   height: 6px;
   background: #2f2f2f;
   border: 1px solid var(--border-dark);
@@ -1387,7 +1387,7 @@ textarea:focus-visible {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.panel-body input.terrain-slider[type="range"]::-webkit-slider-thumb {
+.panel-body input.panel-slider[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 12px;
   height: 12px;
@@ -1397,15 +1397,15 @@ textarea:focus-visible {
   border-radius: 0;
 }
 
-.panel-body input.terrain-slider[type="range"]:hover::-webkit-slider-runnable-track {
+.panel-body input.panel-slider[type="range"]:hover::-webkit-slider-runnable-track {
   background: #393939;
 }
 
-.panel-body input.terrain-slider[type="range"]:hover::-webkit-slider-thumb {
+.panel-body input.panel-slider[type="range"]:hover::-webkit-slider-thumb {
   background: var(--accent);
 }
 
-.panel-body input.terrain-slider[type="range"]::-moz-range-track {
+.panel-body input.panel-slider[type="range"]::-moz-range-track {
   height: 6px;
   background: #2f2f2f;
   border: 1px solid var(--border-dark);
@@ -1413,7 +1413,7 @@ textarea:focus-visible {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.panel-body input.terrain-slider[type="range"]::-moz-range-thumb {
+.panel-body input.panel-slider[type="range"]::-moz-range-thumb {
   width: 12px;
   height: 12px;
   background: var(--accent-dim);
@@ -1421,15 +1421,15 @@ textarea:focus-visible {
   border-radius: 0;
 }
 
-.panel-body input.terrain-slider[type="range"]:hover::-moz-range-track {
+.panel-body input.panel-slider[type="range"]:hover::-moz-range-track {
   background: #393939;
 }
 
-.panel-body input.terrain-slider[type="range"]:hover::-moz-range-thumb {
+.panel-body input.panel-slider[type="range"]:hover::-moz-range-thumb {
   background: var(--accent);
 }
 
-.panel-body input.terrain-slider[type="range"]:disabled {
+.panel-body input.panel-slider[type="range"]:disabled {
   opacity: 0.45;
 }
 

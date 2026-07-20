@@ -74,6 +74,9 @@ describe('camera paths', () => {
     const pose = editor.advanceCameraPlayback(1.5)!;
     expect(pose.position[0]).toBeGreaterThan(0);
     expect(pose.pitch).toBeGreaterThan(0);
+    const loopedPose = editor.advanceCameraPlayback(6.5)!;
+    expect(editor.cameraPlayback?.elapsed).toBe(1);
+    expect(loopedPose.elapsed).toBe(1);
     editor.stopCameraPlayback();
     expect(editor.cameraPlayback).toBeNull();
   });
