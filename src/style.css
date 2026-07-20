@@ -955,7 +955,34 @@ body.sidepanel-resizing * {
 .panel-toggle {
   font-size: 12px;
   color: var(--text-dim);
+  width: 12px;
+  text-align: center;
+}
+
+.panel-solo-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   margin-left: auto;
+  padding: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  font-size: 13px;
+  cursor: default;
+}
+
+.panel-solo-button:hover,
+.panel-solo-button:focus-visible {
+  color: var(--text-bright);
+  background: var(--bg-lighter);
+  outline: 1px solid var(--border-dark);
+}
+
+.panel-solo-button.active {
+  color: var(--accent);
 }
 
 .panel-header select {

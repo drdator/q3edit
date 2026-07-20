@@ -27,6 +27,7 @@ import {
   MIN_SIDEBAR_WIDTH,
   resizedSidebarWidth,
 } from './sidebar-layout';
+import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -74,6 +75,8 @@ export class UI {
   private collapsedBrushPanelTerrainGroups = new Set<string>();
   private groupsPanelSignature = '';
   private cameraPanelSignature = '';
+  private soloedPanelId: string | null = null;
+  private preSoloPanelStates: PanelCollapseState | null = null;
 
   constructor(editor: Editor) {
     this.editor = editor;
@@ -148,12 +151,26 @@ export class UI {
     for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
       const panel = header.parentElement as HTMLElement | null;
       if (!panel || panel.id === 'terrain-panel') continue;
+      const solo = document.createElement('button');
+      solo.type = 'button';
+      solo.className = 'panel-solo-button';
+      solo.title = 'Solo panel';
+      solo.setAttribute('aria-label', `Solo ${header.textContent?.trim() || 'panel'}`);
+      solo.setAttribute('aria-pressed', 'false');
+      solo.innerHTML = '<i class="ph ph-arrows-out-line-vertical"></i>';
+      solo.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggleSoloPanel(panel);
+      });
+      header.appendChild(solo);
       const toggle = document.createElement('span');
       toggle.className = 'panel-toggle';
       header.appendChild(toggle);
       this.setPanelCollapsed(panel, this.editor.preferences.collapsedPanels[panel.id] ?? false);
       header.addEventListener('mousedown', () => {
         const owningPanel = header.parentElement!;
+        this.clearPanelSoloState();
         const collapsed = !owningPanel.classList.contains('collapsed');
         this.setPanelCollapsed(owningPanel, collapsed);
         this.editor.preferences.collapsedPanels[owningPanel.id] = collapsed;
@@ -168,6 +185,60 @@ export class UI {
     this.buildTexturePanel();
     this.buildTerrainPanel();
     this.setupTerrainPopover();
+  }
+
+  private dockedSidePanels(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>('#sidepanel > .panel:not(#terrain-panel)')];
+  }
+
+  private currentPanelCollapseState(): PanelCollapseState {
+    return Object.fromEntries(this.dockedSidePanels().map(panel => [panel.id, panel.classList.contains('collapsed')]));
+  }
+
+  private applyPanelCollapseState(state: PanelCollapseState): void {
+    for (const panel of this.dockedSidePanels()) {
+      const collapsed = state[panel.id] ?? false;
+      this.setPanelCollapsed(panel, collapsed);
+      this.editor.preferences.collapsedPanels[panel.id] = collapsed;
+    }
+    this.editor.persistCurrentPreferences();
+    this.editor.redrawRequested = true;
+  }
+
+  private toggleSoloPanel(panel: HTMLElement): void {
+    if (this.soloedPanelId === panel.id && this.preSoloPanelStates) {
+      const restore = this.preSoloPanelStates;
+      this.soloedPanelId = null;
+      this.preSoloPanelStates = null;
+      this.applyPanelCollapseState(restore);
+      this.refreshPanelSoloButtons();
+      return;
+    }
+
+    if (!this.preSoloPanelStates) this.preSoloPanelStates = this.currentPanelCollapseState();
+    this.soloedPanelId = panel.id;
+    const panelIds = this.dockedSidePanels().map(candidate => candidate.id);
+    this.applyPanelCollapseState(soloPanelCollapseState(panelIds, panel.id));
+    this.refreshPanelSoloButtons();
+  }
+
+  private clearPanelSoloState(): void {
+    if (!this.soloedPanelId && !this.preSoloPanelStates) return;
+    this.soloedPanelId = null;
+    this.preSoloPanelStates = null;
+    this.refreshPanelSoloButtons();
+  }
+
+  private refreshPanelSoloButtons(): void {
+    for (const panel of this.dockedSidePanels()) {
+      const button = panel.querySelector<HTMLButtonElement>('.panel-solo-button');
+      if (!button) continue;
+      const active = panel.id === this.soloedPanelId;
+      button.classList.toggle('active', active);
+      button.title = active ? 'Restore panel layout' : 'Solo panel';
+      button.setAttribute('aria-pressed', String(active));
+      button.innerHTML = `<i class="ph ${active ? 'ph-arrows-in-line-vertical' : 'ph-arrows-out-line-vertical'}"></i>`;
+    }
   }
 
   private setupSidePanelLayout(): void {
