@@ -266,6 +266,11 @@ import {
   type TransactionOptions,
 } from './editor-transactions';
 
+export interface EditorDocumentChange {
+  label: string;
+  revision: number;
+}
+
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
 export type GizmoMode = 'move' | 'scale';
@@ -323,6 +328,7 @@ export class Editor {
   documentRevision = 0;
   savedDocumentRevision = 0;
   private nextDocumentRevision = 1;
+  private documentChangeListeners = new Set<(change: EditorDocumentChange) => void>();
 
   // Drag state for brush creation
   creating = false;
@@ -856,6 +862,16 @@ export class Editor {
   /** Internal transaction hook: assign a fresh identity to committed document state. */
   commitDocumentRevision(): void {
     this.documentRevision = this.nextDocumentRevision++;
+  }
+
+  subscribeDocumentChanges(listener: (change: EditorDocumentChange) => void): () => void {
+    this.documentChangeListeners.add(listener);
+    return () => this.documentChangeListeners.delete(listener);
+  }
+
+  notifyDocumentChanged(label: string): void {
+    const change = { label, revision: this.documentRevision };
+    for (const listener of this.documentChangeListeners) listener(change);
   }
 
   /** Internal history hook: restore the identity associated with a snapshot. */

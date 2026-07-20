@@ -15,6 +15,7 @@ export function undo(editor: Editor): void {
     editor.restoreDocumentRevision(prev.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Undo: ${prev.label}`;
+    editor.notifyDocumentChanged(`Undo: ${prev.label}`);
   }
 }
 
@@ -26,6 +27,7 @@ export function redo(editor: Editor): void {
     editor.restoreDocumentRevision(next.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Redo: ${next.label}`;
+    editor.notifyDocumentChanged(`Redo: ${next.label}`);
   }
 }
 
