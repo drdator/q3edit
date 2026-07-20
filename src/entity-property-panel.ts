@@ -141,7 +141,8 @@ export function buildDefinedEntityProperties(
   }
   for (const property of Object.values(definedProperties)) {
     const hasValue = property.key in entity.properties;
-    const alwaysShowControl = definition.classname === 'misc_model' && property.key === 'model';
+    const alwaysShowControl = definition.classname === 'misc_model'
+      && (property.key === 'model' || property.key === 'skin');
     const row = document.createElement('div');
     row.className = 'entity-defined-property';
     const label = document.createElement('label');

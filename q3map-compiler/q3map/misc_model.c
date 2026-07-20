@@ -46,6 +46,96 @@ int		c_triangleIndexes;
 loadedModel_t		loadedModels[MAX_LOADED_MODELS];
 int					numLoadedModels;
 
+#define MAX_SKIN_MAPPINGS 256
+
+typedef struct {
+	char			surface[MAX_QPATH];
+	char			shader[MAX_QPATH];
+} skinMapping_t;
+
+static char *TrimSkinToken( char *text ) {
+	char *end;
+
+	while ( *text == ' ' || *text == '\t' || *text == '\r' ) {
+		text++;
+	}
+	end = text + strlen( text );
+	while ( end > text && ( end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' ) ) {
+		*--end = 0;
+	}
+	return text;
+}
+
+static int LoadSkinMappings( const char *skinName, skinMapping_t *mappings, qboolean warnMissing ) {
+	char			filename[1024];
+	char			fallbackName[1024];
+	char			*data, *line, *next, *comma, *comment;
+	char			*surface, *shader;
+	int				len, count;
+
+	if ( !skinName || !skinName[0] ) {
+		return 0;
+	}
+	strncpy( fallbackName, skinName, sizeof( fallbackName ) - 1 );
+	fallbackName[sizeof( fallbackName ) - 1] = 0;
+	for ( line = fallbackName ; *line ; line++ ) {
+		if ( *line == '\\' ) *line = '/';
+	}
+	sprintf( filename, "%s%s", gamedir, fallbackName );
+	len = TryLoadFile( filename, (void **)&data );
+	if ( len <= 0 && Q_strncasecmp( fallbackName, "models/", 7 ) ) {
+		sprintf( filename, "%smodels/%s", gamedir, fallbackName );
+		len = TryLoadFile( filename, (void **)&data );
+	}
+	if ( len <= 0 ) {
+		if ( warnMissing ) {
+			_printf( "WARNING: Couldn't load misc_model skin %s\n", skinName );
+		}
+		return 0;
+	}
+
+	count = 0;
+	line = data;
+	while ( line && *line && count < MAX_SKIN_MAPPINGS ) {
+		next = strchr( line, '\n' );
+		if ( next ) *next++ = 0;
+		comment = strstr( line, "//" );
+		if ( comment ) *comment = 0;
+		comma = strchr( line, ',' );
+		if ( comma ) {
+			*comma = 0;
+			surface = TrimSkinToken( line );
+			shader = TrimSkinToken( comma + 1 );
+			if ( surface[0] && shader[0] && Q_strncasecmp( surface, "tag_", 4 ) ) {
+				strncpy( mappings[count].surface, surface, MAX_QPATH - 1 );
+				mappings[count].surface[MAX_QPATH - 1] = 0;
+				strncpy( mappings[count].shader, shader, MAX_QPATH - 1 );
+				mappings[count].shader[MAX_QPATH - 1] = 0;
+				count++;
+			}
+		}
+		line = next;
+	}
+	free( data );
+	qprintf( "Loaded misc_model skin %s (%i mappings)\n", skinName, count );
+	return count;
+}
+
+static int LoadModelSkinMappings( const char *modelName, const char *skinName, skinMapping_t *mappings ) {
+	char	defaultSkin[1024];
+	char	*extension;
+
+	if ( skinName && skinName[0] ) {
+		return LoadSkinMappings( skinName, mappings, qtrue );
+	}
+	strncpy( defaultSkin, modelName, sizeof( defaultSkin ) - 1 );
+	defaultSkin[sizeof( defaultSkin ) - 1] = 0;
+	extension = strrchr( defaultSkin, '.' );
+	if ( extension ) *extension = 0;
+	strncat( defaultSkin, "_default.skin", sizeof( defaultSkin ) - strlen( defaultSkin ) - 1 );
+	return LoadSkinMappings( defaultSkin, mappings, qfalse );
+}
+
 /*
 =================
 R_LoadMD3
@@ -207,7 +297,7 @@ InsertMD3Model
 Convert a model entity to raw geometry surfaces and insert it in the tree
 ============
 */
-void InsertMD3Model( const char *modelName, vec3_t origin, float angle, tree_t *tree ) {
+void InsertMD3Model( const char *modelName, const char *skinName, vec3_t origin, float angle, tree_t *tree ) {
 	int					i, j;
 	md3Header_t			*md3;
 	md3Surface_t		*surf;
@@ -220,6 +310,9 @@ void InsertMD3Model( const char *modelName, vec3_t origin, float angle, tree_t *
 	float				angleCos, angleSin;
 	mapDrawSurface_t	*out;
 	vec3_t				temp;
+	skinMapping_t		skinMappings[MAX_SKIN_MAPPINGS];
+	int					numSkinMappings;
+	const char			*shaderName;
 
 	angle = angle / 180 * Q_PI;
 	angleCos = cos( angle );
@@ -230,23 +323,35 @@ void InsertMD3Model( const char *modelName, vec3_t origin, float angle, tree_t *
 	if ( !md3 ) {
 		return;
 	}
+	numSkinMappings = LoadModelSkinMappings( modelName, skinName, skinMappings );
 
 	// each md3 surface will become a new bsp surface
 
 	c_triangleModels++;
-	c_triangleSurfaces += md3->numSurfaces;
 
 	// expand, translate, and rotate the vertexes
 	// swap all the surfaces
 	surf = (md3Surface_t *) ( (byte *)md3 + md3->ofsSurfaces );
 	for ( i = 0 ; i < md3->numSurfaces ; i++) {
+        shader = (md3Shader_t *) ( (byte *)surf + surf->ofsShaders );
+		shaderName = shader->name;
+		for ( j = 0 ; j < numSkinMappings ; j++ ) {
+			if ( !Q_stricmp( skinMappings[j].surface, surf->name ) ) {
+				shaderName = skinMappings[j].shader;
+				break;
+			}
+		}
+		if ( !Q_stricmp( shaderName, "*off" ) ) {
+			surf = (md3Surface_t *)( (byte *)surf + surf->ofsEnd );
+			continue;
+		}
+
 		// allocate a surface
 		out = AllocDrawSurf();
 		out->miscModel = qtrue;
+		c_triangleSurfaces++;
 
-        shader = (md3Shader_t *) ( (byte *)surf + surf->ofsShaders );
-
-		out->shaderInfo = ShaderInfoForShader( shader->name );
+		out->shaderInfo = ShaderInfoForShader( shaderName );
 
 		out->numVerts = surf->numVerts;
 		out->verts = malloc( out->numVerts * sizeof( out->verts[0] ) );
@@ -437,6 +542,7 @@ void AddTriangleModels( tree_t *tree ) {
 		// convert misc_models into raw geometry
 		if ( !Q_stricmp( "misc_model", ValueForKey( entity, "classname" ) ) ) {
 			const char	*model;
+			const char	*skin;
 			vec3_t	origin;
 			float	angle;
 
@@ -451,8 +557,10 @@ void AddTriangleModels( tree_t *tree ) {
 					(int)origin[1], (int)origin[2] );
 				continue;
 			}
+			skin = ValueForKey( entity, "skin" );
+			if ( !skin[0] ) skin = ValueForKey( entity, "_skin" );
 			if ( strstr( model, ".md3" ) || strstr( model, ".MD3" ) ) {
-				InsertMD3Model( model, origin, angle, tree );
+				InsertMD3Model( model, skin, origin, angle, tree );
 				continue;
 			}
 			if ( strstr( model, ".ase" ) || strstr( model, ".ASE" ) ) {
@@ -469,4 +577,3 @@ void AddTriangleModels( tree_t *tree ) {
 	qprintf( "%5i triangle vertexes\n", c_triangleVertexes );
 	qprintf( "%5i triangle indexes\n", c_triangleIndexes );
 }
-

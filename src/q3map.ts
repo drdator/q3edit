@@ -32,7 +32,7 @@ export interface CompileResult {
   output: string[]
 }
 
-/** Collect MD3 files that q3map must bake into misc_model draw surfaces. */
+/** Collect MD3 and skin files that q3map must bake into misc_model draw surfaces. */
 export function collectCompileModelFiles(
   entities: readonly Entity[],
   modelManager: ModelManager | null,
@@ -45,6 +45,10 @@ export function collectCompileModelFiles(
     if (!resolved) continue;
     const file = modelManager.getModelFile(resolved.path);
     if (file) files.set(file[0], file[1]);
+    if (resolved.skinPath) {
+      const skin = modelManager.getSkinFile(resolved.skinPath);
+      if (skin) files.set(skin[0], skin[1]);
+    }
   }
   return files;
 }

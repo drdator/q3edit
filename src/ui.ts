@@ -2377,6 +2377,10 @@ export class UI {
             for (const face of brush.faces) usedTextures.add(face.texture);
           }
           for (const patch of ent.patches) usedTextures.add(patch.texture);
+          if (ent.classname === 'misc_model') {
+            const resolved = this.editor.modelManager?.resolveEntity(ent);
+            for (const texture of resolved?.surfaceTextures.values() ?? []) usedTextures.add(texture);
+          }
         }
         for (const tex of usedTextures) {
           const found = this.texMgr.findImageFile(tex);

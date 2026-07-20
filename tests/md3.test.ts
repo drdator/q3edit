@@ -90,10 +90,29 @@ describe('ModelManager', () => {
     const unrelated = createEntity('info_player_deathmatch');
     unrelated.properties.model = 'models/test.md3';
 
-    const files = collectCompileModelFiles([miscModel, unrelated], manager);
+    miscModel.properties.skin = 'models/test.skin';
+    const filesWithoutSkin = collectCompileModelFiles([miscModel, unrelated], manager);
 
-    expect([...files.keys()]).toEqual(['models/test.md3']);
+    expect([...filesWithoutSkin.keys()]).toEqual(['models/test.md3']);
+
+    const managerWithSkin = new ModelManager(new AssetIndex([archive('models.pk3', {
+      'models/test.md3': model,
+      'models/test.skin': strToU8('body,textures/models/red\n'),
+      'models/test_default.skin': strToU8('body,textures/models/default-skin\n'),
+    })]));
+    const files = collectCompileModelFiles([miscModel, unrelated], managerWithSkin);
+
+    expect([...files.keys()]).toEqual(['models/test.md3', 'models/test.skin']);
     expect(files.get('models/test.md3')).toEqual(model);
+    expect(new TextDecoder().decode(files.get('models/test.skin'))).toContain('textures/models/red');
+
+    delete miscModel.properties.skin;
+    expect([...collectCompileModelFiles([miscModel], managerWithSkin).keys()])
+      .toEqual(['models/test.md3', 'models/test_default.skin']);
+
+    miscModel.properties._skin = 'models/test.skin';
+    expect([...collectCompileModelFiles([miscModel], managerWithSkin).keys()])
+      .toEqual(['models/test.md3', 'models/test.skin']);
   });
 
   it('uses archive precedence and invalidates the decoded cache when its index changes', () => {
