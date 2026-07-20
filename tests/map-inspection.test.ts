@@ -31,5 +31,12 @@ describe('MCP map inspection', () => {
 
     const detailed = inspectMapObjects(mapText, ['E0:B0'], true)[0] as { faces: unknown[] };
     expect(detailed.faces).toHaveLength(6);
+
+    const face = inspectMapObjects(mapText, ['E0:B0:F4'], true)[0];
+    expect(face).toMatchObject({
+      ref: 'E0:B0:F4', kind: 'face', brush: 'E0:B0', texture: 'common/caulk',
+      contentFlags: 0, surfaceFlags: 0,
+    });
+    expect(face).toHaveProperty('polygon');
   });
 });

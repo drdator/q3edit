@@ -1,4 +1,14 @@
-import { cloneBrush, computeBrushGeometry, createBoxBrush, createFace, validateBrush, type Brush } from './brush';
+import {
+  classicTextureProjection,
+  cloneBrush,
+  computeBrushGeometry,
+  createBoxBrush,
+  createFace,
+  textureAxisFromPlane,
+  validateBrush,
+  type Brush,
+  type BrushFace,
+} from './brush';
 import { createBrushPrimitive, createWedgeBrush, type BrushPrimitive, type WedgeDirection } from './brush-primitives';
 import type { Editor } from './editor';
 import { cloneEntity, createEntity, type Entity } from './entity';
@@ -10,10 +20,13 @@ import {
   translateEditorBrush,
   translateEditorEntity,
 } from './editor-transforms';
-import type { Vec3 } from './math';
+import { vec3Dot, type Vec3 } from './math';
 import { clonePatch, mirrorPatch, rotatePatch, translatePatch, type Patch } from './patch';
+import { CONTENTS_DETAIL, CONTENTS_STRUCTURAL } from './map-flags';
 
 export type MapObjectRef = `E${number}` | `E${number}:B${number}` | `E${number}:P${number}`;
+export type MapFaceRef = `E${number}:B${number}:F${number}`;
+export type MapDocumentRef = MapObjectRef | MapFaceRef;
 export type MapSymbolicRef = `@${string}`;
 export type MapTargetRef = MapObjectRef | MapSymbolicRef;
 
@@ -141,6 +154,25 @@ export interface SetTextureOperation {
   texture: string;
 }
 
+export interface EditFacesOperation {
+  type: 'edit_faces';
+  targets: MapFaceRef[];
+  texture?: string;
+  shift?: [number, number];
+  scale?: [number, number];
+  rotateDegrees?: number;
+  fit?: boolean;
+  contentFlags?: number;
+  surfaceFlags?: number;
+  value?: number;
+}
+
+export interface SetBrushClassificationOperation {
+  type: 'set_brush_classification';
+  targets: MapTargetRef[];
+  classification: 'detail' | 'structural';
+}
+
 export interface DeleteObjectsOperation {
   type: 'delete';
   targets: MapTargetRef[];
@@ -161,13 +193,15 @@ export type MapOperation =
   | CloneObjectsOperation
   | ArrayObjectsOperation
   | SetTextureOperation
+  | EditFacesOperation
+  | SetBrushClassificationOperation
   | DeleteObjectsOperation;
 
 export interface MapOperationResult {
   revision: number;
   operationCount: number;
   created: MapObjectRef[];
-  changed: MapObjectRef[];
+  changed: MapDocumentRef[];
   aliases: Record<string, MapObjectRef[]>;
   summary: string;
 }
@@ -183,6 +217,13 @@ type ObjectHandle =
   | { kind: 'patch'; entity: Entity; patch: Patch };
 
 type SymbolicReferences = Map<string, ObjectHandle[]>;
+
+interface ResolvedFace {
+  ref: MapFaceRef;
+  entity: Entity;
+  brush: Brush;
+  face: BrushFace;
+}
 
 function assertVector(name: string, value: Vec3): void {
   if (value.length !== 3 || !value.every(Number.isFinite)) {
@@ -214,6 +255,23 @@ function resolveObject(editor: Pick<Editor, 'entities'>, ref: MapObjectRef): Res
   const patch = entity.patches[objectIndex];
   if (!patch) throw new Error(`Patch ${ref} does not exist`);
   return { ref, kind: 'patch', entityIndex, entity, objectIndex, patch };
+}
+
+function resolveFaces(editor: Pick<Editor, 'entities'>, refs: readonly MapFaceRef[]): ResolvedFace[] {
+  const result: ResolvedFace[] = [];
+  const seen = new Set<BrushFace>();
+  for (const ref of refs) {
+    const match = /^E(\d+):B(\d+):F(\d+)$/.exec(ref);
+    if (!match) throw new Error(`Invalid face reference ${ref}`);
+    const entity = editor.entities[Number(match[1])];
+    const brush = entity?.brushes[Number(match[2])];
+    const face = brush?.faces[Number(match[3])];
+    if (!entity || !brush || !face) throw new Error(`Face ${ref} does not exist`);
+    if (seen.has(face)) continue;
+    seen.add(face);
+    result.push({ ref, entity, brush, face });
+  }
+  return result;
 }
 
 function objectHandle(resolved: ResolvedObject): ObjectHandle {
@@ -378,6 +436,97 @@ function setObjectTexture(resolved: ResolvedObject, texture: string): void {
   for (const patch of patches) patch.texture = texture;
 }
 
+function textureDimensions(editor: Editor, face: BrushFace): [number, number] {
+  const texture = editor.textureManager?.getIfLoaded(face.texture);
+  return [texture?.width ?? 128, texture?.height ?? 128];
+}
+
+function fitFaceTexture(editor: Editor, face: BrushFace): void {
+  if (face.polygon.length < 3) return;
+  const [textureWidth, textureHeight] = textureDimensions(editor, face);
+  const [sVector, tVector] = textureAxisFromPlane(face.plane.normal);
+  const s = face.polygon.map(vertex => vec3Dot(vertex, sVector));
+  const t = face.polygon.map(vertex => vec3Dot(vertex, tVector));
+  const minS = Math.min(...s); const maxS = Math.max(...s);
+  const minT = Math.min(...t); const maxT = Math.max(...t);
+  const sRange = maxS - minS; const tRange = maxT - minT;
+  if (sRange < 0.001 || tRange < 0.001) return;
+  const projection = classicTextureProjection(face);
+  if (projection) {
+    projection.scaleX = sRange / textureWidth;
+    projection.scaleY = tRange / textureHeight;
+    projection.rotation = 0;
+    projection.offsetX = -minS / projection.scaleX;
+    projection.offsetY = -minT / projection.scaleY;
+  } else if (face.textureProjection.kind === 'brush-primitive') {
+    face.textureProjection.matrix = [[1 / sRange, 0, -minS / sRange], [0, 1 / tRange, -minT / tRange]];
+  }
+}
+
+function editFace(editor: Editor, face: BrushFace, operation: EditFacesOperation): void {
+  if (operation.texture !== undefined) {
+    if (!operation.texture.trim()) throw new Error('texture must not be empty');
+    face.texture = operation.texture;
+  }
+  if (operation.contentFlags !== undefined) face.contentFlags = operation.contentFlags;
+  if (operation.surfaceFlags !== undefined) face.surfaceFlags = operation.surfaceFlags;
+  if (operation.value !== undefined) face.value = operation.value;
+  const [width, height] = textureDimensions(editor, face);
+  const projection = classicTextureProjection(face);
+  if (operation.shift) {
+    if (!operation.shift.every(Number.isFinite)) throw new Error('shift must contain two finite numbers');
+    if (projection) {
+      projection.offsetX += operation.shift[0]; projection.offsetY += operation.shift[1];
+    } else if (face.textureProjection.kind === 'brush-primitive') {
+      face.textureProjection.matrix[0][2] += operation.shift[0] / width;
+      face.textureProjection.matrix[1][2] += operation.shift[1] / height;
+    }
+  }
+  if (operation.scale) {
+    if (!operation.scale.every(value => Number.isFinite(value) && value > 0)) throw new Error('scale must contain two positive finite multipliers');
+    if (projection) {
+      projection.scaleX *= operation.scale[0]; projection.scaleY *= operation.scale[1];
+    } else if (face.textureProjection.kind === 'brush-primitive') {
+      for (let column = 0; column < 2; column++) {
+        face.textureProjection.matrix[0][column] /= operation.scale[0];
+        face.textureProjection.matrix[1][column] /= operation.scale[1];
+      }
+    }
+  }
+  if (operation.rotateDegrees !== undefined) {
+    if (!Number.isFinite(operation.rotateDegrees)) throw new Error('rotateDegrees must be finite');
+    if (projection) {
+      projection.rotation = ((projection.rotation + operation.rotateDegrees) % 360 + 360) % 360;
+    } else if (face.textureProjection.kind === 'brush-primitive') {
+      const angle = operation.rotateDegrees * Math.PI / 180;
+      const cos = Math.cos(angle); const sin = Math.sin(angle);
+      const [uRow, vRow] = face.textureProjection.matrix;
+      const uPixels = uRow.map(value => value * width);
+      const vPixels = vRow.map(value => value * height);
+      for (let column = 0; column < 3; column++) {
+        uRow[column] = (cos * uPixels[column] - sin * vPixels[column]) / width;
+        vRow[column] = (sin * uPixels[column] + cos * vPixels[column]) / height;
+      }
+    }
+  }
+  if (operation.fit) fitFaceTexture(editor, face);
+}
+
+function classifyBrushes(targets: ResolvedObject[], classification: 'detail' | 'structural'): Brush[] {
+  const brushes = new Set<Brush>();
+  for (const target of targets) {
+    if (target.kind === 'entity') target.entity.brushes.forEach(brush => brushes.add(brush));
+    else if (target.kind === 'brush') brushes.add(target.brush);
+    else throw new Error(`${target.ref} is a patch; brush classification requires brushes or brush-owning entities`);
+  }
+  for (const brush of brushes) for (const face of brush.faces) {
+    face.contentFlags = classification === 'detail'
+      ? (face.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL
+      : face.contentFlags & ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
+  }
+  return [...brushes];
+}
+
 function applyTranslation(editor: Editor, targets: ResolvedObject[], delta: Vec3): void {
   assertVector('delta', delta);
   const entities = new Set(targets.filter(item => item.kind === 'entity').map(item => item.entity));
@@ -452,6 +601,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
   if (operations.length === 0) throw new Error('At least one operation is required');
   const createdHandles: ObjectHandle[] = [];
   const changedHandles = new Set<ObjectHandle>();
+  const changedFaceRefs = new Set<MapFaceRef>();
   const deletedRefs = new Set<MapObjectRef>();
   const aliases: SymbolicReferences = new Map();
 
@@ -547,6 +697,19 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           setObjectTexture(target, operation.texture);
           changedHandles.add(objectHandle(target));
         }
+      } else if (operation.type === 'edit_faces') {
+        const faces = resolveFaces(editor, operation.targets);
+        for (const resolved of faces) {
+          editFace(editor, resolved.face, operation);
+          changedFaceRefs.add(resolved.ref);
+        }
+      } else if (operation.type === 'set_brush_classification') {
+        const targets = resolveTargets(editor, operation.targets, aliases);
+        const brushes = classifyBrushes(targets, operation.classification);
+        for (const brush of brushes) {
+          const entity = editor.entities.find(candidate => candidate.brushes.includes(brush));
+          if (entity) changedHandles.add({ kind: 'brush', entity, brush });
+        }
       } else if (operation.type === 'delete') {
         const targets = resolveTargets(editor, operation.targets, aliases);
         targets.forEach(target => deletedRefs.add(target.ref));
@@ -567,7 +730,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
     return [...new Set(refs)];
   };
   const created = refsForHandles(createdHandles);
-  const changed = [...new Set([...refsForHandles(changedHandles), ...deletedRefs])];
+  const changed = [...new Set<MapDocumentRef>([...refsForHandles(changedHandles), ...changedFaceRefs, ...deletedRefs])];
   const aliasResult = Object.fromEntries(
     [...aliases].map(([id, handles]) => [`@${id}`, refsForHandles(handles)]),
   );

@@ -82,9 +82,34 @@ Initial `map_apply` operations are:
 - `clone`
 - `array`
 - `set_texture`
+- `edit_faces` for per-face texture, shift, scale, rotation, fit, and compile flags
+- `set_brush_classification` (`detail` or `structural`)
 - `delete`
 
-Object references use the current document indices: `E1`, `E0:B2`, and `E0:P0`. They are revision-sensitive, so call `map_status` or `map_entities` again after a revision conflict.
+Object references use the current document indices: `E1`, `E0:B2`, `E0:B2:F4`, and `E0:P0`. Face references can be inspected, queried, selected, framed, or passed to `edit_faces`. References are revision-sensitive, so call `map_status`, `map_query`, or `map_entities` again after a revision conflict.
+
+Mark decorative geometry as detail before compiling so it does not unnecessarily split the BSP tree:
+
+```json
+{
+  "type": "set_brush_classification",
+  "targets": ["@trim", "E0:B12"],
+  "classification": "detail"
+}
+```
+
+Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as large horizontally, while `fit: true` fits one texture repeat to the face:
+
+```json
+{
+  "type": "edit_faces",
+  "targets": ["E0:B12:F4"],
+  "texture": "base_trim/pewter_shiney",
+  "shift": [16, 0],
+  "scale": [2, 1],
+  "rotateDegrees": 90
+}
+```
 
 A useful authoring loop is:
 

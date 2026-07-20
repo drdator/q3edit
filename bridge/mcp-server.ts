@@ -3,12 +3,14 @@ import * as z from 'zod/v4';
 import type { BridgeHub } from './bridge-hub';
 import { inspectMapObjects } from './map-inspection';
 import { queryMap, type MapQueryOptions } from './map-query';
-import type { MapObjectRef, MapOperation } from '../src/map-operations';
+import type { MapDocumentRef, MapOperation } from '../src/map-operations';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
-const objectRef = z.string().regex(/^E\d+(?::[BP]\d+)?$/, 'Expected an object reference such as E1, E0:B2, or E0:P0');
+const objectRef = z.string().regex(/^E\d+(?::[BP]\d+)?(?::F\d+)?$/, 'Expected an object reference such as E1, E0:B2, E0:B2:F4, or E0:P0');
 const operationRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?|@[A-Za-z][A-Za-z0-9_-]{0,63})$/, 'Expected an object reference or symbolic reference such as @north_tower');
+const faceRef = z.string().regex(/^E\d+:B\d+:F\d+$/, 'Expected a face reference such as E0:B2:F4');
+const compatibleTargetRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?(?::F\d+)?|@[A-Za-z][A-Za-z0-9_-]{0,63})$/);
 const symbolicId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
 
 const mapOperation = z.discriminatedUnion('type', [
@@ -93,6 +95,23 @@ const mapOperation = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clone'), id: symbolicId.optional(), targets: z.array(operationRef).min(1), delta: vec3.optional() }),
   z.object({ type: z.literal('array'), id: symbolicId.optional(), targets: z.array(operationRef).min(1), copies: z.number().int().min(1).max(64), delta: vec3 }),
   z.object({ type: z.literal('set_texture'), targets: z.array(operationRef).min(1), texture: z.string().min(1) }),
+  z.object({
+    type: z.literal('edit_faces'),
+    targets: z.array(faceRef).min(1),
+    texture: z.string().min(1).optional(),
+    shift: z.tuple([z.number(), z.number()]).optional(),
+    scale: z.tuple([z.number().positive(), z.number().positive()]).optional(),
+    rotateDegrees: z.number().optional(),
+    fit: z.boolean().optional(),
+    contentFlags: z.number().int().nonnegative().optional(),
+    surfaceFlags: z.number().int().nonnegative().optional(),
+    value: z.number().int().optional(),
+  }),
+  z.object({
+    type: z.literal('set_brush_classification'),
+    targets: z.array(operationRef).min(1),
+    classification: z.enum(['detail', 'structural']),
+  }),
   z.object({ type: z.literal('delete'), targets: z.array(operationRef).min(1) }),
 ]);
 
@@ -115,6 +134,8 @@ const compatibleMapOperationInput = z.object({
     'clone',
     'array',
     'set_texture',
+    'edit_faces',
+    'set_brush_classification',
     'delete',
   ]),
   id: symbolicId.optional(),
@@ -123,7 +144,7 @@ const compatibleMapOperationInput = z.object({
   properties: z.record(z.string(), z.string()).optional(),
   unset: z.array(z.string()).optional(),
   target: operationRef.optional(),
-  targets: z.array(operationRef).optional(),
+  targets: z.array(compatibleTargetRef).optional(),
   parent: operationRef.optional(),
   mins: compatibleVec3.optional(),
   maxs: compatibleVec3.optional(),
@@ -147,6 +168,14 @@ const compatibleMapOperationInput = z.object({
   angleDegrees: z.number().optional(),
   copies: z.number().int().optional(),
   delta: compatibleVec3.optional(),
+  shift: z.array(z.number()).length(2).optional(),
+  scale: z.array(z.number()).length(2).optional(),
+  rotateDegrees: z.number().optional(),
+  fit: z.boolean().optional(),
+  contentFlags: z.number().int().optional(),
+  surfaceFlags: z.number().int().optional(),
+  value: z.number().int().optional(),
+  classification: z.enum(['detail', 'structural']).optional(),
 });
 
 function toolError(error: unknown) {
@@ -203,7 +232,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const snapshot = hub.snapshot();
       return toolResult({
         revision: snapshot.revision,
-        objects: inspectMapObjects(snapshot.mapText, refs as MapObjectRef[], includeGeometry),
+        objects: inspectMapObjects(snapshot.mapText, refs as MapDocumentRef[], includeGeometry),
       });
     } catch (error) {
       return toolError(error);
@@ -243,7 +272,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Query live map objects',
     description: 'Find entities, brushes, or patches by classname, texture, entity property, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
     inputSchema: {
-      kind: z.enum(['entity', 'brush', 'patch']).optional(),
+      kind: z.enum(['entity', 'brush', 'face', 'patch']).optional(),
       classname: z.string().optional().describe('Exact entity classname; geometry results are limited to geometry owned by matching entities'),
       texture: z.string().optional().describe('Case-insensitive texture name substring'),
       propertyKey: z.string().optional().describe('Entity property key that must exist'),
@@ -425,7 +454,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. Geometry includes boxes, rooms, cylinder/cone/sphere/pyramid primitives, wedges, stairs, and arbitrary convex plane brushes. Transform operations include translate, rotate, mirror, clone, and linear array. Use the advertised schema for exact fields.',
+    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. Geometry includes primitives, wedges, stairs, and convex plane brushes. Transform operations include translate, rotate, mirror, clone, and array. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Use the advertised schema for exact fields.',
     inputSchema: {
       expectedRevision: z.number().int().nonnegative(),
       label: z.string().min(1).max(120).describe('Undo label, for example MCP: Add side room'),

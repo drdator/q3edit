@@ -32,6 +32,9 @@ describe('map spatial query', () => {
       .toEqual([expect.objectContaining({ ref: 'E1:B0', textures: ['base_door/metal'] })]);
     expect(queryMap(queryFixture(), { kind: 'brush', classname: 'worldspawn' }))
       .toEqual([expect.objectContaining({ ref: 'E0:B0' })]);
+    expect(queryMap(queryFixture(), { kind: 'face', texture: 'stone' })).toHaveLength(6);
+    expect(queryMap(queryFixture(), { kind: 'face', texture: 'stone' })[0])
+      .toMatchObject({ ref: 'E0:B0:F0', brush: 'E0:B0', texture: 'base_floor/stone' });
   });
 
   test('supports intersecting and contained world-space bounds', () => {

@@ -15,7 +15,7 @@ export interface LiveBridgeEditorControls {
 }
 
 function selectionForRef(editor: Editor, ref: string): SelectionItem {
-  const match = /^E(\d+)(?::([BP])(\d+))?$/.exec(ref);
+  const match = /^E(\d+)(?::([BP])(\d+))?(?::F(\d+))?$/.exec(ref);
   if (!match) throw new Error(`Invalid object reference ${ref}`);
   const entity = editor.entities[Number(match[1])];
   if (!entity) throw new Error(`Entity ${ref} does not exist`);
@@ -24,6 +24,11 @@ function selectionForRef(editor: Editor, ref: string): SelectionItem {
   if (match[2] === 'B') {
     const brush = entity.brushes[index];
     if (!brush) throw new Error(`Brush ${ref} does not exist`);
+    if (match[4] !== undefined) {
+      const face = brush.faces[Number(match[4])];
+      if (!face) throw new Error(`Face ${ref} does not exist`);
+      return { type: 'face', entity, brush, face };
+    }
     return { type: 'brush', entity, brush };
   }
   const patch = entity.patches[index];

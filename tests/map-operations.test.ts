@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { Editor } from '../src/editor';
 import { createEntity, entityOrigin } from '../src/entity';
 import { createBoxBrush } from '../src/brush';
+import { CONTENTS_DETAIL } from '../src/map-flags';
 import { applyMapOperations } from '../src/map-operations';
 
 function emptyEditor(): Editor {
@@ -165,6 +166,31 @@ describe('serializable map operations', () => {
     expect(result.aliases['@copy']).toHaveLength(1);
     expect(result.aliases['@row']).toHaveLength(3);
     expect(editor.worldspawn.brushes.slice(2).map(brush => brush.mins[1])).toEqual([64, 128, 192]);
+  });
+
+  test('edits individual faces and classifies brushes as detail', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      { type: 'create_box', id: 'trim', mins: [0, 0, 0], maxs: [64, 96, 128], texture: 'common/caulk' },
+      {
+        type: 'edit_faces', targets: ['E0:B0:F4'], texture: 'base_trim/metal', fit: true,
+        contentFlags: 8, surfaceFlags: 16, value: 3,
+      },
+      { type: 'edit_faces', targets: ['E0:B0:F0'], shift: [16, -8], scale: [2, 0.5], rotateDegrees: 90 },
+      { type: 'set_brush_classification', targets: ['@trim'], classification: 'detail' },
+    ], 'MCP: Finish trim brush');
+
+    const brush = editor.worldspawn.brushes[0];
+    expect(brush.faces[4]).toMatchObject({ texture: 'base_trim/metal', surfaceFlags: 16, value: 3 });
+    expect(brush.faces[4].textureProjection).toMatchObject({ kind: 'classic', rotation: 0 });
+    expect(brush.faces[0].textureProjection).toMatchObject({
+      kind: 'classic', offsetX: 16, offsetY: -8, rotation: 90, scaleX: 1, scaleY: 0.25,
+    });
+    expect(brush.faces.every(face => (face.contentFlags & CONTENTS_DETAIL) !== 0)).toBe(true);
+    expect(result.changed).toEqual(expect.arrayContaining(['E0:B0:F4', 'E0:B0:F0', 'E0:B0']));
+
+    editor.undo();
+    expect(editor.worldspawn.brushes).toHaveLength(0);
   });
 
   test('rejects unknown and duplicate symbolic references transactionally', () => {

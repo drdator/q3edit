@@ -1,10 +1,10 @@
 import { parseMapWithDiagnostics } from '../src/mapfile';
-import type { MapObjectRef } from '../src/map-operations';
+import type { MapDocumentRef } from '../src/map-operations';
 
-export function inspectMapObjects(mapText: string, refs: MapObjectRef[], includeGeometry = false): unknown[] {
+export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], includeGeometry = false): unknown[] {
   const parsed = parseMapWithDiagnostics(mapText);
   return refs.map(ref => {
-    const match = /^E(\d+)(?::([BP])(\d+))?$/.exec(ref);
+    const match = /^E(\d+)(?::([BP])(\d+))?(?::F(\d+))?$/.exec(ref);
     if (!match) throw new Error(`Invalid object reference ${ref}`);
     const entityIndex = Number(match[1]);
     const entity = parsed.document.entities[entityIndex];
@@ -25,6 +25,23 @@ export function inspectMapObjects(mapText: string, refs: MapObjectRef[], include
     if (match[2] === 'B') {
       const brush = entity.brushes[objectIndex];
       if (!brush) throw new Error(`Brush ${ref} does not exist`);
+      if (match[4] !== undefined) {
+        const face = brush.faces[Number(match[4])];
+        if (!face) throw new Error(`Face ${ref} does not exist`);
+        return {
+          ref,
+          kind: 'face',
+          entity: `E${entityIndex}`,
+          brush: `E${entityIndex}:B${objectIndex}`,
+          texture: face.texture,
+          textureProjection: face.textureProjection,
+          contentFlags: face.contentFlags,
+          surfaceFlags: face.surfaceFlags,
+          value: face.value,
+          plane: face.plane,
+          ...(includeGeometry ? { points: face.points, polygon: face.polygon } : {}),
+        };
+      }
       return {
         ref,
         kind: 'brush',

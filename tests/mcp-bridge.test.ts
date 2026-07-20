@@ -249,10 +249,23 @@ describe('live MCP bridge', () => {
       });
       expect(richerGeometry.isError).not.toBe(true);
 
-      const invalid = await client.callTool({
+      const faceEdit = await client.callTool({
         name: 'map_apply',
         arguments: {
           expectedRevision: 6,
+          label: 'MCP: Texture and classify trim',
+          operations: [
+            { type: 'edit_faces', targets: ['E0:B0:F4'], texture: 'base_trim/metal', fit: true },
+            { type: 'set_brush_classification', targets: ['E0:B0'], classification: 'detail' },
+          ],
+        },
+      });
+      expect(faceEdit.isError).not.toBe(true);
+
+      const invalid = await client.callTool({
+        name: 'map_apply',
+        arguments: {
+          expectedRevision: 7,
           label: 'MCP: Invalid box',
           operations: [{ type: 'create_box', mins: [0, 0, 0] }],
         },

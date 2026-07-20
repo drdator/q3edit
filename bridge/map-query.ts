@@ -5,7 +5,7 @@ import { vec3Max, vec3Min, type Vec3 } from '../src/math';
 import type { Patch } from '../src/patch';
 
 export interface MapQueryOptions {
-  kind?: 'entity' | 'brush' | 'patch';
+  kind?: 'entity' | 'brush' | 'face' | 'patch';
   classname?: string;
   texture?: string;
   propertyKey?: string;
@@ -90,17 +90,43 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
     if (!classMatches || !propertyMatches || options.kind === 'entity') continue;
     for (let brushIndex = 0; brushIndex < entity.brushes.length && results.length < limit; brushIndex++) {
       const brush = entity.brushes[brushIndex];
-      if (options.kind && options.kind !== 'brush') continue;
-      if (!matchesTexture(brush, options.texture) || !matchesBounds(brush, options.bounds)) continue;
-      results.push({
-        ref: `E${entityIndex}:B${brushIndex}`,
-        kind: 'brush',
-        entity: `E${entityIndex}`,
-        classname: entity.classname,
-        bounds: { mins: brush.mins, maxs: brush.maxs },
-        faceCount: brush.faces.length,
-        textures: objectTextures(brush),
-      });
+      if ((!options.kind || options.kind === 'brush') &&
+          matchesTexture(brush, options.texture) && matchesBounds(brush, options.bounds)) {
+        results.push({
+          ref: `E${entityIndex}:B${brushIndex}`,
+          kind: 'brush',
+          entity: `E${entityIndex}`,
+          classname: entity.classname,
+          bounds: { mins: brush.mins, maxs: brush.maxs },
+          faceCount: brush.faces.length,
+          textures: objectTextures(brush),
+        });
+      }
+      if (options.kind === 'face') {
+        const textureQuery = options.texture?.toLowerCase();
+        for (let faceIndex = 0; faceIndex < brush.faces.length && results.length < limit; faceIndex++) {
+          const face = brush.faces[faceIndex];
+          if (textureQuery && !face.texture.toLowerCase().includes(textureQuery)) continue;
+          const faceBounds = face.polygon.length > 0
+            ? face.polygon.reduce<Bounds>((bounds, point) => ({
+                mins: vec3Min(bounds.mins, point), maxs: vec3Max(bounds.maxs, point),
+              }), { mins: [Infinity, Infinity, Infinity], maxs: [-Infinity, -Infinity, -Infinity] })
+            : null;
+          if (!matchesBounds(faceBounds, options.bounds)) continue;
+          results.push({
+            ref: `E${entityIndex}:B${brushIndex}:F${faceIndex}`,
+            kind: 'face',
+            entity: `E${entityIndex}`,
+            brush: `E${entityIndex}:B${brushIndex}`,
+            classname: entity.classname,
+            texture: face.texture,
+            bounds: faceBounds,
+            contentFlags: face.contentFlags,
+            surfaceFlags: face.surfaceFlags,
+            value: face.value,
+          });
+        }
+      }
     }
     for (let patchIndex = 0; patchIndex < entity.patches.length && results.length < limit; patchIndex++) {
       const patch = entity.patches[patchIndex];
