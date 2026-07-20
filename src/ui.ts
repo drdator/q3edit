@@ -600,8 +600,11 @@ export class UI {
     if (signature === this.cameraPanelSignature) {
       const playback = this.editor.cameraPlayback;
       for (const timeline of document.querySelectorAll<HTMLInputElement>('[data-camera-path-id]')) {
-        if (document.activeElement === timeline) continue;
-        if (playback && timeline.dataset.cameraPathId === playback.pathId) timeline.value = String(playback.elapsed);
+        if (timeline.dataset.scrubbing === 'true') continue;
+        if (playback && timeline.dataset.cameraPathId === playback.pathId) {
+          timeline.value = String(playback.elapsed);
+          timeline.title = `Timeline: ${playback.elapsed.toFixed(2)}s / ${Number(timeline.max).toFixed(2)}s`;
+        }
       }
       return;
     }
@@ -1317,7 +1320,7 @@ export class UI {
 
     const radiusInput = document.createElement('input');
     radiusInput.id = 'terrain-radius-input';
-    radiusInput.className = 'terrain-slider';
+    radiusInput.className = 'panel-slider terrain-slider';
     radiusInput.type = 'range';
     radiusInput.min = '8';
     radiusInput.max = '1024';
@@ -1332,7 +1335,7 @@ export class UI {
 
     const strengthInput = document.createElement('input');
     strengthInput.id = 'terrain-strength-input';
-    strengthInput.className = 'terrain-slider';
+    strengthInput.className = 'panel-slider terrain-slider';
     strengthInput.type = 'range';
     strengthInput.min = '1';
     strengthInput.max = '256';

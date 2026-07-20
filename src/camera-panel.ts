@@ -37,10 +37,18 @@ export function buildCameraPanel(container: HTMLElement, editor: Editor): void {
     );
     section.appendChild(pathActions);
     const duration = cameraPathDuration(path);
-    const timeline = document.createElement('input'); timeline.type = 'range'; timeline.min = '0'; timeline.max = String(Math.max(0.01, duration)); timeline.step = '0.01';
+    const timeline = document.createElement('input'); timeline.type = 'range'; timeline.className = 'panel-slider camera-path-timeline';
+    timeline.min = '0'; timeline.max = String(Math.max(0.01, duration)); timeline.step = '0.01';
     timeline.dataset.cameraPathId = path.id;
     timeline.value = String(editor.cameraPlayback?.pathId === path.id ? editor.cameraPlayback.elapsed : 0);
+    timeline.setAttribute('aria-label', `${path.name} timeline`);
     timeline.title = `Timeline: ${timeline.value}s / ${duration.toFixed(2)}s`;
+    const endScrubbing = () => { delete timeline.dataset.scrubbing; };
+    timeline.addEventListener('pointerdown', () => { timeline.dataset.scrubbing = 'true'; });
+    timeline.addEventListener('pointerup', endScrubbing);
+    timeline.addEventListener('pointercancel', endScrubbing);
+    timeline.addEventListener('change', endScrubbing);
+    timeline.addEventListener('blur', endScrubbing);
     timeline.addEventListener('input', () => {
       if (editor.cameraPlayback?.pathId !== path.id) editor.startCameraPlayback(path.id);
       const pose = editor.seekCameraPlayback(Number(timeline.value));
