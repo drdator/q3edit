@@ -101,8 +101,33 @@ const httpServer = app.listen(options.port, options.host, error => {
 const webSockets = new WebSocketServer({ server: httpServer, path: '/editor' });
 webSockets.on('connection', socket => hub.attachEditor(socket));
 
-process.on('SIGINT', async () => {
-  for (const transport of transports.values()) await transport.close();
-  webSockets.close();
-  httpServer.close(() => process.exit(0));
-});
+let shuttingDown = false;
+
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n${signal}: shutting down Q3Edit live bridge...`);
+
+  const forcedExit = setTimeout(() => {
+    console.error('Bridge shutdown timed out; forcing exit');
+    process.exit(1);
+  }, 2_000);
+  forcedExit.unref();
+
+  await Promise.allSettled([...transports.values()].map(transport => transport.close()));
+  transports.clear();
+
+  // WebSocketServer.close() waits for connected clients. Explicitly terminate
+  // the live editor sockets so an open browser tab cannot keep Ctrl-C hanging.
+  for (const socket of webSockets.clients) socket.terminate();
+
+  await Promise.all([
+    new Promise<void>(resolveClose => webSockets.close(() => resolveClose())),
+    new Promise<void>(resolveClose => httpServer.close(() => resolveClose())),
+  ]);
+  clearTimeout(forcedExit);
+  process.exit(0);
+}
+
+process.once('SIGINT', () => void shutdown('SIGINT'));
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
