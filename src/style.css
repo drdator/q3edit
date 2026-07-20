@@ -970,6 +970,12 @@ textarea:focus-visible {
   background: var(--bg-dark);
 }
 
+.panel-body .btn:disabled {
+  color: #666;
+  opacity: 0.65;
+  cursor: default;
+}
+
 .kv-row {
   display: flex;
   gap: 2px;
@@ -1234,6 +1240,76 @@ textarea:focus-visible {
   padding-bottom: 6px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border-dark);
+}
+
+.named-groups-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.panel-body .named-group-create,
+.panel-body .named-group-remove-selection {
+  align-self: flex-start;
+  margin: 0;
+}
+
+.named-group-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-dark);
+}
+
+.panel-body .named-group-name[type="text"] {
+  height: 22px;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.named-group-meta {
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.named-group-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.panel-body .named-group-actions > .btn {
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.panel-body .named-group-actions > .btn.icon-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.panel-body .named-group-actions > .btn.icon-btn > .ph {
+  font-size: 16px;
+}
+
+.panel-body .named-group-actions > .named-group-delete {
+  margin-left: auto;
+}
+
+.panel-body .named-group-actions > .named-group-delete:hover:not(:disabled) {
+  color: #ff6666;
+  border-color: #aa4444;
+}
+
+.panel-body .named-group-remove-selection {
+  margin-top: 2px;
 }
 
 .terrain-help {

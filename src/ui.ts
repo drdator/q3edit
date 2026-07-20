@@ -65,7 +65,7 @@ export class UI {
   private importedPakNames: string[] = [];
   private collapsedBrushPanelEntities = new WeakSet<Entity>();
   private collapsedBrushPanelTerrainGroups = new Set<string>();
-  private groupsPanelRevision = -1;
+  private groupsPanelSignature = '';
   private cameraPanelSignature = '';
 
   constructor(editor: Editor) {
@@ -587,8 +587,9 @@ export class UI {
   }
 
   private buildGroupsPanel(): void {
-    if (this.groupsPanelRevision === this.editor.documentRevision) return;
-    this.groupsPanelRevision = this.editor.documentRevision;
+    const signature = `${this.editor.documentRevision}:${this.editor.selection.length > 0 ? 1 : 0}`;
+    if (this.groupsPanelSignature === signature) return;
+    this.groupsPanelSignature = signature;
     const body = document.getElementById('groups-body')!;
     buildGroupsPanelUI(body, this.editor);
   }
