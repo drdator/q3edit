@@ -266,6 +266,84 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('editor_select', {
+    title: 'Select objects in Q3Edit',
+    description: 'Select current-revision entity, brush, or patch references in the live editor so the user can inspect them.',
+    inputSchema: {
+      refs: z.array(objectRef).min(1).max(100),
+      replace: z.boolean().optional().default(true).describe('Replace the current selection; false adds to it'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ refs, replace }) => {
+    try {
+      return toolResult(await hub.selectObjects(refs, replace));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_frame_objects', {
+    title: 'Frame objects in Q3Edit',
+    description: 'Select object references and move all editor viewports to frame that selection.',
+    inputSchema: { refs: z.array(objectRef).min(1).max(100) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ refs }) => {
+    try {
+      return toolResult(await hub.frameObjects(refs));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_set_camera', {
+    title: 'Position the Q3Edit 3D camera',
+    description: 'Set the live 3D viewport camera using world coordinates and degree angles. Yaw is rotation around Z; pitch is positive when looking upward.',
+    inputSchema: {
+      position: compatibleVec3,
+      yawDegrees: z.number(),
+      pitchDegrees: z.number().min(-89.8).max(89.8),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ position, yawDegrees, pitchDegrees }) => {
+    try {
+      await hub.setCamera(
+        position as [number, number, number],
+        yawDegrees * Math.PI / 180,
+        pitchDegrees * Math.PI / 180,
+      );
+      return toolResult({ position, yawDegrees, pitchDegrees });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_screenshot', {
+    title: 'Capture the Q3Edit 3D viewport',
+    description: 'Render and return a PNG of the live textured 3D viewport for visual review. Use editor_frame_objects or editor_set_camera first to control the view.',
+    inputSchema: {
+      width: z.number().int().min(64).max(2048).optional(),
+      height: z.number().int().min(64).max(2048).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ width, height }) => {
+    try {
+      const screenshot = await hub.screenshot(width, height);
+      return {
+        content: [
+          { type: 'text' as const, text: `Q3Edit 3D viewport · ${screenshot.width} × ${screenshot.height}` },
+          { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
+        ],
+        structuredContent: {
+          mimeType: screenshot.mimeType,
+          width: screenshot.width,
+          height: screenshot.height,
+        },
+      };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
     description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation operations accept an optional symbolic id; later operations in the batch can target @id. Supported types: create_entity(id?, classname, origin?, properties?), set_entity_properties(target, classname?, properties?, unset?), create_box(id?, parent?, mins, maxs, texture?), create_room(id?, parent?, mins, maxs, wallThickness?, textures?), translate(targets, delta), set_texture(targets, texture), delete(targets).',

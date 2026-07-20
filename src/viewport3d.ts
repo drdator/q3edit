@@ -254,6 +254,48 @@ export class Viewport3D {
     }
   }
 
+  setCamera(position: Vec3, yaw: number, pitch: number): void {
+    this.position = [...position];
+    this.yaw = yaw;
+    this.pitch = Math.max(-Math.PI * 0.499, Math.min(Math.PI * 0.499, pitch));
+    this.editor.camera3d = { position: [...this.position], yaw: this.yaw, pitch: this.pitch };
+    this.editor.cameraPlayback = null;
+    this.editor.redrawRequested = true;
+  }
+
+  capturePng(width?: number, height?: number): { mimeType: string; data: string; width: number; height: number } {
+    this.render(performance.now());
+    const sourceWidth = this.gl.drawingBufferWidth;
+    const sourceHeight = this.gl.drawingBufferHeight;
+    if (sourceWidth < 1 || sourceHeight < 1) throw new Error('The 3D viewport has no drawable area');
+
+    const pixels = new Uint8Array(sourceWidth * sourceHeight * 4);
+    this.gl.readPixels(0, 0, sourceWidth, sourceHeight, this.gl.RGBA, this.gl.UNSIGNED_BYTE, pixels);
+    const source = document.createElement('canvas');
+    source.width = sourceWidth;
+    source.height = sourceHeight;
+    source.getContext('2d')!.putImageData(
+      new ImageData(new Uint8ClampedArray(pixels.buffer), sourceWidth, sourceHeight), 0, 0,
+    );
+
+    const outputWidth = Math.max(64, Math.min(Math.round(width ?? sourceWidth), 2048));
+    const outputHeight = Math.max(64, Math.min(Math.round(height ?? sourceHeight), 2048));
+    const output = document.createElement('canvas');
+    output.width = outputWidth;
+    output.height = outputHeight;
+    const context = output.getContext('2d')!;
+    context.translate(0, outputHeight);
+    context.scale(1, -1);
+    context.drawImage(source, 0, 0, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
+    const dataUrl = output.toDataURL('image/png');
+    return {
+      mimeType: 'image/png',
+      data: dataUrl.slice(dataUrl.indexOf(',') + 1),
+      width: outputWidth,
+      height: outputHeight,
+    };
+  }
+
   private initGL(): void {
     const gl = this.gl;
     gl.enable(gl.DEPTH_TEST);

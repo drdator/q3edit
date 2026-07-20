@@ -105,6 +105,24 @@ export class BridgeHub {
     return this.capabilityRequest({ type: 'entity_class_schema', requestId: randomUUID(), classname });
   }
 
+  async selectObjects(refs: string[], replace: boolean): Promise<unknown> {
+    return this.capabilityRequest({ type: 'editor_select', requestId: randomUUID(), refs, replace });
+  }
+
+  async frameObjects(refs: string[]): Promise<unknown> {
+    return this.capabilityRequest({ type: 'editor_frame_objects', requestId: randomUUID(), refs });
+  }
+
+  async setCamera(position: [number, number, number], yaw: number, pitch: number): Promise<unknown> {
+    return this.capabilityRequest({ type: 'editor_set_camera', requestId: randomUUID(), position, yaw, pitch });
+  }
+
+  async screenshot(width?: number, height?: number): Promise<{ mimeType: string; data: string; width: number; height: number }> {
+    return await this.capabilityRequest({ type: 'editor_screenshot', requestId: randomUUID(), width, height }) as {
+      mimeType: string; data: string; width: number; height: number;
+    };
+  }
+
   async saveMap(path = this.activeMapPath): Promise<{ path: string; revision: number }> {
     if (!path) throw new Error('No map path is active; pass a path to map_save or call map_open first');
     const snapshot = await this.requestSnapshot();

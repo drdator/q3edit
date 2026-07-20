@@ -1,5 +1,6 @@
 import type { EditorDiagnostic, EntityInfo, MapInfo } from './diagnostics';
 import type { MapOperation, MapOperationResult } from './map-operations';
+import type { Vec3 } from './math';
 
 export interface LiveMapSnapshot {
   fileName: string;
@@ -29,6 +30,10 @@ export type BridgeToEditorMessage =
   | { type: 'texture_preview'; requestId: string; name: string }
   | { type: 'entity_class_search'; requestId: string; query: string; classType?: 'point' | 'brush'; limit: number }
   | { type: 'entity_class_schema'; requestId: string; classname: string }
+  | { type: 'editor_select'; requestId: string; refs: string[]; replace: boolean }
+  | { type: 'editor_frame_objects'; requestId: string; refs: string[] }
+  | { type: 'editor_set_camera'; requestId: string; position: Vec3; yaw: number; pitch: number }
+  | { type: 'editor_screenshot'; requestId: string; width?: number; height?: number }
   | { type: 'mark_saved'; revision: number };
 
 export type EditorToBridgeMessage =

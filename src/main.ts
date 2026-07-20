@@ -67,7 +67,10 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor);
-  connectConfiguredLiveBridge(editor);
+  connectConfiguredLiveBridge(editor, {
+    setCamera: (position, yaw, pitch) => vp3D.setCamera(position, yaw, pitch),
+    captureScreenshot: (width, height) => vp3D.capturePng(width, height),
+  });
 
   let defaultArchives: PakArchive[] = [];
   let defaultPakLoaded = false;

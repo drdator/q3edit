@@ -85,6 +85,21 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: { classname: request.classname, type: 'point', properties: { light: { type: 'number' } } },
       }));
+    } else if (request.type === 'editor_select' || request.type === 'editor_frame_objects') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { refs: request.refs, selectionCount: request.refs.length },
+      }));
+    } else if (request.type === 'editor_set_camera') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { position: request.position, yaw: request.yaw, pitch: request.pitch },
+      }));
+    } else if (request.type === 'editor_screenshot') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==', width: request.width ?? 800, height: request.height ?? 600 },
+      }));
     }
   }
 
@@ -161,6 +176,10 @@ describe('live MCP bridge', () => {
         'texture_preview',
         'entity_class_search',
         'entity_class_schema',
+        'editor_select',
+        'editor_frame_objects',
+        'editor_set_camera',
+        'editor_screenshot',
         'map_apply',
         'map_open',
         'map_save',
@@ -182,6 +201,20 @@ describe('live MCP bridge', () => {
 
       const entityClasses = await client.callTool({ name: 'entity_class_search', arguments: { query: 'light' } });
       expect(entityClasses.structuredContent).toMatchObject({ matches: [{ classname: 'light' }] });
+
+      const framed = await client.callTool({ name: 'editor_frame_objects', arguments: { refs: ['E0'] } });
+      expect(framed.structuredContent).toMatchObject({ refs: ['E0'], selectionCount: 1 });
+
+      const camera = await client.callTool({
+        name: 'editor_set_camera',
+        arguments: { position: [128, 64, 96], yawDegrees: 90, pitchDegrees: -15 },
+      });
+      expect(camera.structuredContent).toMatchObject({ position: [128, 64, 96], yawDegrees: 90, pitchDegrees: -15 });
+
+      const screenshot = await client.callTool({ name: 'editor_screenshot', arguments: { width: 640, height: 360 } });
+      expect(screenshot.content).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'image', mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==' }),
+      ]));
 
       const applied = await client.callTool({
         name: 'map_apply',

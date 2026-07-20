@@ -1,10 +1,40 @@
 import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from './diagnostics';
 import type { Editor } from './editor';
+import type { SelectionItem } from './editor';
+import type { Vec3 } from './math';
 import type { BridgeToEditorMessage, EditorToBridgeMessage, LiveMapSnapshot } from './live-bridge-protocol';
 import { applyMapOperations } from './map-operations';
 import { getEntityClassRegistry } from './entity-definitions';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+export interface LiveBridgeEditorControls {
+  setCamera(position: Vec3, yaw: number, pitch: number): void;
+  captureScreenshot(width?: number, height?: number): { mimeType: string; data: string; width: number; height: number };
+}
+
+function selectionForRef(editor: Editor, ref: string): SelectionItem {
+  const match = /^E(\d+)(?::([BP])(\d+))?$/.exec(ref);
+  if (!match) throw new Error(`Invalid object reference ${ref}`);
+  const entity = editor.entities[Number(match[1])];
+  if (!entity) throw new Error(`Entity ${ref} does not exist`);
+  if (!match[2]) return { type: 'entity', entity };
+  const index = Number(match[3]);
+  if (match[2] === 'B') {
+    const brush = entity.brushes[index];
+    if (!brush) throw new Error(`Brush ${ref} does not exist`);
+    return { type: 'brush', entity, brush };
+  }
+  const patch = entity.patches[index];
+  if (!patch) throw new Error(`Patch ${ref} does not exist`);
+  return { type: 'patch', entity, patch };
+}
+
+function selectionKey(item: SelectionItem): object {
+  if (item.type === 'brush' || item.type === 'face') return item.brush;
+  if (item.type === 'patch') return item.patch;
+  return item.entity;
+}
 
 function configuredBridgeUrl(): string | null {
   const value = new URLSearchParams(window.location.search).get('bridge');
@@ -28,7 +58,11 @@ export class LiveMapBridge {
   private suppressDocumentSync = false;
   private stopped = false;
 
-  constructor(private readonly editor: Editor, private readonly url: string) {
+  constructor(
+    private readonly editor: Editor,
+    private readonly url: string,
+    private readonly controls: LiveBridgeEditorControls,
+  ) {
     editor.subscribeDocumentChanges(change => {
       if (this.suppressDocumentSync || this.socket?.readyState !== WebSocket.OPEN) return;
       try {
@@ -233,6 +267,60 @@ export class LiveMapBridge {
       return;
     }
 
+    if (message.type === 'editor_select' || message.type === 'editor_frame_objects') {
+      try {
+        const requested = message.refs.map(ref => selectionForRef(this.editor, ref));
+        const combined = message.type === 'editor_select' && !message.replace
+          ? [...this.editor.selection, ...requested]
+          : requested;
+        const seen = new Set<object>();
+        this.editor.selection = combined.filter(item => {
+          const key = selectionKey(item);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        if (message.type === 'editor_frame_objects') this.editor.centerOnSelection();
+        this.editor.redrawRequested = true;
+        this.editor.statusMessage = `MCP ${message.type === 'editor_frame_objects' ? 'framed' : 'selected'} ${message.refs.length} object${message.refs.length === 1 ? '' : 's'}`;
+        this.send({
+          type: 'capability_result', requestId: message.requestId,
+          result: { refs: message.refs, selectionCount: this.editor.selection.length },
+        });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'editor_set_camera') {
+      this.controls.setCamera(message.position, message.yaw, message.pitch);
+      this.editor.statusMessage = 'MCP positioned the 3D camera';
+      this.send({
+        type: 'capability_result', requestId: message.requestId,
+        result: { position: message.position, yaw: message.yaw, pitch: message.pitch },
+      });
+      return;
+    }
+
+    if (message.type === 'editor_screenshot') {
+      try {
+        this.send({
+          type: 'capability_result', requestId: message.requestId,
+          result: this.controls.captureScreenshot(message.width, message.height),
+        });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
     if (message.type === 'mark_saved' && message.revision === this.editor.documentRevision) {
       this.editor.markDocumentSaved();
       this.editor.statusMessage = `MCP saved ${this.editor.fileName}`;
@@ -248,10 +336,10 @@ export class LiveMapBridge {
   }
 }
 
-export function connectConfiguredLiveBridge(editor: Editor): LiveMapBridge | null {
+export function connectConfiguredLiveBridge(editor: Editor, controls: LiveBridgeEditorControls): LiveMapBridge | null {
   const url = configuredBridgeUrl();
   if (!url) return null;
-  const bridge = new LiveMapBridge(editor, url);
+  const bridge = new LiveMapBridge(editor, url, controls);
   bridge.connect();
   return bridge;
 }
