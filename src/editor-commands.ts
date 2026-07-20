@@ -4,6 +4,7 @@ import type { Editor, Tool } from './editor';
 import type { Vec3 } from './math';
 import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 import { openExactPrimitiveDialog } from './primitive-dialog';
+import { openReleaseNotesDialog } from './release-notes-dialog';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -177,6 +178,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     ...displayCommands,
     ...rendererCommands,
     ...filteringCommands,
+    { id: 'view.release-notes', label: 'Release Notes...', menu: menu('View', 1000, 'release-notes'), execute: () => openReleaseNotesDialog() },
 
     { id: 'region.from-selection', label: 'Set From Selection', menu: menu('Region', 0, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromSelection() },
     { id: 'region.from-view', label: 'Set From Current XY View', menu: menu('Region', 10, 'region'), execute: ({ editor }) => editor.setRegionFromCurrentXYView() },

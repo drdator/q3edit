@@ -46,6 +46,7 @@ describe('CommandRegistry', () => {
     expect(registry.list().length).toBeGreaterThan(100);
     expect(registry.getState('edit.preferences').label).toBe('Preferences...');
     expect(registry.getState('file.project-settings').label).toBe('Project Settings...');
+    expect(registry.getState('view.release-notes').label).toBe('Release Notes...');
   });
 
   it('exposes checked state for display categories, renderer modes, and lighting', () => {
