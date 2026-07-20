@@ -1925,12 +1925,29 @@ textarea:focus-visible {
   flex-direction: column;
 }
 
+.project-settings-dialog {
+  width: min(820px, calc(100vw - 48px));
+  height: min(680px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+}
+
 .preferences-content {
   min-height: 0;
   overflow: auto;
   padding: 12px;
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.project-settings-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  align-content: start;
   gap: 12px;
 }
 
@@ -2009,7 +2026,8 @@ textarea:focus-visible {
 .preferences-actions { flex-wrap: wrap; padding: 10px; }
 
 @media (max-width: 760px) {
-  .preferences-content { grid-template-columns: 1fr; }
+  .preferences-content,
+  .project-settings-content { grid-template-columns: 1fr; }
 }
 
 /* ── Diagnostics & brush utilities ── */

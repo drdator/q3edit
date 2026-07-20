@@ -16,7 +16,7 @@ import { PakManagerModel, type PakManagerEntry, type PakManagerResult } from './
 import { buildEntityPanel as buildEntityPanelUI } from './entity-panel';
 import { buildGroupsPanel as buildGroupsPanelUI } from './groups-panel';
 import { buildCameraPanel as buildCameraPanelUI } from './camera-panel';
-import { applyAppearancePreferences, openPreferencesDialog } from './preferences-dialog';
+import { applyAppearancePreferences, openPreferencesDialog, openProjectSettingsDialog } from './preferences-dialog';
 import type { ProjectConfiguration } from './project-config';
 import { openDiagnosticsDialog, type DiagnosticsTab } from './diagnostics-dialog';
 import { refreshEntityClassPickers } from './entity-class-picker';
@@ -80,6 +80,7 @@ export class UI {
       quickPlay: quality => this.compileBSP(quality),
       managePakFiles: () => this.onManagePakFiles?.(),
       openPreferences: () => this.openPreferences(),
+      openProjectSettings: () => this.openProjectSettings(),
       openDiagnostics: tab => this.openDiagnostics(tab),
       openTerrainPanel: () => this.openTerrainPanel(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
@@ -1604,7 +1605,14 @@ export class UI {
     openPreferencesDialog({
       editor: this.editor,
       commands: this.commands,
-      onApplied: (_preferences, project) => { void this.onProjectConfigurationChanged?.(project); },
+    });
+  }
+
+  private openProjectSettings(): void {
+    this.closeMenus();
+    openProjectSettingsDialog({
+      editor: this.editor,
+      onApplied: project => { void this.onProjectConfigurationChanged?.(project); },
     });
   }
 
