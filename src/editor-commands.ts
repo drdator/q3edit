@@ -14,6 +14,7 @@ export interface EditorCommandContext {
   quickPlay: (quality: 'fast' | 'normal' | 'full') => void | Promise<void>;
   managePakFiles: () => void | Promise<void>;
   openPreferences: () => void;
+  openProjectSettings: () => void;
   openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
   openTerrainPanel: () => void;
   cycleInvisibleMode: () => void;
@@ -118,6 +119,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.open', label: 'Open...', defaultShortcut: 'Mod+O', menu: menu('File', 10, 'open-save'), execute: ({ editor }) => editor.openMapFromFile() },
     { id: 'file.save', label: 'Save', defaultShortcut: 'Mod+S', menu: menu('File', 20, 'open-save'), execute: ({ editor }) => editor.saveMapToFile() },
     { id: 'file.manage-paks', label: 'Manage PK3 Files...', menu: menu('File', 30, 'assets'), execute: ctx => ctx.managePakFiles() },
+    { id: 'file.project-settings', label: 'Project Settings...', menu: menu('File', 35, 'assets'), execute: ctx => ctx.openProjectSettings() },
     { id: 'file.import-prefab', label: 'Import Prefab...', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },
     { id: 'file.save-prefab', label: 'Save Selection as Prefab', menu: menu('File', 50, 'prefab'), enabled: hasSelection, execute: ({ editor }) => editor.saveSelectionAsPrefab() },
     { id: 'file.export-console', label: 'Export .map to Console', menu: menu('File', 60, 'export'), execute: ({ editor }) => console.log(editor.serializeMap()) },
@@ -144,7 +146,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.make-structural', label: 'Make Structural', menu: menu('Edit', 150, 'brush-kind'), enabled: hasSelection, execute: ({ editor }) => editor.makeStructural() },
     { id: 'edit.group-selection', label: 'Group Selection', defaultShortcut: 'Mod+Shift+G', menu: menu('Edit', 160, 'grouping'), enabled: hasSelection, execute: ({ editor }) => editor.groupSelectionIntoEntity() },
     { id: 'edit.move-worldspawn', label: 'Move to Worldspawn', defaultShortcut: 'Mod+Shift+U', menu: menu('Edit', 170, 'grouping'), enabled: hasSelection, execute: ({ editor }) => editor.moveSelectionToWorldspawn() },
-    { id: 'edit.preferences', label: 'Preferences & Project...', defaultShortcut: 'Mod+,', menu: menu('Edit', 175, 'settings'), execute: ctx => ctx.openPreferences() },
+    { id: 'edit.preferences', label: 'Preferences...', defaultShortcut: 'Mod+,', menu: menu('Edit', 175, 'settings'), execute: ctx => ctx.openPreferences() },
     { id: 'edit.connect-entities', label: 'Connect Entities', defaultShortcut: 'Mod+K', menu: menu('Edit', 180, 'grouping'), execute: ({ editor }) => editor.connectSelectedEntities() },
     { id: 'groups.create', label: 'Create Named Group...', menu: menu('Groups', 0, 'manage'), execute: ({ editor }) => {
       const name = globalThis.prompt?.('Named group', 'Group'); if (name) editor.createNamedGroup(name);

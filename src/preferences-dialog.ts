@@ -109,14 +109,22 @@ function chooseJson(): Promise<string | null> {
 export interface PreferencesDialogOptions {
   editor: Editor;
   commands: CommandRegistry<EditorCommandContext>;
-  onApplied?: (preferences: GlobalPreferences, project: ProjectConfiguration) => void;
+}
+
+export interface ProjectSettingsDialogOptions {
+  editor: Editor;
+  onApplied?: (project: ProjectConfiguration) => void;
+}
+
+function removeSettingsDialogs(): void {
+  document.getElementById('preferences-dialog')?.remove();
+  document.getElementById('project-settings-dialog')?.remove();
 }
 
 export function openPreferencesDialog(options: PreferencesDialogOptions): void {
-  document.getElementById('preferences-dialog')?.remove();
+  removeSettingsDialogs();
   const { editor, commands } = options;
   let preferences = structuredClone(editor.preferences);
-  let project = structuredClone(editor.projectConfiguration);
 
   const overlay = document.createElement('div');
   overlay.id = 'preferences-dialog';
@@ -129,7 +137,7 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
   const title = document.createElement('div');
   title.id = 'preferences-title';
   title.className = 'editor-dialog-title';
-  title.textContent = 'Preferences & Project';
+  title.textContent = 'Preferences';
   const content = document.createElement('div');
   content.className = 'preferences-content';
   const status = document.createElement('div');
@@ -194,27 +202,7 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
   };
   commandSection.append(commandSearch, commandList);
 
-  const projectSection = section('Current project', 'Project settings are stored separately from global preferences. One archive name per line; binary PK3 data remains in the asset store.');
-  const projectName = input(project.name);
-  const basePath = input(project.game.basePath);
-  const gameDir = input(project.game.gameDirectory);
-  const executable = input(project.game.executable);
-  const archives = document.createElement('textarea'); archives.value = project.assets.archives.join('\n');
-  const searchPaths = document.createElement('textarea'); searchPaths.value = project.assets.searchPaths.join('\n');
-  const openArena = checkbox(project.assets.openArenaEnabled);
-  const bspArgs = input(project.compile.bspArgs.join(' '));
-  const vis = checkbox(project.compile.vis); const visArgs = input(project.compile.visArgs.join(' '));
-  const light = checkbox(project.compile.light); const lightArgs = input(project.compile.lightArgs.join(' '));
-  const definitionSources = document.createElement('textarea'); definitionSources.value = project.entityDefinitions.sources.join('\n');
-  const projectGrid = input(project.overrides.gridSize === undefined ? '' : String(project.overrides.gridSize), 'number'); projectGrid.placeholder = 'Use global';
-  const projectSnap = select(['', 'off', 'abs', 'rel'], project.overrides.gridSnapMode ?? ''); projectSnap.options[0].textContent = 'Use global';
-  projectSection.append(labeled('Project name', projectName), labeled('Game base path', basePath), labeled('Game directory', gameDir),
-    labeled('Game executable', executable), labeled('Archive order', archives), labeled('Asset search paths', searchPaths),
-    labeled('Use OpenArena assets', openArena), labeled('BSP arguments', bspArgs), labeled('Run VIS', vis), labeled('VIS arguments', visArgs),
-    labeled('Run LIGHT', light), labeled('LIGHT arguments', lightArgs), labeled('Entity definition sources', definitionSources),
-    labeled('Project grid override', projectGrid), labeled('Project snap override', projectSnap));
-
-  content.append(general, appearance, display, commandSection, projectSection, status);
+  content.append(general, appearance, display, commandSection, status);
 
   const actions = document.createElement('div'); actions.className = 'editor-dialog-actions preferences-actions';
   const resetAll = document.createElement('button'); resetAll.className = 'btn'; resetAll.textContent = 'Reset global defaults';
@@ -222,7 +210,7 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
     preferences = structuredClone(DEFAULT_GLOBAL_PREFERENCES);
     saveGlobalPreferences(preferences);
     commands.resetAllShortcuts();
-    editor.applyPreferences(preferences, project);
+    editor.applyPreferences(preferences);
     applyAppearancePreferences(preferences);
     overlay.remove(); openPreferencesDialog(options);
   };
@@ -235,18 +223,7 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
       preferences = importGlobalPreferences(json);
       const conflicts = commands.replaceShortcutOverrides(preferences.shortcuts);
       if (conflicts.length) throw new Error('The imported preferences contain conflicting shortcuts');
-      saveGlobalPreferences(preferences); editor.applyPreferences(preferences, project); applyAppearancePreferences(preferences);
-      overlay.remove(); openPreferencesDialog(options);
-    } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
-  };
-  const exportProject = document.createElement('button'); exportProject.className = 'btn'; exportProject.textContent = 'Export project';
-  exportProject.onclick = () => downloadJson('q3edit-project.json', exportProjectConfiguration(editor.projectConfiguration));
-  const importProject = document.createElement('button'); importProject.className = 'btn'; importProject.textContent = 'Import project';
-  importProject.onclick = async () => {
-    try {
-      const json = await chooseJson(); if (!json) return;
-      project = importProjectConfiguration(json); saveProjectConfiguration(project); editor.applyPreferences(preferences, project);
-      options.onApplied?.(preferences, project);
+      saveGlobalPreferences(preferences); editor.applyPreferences(preferences); applyAppearancePreferences(preferences);
       overlay.remove(); openPreferencesDialog(options);
     } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
   };
@@ -283,6 +260,90 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
           categories: Object.fromEntries([...categoryControls].map(([name, control]) => [name, control.checked])),
         },
       });
+      saveGlobalPreferences(preferences);
+      editor.applyPreferences(preferences); applyAppearancePreferences(preferences);
+      editor.statusMessage = 'Preferences saved';
+      overlay.remove();
+    } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
+  };
+  actions.append(resetAll, exportPrefs, importPrefs, cancel, apply);
+  dialog.append(title, content, actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
+  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { overlay.remove(); event.stopPropagation(); } });
+  grid.focus();
+}
+
+export function openProjectSettingsDialog(options: ProjectSettingsDialogOptions): void {
+  removeSettingsDialogs();
+  const { editor } = options;
+  let project = structuredClone(editor.projectConfiguration);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'project-settings-dialog';
+  overlay.className = 'editor-dialog-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'project-settings-title');
+  const dialog = document.createElement('div');
+  dialog.className = 'editor-dialog project-settings-dialog';
+  const title = document.createElement('div');
+  title.id = 'project-settings-title';
+  title.className = 'editor-dialog-title';
+  title.textContent = 'Project Settings';
+  const content = document.createElement('div');
+  content.className = 'project-settings-content';
+  const status = document.createElement('div');
+  status.className = 'preferences-status';
+  status.setAttribute('role', 'status');
+
+  const projectSection = section('Project', 'Settings in this dialog apply only to the current project.');
+  const projectName = input(project.name);
+  const basePath = input(project.game.basePath);
+  const gameDir = input(project.game.gameDirectory);
+  const executable = input(project.game.executable);
+  projectSection.append(labeled('Project name', projectName), labeled('Game base path', basePath),
+    labeled('Game directory', gameDir), labeled('Game executable', executable));
+
+  const assetsSection = section('Assets & definitions', 'One archive or search path per line. Binary PK3 data remains in the browser asset store.');
+  const archives = document.createElement('textarea'); archives.value = project.assets.archives.join('\n');
+  const searchPaths = document.createElement('textarea'); searchPaths.value = project.assets.searchPaths.join('\n');
+  const openArena = checkbox(project.assets.openArenaEnabled);
+  const definitionSources = document.createElement('textarea'); definitionSources.value = project.entityDefinitions.sources.join('\n');
+  assetsSection.append(labeled('Archive order', archives), labeled('Asset search paths', searchPaths),
+    labeled('Use OpenArena assets', openArena), labeled('Entity definition sources', definitionSources));
+
+  const compileSection = section('Build', 'Configure the browser-based BSP, VIS, and LIGHT toolchain.');
+  const bspArgs = input(project.compile.bspArgs.join(' '));
+  const vis = checkbox(project.compile.vis); const visArgs = input(project.compile.visArgs.join(' '));
+  const light = checkbox(project.compile.light); const lightArgs = input(project.compile.lightArgs.join(' '));
+  compileSection.append(labeled('BSP arguments', bspArgs), labeled('Run VIS', vis), labeled('VIS arguments', visArgs),
+    labeled('Run LIGHT', light), labeled('LIGHT arguments', lightArgs));
+
+  const overridesSection = section('Editor overrides', 'Use the global options to inherit the editor defaults.');
+  const projectGrid = input(project.overrides.gridSize === undefined ? '' : String(project.overrides.gridSize), 'number');
+  projectGrid.placeholder = 'Use global'; projectGrid.min = '1'; projectGrid.max = '256';
+  const projectSnap = select(['', 'off', 'abs', 'rel'], project.overrides.gridSnapMode ?? '');
+  projectSnap.options[0].textContent = 'Use global';
+  overridesSection.append(labeled('Grid size', projectGrid), labeled('Grid snap', projectSnap));
+
+  content.append(projectSection, assetsSection, compileSection, overridesSection, status);
+
+  const actions = document.createElement('div'); actions.className = 'editor-dialog-actions preferences-actions';
+  const exportProject = document.createElement('button'); exportProject.className = 'btn'; exportProject.textContent = 'Export project';
+  exportProject.onclick = () => downloadJson('q3edit-project.json', exportProjectConfiguration(editor.projectConfiguration));
+  const importProject = document.createElement('button'); importProject.className = 'btn'; importProject.textContent = 'Import project';
+  importProject.onclick = async () => {
+    try {
+      const json = await chooseJson(); if (!json) return;
+      project = importProjectConfiguration(json);
+      saveProjectConfiguration(project); editor.applyPreferences(editor.preferences, project);
+      options.onApplied?.(project);
+      overlay.remove(); openProjectSettingsDialog(options);
+    } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
+  };
+  const cancel = document.createElement('button'); cancel.className = 'btn'; cancel.textContent = 'Cancel'; cancel.onclick = () => overlay.remove();
+  const apply = document.createElement('button'); apply.className = 'btn primary'; apply.textContent = 'Apply';
+  apply.onclick = () => {
+    try {
       project = normalizeProjectConfiguration({
         ...project, name: projectName.value,
         game: { basePath: basePath.value, gameDirectory: gameDir.value, executable: executable.value },
@@ -291,15 +352,15 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
         entityDefinitions: { sources: lines(definitionSources.value) },
         overrides: { ...project.overrides, gridSize: projectGrid.value ? Number(projectGrid.value) : undefined, gridSnapMode: projectSnap.value || undefined },
       });
-      saveGlobalPreferences(preferences); saveProjectConfiguration(project);
-      editor.applyPreferences(preferences, project); applyAppearancePreferences(preferences);
-      options.onApplied?.(preferences, project);
-      editor.statusMessage = 'Preferences and project settings saved';
+      saveProjectConfiguration(project);
+      editor.applyPreferences(editor.preferences, project);
+      options.onApplied?.(project);
+      editor.statusMessage = 'Project settings saved';
       overlay.remove();
     } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
   };
-  actions.append(resetAll, exportPrefs, importPrefs, exportProject, importProject, cancel, apply);
+  actions.append(exportProject, importProject, cancel, apply);
   dialog.append(title, content, actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
   overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { overlay.remove(); event.stopPropagation(); } });
-  grid.focus();
+  projectName.focus();
 }

@@ -1925,12 +1925,29 @@ textarea:focus-visible {
   flex-direction: column;
 }
 
+.project-settings-dialog {
+  width: min(820px, calc(100vw - 48px));
+  height: min(680px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+}
+
 .preferences-content {
   min-height: 0;
   overflow: auto;
   padding: 12px;
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.project-settings-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  align-content: start;
   gap: 12px;
 }
 
@@ -1961,7 +1978,47 @@ textarea:focus-visible {
 }
 .preferences-field textarea { min-height: 54px; resize: vertical; }
 .preferences-checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-.preferences-checkbox-grid .preferences-field { grid-template-columns: 1fr auto; }
+.preferences-checkbox-grid .preferences-field { grid-template-columns: minmax(54px, 0.8fr) minmax(16px, 1.2fr); }
+.preferences-field input[type="checkbox"] {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  justify-self: start;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-light);
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 var(--border-dark);
+  cursor: default;
+}
+.preferences-field input[type="checkbox"]::after {
+  width: 4px;
+  height: 7px;
+  border: solid #17130b;
+  border-width: 0 2px 2px 0;
+  content: '';
+  transform: translateY(-1px) rotate(45deg) scale(0);
+}
+.preferences-field input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent-dim);
+  box-shadow: none;
+}
+.preferences-field input[type="checkbox"]:checked::after {
+  transform: translateY(-1px) rotate(45deg) scale(1);
+}
+.preferences-field input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+}
+.preferences-field input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+.preferences-field input[type="checkbox"]:disabled {
+  opacity: 0.45;
+}
 .preferences-command-list { max-height: 300px; overflow: auto; border: 1px solid var(--border-dark); }
 .preferences-command-row { display: grid; grid-template-columns: minmax(170px, 1fr) 150px auto; align-items: center; gap: 6px; padding: 4px; }
 .preferences-command-row:nth-child(even) { background: color-mix(in srgb, var(--bg-light) 35%, transparent); }
@@ -1969,7 +2026,8 @@ textarea:focus-visible {
 .preferences-actions { flex-wrap: wrap; padding: 10px; }
 
 @media (max-width: 760px) {
-  .preferences-content { grid-template-columns: 1fr; }
+  .preferences-content,
+  .project-settings-content { grid-template-columns: 1fr; }
 }
 
 /* ── Diagnostics & brush utilities ── */

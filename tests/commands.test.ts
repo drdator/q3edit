@@ -30,6 +30,7 @@ describe('CommandRegistry', () => {
       quickPlay: noop,
       managePakFiles: noop,
       openPreferences: noop,
+      openProjectSettings: noop,
       openDiagnostics: noop,
       openTerrainPanel: noop,
       cycleInvisibleMode: noop,
@@ -41,8 +42,10 @@ describe('CommandRegistry', () => {
       toggleGeoSnap: noop,
     };
 
-    expect(() => createEditorCommandRegistry(context)).not.toThrow();
-    expect(createEditorCommandRegistry(context).list().length).toBeGreaterThan(100);
+    const registry = createEditorCommandRegistry(context);
+    expect(registry.list().length).toBeGreaterThan(100);
+    expect(registry.getState('edit.preferences').label).toBe('Preferences...');
+    expect(registry.getState('file.project-settings').label).toBe('Project Settings...');
   });
 
   it('exposes checked state for display categories, renderer modes, and lighting', () => {
@@ -50,7 +53,7 @@ describe('CommandRegistry', () => {
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
-      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openDiagnostics: noop, openTerrainPanel: noop,
+      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop, openTerrainPanel: noop,
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
     });
