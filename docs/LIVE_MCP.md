@@ -55,16 +55,20 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
+- `map_gameplay_lint` reports approximate embedded-entity, spawn-clearance, and pickup-support problems with implicated references.
 - `map_compile` runs the live map through q3map at fast, normal, or full quality. Warnings and errors are structured by severity and linked to implicated references when texture names or entity origins make that possible.
+- `map_play` compiles and launches the current revision in browser ioquake3, with optional noclip. `game_screenshot` captures the running compiled/lightmapped view.
 - `map_query` finds entities, brushes, and patches by bounds, kind, classname, texture, or entity property.
 - `map_groups` lists persistent named groups and their current member references; `map_query` accepts a group name or ID.
 - `texture_search` searches image assets and declared shaders, including tool shaders without images. Results identify shaders and preview availability; `texture_preview_many` returns up to 12 images for palette comparison.
-- `entity_class_search` searches loaded entity definitions and `entity_class_schema` returns typed properties, defaults, and spawnflags.
+- `entity_class_search` searches loaded entity definitions and `entity_class_schema` returns typed properties, defaults, spawnflags, and required target relationships. Built-in schemas cover `worldspawn`, jump pads, and teleporters even when retail definitions omit their keys.
 - `editor_select` selects referenced objects in Q3Edit and `editor_frame_objects` selects and frames them in every viewport.
 - `editor_set_camera` positions the 3D camera using world coordinates and yaw/pitch in degrees.
 - `editor_look_at` positions the camera and calculates the yaw/pitch needed to face a target point.
-- `editor_screenshot` returns a PNG rendered from the current textured 3D viewport.
+- `editor_screenshot` returns a PNG rendered from the current textured 3D viewport and can temporarily hide entity/light/path markers.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
+- `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, and diagnostics without changing the document.
+- `map_create_jump_pad` and `map_create_teleporter` create complete, correctly linked trigger/destination pairs and persistently group them for later edits.
 - `map_open` opens a local `.map` file in the connected browser.
 - `map_save` writes the current browser document to the active path or a supplied path.
 
@@ -86,6 +90,9 @@ Initial `map_apply` operations are:
 - `set_texture`
 - `edit_faces` for per-face texture, shift, scale, rotation, fit, and compile flags
 - `set_brush_classification` (`detail` or `structural`)
+- `clip_brushes` by an arbitrary plane (`front`, `back`, or `both`)
+- `hollow_brushes` with an exact wall thickness
+- `csg_subtract` with optional carver removal
 - `assign_group` and `remove_from_group`
 - `delete`
 
@@ -117,7 +124,7 @@ Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as
 A useful authoring loop is:
 
 1. Call `map_status`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document and assets.
-2. Make one logical edit with `map_apply` and its current revision.
+2. For complex geometry, call `map_preview` first; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.
 

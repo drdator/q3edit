@@ -91,6 +91,41 @@ describe('entity definitions', () => {
     expect(registry.get('light')).not.toBeNull();
   });
 
+  it('provides complete built-in world and gameplay-link schemas', () => {
+    const registry = new EntityClassRegistry();
+    expect(registry.get('worldspawn')).toMatchObject({
+      type: 'brush',
+      defaults: { gravity: '800' },
+      properties: {
+        message: { type: 'string' },
+        music: { type: 'asset' },
+        gravity: { type: 'number', default: '800' },
+      },
+    });
+    expect(registry.get('trigger_push')).toMatchObject({
+      properties: { target: { type: 'entity-reference' } },
+      relationships: [{ key: 'target', direction: 'outgoing', required: true, targetClasses: ['target_position', 'info_notnull'] }],
+    });
+    expect(registry.get('target_position')).toMatchObject({
+      properties: { targetname: { type: 'entity-reference' } },
+      relationships: [{ key: 'targetname', direction: 'incoming' }],
+    });
+    expect(registry.get('trigger_teleport')).toMatchObject({
+      properties: { target: { type: 'entity-reference' } },
+      spawnflags: [{ bit: 1, name: 'SPECTATOR' }],
+    });
+  });
+
+  it('keeps built-in relationship properties when a source definition omits them', () => {
+    const registry = new EntityClassRegistry();
+    registry.loadSource('/*QUAKED trigger_push (.5 .5 .5) ?\nMust point at a target_position.\n*/', 'game.def', 'def');
+    expect(registry.get('trigger_push')).toMatchObject({
+      source: { path: 'game.def' },
+      properties: { target: { type: 'entity-reference' } },
+      relationships: [{ key: 'target', required: true }],
+    });
+  });
+
   it('applies defaults only when creating an entity', () => {
     const registry = new EntityClassRegistry([]);
     const definition = parseQuakedDefinitions(

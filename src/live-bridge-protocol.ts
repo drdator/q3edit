@@ -20,6 +20,13 @@ export type BridgeToEditorMessage =
       operations: MapOperation[];
     }
   | {
+      type: 'preview_operations';
+      requestId: string;
+      expectedRevision: number;
+      label: string;
+      operations: MapOperation[];
+    }
+  | {
       type: 'replace_document';
       requestId: string;
       fileName: string;
@@ -33,8 +40,10 @@ export type BridgeToEditorMessage =
   | { type: 'editor_select'; requestId: string; refs: string[]; replace: boolean }
   | { type: 'editor_frame_objects'; requestId: string; refs: string[] }
   | { type: 'editor_set_camera'; requestId: string; position: Vec3; yaw: number; pitch: number }
-  | { type: 'editor_screenshot'; requestId: string; width?: number; height?: number }
+  | { type: 'editor_screenshot'; requestId: string; width?: number; height?: number; hideEntityMarkers?: boolean }
   | { type: 'map_compile'; requestId: string; quality: 'fast' | 'normal' | 'full' }
+  | { type: 'map_play'; requestId: string; noclip: boolean }
+  | { type: 'game_screenshot'; requestId: string }
   | { type: 'mark_saved'; revision: number };
 
 export type EditorToBridgeMessage =

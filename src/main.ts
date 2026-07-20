@@ -70,6 +70,8 @@ async function init() {
   connectConfiguredLiveBridge(editor, {
     setCamera: (position, yaw, pitch) => vp3D.setCamera(position, yaw, pitch),
     captureScreenshot: (width, height) => vp3D.capturePng(width, height),
+    launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
+    captureBspPreview: () => ui.captureBspPreview(),
   });
 
   let defaultArchives: PakArchive[] = [];

@@ -1,18 +1,21 @@
 import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from './diagnostics';
-import type { Editor } from './editor';
-import type { SelectionItem } from './editor';
+import { Editor, type SelectionItem } from './editor';
 import type { Vec3 } from './math';
 import type { BridgeToEditorMessage, EditorToBridgeMessage, LiveMapSnapshot } from './live-bridge-protocol';
 import { applyMapOperations } from './map-operations';
 import { getEntityClassRegistry } from './entity-definitions';
 import { collectCompileModelFiles, compileMap } from './q3map';
 import { structureCompilerOutput } from './compile-diagnostics';
+import { cloneMapSnapshot } from './history';
+import { entityBounds } from './editor-queries';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export interface LiveBridgeEditorControls {
   setCamera(position: Vec3, yaw: number, pitch: number): void;
   captureScreenshot(width?: number, height?: number): { mimeType: string; data: string; width: number; height: number };
+  launchBspPreview(mapName: string, bsp: Uint8Array, noclip: boolean): void;
+  captureBspPreview(): { mimeType: string; data: string; width: number; height: number };
 }
 
 function selectionForRef(editor: Editor, ref: string): SelectionItem {
@@ -43,6 +46,12 @@ function selectionKey(item: SelectionItem): object {
   return item.entity;
 }
 
+function selectionBounds(item: SelectionItem): { mins: Vec3; maxs: Vec3 } | null {
+  if (item.type === 'brush' || item.type === 'face') return { mins: item.brush.mins, maxs: item.brush.maxs };
+  if (item.type === 'patch') return { mins: item.patch.mins, maxs: item.patch.maxs };
+  return entityBounds(item.entity);
+}
+
 function configuredBridgeUrl(): string | null {
   const value = new URLSearchParams(window.location.search).get('bridge');
   if (!value) return null;
@@ -64,6 +73,7 @@ export class LiveMapBridge {
   private reconnectTimer: number | null = null;
   private suppressDocumentSync = false;
   private stopped = false;
+  private compiledBsp: { revision: number; data: Uint8Array } | null = null;
 
   constructor(
     private readonly editor: Editor,
@@ -157,6 +167,52 @@ export class LiveMapBridge {
         });
       } finally {
         this.suppressDocumentSync = false;
+      }
+      return;
+    }
+
+    if (message.type === 'preview_operations') {
+      if (message.expectedRevision !== this.editor.documentRevision) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: `Revision conflict: expected ${message.expectedRevision}, current revision is ${this.editor.documentRevision}`,
+          revision: this.editor.documentRevision,
+        });
+        return;
+      }
+      try {
+        const preview = new Editor();
+        preview.entities = cloneMapSnapshot(this.editor.entities);
+        preview.fileName = this.editor.fileName;
+        preview.textureManager = this.editor.textureManager;
+        preview.modelManager = this.editor.modelManager;
+        preview.textureLock = this.editor.textureLock;
+        preview.projectConfiguration = structuredClone(this.editor.projectConfiguration);
+        preview.display = structuredClone(this.editor.display);
+        const result = applyMapOperations(preview, message.operations, message.label);
+        const diagnostics = collectEditorDiagnostics(preview);
+        const objects = result.created.map(ref => {
+          const item = selectionForRef(preview, ref);
+          return { ref, kind: item.type, bounds: selectionBounds(item) };
+        });
+        this.send({
+          type: 'capability_result', requestId: message.requestId,
+          result: {
+            revision: this.editor.documentRevision,
+            operationCount: result.operationCount,
+            created: result.created,
+            changed: result.changed,
+            aliases: result.aliases,
+            objects,
+            mapInfo: collectMapInfo(preview, diagnostics),
+            diagnostics,
+          },
+        });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
       }
       return;
     }
@@ -318,9 +374,24 @@ export class LiveMapBridge {
 
     if (message.type === 'editor_screenshot') {
       try {
+        const categories = this.editor.display.categories;
+        const markers = { entities: categories.entities, lights: categories.lights, paths: categories.paths };
+        if (message.hideEntityMarkers) {
+          categories.entities = false; categories.lights = false; categories.paths = false;
+          this.editor.redrawRequested = true;
+        }
+        let screenshot: { mimeType: string; data: string; width: number; height: number };
+        try {
+          screenshot = this.controls.captureScreenshot(message.width, message.height);
+        } finally {
+          if (message.hideEntityMarkers) {
+            categories.entities = markers.entities; categories.lights = markers.lights; categories.paths = markers.paths;
+            this.editor.redrawRequested = true;
+          }
+        }
         this.send({
           type: 'capability_result', requestId: message.requestId,
-          result: this.controls.captureScreenshot(message.width, message.height),
+          result: screenshot,
         });
       } catch (error) {
         this.send({
@@ -362,6 +433,9 @@ export class LiveMapBridge {
           assetFiles: assetFiles.size > 0 ? assetFiles : undefined,
         });
         const leaked = Boolean(result.pointfileText);
+        this.compiledBsp = result.success && result.bsp
+          ? { revision: this.editor.documentRevision, data: new Uint8Array(result.bsp) }
+          : null;
         const compilerDiagnostics = structureCompilerOutput(result.output, this.editor.entities);
         if (leaked) compilerDiagnostics.push({
           severity: 'error', code: 'leak', message: 'The BSP compiler produced a leak pointfile.', refs: [],
@@ -385,6 +459,38 @@ export class LiveMapBridge {
         });
       } catch (error) {
         this.editor.statusMessage = 'MCP compile failed';
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'map_play') {
+      try {
+        if (!this.compiledBsp || this.compiledBsp.revision !== this.editor.documentRevision) {
+          throw new Error('The current revision has not been compiled; call map_compile first');
+        }
+        const mapName = this.editor.fileName.replace(/\.map$/i, '') || 'compile';
+        this.controls.launchBspPreview(mapName, this.compiledBsp.data, message.noclip);
+        this.send({
+          type: 'capability_result', requestId: message.requestId,
+          result: { launched: true, mapName, revision: this.editor.documentRevision, noclip: message.noclip },
+        });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'game_screenshot') {
+      try {
+        this.send({ type: 'capability_result', requestId: message.requestId, result: this.controls.captureBspPreview() });
+      } catch (error) {
         this.send({
           type: 'operation_error', requestId: message.requestId,
           message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,

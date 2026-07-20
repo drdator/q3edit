@@ -4,6 +4,7 @@ import type { BridgeHub } from './bridge-hub';
 import { inspectMapObjects } from './map-inspection';
 import { inspectMapGroups, queryMap, type MapQueryOptions } from './map-query';
 import type { MapDocumentRef, MapOperation } from '../src/map-operations';
+import { lintGameplay } from './gameplay-lint';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -113,6 +114,27 @@ const mapOperation = z.discriminatedUnion('type', [
     classification: z.enum(['detail', 'structural']),
   }),
   z.object({
+    type: z.literal('clip_brushes'),
+    id: symbolicId.optional(),
+    targets: z.array(operationRef).min(1),
+    planePoints: z.tuple([vec3, vec3, vec3]),
+    keep: z.enum(['front', 'back', 'both']).optional(),
+    texture: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('hollow_brushes'),
+    id: symbolicId.optional(),
+    targets: z.array(operationRef).min(1),
+    thickness: z.number().positive(),
+  }),
+  z.object({
+    type: z.literal('csg_subtract'),
+    id: symbolicId.optional(),
+    targets: z.array(operationRef).min(1),
+    carvers: z.array(operationRef).min(1),
+    deleteCarvers: z.boolean().optional(),
+  }),
+  z.object({
     type: z.literal('assign_group'),
     targets: z.array(operationRef).min(1),
     group: z.string().min(1).max(120),
@@ -143,6 +165,9 @@ const compatibleMapOperationInput = z.object({
     'set_texture',
     'edit_faces',
     'set_brush_classification',
+    'clip_brushes',
+    'hollow_brushes',
+    'csg_subtract',
     'assign_group',
     'remove_from_group',
     'delete',
@@ -185,9 +210,20 @@ const compatibleMapOperationInput = z.object({
   surfaceFlags: z.number().int().optional(),
   value: z.number().int().optional(),
   classification: z.enum(['detail', 'structural']).optional(),
+  planePoints: z.array(compatibleVec3).length(3).optional(),
+  keep: z.enum(['front', 'back', 'both']).optional(),
+  thickness: z.number().optional(),
+  carvers: z.array(operationRef).optional(),
+  deleteCarvers: z.boolean().optional(),
   group: z.string().optional(),
   groupId: z.string().optional(),
 });
+
+const mapOperationBatchInputSchema = {
+  expectedRevision: z.number().int().nonnegative(),
+  label: z.string().min(1).max(120).describe('Undo or preview label, for example MCP: Add side room'),
+  operations: z.array(compatibleMapOperationInput).min(1).max(128),
+};
 
 function toolError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -199,6 +235,14 @@ function toolResult(value: unknown, text?: string) {
     content: [{ type: 'text' as const, text: text ?? JSON.stringify(value, null, 2) }],
     structuredContent: value as Record<string, unknown>,
   };
+}
+
+function validatedMapOperations(operations: unknown[]): MapOperation[] {
+  return operations.map((operation, index) => {
+    const parsed = mapOperation.safeParse(operation);
+    if (!parsed.success) throw new Error(`Invalid operation ${index + 1}: ${z.prettifyError(parsed.error)}`);
+    return parsed.data as MapOperation;
+  });
 }
 
 export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
@@ -264,6 +308,21 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('map_gameplay_lint', {
+    title: 'Lint gameplay placement',
+    description: 'Run approximate gameplay checks for point entities embedded in solids, player-spawn hull clearance, and pickup support height. Results include implicated object references.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async () => {
+    try {
+      const snapshot = hub.snapshot();
+      const issues = lintGameplay(snapshot.mapText);
+      return toolResult({ revision: snapshot.revision, issueCount: issues.length, issues });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_compile', {
     title: 'Compile the live map',
     description: 'Run the browser-based q3map toolchain against the current document and return BSP success, leak status, byte size, structured diagnostics with implicated references where possible, and complete compiler output. Fast runs BSP only; normal adds fast VIS and LIGHT; full uses configured full VIS and LIGHT settings.',
@@ -274,6 +333,31 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   }, async ({ quality }) => {
     try {
       return toolResult(await hub.compileMap(quality));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_play', {
+    title: 'Compile and playtest the live map',
+    description: 'Compile the current map and launch the resulting BSP in Q3Edit’s browser ioquake3 preview. Noclip enables cheats and starts the noclip command for route inspection.',
+    inputSchema: {
+      quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
+      noclip: z.boolean().optional().default(false),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ quality, noclip }) => {
+    try {
+      const compile = await hub.compileMap(quality) as { success?: boolean; output?: string[] };
+      if (!compile.success) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: JSON.stringify(compile, null, 2) }],
+          structuredContent: compile as Record<string, unknown>,
+        };
+      }
+      const launch = await hub.playMap(noclip);
+      return toolResult({ compile, launch }, `Compiled and launched the current map (${quality}${noclip ? ', noclip' : ''}).`);
     } catch (error) {
       return toolError(error);
     }
@@ -410,7 +494,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('entity_class_schema', {
     title: 'Get an entity class schema',
-    description: 'Return the full live definition, defaults, typed properties, and spawnflags for an exact entity classname.',
+    description: 'Return the full live definition, defaults, typed properties, spawnflags, and required incoming/outgoing target relationships for an exact entity classname.',
     inputSchema: { classname: z.string().min(1) },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ classname }) => {
@@ -501,11 +585,12 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     inputSchema: {
       width: z.number().int().min(64).max(2048).optional(),
       height: z.number().int().min(64).max(2048).optional(),
+      hideEntityMarkers: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ width, height }) => {
+  }, async ({ width, height, hideEntityMarkers }) => {
     try {
-      const screenshot = await hub.screenshot(width, height);
+      const screenshot = await hub.screenshot(width, height, hideEntityMarkers);
       return {
         content: [
           { type: 'text' as const, text: `Q3Edit 3D viewport · ${screenshot.width} × ${screenshot.height}` },
@@ -522,24 +607,102 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('game_screenshot', {
+    title: 'Capture the compiled BSP playtest',
+    description: 'Return a PNG from the currently running browser ioquake3 preview started by map_play.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async () => {
+    try {
+      const screenshot = await hub.gameScreenshot();
+      return {
+        content: [
+          { type: 'text' as const, text: `Compiled BSP preview · ${screenshot.width} × ${screenshot.height}` },
+          { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
+        ],
+        structuredContent: { mimeType: screenshot.mimeType, width: screenshot.width, height: screenshot.height },
+      };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_preview', {
+    title: 'Preview map operations without committing',
+    description: 'Run an operation batch against an in-memory clone of the current revision. Returns generated references, aliases, object bounds, map counts, and diagnostics without changing the live document or undo history.',
+    inputSchema: mapOperationBatchInputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ expectedRevision, label, operations }) => {
+    try {
+      return toolResult(await hub.previewOperations(expectedRevision, label, validatedMapOperations(operations)));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_create_jump_pad', {
+    title: 'Create a wired jump pad',
+    description: 'Atomically create a trigger_push volume and its target_position apex, wire their target keys, and place both in a persistent named group.',
+    inputSchema: {
+      expectedRevision: z.number().int().nonnegative(),
+      mins: compatibleVec3,
+      maxs: compatibleVec3,
+      apex: compatibleVec3,
+      targetname: z.string().min(1).max(64).optional(),
+      group: z.string().min(1).max(120).optional().default('Jump Pad'),
+    },
+    annotations: { destructiveHint: true, openWorldHint: false },
+  }, async ({ expectedRevision, mins, maxs, apex, targetname, group }) => {
+    try {
+      const link = targetname ?? `mcp_jump_${expectedRevision}`;
+      const applied = await hub.applyOperations(expectedRevision, 'MCP: Create jump pad', [
+        { type: 'create_entity', id: 'jump_trigger', classname: 'trigger_push', properties: { target: link } },
+        { type: 'create_box', id: 'jump_volume', parent: '@jump_trigger', mins: mins as [number, number, number], maxs: maxs as [number, number, number], texture: 'common/trigger' },
+        { type: 'create_entity', id: 'jump_apex', classname: 'target_position', origin: apex as [number, number, number], properties: { targetname: link } },
+        { type: 'assign_group', targets: ['@jump_trigger', '@jump_apex'], group },
+      ]);
+      return toolResult({ ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_create_teleporter', {
+    title: 'Create a wired teleporter',
+    description: 'Atomically create a trigger_teleport volume and misc_teleporter_dest, wire their target keys, and place both in a persistent named group.',
+    inputSchema: {
+      expectedRevision: z.number().int().nonnegative(),
+      mins: compatibleVec3,
+      maxs: compatibleVec3,
+      destination: compatibleVec3,
+      exitAngle: z.number().optional().default(0),
+      targetname: z.string().min(1).max(64).optional(),
+      group: z.string().min(1).max(120).optional().default('Teleporter'),
+    },
+    annotations: { destructiveHint: true, openWorldHint: false },
+  }, async ({ expectedRevision, mins, maxs, destination, exitAngle, targetname, group }) => {
+    try {
+      const link = targetname ?? `mcp_teleport_${expectedRevision}`;
+      const applied = await hub.applyOperations(expectedRevision, 'MCP: Create teleporter', [
+        { type: 'create_entity', id: 'teleport_trigger', classname: 'trigger_teleport', properties: { target: link } },
+        { type: 'create_box', id: 'teleport_volume', parent: '@teleport_trigger', mins: mins as [number, number, number], maxs: maxs as [number, number, number], texture: 'common/trigger' },
+        { type: 'create_entity', id: 'teleport_destination', classname: 'misc_teleporter_dest', origin: destination as [number, number, number], properties: { targetname: link, angle: String(exitAngle) } },
+        { type: 'assign_group', targets: ['@teleport_trigger', '@teleport_destination'], group },
+      ]);
+      return toolResult({ ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
     description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, and convex plane brushes. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Use the advertised schema for exact fields.',
-    inputSchema: {
-      expectedRevision: z.number().int().nonnegative(),
-      label: z.string().min(1).max(120).describe('Undo label, for example MCP: Add side room'),
-      operations: z.array(compatibleMapOperationInput).min(1).max(128),
-    },
+    inputSchema: mapOperationBatchInputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
   }, async ({ expectedRevision, label, operations }) => {
     try {
-      const validatedOperations = operations.map((operation, index) => {
-        const parsed = mapOperation.safeParse(operation);
-        if (!parsed.success) {
-          throw new Error(`Invalid operation ${index + 1}: ${z.prettifyError(parsed.error)}`);
-        }
-        return parsed.data as MapOperation;
-      });
+      const validatedOperations = validatedMapOperations(operations);
       const applied = await hub.applyOperations(expectedRevision, label, validatedOperations);
       const value = {
         ...applied.result,

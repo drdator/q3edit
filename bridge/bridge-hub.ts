@@ -70,6 +70,12 @@ export class BridgeHub {
     return { result: message.result, snapshot: message.snapshot };
   }
 
+  async previewOperations(expectedRevision: number, label: string, operations: MapOperation[]): Promise<unknown> {
+    return this.capabilityRequest({
+      type: 'preview_operations', requestId: randomUUID(), expectedRevision, label, operations,
+    });
+  }
+
   async openMap(path: string): Promise<LiveMapSnapshot> {
     const mapText = await readFile(path, 'utf8');
     const message = await this.request({
@@ -121,14 +127,24 @@ export class BridgeHub {
     return this.capabilityRequest({ type: 'editor_set_camera', requestId: randomUUID(), position, yaw, pitch });
   }
 
-  async screenshot(width?: number, height?: number): Promise<{ mimeType: string; data: string; width: number; height: number }> {
-    return await this.capabilityRequest({ type: 'editor_screenshot', requestId: randomUUID(), width, height }) as {
+  async screenshot(width?: number, height?: number, hideEntityMarkers?: boolean): Promise<{ mimeType: string; data: string; width: number; height: number }> {
+    return await this.capabilityRequest({ type: 'editor_screenshot', requestId: randomUUID(), width, height, hideEntityMarkers }) as {
       mimeType: string; data: string; width: number; height: number;
     };
   }
 
   async compileMap(quality: 'fast' | 'normal' | 'full'): Promise<unknown> {
     return this.capabilityRequest({ type: 'map_compile', requestId: randomUUID(), quality }, 180_000);
+  }
+
+  async playMap(noclip: boolean): Promise<unknown> {
+    return this.capabilityRequest({ type: 'map_play', requestId: randomUUID(), noclip });
+  }
+
+  async gameScreenshot(): Promise<{ mimeType: string; data: string; width: number; height: number }> {
+    return await this.capabilityRequest({ type: 'game_screenshot', requestId: randomUUID() }) as {
+      mimeType: string; data: string; width: number; height: number;
+    };
   }
 
   async saveMap(path = this.activeMapPath): Promise<{ path: string; revision: number }> {

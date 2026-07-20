@@ -194,6 +194,35 @@ describe('serializable map operations', () => {
     expect(editor.worldspawn.brushes).toHaveLength(0);
   });
 
+  test('clips and hollows brushes while exposing the replacement refs', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      { type: 'create_box', id: 'block', mins: [0, 0, 0], maxs: [64, 64, 64] },
+      {
+        type: 'clip_brushes', id: 'halves', targets: ['@block'], keep: 'both',
+        planePoints: [[32, 0, 0], [32, 0, 64], [32, 64, 0]],
+      },
+      { type: 'hollow_brushes', id: 'shell', targets: ['@halves'], thickness: 8 },
+    ]);
+
+    expect(result.aliases['@halves']).toEqual([]);
+    expect(result.aliases['@shell']).toHaveLength(12);
+    expect(editor.worldspawn.brushes).toHaveLength(12);
+  });
+
+  test('subtracts a carver and can remove it in the same operation', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      { type: 'create_box', id: 'wall', mins: [0, 0, 0], maxs: [128, 32, 128] },
+      { type: 'create_box', id: 'door', mins: [32, -8, 0], maxs: [96, 40, 96] },
+      { type: 'csg_subtract', id: 'cut_wall', targets: ['@wall'], carvers: ['@door'], deleteCarvers: true },
+    ]);
+
+    expect(result.aliases['@cut_wall'].length).toBeGreaterThan(1);
+    expect(result.aliases['@door']).toEqual([]);
+    expect(editor.worldspawn.brushes).toHaveLength(result.aliases['@cut_wall'].length);
+  });
+
   test('assigns symbolic collections to persistent named groups', () => {
     const editor = emptyEditor();
     const result = applyMapOperations(editor, [

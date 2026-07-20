@@ -2649,7 +2649,7 @@ export class UI {
     if (autoPlay) compileBtn.click();
   }
 
-  private openBspPreview(mapName: string, bsp: Uint8Array): void {
+  openBspPreview(mapName: string, bsp: Uint8Array, noclip = false): void {
     document.getElementById('game-preview-overlay')?.remove();
 
     const safeMapName = mapName.replace(/[^a-zA-Z0-9_-]/g, '') || 'compile';
@@ -2727,6 +2727,7 @@ export class UI {
           type: 'q3edit-player:launch',
           mapName: safeMapName,
           bsp: bspCopy.buffer,
+          noclip,
         }, window.location.origin, [bspCopy.buffer]);
       } else if (message?.type === 'q3edit-player:status') {
         status.textContent = message.message;
@@ -2768,6 +2769,17 @@ export class UI {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
     closeBtn.focus();
+  }
+
+  captureBspPreview(): { mimeType: string; data: string; width: number; height: number } {
+    const frame = document.querySelector<HTMLIFrameElement>('.game-preview-frame');
+    const canvas = frame?.contentDocument?.querySelector<HTMLCanvasElement>('#canvas');
+    if (!canvas || canvas.width < 1 || canvas.height < 1) throw new Error('No running compiled BSP preview is available');
+    const dataUrl = canvas.toDataURL('image/png');
+    return {
+      mimeType: 'image/png', data: dataUrl.slice(dataUrl.indexOf(',') + 1),
+      width: canvas.width, height: canvas.height,
+    };
   }
 
   private populateTextureList(list: HTMLElement, textures: string[], selectedDir: string | null): void {

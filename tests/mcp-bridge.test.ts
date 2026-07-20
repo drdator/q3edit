@@ -66,6 +66,16 @@ class FakeEditorSocket extends EventEmitter {
         },
         snapshot: next,
       }));
+    } else if (request.type === 'preview_operations') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: {
+          revision: request.expectedRevision, operationCount: request.operations.length,
+          created: ['E0:B0'], changed: [], aliases: {},
+          objects: [{ ref: 'E0:B0', kind: 'brush', bounds: { mins: [0, 0, 0], maxs: [64, 64, 64] } }],
+          diagnostics: [],
+        },
+      }));
     } else if (request.type === 'request_snapshot') {
       queueMicrotask(() => this.emitMessage({ type: 'snapshot', requestId: request.requestId, snapshot: snapshot() }));
     } else if (request.type === 'texture_search') {
@@ -107,6 +117,16 @@ class FakeEditorSocket extends EventEmitter {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
         result: { success: true, quality: request.quality, bspBytes: 4096, leaked: false, pointfileLoaded: false, output: ['BSP done'] },
+      }));
+    } else if (request.type === 'map_play') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { launched: true, mapName: 'live', revision: 4, noclip: request.noclip },
+      }));
+    } else if (request.type === 'game_screenshot') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { mimeType: 'image/png', data: 'Z2FtZQ==', width: 1280, height: 720 },
       }));
     }
   }
@@ -179,7 +199,9 @@ describe('live MCP bridge', () => {
         'map_entities',
         'map_inspect',
         'map_validate',
+        'map_gameplay_lint',
         'map_compile',
+        'map_play',
         'map_groups',
         'map_query',
         'texture_search',
@@ -192,6 +214,10 @@ describe('live MCP bridge', () => {
         'editor_set_camera',
         'editor_look_at',
         'editor_screenshot',
+        'game_screenshot',
+        'map_preview',
+        'map_create_jump_pad',
+        'map_create_teleporter',
         'map_apply',
         'map_open',
         'map_save',
@@ -203,11 +229,39 @@ describe('live MCP bridge', () => {
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ editorConnected: true, snapshot: { revision: 4 } });
 
+      const lint = await client.callTool({ name: 'map_gameplay_lint', arguments: {} });
+      expect(lint.structuredContent).toMatchObject({ revision: 4, issueCount: 0 });
+
       const compiled = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast' } });
       expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
 
+      const played = await client.callTool({ name: 'map_play', arguments: { quality: 'fast', noclip: true } });
+      expect(played.structuredContent).toMatchObject({ launch: { launched: true, noclip: true } });
+
+      const gameScreenshot = await client.callTool({ name: 'game_screenshot', arguments: {} });
+      expect(gameScreenshot.content).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'image', data: 'Z2FtZQ==' }),
+      ]));
+
       const groups = await client.callTool({ name: 'map_groups', arguments: {} });
       expect(groups.structuredContent).toMatchObject({ revision: 4, groups: [] });
+
+      const previewed = await client.callTool({
+        name: 'map_preview',
+        arguments: {
+          expectedRevision: 4, label: 'MCP: Preview box',
+          operations: [{ type: 'create_box', mins: [0, 0, 0], maxs: [64, 64, 64] }],
+        },
+      });
+      expect(previewed.structuredContent).toMatchObject({
+        revision: 4, created: ['E0:B0'], objects: [{ bounds: { mins: [0, 0, 0], maxs: [64, 64, 64] } }],
+      });
+
+      const jumpPad = await client.callTool({
+        name: 'map_create_jump_pad',
+        arguments: { expectedRevision: 4, mins: [0, 0, 0], maxs: [64, 64, 16], apex: [160, 0, 192] },
+      });
+      expect(jumpPad.structuredContent).toMatchObject({ revision: 5, operationCount: 4, targetname: 'mcp_jump_4' });
 
       const textures = await client.callTool({ name: 'texture_search', arguments: { query: 'metal' } });
       expect(textures.structuredContent).toMatchObject({ matches: [{ name: 'base_wall/metal' }] });

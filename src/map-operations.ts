@@ -1,5 +1,6 @@
 import {
   classicTextureProjection,
+  clipBrush,
   cloneBrush,
   computeBrushGeometry,
   createBoxBrush,
@@ -23,6 +24,7 @@ import {
 import { vec3Dot, type Vec3 } from './math';
 import { clonePatch, mirrorPatch, rotatePatch, translatePatch, type Patch } from './patch';
 import { CONTENTS_DETAIL, CONTENTS_STRUCTURAL } from './map-flags';
+import { hollowBrush, subtractBrush } from './csg';
 import {
   GROUP_ID_KEY,
   GROUP_INFO_CLASSNAME,
@@ -180,6 +182,30 @@ export interface SetBrushClassificationOperation {
   classification: 'detail' | 'structural';
 }
 
+export interface ClipBrushesOperation {
+  type: 'clip_brushes';
+  id?: string;
+  targets: MapTargetRef[];
+  planePoints: [Vec3, Vec3, Vec3];
+  keep?: 'front' | 'back' | 'both';
+  texture?: string;
+}
+
+export interface HollowBrushesOperation {
+  type: 'hollow_brushes';
+  id?: string;
+  targets: MapTargetRef[];
+  thickness: number;
+}
+
+export interface CsgSubtractOperation {
+  type: 'csg_subtract';
+  id?: string;
+  targets: MapTargetRef[];
+  carvers: MapTargetRef[];
+  deleteCarvers?: boolean;
+}
+
 export interface AssignGroupOperation {
   type: 'assign_group';
   targets: MapTargetRef[];
@@ -214,6 +240,9 @@ export type MapOperation =
   | SetTextureOperation
   | EditFacesOperation
   | SetBrushClassificationOperation
+  | ClipBrushesOperation
+  | HollowBrushesOperation
+  | CsgSubtractOperation
   | AssignGroupOperation
   | RemoveFromGroupOperation
   | DeleteObjectsOperation;
@@ -548,6 +577,70 @@ function classifyBrushes(targets: ResolvedObject[], classification: 'detail' | '
   return [...brushes];
 }
 
+function requireBrushes(targets: ResolvedObject[], operation: string): Array<ResolvedObject & { kind: 'brush' }> {
+  return targets.map(target => {
+    if (target.kind !== 'brush') throw new Error(`${target.ref} is not a brush; ${operation} requires brush references`);
+    return target;
+  });
+}
+
+function replaceBrush(target: ResolvedObject & { kind: 'brush' }, replacements: Brush[]): ObjectHandle[] {
+  const index = target.entity.brushes.indexOf(target.brush);
+  if (index < 0) throw new Error(`${target.ref} was replaced earlier in this batch`);
+  target.entity.brushes.splice(index, 1, ...replacements);
+  return replacements.map(brush => ({ kind: 'brush' as const, entity: target.entity, brush }));
+}
+
+function applyClipBrushes(operation: ClipBrushesOperation, targets: Array<ResolvedObject & { kind: 'brush' }>): ObjectHandle[] {
+  operation.planePoints.forEach((point, index) => assertVector(`plane point ${index + 1}`, point));
+  const handles: ObjectHandle[] = [];
+  for (const target of targets) {
+    const back = operation.keep !== 'front' ? clipBrush(target.brush, operation.planePoints, operation.texture) : null;
+    const [a, b, c] = operation.planePoints;
+    const front = operation.keep !== 'back' ? clipBrush(target.brush, [b, a, c], operation.texture) : null;
+    const replacements = [back, front].filter((brush): brush is Brush => brush !== null);
+    if (replacements.length === 0) throw new Error(`Clip plane removed all of ${target.ref}`);
+    handles.push(...replaceBrush(target, replacements));
+  }
+  return handles;
+}
+
+function applyHollowBrushes(operation: HollowBrushesOperation, targets: Array<ResolvedObject & { kind: 'brush' }>): ObjectHandle[] {
+  if (!Number.isFinite(operation.thickness) || operation.thickness <= 0) throw new Error('thickness must be a positive number');
+  const handles: ObjectHandle[] = [];
+  for (const target of targets) {
+    const shells = hollowBrush(target.brush, operation.thickness);
+    if (shells.length === 0) throw new Error(`Could not hollow ${target.ref} at thickness ${operation.thickness}`);
+    handles.push(...replaceBrush(target, shells));
+  }
+  return handles;
+}
+
+function applyCsgSubtract(
+  operation: CsgSubtractOperation,
+  targets: Array<ResolvedObject & { kind: 'brush' }>,
+  carvers: Array<ResolvedObject & { kind: 'brush' }>,
+): ObjectHandle[] {
+  const carverBrushes = new Set(carvers.map(item => item.brush));
+  if (targets.some(item => carverBrushes.has(item.brush))) throw new Error('A CSG target cannot also be a carver');
+  const handles: ObjectHandle[] = [];
+  for (const target of targets) {
+    let pieces = [target.brush];
+    for (const carver of carvers) {
+      pieces = pieces.flatMap(piece => subtractBrush(piece, carver.brush) ?? [piece]);
+    }
+    if (pieces.length === 1 && pieces[0] === target.brush) continue;
+    handles.push(...replaceBrush(target, pieces));
+  }
+  if (operation.deleteCarvers) {
+    for (const carver of carvers) {
+      const index = carver.entity.brushes.indexOf(carver.brush);
+      if (index >= 0) carver.entity.brushes.splice(index, 1);
+    }
+  }
+  return handles;
+}
+
 function generatedGroupId(editor: Editor, name: string): string {
   const base = `mcp-${name.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '') || 'group'}`.slice(0, 120);
   const used = new Set(listNamedGroups(editor.entities).map(group => group.id));
@@ -770,6 +863,22 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           const entity = editor.entities.find(candidate => candidate.brushes.includes(brush));
           if (entity) changedHandles.add({ kind: 'brush', entity, brush });
         }
+      } else if (operation.type === 'clip_brushes') {
+        const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'clip_brushes');
+        const handles = applyClipBrushes(operation, targets);
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
+      } else if (operation.type === 'hollow_brushes') {
+        const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'hollow_brushes');
+        const handles = applyHollowBrushes(operation, targets);
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
+      } else if (operation.type === 'csg_subtract') {
+        const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'csg_subtract');
+        const carvers = requireBrushes(resolveTargets(editor, operation.carvers, aliases), 'csg_subtract');
+        const handles = applyCsgSubtract(operation, targets, carvers);
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
       } else if (operation.type === 'assign_group') {
         const targets = resolveTargets(editor, operation.targets, aliases);
         const groupId = ensureGroup(editor, operation.group, operation.groupId);

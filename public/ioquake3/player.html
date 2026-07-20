@@ -306,8 +306,10 @@
               '+set', 'r_mode', '-2',
               '+set', 'r_fullscreen', '0',
               '+set', 'r_allowResize', '1',
+              ...(launch.noclip ? ['+set', 'sv_cheats', '1'] : []),
               '+set', 'com_basegame', assets.gameDir,
               '+devmap', launch.mapName,
+              ...(launch.noclip ? ['+noclip'] : []),
             ],
             locateFile: (file) => new URL(file, import.meta.url).href,
             preRun: [(module) => {
