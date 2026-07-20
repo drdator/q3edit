@@ -1,3 +1,5 @@
+import { DYNAMIC_LIGHT_AMBIENT } from './dynamic-lighting';
+
 // ── Shaders ──
 
 export const VERT_SRC = `#version 300 es
@@ -16,8 +18,6 @@ void main() {
   gl_Position = uPV * vec4(aPos, 1.0);
 }
 `;
-
-export const DYNAMIC_LIGHT_AMBIENT = 0.03;
 
 export const FRAG_SRC = `#version 300 es
 precision mediump float;

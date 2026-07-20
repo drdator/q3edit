@@ -2,6 +2,7 @@ import { Mat4, mat4LookAt, mat4Multiply, mat4Perspective, vec3Add } from './math
 import { Editor } from './editor';
 import { BlendMode } from './textures';
 import { entityOrigin, parseLightColor } from './entity';
+import { effectiveDynamicLightRadius } from './dynamic-lighting';
 
 export interface DrawGroup {
   textureName: string;
@@ -129,7 +130,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     lights.forEach((entity, index) => {
       const origin = entityOrigin(entity) ?? [0, 0, 0]; const color = parseLightColor(entity) ?? [1, 1, 1];
       positions.set(origin, index * 3); colors.set(color, index * 3);
-      radii[index] = Math.max(1, Number(entity.properties.light) || 300);
+      radii[index] = effectiveDynamicLightRadius(Number(entity.properties.light) || 300);
     });
     ctx.gl.uniform1f(ctx.solidDynamicLightingEnabledLoc, dynamicLightingEnabled ? 1 : 0);
     ctx.gl.uniform1i(ctx.solidDynamicLightCountLoc, lights.length);
