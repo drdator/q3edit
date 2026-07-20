@@ -24,6 +24,7 @@ import {
   pickAt as pickAt2D,
   ResizeEdges,
 } from './viewport2d-picking';
+import { isObjectInLockedGroup } from './named-groups';
 
 type TerrainSculptMode = 'locked' | 'paintRaise' | 'paintLower' | 'paintTexture';
 
@@ -508,8 +509,15 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
   }
 
   const picked = pickAt2D(ctx, wx, wy);
+  const pickedLocked = picked?.type === 'brush'
+    ? isObjectInLockedGroup(ctx.editor, picked.brush, picked.entity)
+    : picked?.type === 'patch'
+      ? isObjectInLockedGroup(ctx.editor, picked.patch, picked.entity)
+      : picked?.type === 'entity'
+        ? isObjectInLockedGroup(ctx.editor, picked.entity)
+        : false;
   const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-  if (picked) {
+  if (picked && !pickedLocked) {
     const directGroupEditing = picked.type !== 'entity' &&
       picked.entity !== ctx.editor.worldspawn &&
       hasDirectGeometrySelection(ctx.editor, picked.entity);
