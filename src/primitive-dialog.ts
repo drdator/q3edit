@@ -10,10 +10,25 @@ function numberInput(value: number, min?: number, max?: number): HTMLInputElemen
   return input;
 }
 
-function labeledRow(container: HTMLElement, labelText: string, inputs: HTMLElement[]): void {
-  const label = document.createElement('label'); label.textContent = labelText;
-  const row = document.createElement('div'); row.className = 'kv-row'; row.append(...inputs);
-  container.append(label, row);
+function labeledControl(labelText: string, control: HTMLElement): HTMLLabelElement {
+  const field = document.createElement('label'); field.className = 'exact-primitive-field';
+  const label = document.createElement('span'); label.className = 'exact-primitive-label'; label.textContent = labelText;
+  field.append(label, control);
+  return field;
+}
+
+function vectorField(labelText: string, inputs: HTMLInputElement[]): HTMLElement {
+  const field = document.createElement('div'); field.className = 'exact-primitive-field';
+  const label = document.createElement('div'); label.className = 'exact-primitive-label'; label.textContent = labelText;
+  const row = document.createElement('div'); row.className = 'exact-primitive-vector';
+  for (const [index, input] of inputs.entries()) {
+    const coordinate = document.createElement('label'); coordinate.className = 'exact-primitive-coordinate';
+    const axis = document.createElement('span'); axis.textContent = ['X', 'Y', 'Z'][index];
+    input.setAttribute('aria-label', `${labelText} ${axis.textContent}`);
+    coordinate.append(axis, input); row.appendChild(coordinate);
+  }
+  field.append(label, row);
+  return field;
 }
 
 export function openExactPrimitiveDialog(editor: Editor): void {
@@ -27,21 +42,24 @@ export function openExactPrimitiveDialog(editor: Editor): void {
     : [128, 128, 128];
 
   const overlay = document.createElement('div'); overlay.id = 'primitive-dialog'; overlay.className = 'editor-dialog-overlay';
-  const dialog = document.createElement('div'); dialog.className = 'editor-dialog';
-  const title = document.createElement('div'); title.className = 'editor-dialog-title'; title.textContent = 'Create Exact Brush Primitive';
-  dialog.appendChild(title);
+  overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-labelledby', 'primitive-dialog-title');
+  const dialog = document.createElement('form'); dialog.className = 'editor-dialog exact-primitive-dialog';
+  const title = document.createElement('div'); title.id = 'primitive-dialog-title'; title.className = 'editor-dialog-title'; title.textContent = 'Create Exact Brush Primitive';
+  const description = document.createElement('div'); description.className = 'editor-dialog-description';
+  description.textContent = 'Set the primitive type, center, and dimensions in map units.';
+  const fields = document.createElement('div'); fields.className = 'exact-primitive-fields';
+  dialog.append(title, description, fields);
 
   const primitive = document.createElement('select');
   for (const option of BRUSH_PRIMITIVES) {
     const element = document.createElement('option'); element.value = option.value; element.textContent = option.label; primitive.appendChild(element);
   }
   primitive.value = editor.currentBrushPrimitive;
-  labeledRow(dialog, 'Primitive', [primitive]);
+  fields.appendChild(labeledControl('Primitive', primitive));
 
   const centerInputs = center.map(value => numberInput(value));
   const dimensionInputs = dimensions.map(value => numberInput(value, 0.001));
-  labeledRow(dialog, 'Center X / Y / Z', centerInputs);
-  labeledRow(dialog, 'Dimensions X / Y / Z', dimensionInputs);
+  fields.append(vectorField('Center', centerInputs), vectorField('Dimensions', dimensionInputs));
 
   const axis = document.createElement('select');
   for (const [value, label] of [['0', 'X'], ['1', 'Y'], ['2', 'Z']]) {
@@ -50,9 +68,11 @@ export function openExactPrimitiveDialog(editor: Editor): void {
   axis.value = String(editor.rotationAxis);
   const sides = numberInput(editor.currentBrushSides, 3, 64);
   sides.step = '1';
-  labeledRow(dialog, 'Axis / Sides', [axis, sides]);
+  const shapeOptions = document.createElement('div'); shapeOptions.className = 'exact-primitive-options';
+  shapeOptions.append(labeledControl('Axis', axis), labeledControl('Sides', sides));
+  fields.appendChild(shapeOptions);
 
-  const error = document.createElement('div'); error.className = 'editor-dialog-description'; error.style.color = '#f80';
+  const error = document.createElement('div'); error.className = 'exact-primitive-error'; error.setAttribute('role', 'alert'); error.setAttribute('aria-live', 'polite');
   dialog.appendChild(error);
   const syncSides = () => {
     const range = brushPrimitiveSideRange(primitive.value as BrushPrimitive);
@@ -66,8 +86,8 @@ export function openExactPrimitiveDialog(editor: Editor): void {
   primitive.addEventListener('change', syncSides); syncSides();
 
   const actions = document.createElement('div'); actions.className = 'editor-dialog-actions';
-  const create = document.createElement('button'); create.textContent = 'Create';
-  const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+  const create = document.createElement('button'); create.type = 'submit'; create.className = 'btn primary'; create.textContent = 'Create';
+  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn'; cancel.textContent = 'Cancel';
   const close = () => overlay.remove();
   const submit = () => {
     const parsedCenter = centerInputs.map(input => Number(input.value)) as Vec3;
@@ -81,11 +101,10 @@ export function openExactPrimitiveDialog(editor: Editor): void {
     });
     if (editor.statusMessage.startsWith('Created exact')) close(); else error.textContent = editor.statusMessage;
   };
-  create.addEventListener('click', submit); cancel.addEventListener('click', close);
+  dialog.addEventListener('submit', event => { event.preventDefault(); submit(); }); cancel.addEventListener('click', close);
   actions.append(cancel, create); dialog.appendChild(actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
   overlay.addEventListener('keydown', event => {
-    if (event.key === 'Escape') close();
-    if (event.key === 'Enter') submit();
+    if (event.key === 'Escape') { close(); event.stopPropagation(); }
   });
   primitive.focus();
 }

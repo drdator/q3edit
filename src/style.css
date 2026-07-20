@@ -1548,6 +1548,95 @@ textarea:focus-visible {
   color: var(--text-dim);
 }
 
+.exact-primitive-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.exact-primitive-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-dark);
+}
+
+.exact-primitive-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.exact-primitive-label {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.exact-primitive-dialog input,
+.exact-primitive-dialog select {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 3px 7px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  border-top-color: var(--border-light);
+  border-left-color: var(--border-light);
+  border-radius: 0;
+  font: 11px/1 monospace;
+}
+
+.exact-primitive-dialog input:focus-visible,
+.exact-primitive-dialog select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.exact-primitive-dialog input:disabled,
+.exact-primitive-dialog select:disabled {
+  color: #666;
+  background: #343434;
+}
+
+.exact-primitive-vector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.exact-primitive-coordinate {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+
+.exact-primitive-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.exact-primitive-error {
+  min-height: 15px;
+  margin-top: 7px;
+  color: #ffb86c;
+}
+
+.exact-primitive-error:empty {
+  min-height: 0;
+  margin-top: 0;
+}
+
+@media (max-width: 460px) {
+  .exact-primitive-vector {
+    grid-template-columns: 1fr;
+  }
+}
+
 .model-browser {
   display: flex;
   flex-direction: column;
