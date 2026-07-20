@@ -5,6 +5,7 @@ import { inspectMapObjects } from './map-inspection';
 import { inspectMapGroups, queryMap, type MapQueryOptions } from './map-query';
 import type { MapDocumentRef, MapOperation } from '../src/map-operations';
 import { lintGameplay } from './gameplay-lint';
+import { analyzeJumpPad } from './jump-analysis';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -434,6 +435,29 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const snapshot = hub.snapshot(resolved);
       const issues = lintGameplay(snapshot.mapText);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, issueCount: issues.length, issues });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_analyze_jump_pad', {
+    title: 'Analyze a Quake III jump-pad trajectory',
+    description: 'Reproduce the engine AimAtTarget velocity for an existing trigger_push or proposed trigger bounds/apex. Returns timing, velocity, nominal landing, first plausible landing surface, and approximate player-hull clearance collisions.',
+    inputSchema: {
+      ...sessionInput,
+      triggerRef: z.string().regex(/^E\d+$/, 'Expected a trigger_push entity reference such as E12').optional(),
+      mins: vec3.optional().describe('Proposed trigger bounds; required with maxs and apex when triggerRef is omitted'),
+      maxs: vec3.optional(),
+      apex: vec3.optional().describe('The target_position is the trajectory apex, not the landing point'),
+      gravity: z.number().positive().optional().describe('Defaults to worldspawn gravity or Quake III default 800'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, triggerRef, mins, maxs, apex, gravity }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const analysis = analyzeJumpPad(snapshot.mapText, { triggerRef, mins, maxs, apex, gravity });
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...analysis });
     } catch (error) {
       return toolError(error);
     }

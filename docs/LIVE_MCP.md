@@ -58,6 +58,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
 - `map_gameplay_lint` reports approximate embedded-entity, spawn-clearance, and pickup-support problems with implicated references.
+- `map_analyze_jump_pad` mirrors Quake III's `AimAtTarget` math for an existing `trigger_push` or proposed trigger bounds/apex. It reports velocity, timing, nominal landing, the first plausible landing surface, and approximate player-hull obstructions. The linked `target_position` is the trajectory apex, not its landing point.
 - `map_compile` runs the live map through q3map at fast, normal, or full quality. Warnings and errors are structured by severity and linked to implicated references when texture names or entity origins make that possible.
 - `map_play` compiles and launches the current revision in browser ioquake3, with optional noclip. `game_screenshot` captures the running compiled/lightmapped view.
 - `map_query` finds entities, brushes, and patches by bounds, kind, classname, texture, or entity property.

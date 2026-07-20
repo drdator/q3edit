@@ -239,6 +239,7 @@ describe('live MCP bridge', () => {
         'map_inspect',
         'map_validate',
         'map_gameplay_lint',
+        'map_analyze_jump_pad',
         'map_compile',
         'map_play',
         'map_groups',
@@ -288,6 +289,16 @@ describe('live MCP bridge', () => {
 
       const lint = await client.callTool({ name: 'map_gameplay_lint', arguments: {} });
       expect(lint.structuredContent).toMatchObject({ revision: 4, issueCount: 0 });
+
+      const jumpAnalysis = await client.callTool({
+        name: 'map_analyze_jump_pad',
+        arguments: { mins: [0, 0, 0], maxs: [64, 64, 16], apex: [160, 32, 136] },
+      });
+      expect(jumpAnalysis.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, gravity: 800,
+        launchOrigin: [32, 32, 8], apex: [160, 32, 136],
+        landing: { supported: false }, clearance: { clear: true },
+      });
 
       const compiled = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast' } });
       expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
