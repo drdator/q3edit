@@ -1579,9 +1579,9 @@ textarea:focus-visible {
   padding: 3px 7px;
   color: var(--text);
   background: var(--bg-darker);
-  border: 1px solid var(--border-dark);
-  border-top-color: var(--border-light);
-  border-left-color: var(--border-light);
+  border: 1px solid var(--border-light);
+  border-top-color: var(--border-dark);
+  border-left-color: var(--border-dark);
   border-radius: 0;
   font: 11px/1 monospace;
 }
