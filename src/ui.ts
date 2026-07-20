@@ -20,6 +20,13 @@ import { applyAppearancePreferences, openPreferencesDialog, openProjectSettingsD
 import type { ProjectConfiguration } from './project-config';
 import { openDiagnosticsDialog, type DiagnosticsTab } from './diagnostics-dialog';
 import { refreshEntityClassPickers } from './entity-class-picker';
+import {
+  clampSidebarWidth,
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  resizedSidebarWidth,
+} from './sidebar-layout';
 import 'virtual:phosphor-icons.css';
 
 export interface AssetLoadingHandle {
@@ -83,6 +90,7 @@ export class UI {
       openProjectSettings: () => this.openProjectSettings(),
       openDiagnostics: tab => this.openDiagnostics(tab),
       openTerrainPanel: () => this.openTerrainPanel(),
+      toggleSidebar: () => this.toggleSidebar(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: tool => this.setTool(tool),
       setGrid: size => this.setGrid(size),
@@ -134,6 +142,8 @@ export class UI {
   // ── Side Panel ──
 
   private buildSidePanel(): void {
+    this.setupSidePanelLayout();
+
     // Add collapse toggles to all panel headers
     for (const header of document.querySelectorAll('#sidepanel .panel-header')) {
       const panel = header.parentElement as HTMLElement | null;
@@ -158,6 +168,82 @@ export class UI {
     this.buildTexturePanel();
     this.buildTerrainPanel();
     this.setupTerrainPopover();
+  }
+
+  private setupSidePanelLayout(): void {
+    const resizer = document.getElementById('sidepanel-resizer');
+    if (!resizer) return;
+    resizer.title = 'Drag to resize the right sidebar. Double-click to reset.';
+    resizer.setAttribute('aria-valuemin', String(MIN_SIDEBAR_WIDTH));
+    resizer.setAttribute('aria-valuemax', String(MAX_SIDEBAR_WIDTH));
+    this.applySidePanelLayout();
+
+    resizer.addEventListener('mousedown', event => {
+      if (event.button !== 0 || !this.editor.preferences.sidebar.visible) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = this.editor.preferences.sidebar.width;
+      document.body.classList.add('sidepanel-resizing');
+
+      const move = (moveEvent: MouseEvent) => {
+        this.editor.preferences.sidebar.width = resizedSidebarWidth(startWidth, startX, moveEvent.clientX);
+        this.applySidePanelLayout();
+      };
+      const finish = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', finish);
+        document.body.classList.remove('sidepanel-resizing');
+        this.editor.persistCurrentPreferences();
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', finish);
+    });
+
+    resizer.addEventListener('dblclick', () => {
+      this.setSidePanelWidth(DEFAULT_SIDEBAR_WIDTH);
+    });
+
+    resizer.addEventListener('keydown', event => {
+      const step = event.shiftKey ? 32 : 10;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        this.setSidePanelWidth(this.editor.preferences.sidebar.width + step);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        this.setSidePanelWidth(this.editor.preferences.sidebar.width - step);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        this.setSidePanelWidth(DEFAULT_SIDEBAR_WIDTH);
+      }
+    });
+  }
+
+  private setSidePanelWidth(width: number): void {
+    this.editor.preferences.sidebar.width = clampSidebarWidth(width);
+    this.applySidePanelLayout();
+    this.editor.persistCurrentPreferences();
+  }
+
+  private toggleSidebar(): void {
+    this.editor.preferences.sidebar.visible = !this.editor.preferences.sidebar.visible;
+    this.applySidePanelLayout();
+    this.editor.persistCurrentPreferences();
+    this.commands.notifyStateChanged();
+    this.editor.statusMessage = `${this.editor.preferences.sidebar.visible ? 'Shown' : 'Hidden'} right sidebar`;
+    this.closeMenus();
+  }
+
+  private applySidePanelLayout(): void {
+    const container = document.getElementById('viewport-container');
+    const resizer = document.getElementById('sidepanel-resizer');
+    if (!container) return;
+    const width = clampSidebarWidth(this.editor.preferences.sidebar.width);
+    this.editor.preferences.sidebar.width = width;
+    container.style.setProperty('--sidepanel-width', `${width}px`);
+    container.classList.toggle('sidepanel-hidden', !this.editor.preferences.sidebar.visible);
+    resizer?.setAttribute('aria-valuenow', String(width));
+    resizer?.setAttribute('aria-hidden', String(!this.editor.preferences.sidebar.visible));
+    this.editor.redrawRequested = true;
   }
 
   private setPanelCollapsed(panel: HTMLElement, collapsed: boolean): void {

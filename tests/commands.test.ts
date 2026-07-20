@@ -33,6 +33,7 @@ describe('CommandRegistry', () => {
       openProjectSettings: noop,
       openDiagnostics: noop,
       openTerrainPanel: noop,
+      toggleSidebar: noop,
       cycleInvisibleMode: noop,
       setTool: noop,
       setGrid: noop,
@@ -55,6 +56,7 @@ describe('CommandRegistry', () => {
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
       compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop, openTerrainPanel: noop,
+      toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
     });
@@ -67,6 +69,9 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.texture-filter.nearest').checked).toBe(true);
     registry.execute('view.dynamic-lights');
     expect(registry.getState('view.dynamic-lights').checked).toBe(true);
+    expect(registry.getState('view.sidebar').checked).toBe(true);
+    registry.execute('view.sidebar');
+    expect(registry.getState('view.sidebar').checked).toBe(false);
   });
 
   it('rejects duplicate command IDs', () => {
