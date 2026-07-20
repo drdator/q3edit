@@ -58,6 +58,7 @@ class FakeEditorSocket extends EventEmitter {
           operationCount: request.operations.length,
           created: ['E0:B0'],
           changed: [],
+          aliases: {},
           summary: '1 operation · 1 object created',
         },
         snapshot: next,

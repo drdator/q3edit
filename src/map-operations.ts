@@ -5,9 +5,12 @@ import type { Vec3 } from './math';
 import { translatePatch, type Patch } from './patch';
 
 export type MapObjectRef = `E${number}` | `E${number}:B${number}` | `E${number}:P${number}`;
+export type MapSymbolicRef = `@${string}`;
+export type MapTargetRef = MapObjectRef | MapSymbolicRef;
 
 export interface CreateEntityOperation {
   type: 'create_entity';
+  id?: string;
   classname: string;
   origin?: Vec3;
   properties?: Record<string, string>;
@@ -15,7 +18,7 @@ export interface CreateEntityOperation {
 
 export interface SetEntityPropertiesOperation {
   type: 'set_entity_properties';
-  target: MapObjectRef;
+  target: MapTargetRef;
   classname?: string;
   properties?: Record<string, string>;
   unset?: string[];
@@ -23,7 +26,8 @@ export interface SetEntityPropertiesOperation {
 
 export interface CreateBoxOperation {
   type: 'create_box';
-  parent?: MapObjectRef;
+  id?: string;
+  parent?: MapTargetRef;
   mins: Vec3;
   maxs: Vec3;
   texture?: string;
@@ -31,7 +35,8 @@ export interface CreateBoxOperation {
 
 export interface CreateRoomOperation {
   type: 'create_room';
-  parent?: MapObjectRef;
+  id?: string;
+  parent?: MapTargetRef;
   mins: Vec3;
   maxs: Vec3;
   wallThickness?: number;
@@ -44,19 +49,19 @@ export interface CreateRoomOperation {
 
 export interface TranslateObjectsOperation {
   type: 'translate';
-  targets: MapObjectRef[];
+  targets: MapTargetRef[];
   delta: Vec3;
 }
 
 export interface SetTextureOperation {
   type: 'set_texture';
-  targets: MapObjectRef[];
+  targets: MapTargetRef[];
   texture: string;
 }
 
 export interface DeleteObjectsOperation {
   type: 'delete';
-  targets: MapObjectRef[];
+  targets: MapTargetRef[];
 }
 
 export type MapOperation =
@@ -73,6 +78,7 @@ export interface MapOperationResult {
   operationCount: number;
   created: MapObjectRef[];
   changed: MapObjectRef[];
+  aliases: Record<string, MapObjectRef[]>;
   summary: string;
 }
 
@@ -80,6 +86,13 @@ type ResolvedObject =
   | { ref: MapObjectRef; kind: 'entity'; entityIndex: number; entity: Entity }
   | { ref: MapObjectRef; kind: 'brush'; entityIndex: number; entity: Entity; objectIndex: number; brush: Brush }
   | { ref: MapObjectRef; kind: 'patch'; entityIndex: number; entity: Entity; objectIndex: number; patch: Patch };
+
+type ObjectHandle =
+  | { kind: 'entity'; entity: Entity }
+  | { kind: 'brush'; entity: Entity; brush: Brush }
+  | { kind: 'patch'; entity: Entity; patch: Patch };
+
+type SymbolicReferences = Map<string, ObjectHandle[]>;
 
 function assertVector(name: string, value: Vec3): void {
   if (value.length !== 3 || !value.every(Number.isFinite)) {
@@ -113,21 +126,67 @@ function resolveObject(editor: Pick<Editor, 'entities'>, ref: MapObjectRef): Res
   return { ref, kind: 'patch', entityIndex, entity, objectIndex, patch };
 }
 
-function resolveEntity(editor: Pick<Editor, 'entities'>, ref: MapObjectRef | undefined): { entity: Entity; entityIndex: number } {
-  const resolved = resolveObject(editor, ref ?? 'E0');
-  if (resolved.kind !== 'entity') throw new Error(`${ref} is not an entity`);
+function objectHandle(resolved: ResolvedObject): ObjectHandle {
+  if (resolved.kind === 'entity') return { kind: 'entity', entity: resolved.entity };
+  if (resolved.kind === 'brush') return { kind: 'brush', entity: resolved.entity, brush: resolved.brush };
+  return { kind: 'patch', entity: resolved.entity, patch: resolved.patch };
+}
+
+function resolveHandle(editor: Pick<Editor, 'entities'>, handle: ObjectHandle): ResolvedObject {
+  const entityIndex = editor.entities.indexOf(handle.entity);
+  if (entityIndex < 0) throw new Error('A referenced entity was deleted earlier in this batch');
+  if (handle.kind === 'entity') return { ref: `E${entityIndex}`, kind: 'entity', entityIndex, entity: handle.entity };
+  if (handle.kind === 'brush') {
+    const objectIndex = handle.entity.brushes.indexOf(handle.brush);
+    if (objectIndex < 0) throw new Error('A referenced brush was deleted earlier in this batch');
+    return { ref: `E${entityIndex}:B${objectIndex}`, kind: 'brush', entityIndex, entity: handle.entity, objectIndex, brush: handle.brush };
+  }
+  const objectIndex = handle.entity.patches.indexOf(handle.patch);
+  if (objectIndex < 0) throw new Error('A referenced patch was deleted earlier in this batch');
+  return { ref: `E${entityIndex}:P${objectIndex}`, kind: 'patch', entityIndex, entity: handle.entity, objectIndex, patch: handle.patch };
+}
+
+function resolveTargets(editor: Pick<Editor, 'entities'>, refs: readonly MapTargetRef[], aliases: SymbolicReferences): ResolvedObject[] {
+  const resolved: ResolvedObject[] = [];
+  const seen = new Set<object>();
+  for (const ref of refs) {
+    const items = ref.startsWith('@')
+      ? aliases.get(ref.slice(1))?.map(handle => resolveHandle(editor, handle))
+      : [resolveObject(editor, ref as MapObjectRef)];
+    if (!items) throw new Error(`Unknown symbolic reference ${ref}`);
+    for (const item of items) {
+      const identity = item.kind === 'entity' ? item.entity : item.kind === 'brush' ? item.brush : item.patch;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      resolved.push(item);
+    }
+  }
   return resolved;
 }
 
-function addBox(entity: Entity, mins: Vec3, maxs: Vec3, texture: string): number {
-  assertBounds(mins, maxs);
-  entity.brushes.push(createBoxBrush(mins, maxs, texture));
-  return entity.brushes.length - 1;
+function resolveEntity(editor: Pick<Editor, 'entities'>, ref: MapTargetRef | undefined, aliases: SymbolicReferences): ResolvedObject & { kind: 'entity' } {
+  const resolved = resolveTargets(editor, [ref ?? 'E0'], aliases);
+  if (resolved.length !== 1 || resolved[0].kind !== 'entity') throw new Error(`${ref ?? 'E0'} is not a single entity`);
+  return resolved[0];
 }
 
-function applyCreateRoom(editor: Editor, operation: CreateRoomOperation, created: MapObjectRef[]): void {
+function registerAlias(aliases: SymbolicReferences, id: string | undefined, handles: ObjectHandle[]): void {
+  if (!id) return;
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id)) throw new Error(`Invalid symbolic id ${id}`);
+  if (aliases.has(id)) throw new Error(`Duplicate symbolic id @${id}`);
+  aliases.set(id, handles);
+}
+
+function addBox(entity: Entity, mins: Vec3, maxs: Vec3, texture: string): Brush {
+  assertBounds(mins, maxs);
+  const brush = createBoxBrush(mins, maxs, texture);
+  entity.brushes.push(brush);
+  return brush;
+}
+
+function applyCreateRoom(editor: Editor, operation: CreateRoomOperation, aliases: SymbolicReferences): ObjectHandle[] {
   assertBounds(operation.mins, operation.maxs);
-  const { entity, entityIndex } = resolveEntity(editor, operation.parent);
+  const { entity } = resolveEntity(editor, operation.parent, aliases);
   const thickness = operation.wallThickness ?? 16;
   if (!Number.isFinite(thickness) || thickness <= 0) throw new Error('wallThickness must be a positive number');
   const size = operation.maxs.map((value, axis) => value - operation.mins[axis]);
@@ -146,10 +205,7 @@ function applyCreateRoom(editor: Editor, operation: CreateRoomOperation, created
     [[x0 + thickness, y0, z0 + thickness], [x1 - thickness, y0 + thickness, z1 - thickness], wallTexture],
     [[x0 + thickness, y1 - thickness, z0 + thickness], [x1 - thickness, y1, z1 - thickness], wallTexture],
   ];
-  for (const [mins, maxs, texture] of boxes) {
-    const brushIndex = addBox(entity, mins, maxs, texture);
-    created.push(`E${entityIndex}:B${brushIndex}`);
-  }
+  return boxes.map(([mins, maxs, texture]) => ({ kind: 'brush' as const, entity, brush: addBox(entity, mins, maxs, texture) }));
 }
 
 function setObjectTexture(resolved: ResolvedObject, texture: string): void {
@@ -160,27 +216,25 @@ function setObjectTexture(resolved: ResolvedObject, texture: string): void {
   for (const patch of patches) patch.texture = texture;
 }
 
-function applyTranslation(editor: Editor, targets: MapObjectRef[], delta: Vec3): void {
+function applyTranslation(targets: ResolvedObject[], delta: Vec3): void {
   assertVector('delta', delta);
-  const resolved = targets.map(ref => resolveObject(editor, ref));
-  const entityIndices = new Set(resolved.filter(item => item.kind === 'entity').map(item => item.entityIndex));
-  for (const item of resolved) {
+  const entities = new Set(targets.filter(item => item.kind === 'entity').map(item => item.entity));
+  for (const item of targets) {
     if (item.kind === 'entity') translateEntity(item.entity, delta);
-    else if (!entityIndices.has(item.entityIndex) && item.kind === 'brush') translateBrush(item.brush, delta);
-    else if (!entityIndices.has(item.entityIndex) && item.kind === 'patch') translatePatch(item.patch, delta);
+    else if (!entities.has(item.entity) && item.kind === 'brush') translateBrush(item.brush, delta);
+    else if (!entities.has(item.entity) && item.kind === 'patch') translatePatch(item.patch, delta);
   }
 }
 
-function applyDeletion(editor: Editor, targets: MapObjectRef[]): void {
-  const resolved = targets.map(ref => resolveObject(editor, ref));
-  if (resolved.some(item => item.kind === 'entity' && item.entityIndex === 0)) throw new Error('Worldspawn cannot be deleted');
+function applyDeletion(editor: Editor, resolved: ResolvedObject[]): void {
+  if (resolved.some(item => item.kind === 'entity' && item.entity === editor.entities[0])) throw new Error('Worldspawn cannot be deleted');
 
-  const entityIndices = new Set(resolved.filter(item => item.kind === 'entity').map(item => item.entityIndex));
-  const brushes = resolved.filter((item): item is Extract<ResolvedObject, { kind: 'brush' }> => item.kind === 'brush' && !entityIndices.has(item.entityIndex));
-  const patches = resolved.filter((item): item is Extract<ResolvedObject, { kind: 'patch' }> => item.kind === 'patch' && !entityIndices.has(item.entityIndex));
+  const entities = new Set(resolved.filter(item => item.kind === 'entity').map(item => item.entity));
+  const brushes = resolved.filter((item): item is Extract<ResolvedObject, { kind: 'brush' }> => item.kind === 'brush' && !entities.has(item.entity));
+  const patches = resolved.filter((item): item is Extract<ResolvedObject, { kind: 'patch' }> => item.kind === 'patch' && !entities.has(item.entity));
   brushes.sort((a, b) => b.objectIndex - a.objectIndex).forEach(item => item.entity.brushes.splice(item.objectIndex, 1));
   patches.sort((a, b) => b.objectIndex - a.objectIndex).forEach(item => item.entity.patches.splice(item.objectIndex, 1));
-  [...entityIndices].sort((a, b) => b - a).forEach(index => editor.entities.splice(index, 1));
+  [...entities].map(entity => editor.entities.indexOf(entity)).sort((a, b) => b - a).forEach(index => editor.entities.splice(index, 1));
   editor.selection = editor.selection.filter(item => {
     if (item.type === 'entity') return editor.entities.includes(item.entity);
     if (item.type === 'brush' || item.type === 'face') return item.entity.brushes.includes(item.brush);
@@ -190,8 +244,10 @@ function applyDeletion(editor: Editor, targets: MapObjectRef[]): void {
 
 export function applyMapOperations(editor: Editor, operations: readonly MapOperation[], label = 'Apply map operations'): MapOperationResult {
   if (operations.length === 0) throw new Error('At least one operation is required');
-  const created: MapObjectRef[] = [];
-  const changed = new Set<MapObjectRef>();
+  const createdHandles: ObjectHandle[] = [];
+  const changedHandles = new Set<ObjectHandle>();
+  const deletedRefs = new Set<MapObjectRef>();
+  const aliases: SymbolicReferences = new Map();
 
   editor.transact(label, () => {
     for (const operation of operations) {
@@ -201,9 +257,13 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const entity = createEntity(operation.classname, operation.origin);
         Object.assign(entity.properties, operation.properties ?? {}, { classname: operation.classname });
         editor.entities.push(entity);
-        created.push(`E${editor.entities.length - 1}`);
+        const handle: ObjectHandle = { kind: 'entity', entity };
+        createdHandles.push(handle);
+        registerAlias(aliases, operation.id, [handle]);
       } else if (operation.type === 'set_entity_properties') {
-        const resolved = resolveObject(editor, operation.target);
+        const targets = resolveTargets(editor, [operation.target], aliases);
+        if (targets.length !== 1) throw new Error(`${operation.target} does not resolve to a single object`);
+        const resolved = targets[0];
         if (resolved.kind !== 'entity') throw new Error(`${operation.target} is not an entity`);
         if (operation.classname !== undefined) {
           if (!operation.classname.trim()) throw new Error('classname must not be empty');
@@ -215,38 +275,61 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           if (key === 'classname') throw new Error('classname cannot be removed');
           delete resolved.entity.properties[key];
         }
-        changed.add(operation.target);
+        changedHandles.add(objectHandle(resolved));
       } else if (operation.type === 'create_box') {
-        const { entity, entityIndex } = resolveEntity(editor, operation.parent);
-        const brushIndex = addBox(entity, operation.mins, operation.maxs, operation.texture ?? 'common/caulk');
-        created.push(`E${entityIndex}:B${brushIndex}`);
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addBox(entity, operation.mins, operation.maxs, operation.texture ?? 'common/caulk') };
+        createdHandles.push(handle);
+        registerAlias(aliases, operation.id, [handle]);
       } else if (operation.type === 'create_room') {
-        applyCreateRoom(editor, operation, created);
+        const handles = applyCreateRoom(editor, operation, aliases);
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
       } else if (operation.type === 'translate') {
-        applyTranslation(editor, operation.targets, operation.delta);
-        operation.targets.forEach(ref => changed.add(ref));
+        const targets = resolveTargets(editor, operation.targets, aliases);
+        applyTranslation(targets, operation.delta);
+        targets.forEach(target => changedHandles.add(objectHandle(target)));
       } else if (operation.type === 'set_texture') {
-        for (const ref of operation.targets) {
-          setObjectTexture(resolveObject(editor, ref), operation.texture);
-          changed.add(ref);
+        for (const target of resolveTargets(editor, operation.targets, aliases)) {
+          setObjectTexture(target, operation.texture);
+          changedHandles.add(objectHandle(target));
         }
       } else if (operation.type === 'delete') {
-        applyDeletion(editor, operation.targets);
-        operation.targets.forEach(ref => changed.add(ref));
+        const targets = resolveTargets(editor, operation.targets, aliases);
+        targets.forEach(target => deletedRefs.add(target.ref));
+        applyDeletion(editor, targets);
       }
     }
   });
 
+  const refsForHandles = (handles: Iterable<ObjectHandle>): MapObjectRef[] => {
+    const refs: MapObjectRef[] = [];
+    for (const handle of handles) {
+      try {
+        refs.push(resolveHandle(editor, handle).ref);
+      } catch {
+        // Objects created and deleted in one batch do not have final references.
+      }
+    }
+    return [...new Set(refs)];
+  };
+  const created = refsForHandles(createdHandles);
+  const changed = [...new Set([...refsForHandles(changedHandles), ...deletedRefs])];
+  const aliasResult = Object.fromEntries(
+    [...aliases].map(([id, handles]) => [`@${id}`, refsForHandles(handles)]),
+  );
+
   const summaryParts = [
     `${operations.length} operation${operations.length === 1 ? '' : 's'}`,
     created.length > 0 ? `${created.length} object${created.length === 1 ? '' : 's'} created` : '',
-    changed.size > 0 ? `${changed.size} object${changed.size === 1 ? '' : 's'} changed` : '',
+    changed.length > 0 ? `${changed.length} object${changed.length === 1 ? '' : 's'} changed` : '',
   ].filter(Boolean);
   return {
     revision: editor.documentRevision,
     operationCount: operations.length,
     created,
-    changed: [...changed],
+    changed,
+    aliases: aliasResult,
     summary: summaryParts.join(' · '),
   };
 }

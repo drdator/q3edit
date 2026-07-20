@@ -7,31 +7,36 @@ import type { MapObjectRef, MapOperation } from '../src/map-operations';
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
 const objectRef = z.string().regex(/^E\d+(?::[BP]\d+)?$/, 'Expected an object reference such as E1, E0:B2, or E0:P0');
+const operationRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?|@[A-Za-z][A-Za-z0-9_-]{0,63})$/, 'Expected an object reference or symbolic reference such as @north_tower');
+const symbolicId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
 
 const mapOperation = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('create_entity'),
+    id: symbolicId.optional(),
     classname: z.string().min(1),
     origin: vec3.optional(),
     properties: z.record(z.string(), z.string()).optional(),
   }),
   z.object({
     type: z.literal('set_entity_properties'),
-    target: objectRef,
+    target: operationRef,
     classname: z.string().min(1).optional(),
     properties: z.record(z.string(), z.string()).optional(),
     unset: z.array(z.string()).optional(),
   }),
   z.object({
     type: z.literal('create_box'),
-    parent: objectRef.optional(),
+    id: symbolicId.optional(),
+    parent: operationRef.optional(),
     mins: vec3,
     maxs: vec3,
     texture: z.string().min(1).optional(),
   }),
   z.object({
     type: z.literal('create_room'),
-    parent: objectRef.optional(),
+    id: symbolicId.optional(),
+    parent: operationRef.optional(),
     mins: vec3,
     maxs: vec3,
     wallThickness: z.number().positive().optional(),
@@ -41,9 +46,9 @@ const mapOperation = z.discriminatedUnion('type', [
       ceiling: z.string().min(1).optional(),
     }).optional(),
   }),
-  z.object({ type: z.literal('translate'), targets: z.array(objectRef).min(1), delta: vec3 }),
-  z.object({ type: z.literal('set_texture'), targets: z.array(objectRef).min(1), texture: z.string().min(1) }),
-  z.object({ type: z.literal('delete'), targets: z.array(objectRef).min(1) }),
+  z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
+  z.object({ type: z.literal('set_texture'), targets: z.array(operationRef).min(1), texture: z.string().min(1) }),
+  z.object({ type: z.literal('delete'), targets: z.array(operationRef).min(1) }),
 ]);
 
 // Keep the client-facing schema flat. Some MCP hosts omit tools whose JSON
@@ -59,13 +64,14 @@ const compatibleMapOperationInput = z.object({
     'set_texture',
     'delete',
   ]),
+  id: symbolicId.optional(),
   classname: z.string().optional(),
   origin: compatibleVec3.optional(),
   properties: z.record(z.string(), z.string()).optional(),
   unset: z.array(z.string()).optional(),
-  target: objectRef.optional(),
-  targets: z.array(objectRef).optional(),
-  parent: objectRef.optional(),
+  target: operationRef.optional(),
+  targets: z.array(operationRef).optional(),
+  parent: operationRef.optional(),
   mins: compatibleVec3.optional(),
   maxs: compatibleVec3.optional(),
   texture: z.string().optional(),
@@ -92,7 +98,7 @@ function toolResult(value: unknown, text?: string) {
 
 export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
-    instructions: 'Inspect map_status before editing. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references are revision-sensitive.',
+    instructions: 'Inspect map_status before editing. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references are revision-sensitive. Creation operations may declare id and later operations in the same batch may target @id.',
   });
 
   server.registerTool('map_status', {
@@ -155,7 +161,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Supported operation types: create_entity(classname, origin?, properties?), set_entity_properties(target, classname?, properties?, unset?), create_box(parent?, mins, maxs, texture?), create_room(parent?, mins, maxs, wallThickness?, textures?), translate(targets, delta), set_texture(targets, texture), delete(targets).',
+    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation operations accept an optional symbolic id; later operations in the batch can target @id. Supported types: create_entity(id?, classname, origin?, properties?), set_entity_properties(target, classname?, properties?, unset?), create_box(id?, parent?, mins, maxs, texture?), create_room(id?, parent?, mins, maxs, wallThickness?, textures?), translate(targets, delta), set_texture(targets, texture), delete(targets).',
     inputSchema: {
       expectedRevision: z.number().int().nonnegative(),
       label: z.string().min(1).max(120).describe('Undo label, for example MCP: Add side room'),

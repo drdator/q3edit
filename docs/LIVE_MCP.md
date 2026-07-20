@@ -71,6 +71,28 @@ Initial `map_apply` operations are:
 
 Object references use the current document indices: `E1`, `E0:B2`, and `E0:P0`. They are revision-sensitive, so call `map_status` or `map_entities` again after a revision conflict.
 
+Creation operations can also declare a symbolic `id`. Later operations in the same batch may use `@id`; a room alias expands to all six room brushes:
+
+```json
+{
+  "expectedRevision": 4,
+  "label": "MCP: Build and texture north room",
+  "operations": [
+    {
+      "type": "create_room",
+      "id": "north_room",
+      "mins": [0, 0, 0],
+      "maxs": [512, 512, 256]
+    },
+    {
+      "type": "set_texture",
+      "targets": ["@north_room"],
+      "texture": "base_wall/basewall03"
+    }
+  ]
+}
+```
+
 ## Manual tool calls
 
 The included development client is useful for checking the bridge without an agent:

@@ -68,6 +68,60 @@ describe('serializable map operations', () => {
     expect(editor.entities[0].brushes).toHaveLength(0);
   });
 
+  test('resolves symbolic references to new objects and collections within a batch', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      {
+        type: 'create_room',
+        id: 'north_room',
+        mins: [0, 0, 0],
+        maxs: [256, 256, 128],
+      },
+      {
+        type: 'set_texture',
+        targets: ['@north_room'],
+        texture: 'base_wall/metal',
+      },
+      {
+        type: 'create_entity',
+        id: 'room_light',
+        classname: 'light',
+        origin: [128, 128, 80],
+      },
+      {
+        type: 'set_entity_properties',
+        target: '@room_light',
+        properties: { light: '650' },
+      },
+      {
+        type: 'translate',
+        targets: ['@room_light'],
+        delta: [0, 0, 16],
+      },
+    ]);
+
+    expect(result.aliases['@north_room']).toEqual([
+      'E0:B0', 'E0:B1', 'E0:B2', 'E0:B3', 'E0:B4', 'E0:B5',
+    ]);
+    expect(result.aliases['@room_light']).toEqual(['E1']);
+    expect(editor.entities[0].brushes.every(brush => brush.faces.every(face => face.texture === 'base_wall/metal'))).toBe(true);
+    expect(editor.entities[1].properties.light).toBe('650');
+    expect(entityOrigin(editor.entities[1])).toEqual([128, 128, 96]);
+  });
+
+  test('rejects unknown and duplicate symbolic references transactionally', () => {
+    const editor = emptyEditor();
+    expect(() => applyMapOperations(editor, [
+      { type: 'create_entity', id: 'lamp', classname: 'light', origin: [0, 0, 32] },
+      { type: 'create_box', id: 'lamp', mins: [0, 0, 0], maxs: [32, 32, 32] },
+    ])).toThrow('Duplicate symbolic id');
+    expect(editor.entities).toHaveLength(1);
+
+    expect(() => applyMapOperations(editor, [
+      { type: 'delete', targets: ['@missing'] },
+    ])).toThrow('Unknown symbolic reference');
+  });
+
   test('rolls back the entire batch when an operation fails', () => {
     const editor = emptyEditor();
 
