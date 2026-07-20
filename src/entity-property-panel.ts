@@ -141,6 +141,7 @@ export function buildDefinedEntityProperties(
   }
   for (const property of Object.values(definedProperties)) {
     const hasValue = property.key in entity.properties;
+    const alwaysShowControl = definition.classname === 'misc_model' && property.key === 'model';
     const row = document.createElement('div');
     row.className = 'entity-defined-property';
     const label = document.createElement('label');
@@ -149,8 +150,10 @@ export function buildDefinedEntityProperties(
     row.appendChild(label);
     const controls = document.createElement('div');
     controls.className = 'entity-property-controls';
+    if (hasValue || alwaysShowControl) {
+      controls.appendChild(valueControl(editor, entity, property, entity.properties[property.key] ?? ''));
+    }
     if (hasValue) {
-      controls.appendChild(valueControl(editor, entity, property, entity.properties[property.key]));
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn icon-btn kv-del';
@@ -160,7 +163,7 @@ export function buildDefinedEntityProperties(
       remove.innerHTML = '<i class="ph ph-trash"></i>';
       remove.addEventListener('click', () => removeEntityProperty(editor, entity, property.key));
       controls.appendChild(remove);
-    } else {
+    } else if (!alwaysShowControl) {
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'btn';
