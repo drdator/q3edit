@@ -184,11 +184,13 @@ describe('live MCP bridge', () => {
         'map_query',
         'texture_search',
         'texture_preview',
+        'texture_preview_many',
         'entity_class_search',
         'entity_class_schema',
         'editor_select',
         'editor_frame_objects',
         'editor_set_camera',
+        'editor_look_at',
         'editor_screenshot',
         'map_apply',
         'map_open',
@@ -215,6 +217,11 @@ describe('live MCP bridge', () => {
         expect.objectContaining({ type: 'image', mimeType: 'image/png', data: 'aW1hZ2U=' }),
       ]));
 
+      const previews = await client.callTool({
+        name: 'texture_preview_many', arguments: { names: ['base_wall/metal', 'base_floor/stone'] },
+      });
+      expect((previews.content as Array<{ type: string }>).filter(item => item.type === 'image')).toHaveLength(2);
+
       const entityClasses = await client.callTool({ name: 'entity_class_search', arguments: { query: 'light' } });
       expect(entityClasses.structuredContent).toMatchObject({ matches: [{ classname: 'light' }] });
 
@@ -226,6 +233,11 @@ describe('live MCP bridge', () => {
         arguments: { position: [128, 64, 96], yawDegrees: 90, pitchDegrees: -15 },
       });
       expect(camera.structuredContent).toMatchObject({ position: [128, 64, 96], yawDegrees: 90, pitchDegrees: -15 });
+
+      const lookAt = await client.callTool({
+        name: 'editor_look_at', arguments: { position: [0, 0, 0], target: [0, 64, 64] },
+      });
+      expect(lookAt.structuredContent).toMatchObject({ yawDegrees: 90, pitchDegrees: 45 });
 
       const screenshot = await client.callTool({ name: 'editor_screenshot', arguments: { width: 640, height: 360 } });
       expect(screenshot.content).toEqual(expect.arrayContaining([

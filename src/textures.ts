@@ -46,6 +46,9 @@ export class TextureManager {
   private shaderImages = new Map<string, string>();
   // shader name → blend mode resolved from .shader files
   private shaderBlendModes = new Map<string, BlendMode>();
+  // All declared shader names, including tool shaders with no preview image.
+  private shaderNames = new Set<string>();
+  private shaderSourcePaths = new Map<string, string>();
 
   // Callback when a texture finishes loading (triggers redraw)
   onTextureLoaded: (() => void) | null = null;
@@ -170,6 +173,8 @@ export class TextureManager {
 
         const key = shaderName.toLowerCase();
         const shortKey = key.startsWith('textures/') ? key.substring(9) : key;
+        this.shaderNames.add(shortKey);
+        this.shaderSourcePaths.set(shortKey, path);
 
         // Store blend mode (transparent only if both surfaceparm trans AND blendfunc present)
         const finalBlend = (hasTrans && stageBlend) ? stageBlend : 'opaque';
@@ -380,19 +385,16 @@ export class TextureManager {
 
   // List all texture paths available in the pak (for the texture browser)
   listTextures(): string[] {
-    const textures: string[] = [];
+    const textures = new Set<string>(this.shaderNames);
     for (const { normalizedPath: path } of this.assets.images()) {
       if ((path.startsWith('textures/') || path.startsWith('models/')) &&
           IMAGE_EXTENSION.test(path)) {
         // Strip extension and 'textures/' prefix
         const name = path.replace(IMAGE_EXTENSION, '').replace(/^textures\//, '');
-        if (!textures.includes(name)) {
-          textures.push(name);
-        }
+        textures.add(name);
       }
     }
-    textures.sort();
-    return textures;
+    return [...textures].sort();
   }
 
   // List texture directories (for folder-based browsing)
@@ -427,6 +429,20 @@ export class TextureManager {
       if (asset) return asset;
     }
     return null;
+  }
+
+  isShader(name: string): boolean {
+    return this.shaderNames.has(name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, ''));
+  }
+
+  getShaderSourcePath(name: string): string | null {
+    return this.shaderSourcePaths.get(name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '')) ?? null;
+  }
+
+  hasPreviewSource(name: string): boolean {
+    if (this.getTextureAsset(name)) return true;
+    const key = name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '');
+    return this.shaderImages.has(key) || this.shaderImages.has(`textures/${key}`);
   }
 
   hasTextureSource(name: string): boolean {

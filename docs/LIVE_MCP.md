@@ -55,13 +55,14 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
-- `map_compile` runs the live map through q3map at fast, normal, or full quality and returns compiler/leak diagnostics.
+- `map_compile` runs the live map through q3map at fast, normal, or full quality. Warnings and errors are structured by severity and linked to implicated references when texture names or entity origins make that possible.
 - `map_query` finds entities, brushes, and patches by bounds, kind, classname, texture, or entity property.
 - `map_groups` lists persistent named groups and their current member references; `map_query` accepts a group name or ID.
-- `texture_search` searches the live PK3 asset index and `texture_preview` returns an image for an exact result.
+- `texture_search` searches image assets and declared shaders, including tool shaders without images. Results identify shaders and preview availability; `texture_preview_many` returns up to 12 images for palette comparison.
 - `entity_class_search` searches loaded entity definitions and `entity_class_schema` returns typed properties, defaults, and spawnflags.
 - `editor_select` selects referenced objects in Q3Edit and `editor_frame_objects` selects and frames them in every viewport.
 - `editor_set_camera` positions the 3D camera using world coordinates and yaw/pitch in degrees.
+- `editor_look_at` positions the camera and calculates the yaw/pitch needed to face a target point.
 - `editor_screenshot` returns a PNG rendered from the current textured 3D viewport.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
 - `map_open` opens a local `.map` file in the connected browser.

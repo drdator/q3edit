@@ -6,6 +6,7 @@ import type { BridgeToEditorMessage, EditorToBridgeMessage, LiveMapSnapshot } fr
 import { applyMapOperations } from './map-operations';
 import { getEntityClassRegistry } from './entity-definitions';
 import { collectCompileModelFiles, compileMap } from './q3map';
+import { structureCompilerOutput } from './compile-diagnostics';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -203,6 +204,9 @@ export class LiveMapBridge {
             archive: asset?.source.archiveName,
             sourcePath: asset?.path,
             overriddenSources: asset?.overriddenSources.length ?? 0,
+            shader: manager.isShader(name),
+            shaderSourcePath: manager.getShaderSourcePath(name),
+            previewAvailable: manager.hasPreviewSource(name),
           };
         });
       this.send({ type: 'capability_result', requestId: message.requestId, result: { query: message.query, matches } });
@@ -358,6 +362,10 @@ export class LiveMapBridge {
           assetFiles: assetFiles.size > 0 ? assetFiles : undefined,
         });
         const leaked = Boolean(result.pointfileText);
+        const compilerDiagnostics = structureCompilerOutput(result.output, this.editor.entities);
+        if (leaked) compilerDiagnostics.push({
+          severity: 'error', code: 'leak', message: 'The BSP compiler produced a leak pointfile.', refs: [],
+        });
         if (result.pointfileText) this.editor.loadPointfileText(result.pointfileText, 'MCP compile leak: loaded pointfile');
         else this.editor.clearPointfile(false);
         this.editor.statusMessage = result.success
@@ -371,6 +379,7 @@ export class LiveMapBridge {
             bspBytes: result.bsp?.byteLength ?? 0,
             leaked,
             pointfileLoaded: leaked,
+            diagnostics: compilerDiagnostics,
             output: result.output,
           },
         });

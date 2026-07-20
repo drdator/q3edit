@@ -266,7 +266,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('map_compile', {
     title: 'Compile the live map',
-    description: 'Run the browser-based q3map toolchain against the current document and return BSP success, leak status, byte size, and complete compiler output. Fast runs BSP only; normal adds fast VIS and LIGHT; full uses configured full VIS and LIGHT settings.',
+    description: 'Run the browser-based q3map toolchain against the current document and return BSP success, leak status, byte size, structured diagnostics with implicated references where possible, and complete compiler output. Fast runs BSP only; normal adds fast VIS and LIGHT; full uses configured full VIS and LIGHT settings.',
     inputSchema: {
       quality: z.enum(['fast', 'normal', 'full']).optional().default('fast'),
     },
@@ -371,6 +371,26 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('texture_preview_many', {
+    title: 'Preview several loaded textures',
+    description: 'Return image previews for up to 12 exact previewable names from texture_search, useful for choosing a coherent palette in one call.',
+    inputSchema: { names: z.array(z.string().min(1)).min(1).max(12) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ names }) => {
+    try {
+      const previews = await hub.texturePreviews(names);
+      return {
+        content: previews.flatMap(preview => [
+          { type: 'text' as const, text: preview.name },
+          { type: 'image' as const, data: preview.data, mimeType: preview.mimeType },
+        ]),
+        structuredContent: { textures: previews.map(({ name, mimeType }) => ({ name, mimeType })) },
+      };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('entity_class_search', {
     title: 'Search entity classes',
     description: 'Search Q3Edit entity definitions by classname, category, or description before creating an entity.',
@@ -447,6 +467,29 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
         pitchDegrees * Math.PI / 180,
       );
       return toolResult({ position, yawDegrees, pitchDegrees });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_look_at', {
+    title: 'Point the Q3Edit 3D camera at a target',
+    description: 'Position the 3D camera and calculate yaw/pitch so it looks directly at a world-space target.',
+    inputSchema: { position: compatibleVec3, target: compatibleVec3 },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ position, target }) => {
+    try {
+      const delta = target.map((value, axis) => value - position[axis]);
+      const horizontal = Math.hypot(delta[0], delta[1]);
+      if (horizontal < 1e-9 && Math.abs(delta[2]) < 1e-9) throw new Error('position and target must differ');
+      const yaw = Math.atan2(delta[1], delta[0]);
+      const pitch = Math.atan2(delta[2], horizontal);
+      await hub.setCamera(position as [number, number, number], yaw, pitch);
+      return toolResult({
+        position, target,
+        yawDegrees: yaw * 180 / Math.PI,
+        pitchDegrees: pitch * 180 / Math.PI,
+      });
     } catch (error) {
       return toolError(error);
     }

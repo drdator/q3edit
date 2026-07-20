@@ -1,0 +1,63 @@
+import { entityOrigin, type Entity } from './entity';
+import type { MapDocumentRef } from './map-operations';
+
+export interface StructuredCompilerDiagnostic {
+  severity: 'error' | 'warning';
+  code: 'missing-shader-image' | 'compiler-warning' | 'compiler-error' | 'leak';
+  message: string;
+  refs: MapDocumentRef[];
+}
+
+function textureRefs(entities: readonly Entity[], texture: string): MapDocumentRef[] {
+  const normalized = texture.toLowerCase().replace(/^textures\//, '');
+  const refs: MapDocumentRef[] = [];
+  entities.forEach((entity, entityIndex) => {
+    entity.brushes.forEach((brush, brushIndex) => brush.faces.forEach((face, faceIndex) => {
+      if (face.texture.toLowerCase().replace(/^textures\//, '') === normalized) refs.push(`E${entityIndex}:B${brushIndex}:F${faceIndex}`);
+    }));
+    entity.patches.forEach((patch, patchIndex) => {
+      if (patch.texture.toLowerCase().replace(/^textures\//, '') === normalized) refs.push(`E${entityIndex}:P${patchIndex}`);
+    });
+  });
+  return refs;
+}
+
+function originRefs(entities: readonly Entity[], line: string): MapDocumentRef[] {
+  const match = /\bat\s*\(?\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/i.exec(line);
+  if (!match) return [];
+  const point = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const refs: MapDocumentRef[] = [];
+  entities.forEach((entity, entityIndex) => {
+    const origin = entityOrigin(entity);
+    if (origin && origin.every((value, axis) => Math.abs(value - point[axis]) <= 1)) refs.push(`E${entityIndex}`);
+  });
+  return refs;
+}
+
+export function structureCompilerOutput(output: readonly string[], entities: readonly Entity[]): StructuredCompilerDiagnostic[] {
+  const diagnostics: StructuredCompilerDiagnostic[] = [];
+  for (const raw of output) {
+    const line = raw.trim();
+    if (!line) continue;
+    const missing = /warning:\s*couldn't find image for shader\s+(.+)$/i.exec(line);
+    if (missing) {
+      diagnostics.push({
+        severity: 'warning', code: 'missing-shader-image', message: line,
+        refs: textureRefs(entities, missing[1].trim()),
+      });
+      continue;
+    }
+    if (/\bnoshader\b/i.test(line)) {
+      diagnostics.push({ severity: 'warning', code: 'missing-shader-image', message: line, refs: originRefs(entities, line) });
+      continue;
+    }
+    if (/^warning:/i.test(line)) {
+      diagnostics.push({ severity: 'warning', code: 'compiler-warning', message: line, refs: originRefs(entities, line) });
+      continue;
+    }
+    if (/\b(?:error|failed|exception)\b|exited with code/i.test(line)) {
+      diagnostics.push({ severity: 'error', code: 'compiler-error', message: line, refs: originRefs(entities, line) });
+    }
+  }
+  return diagnostics;
+}

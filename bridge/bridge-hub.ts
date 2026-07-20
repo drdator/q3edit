@@ -97,6 +97,10 @@ export class BridgeHub {
     return await this.capabilityRequest({ type: 'texture_preview', requestId: randomUUID(), name }) as { name: string; mimeType: string; data: string };
   }
 
+  async texturePreviews(names: string[]): Promise<Array<{ name: string; mimeType: string; data: string }>> {
+    return Promise.all(names.map(name => this.texturePreview(name)));
+  }
+
   async entityClassSearch(query: string, classType: 'point' | 'brush' | undefined, limit: number): Promise<unknown> {
     return this.capabilityRequest({ type: 'entity_class_search', requestId: randomUUID(), query, classType, limit });
   }
