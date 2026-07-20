@@ -964,6 +964,7 @@ body.sidepanel-resizing * {
   width: 18px;
   height: 18px;
   margin-left: auto;
+  margin-right: -6px;
   padding: 0;
   color: var(--text-dim);
   background: transparent;
