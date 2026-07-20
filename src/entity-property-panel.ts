@@ -139,8 +139,35 @@ export function buildDefinedEntityProperties(
   if ((definition.classname === 'misc_model' || definition.model) && !definedProperties.skin) {
     definedProperties.skin = { key: 'skin', name: 'Skin', type: 'asset', description: 'Optional surface-to-shader skin file.' };
   }
+  if (definition.classname === 'misc_model' && !definedProperties.angle) {
+    definedProperties.angle = {
+      key: 'angle', name: 'Angle (Yaw)', type: 'angle', default: '0',
+      description: 'Legacy yaw-only rotation. Adding Angles replaces this value.',
+    };
+  }
+  if (definition.classname === 'misc_model' && !definedProperties.angles) {
+    definedProperties.angles = {
+      key: 'angles', name: 'Angles (Pitch Yaw Roll)', type: 'vector', default: '0 0 0',
+      description: 'Q3Map2-compatible 3-axis rotation. Adding this replaces the yaw-only Angle value.',
+    };
+  }
+  if (definition.classname === 'misc_model' && !definedProperties.modelscale) {
+    definedProperties.modelscale = {
+      key: 'modelscale', name: 'Model Scale', type: 'number', default: '1',
+      description: 'Q3Map2-compatible uniform model scale. Adding Model Scale Vector replaces this value.',
+    };
+  }
+  if (definition.classname === 'misc_model' && !definedProperties.modelscale_vec) {
+    definedProperties.modelscale_vec = {
+      key: 'modelscale_vec', name: 'Model Scale Vector', type: 'vector', default: '1 1 1',
+      description: 'Q3Map2-compatible non-uniform XYZ scale. Adding this replaces Model Scale.',
+    };
+  }
+  const modelRotationKey = 'angles' in entity.properties ? 'angles' : 'angle';
   for (const property of Object.values(definedProperties)) {
     const hasValue = property.key in entity.properties;
+    const alwaysShowControl = definition.classname === 'misc_model'
+      && (property.key === 'model' || property.key === 'skin' || property.key === modelRotationKey);
     const row = document.createElement('div');
     row.className = 'entity-defined-property';
     const label = document.createElement('label');
@@ -149,8 +176,14 @@ export function buildDefinedEntityProperties(
     row.appendChild(label);
     const controls = document.createElement('div');
     controls.className = 'entity-property-controls';
+    if (hasValue || alwaysShowControl) {
+      const value = entity.properties[property.key]
+        ?? property.default
+        ?? definition.defaults[property.key]
+        ?? '';
+      controls.appendChild(valueControl(editor, entity, property, value));
+    }
     if (hasValue) {
-      controls.appendChild(valueControl(editor, entity, property, entity.properties[property.key]));
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn icon-btn kv-del';
@@ -160,7 +193,7 @@ export function buildDefinedEntityProperties(
       remove.innerHTML = '<i class="ph ph-trash"></i>';
       remove.addEventListener('click', () => removeEntityProperty(editor, entity, property.key));
       controls.appendChild(remove);
-    } else {
+    } else if (!alwaysShowControl) {
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'btn';

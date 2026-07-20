@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { createBoxBrush } from '../src/brush';
 import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
+import { rotateGeometryFromOriginals } from '../src/editor-transforms';
 
 function editorWithBrush(): Editor {
   const editor = new Editor();
@@ -47,6 +48,88 @@ describe('transactional editor mutations', () => {
     editor.snapSelectionToGrid();
 
     expect(editor.history.canUndo).toBe(false);
+  });
+
+  test('rotates misc_model yaw with the rotation commands', () => {
+    const editor = new Editor();
+    const worldspawn = createEntity('worldspawn');
+    const model = createEntity('misc_model', [32, 0, 0]);
+    model.properties.angle = '350';
+    editor.entities = [worldspawn, model];
+    editor.selection = [{ type: 'entity', entity: model }];
+    editor.rotationAxis = 2;
+
+    editor.rotateSelection(15);
+
+    expect(model.properties.angle).toBe('5');
+    editor.undo();
+    expect(editor.entities[1].properties.angle).toBe('350');
+  });
+
+  test('rotates misc_model yaw and origin from an interactive-tool snapshot', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [32, 0, 0]);
+    editor.entities = [createEntity('worldspawn'), model];
+
+    rotateGeometryFromOriginals(editor, [], [], [{
+      entity: model,
+      origin: [32, 0, 0],
+      angle: '350',
+    }], [0, 0, 0], 2, Math.PI / 2);
+
+    const origin = model.properties.origin.split(' ').map(Number);
+    expect(origin[0]).toBeCloseTo(0);
+    expect(origin[1]).toBeCloseTo(32);
+    expect(origin[2]).toBeCloseTo(0);
+    expect(model.properties.angle).toBe('80');
+  });
+
+  test('uses Q3Map2 pitch yaw roll ordering for three-axis misc_model rotations', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [0, 0, 0]);
+    model.properties.angle = '20';
+    editor.entities = [createEntity('worldspawn'), model];
+    editor.selection = [{ type: 'entity', entity: model }];
+
+    editor.rotationAxis = 0;
+    editor.rotateSelection(30);
+    expect(model.properties.angles).toBe('0 20 30');
+    expect(model.properties.angle).toBeUndefined();
+
+    editor.rotationAxis = 1;
+    editor.rotateSelection(40);
+    expect(model.properties.angles).toBe('40 20 30');
+
+    editor.rotationAxis = 2;
+    editor.rotateSelection(50);
+    expect(model.properties.angles).toBe('40 70 30');
+    expect(model.properties.angle).toBeUndefined();
+  });
+
+  test('rebuilds interactive model angles from the drag snapshot', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [0, 0, 0]);
+    model.properties.angles = '10 20 30';
+    editor.entities = [createEntity('worldspawn'), model];
+    const original = [{ entity: model, origin: [0, 0, 0] as [number, number, number], angles: '10 20 30' }];
+
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 1, Math.PI / 6);
+    expect(model.properties.angles).toBe('40 20 30');
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 1, Math.PI / 3);
+    expect(model.properties.angles).toBe('70 20 30');
+  });
+
+  test('does not accumulate interactive roll previews after converting a yaw-only model', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [0, 0, 0]);
+    model.properties.angle = '20';
+    editor.entities = [createEntity('worldspawn'), model];
+    const original = [{ entity: model, origin: [0, 0, 0] as [number, number, number], angle: '20' }];
+
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 0, Math.PI / 6);
+    expect(model.properties.angles).toBe('0 20 30');
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 0, Math.PI / 3);
+    expect(model.properties.angles).toBe('0 20 60');
   });
 
   test('makes terrain creation one undoable command', () => {

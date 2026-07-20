@@ -10,7 +10,12 @@ export interface ModelSurfaceGeometry {
 function entityScale(entity: Entity): Vec3 {
   const vector = entity.properties.modelscale_vec?.trim().split(/\s+/).map(Number);
   if (vector?.length === 3 && vector.every(Number.isFinite)) return [vector[0], vector[1], vector[2]];
-  const uniform = Number(entity.properties.modelscale ?? entity.properties.scale ?? 1);
+  const modelScale = entity.properties.modelscale === undefined ? undefined : Number(entity.properties.modelscale);
+  if (modelScale !== undefined) {
+    const scale = Number.isFinite(modelScale) && modelScale !== 0 ? modelScale : 1;
+    return [scale, scale, scale];
+  }
+  const uniform = Number(entity.properties.scale ?? 1);
   const scale = Number.isFinite(uniform) ? uniform : 1;
   return [scale, scale, scale];
 }

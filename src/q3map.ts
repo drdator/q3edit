@@ -3,6 +3,9 @@
  * Compilation runs in a Web Worker to keep the UI responsive.
  */
 
+import type { Entity } from './entity';
+import type { ModelManager } from './model-manager';
+
 export interface CompileOptions {
   /** Additional q3map BSP flags, e.g. ['-v', '-nowater'] */
   args?: string[]
@@ -16,8 +19,8 @@ export interface CompileOptions {
   visArgs?: string[]
   /** Shader file contents keyed by path */
   shaderFiles?: Record<string, string>
-  /** Raw texture/image files keyed by pak path */
-  imageFiles?: Map<string, Uint8Array>
+  /** Raw game assets required during compilation, keyed by pak path */
+  assetFiles?: Map<string, Uint8Array>
   /** Callback for compiler output lines */
   onOutput?: (line: string) => void
 }
@@ -27,6 +30,27 @@ export interface CompileResult {
   bsp: Uint8Array | null
   pointfileText: string | null
   output: string[]
+}
+
+/** Collect MD3 and skin files that q3map must bake into misc_model draw surfaces. */
+export function collectCompileModelFiles(
+  entities: readonly Entity[],
+  modelManager: ModelManager | null,
+): Map<string, Uint8Array> {
+  const files = new Map<string, Uint8Array>();
+  if (!modelManager) return files;
+  for (const entity of entities) {
+    if (entity.classname !== 'misc_model') continue;
+    const resolved = modelManager.resolveEntity(entity);
+    if (!resolved) continue;
+    const file = modelManager.getModelFile(resolved.path);
+    if (file) files.set(file[0], file[1]);
+    if (resolved.skinPath) {
+      const skin = modelManager.getSkinFile(resolved.skinPath);
+      if (skin) files.set(skin[0], skin[1]);
+    }
+  }
+  return files;
 }
 
 /**
@@ -66,8 +90,8 @@ export function compileMap(
     }
 
     // Convert Map to array of tuples for structured clone transfer
-    const imageFiles = options.imageFiles
-      ? Array.from(options.imageFiles.entries())
+    const assetFiles = options.assetFiles
+      ? Array.from(options.assetFiles.entries())
       : undefined
 
     worker.postMessage({
@@ -79,7 +103,7 @@ export function compileMap(
         vis: options.vis,
         visArgs: options.visArgs,
         shaderFiles: options.shaderFiles,
-        imageFiles,
+        assetFiles,
       },
     })
   })

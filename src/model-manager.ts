@@ -50,6 +50,21 @@ export class ModelManager {
     }
   }
 
+  getModelFile(path: string): [string, Uint8Array] | null {
+    const resolved = normalizeModelPath(path).find(candidate => this.assets.get(candidate));
+    if (!resolved) return null;
+    const data = this.assets.readBytes(resolved);
+    return data ? [resolved, data] : null;
+  }
+
+  getSkinFile(path: string): [string, Uint8Array] | null {
+    const candidates = [path, path.startsWith('models/') ? '' : `models/${path}`];
+    const resolved = candidates.find(candidate => candidate && this.assets.get(candidate));
+    if (!resolved) return null;
+    const data = this.assets.readBytes(resolved);
+    return data ? [resolved, data] : null;
+  }
+
   error(path: string): Error | null {
     const resolved = normalizeModelPath(path).find(candidate => this.assets.get(candidate));
     if (!resolved) return null;
@@ -62,7 +77,7 @@ export class ModelManager {
     const requestedPath = entity.properties.model || definition?.model;
     if (!requestedPath) return null;
     const requestedFrame = Number.parseInt(entity.properties.frame ?? '0', 10) || 0;
-    return this.resolve(requestedPath, requestedFrame, entity.properties.skin);
+    return this.resolve(requestedPath, requestedFrame, entity.properties.skin || entity.properties._skin);
   }
 
   resolve(requestedPath: string, requestedFrame = 0, requestedSkin?: string): ResolvedModel | null {

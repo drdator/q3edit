@@ -7,6 +7,7 @@ import { decodeMd3, Md3Error } from '../src/md3';
 import { ModelManager } from '../src/model-manager';
 import { buildModelGeometry, transformedModelBounds } from '../src/model-geometry';
 import { filterModelPaths, projectModelPreview } from '../src/model-browser';
+import { collectCompileModelFiles } from '../src/q3map';
 import { createMinimalMd3 } from './fixtures/minimal-md3';
 
 function archive(name: string, files: Record<string, Uint8Array>) {
@@ -66,6 +67,7 @@ describe('ModelManager', () => {
       frame: 0,
       skinPath: 'models/red.skin',
     });
+    expect(manager.getModelFile('test')?.[0]).toBe('models/test.md3');
     entity.properties.origin = '10 20 30';
     entity.properties.angle = '90';
     entity.properties.modelscale = '2';
@@ -73,9 +75,51 @@ describe('ModelManager', () => {
     expect(geometry[0].texture).toBe('textures/models/red');
     expect(geometry[0].vertices.slice(8, 11)).toEqual([10, 22, 30]);
     expect(transformedModelBounds(entity, resolved)).toEqual({ mins: [8, 18, 28], maxs: [12, 22, 32] });
+    entity.properties.angles = '90 0 0';
+    expect(buildModelGeometry(entity, resolved)[0].vertices.slice(8, 11)[2]).toBeCloseTo(28);
+    entity.properties.angles = '0 0 90';
+    expect(buildModelGeometry(entity, resolved)[0].vertices.slice(16, 19)[2]).toBeCloseTo(32);
+    delete entity.properties.angles;
+    entity.properties.modelscale = '0';
+    expect(buildModelGeometry(entity, resolved)[0].vertices.slice(8, 11)[1]).toBeCloseTo(21);
     delete entity.properties.skin;
     expect(manager.resolveEntity(entity)?.surfaceTextures.get('body')).toBe('textures/models/default');
     setEntityClassRegistry(new EntityClassRegistry());
+  });
+
+  it('collects misc_model source files for q3map compilation', () => {
+    const model = createMinimalMd3();
+    const manager = new ModelManager(new AssetIndex([archive('models.pk3', {
+      'models/test.md3': model,
+    })]));
+    const miscModel = createEntity('misc_model');
+    miscModel.properties.model = 'models/test.md3';
+    const unrelated = createEntity('info_player_deathmatch');
+    unrelated.properties.model = 'models/test.md3';
+
+    miscModel.properties.skin = 'models/test.skin';
+    const filesWithoutSkin = collectCompileModelFiles([miscModel, unrelated], manager);
+
+    expect([...filesWithoutSkin.keys()]).toEqual(['models/test.md3']);
+
+    const managerWithSkin = new ModelManager(new AssetIndex([archive('models.pk3', {
+      'models/test.md3': model,
+      'models/test.skin': strToU8('body,textures/models/red\n'),
+      'models/test_default.skin': strToU8('body,textures/models/default-skin\n'),
+    })]));
+    const files = collectCompileModelFiles([miscModel, unrelated], managerWithSkin);
+
+    expect([...files.keys()]).toEqual(['models/test.md3', 'models/test.skin']);
+    expect(files.get('models/test.md3')).toEqual(model);
+    expect(new TextDecoder().decode(files.get('models/test.skin'))).toContain('textures/models/red');
+
+    delete miscModel.properties.skin;
+    expect([...collectCompileModelFiles([miscModel], managerWithSkin).keys()])
+      .toEqual(['models/test.md3', 'models/test_default.skin']);
+
+    miscModel.properties._skin = 'models/test.skin';
+    expect([...collectCompileModelFiles([miscModel], managerWithSkin).keys()])
+      .toEqual(['models/test.md3', 'models/test.skin']);
   });
 
   it('uses archive precedence and invalidates the decoded cache when its index changes', () => {

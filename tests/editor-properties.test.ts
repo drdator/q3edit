@@ -101,6 +101,29 @@ describe('transactional property editing', () => {
     expect(editor.entities[1].properties.typed).toBe(`value-${type}`);
   });
 
+  test('keeps Q3Map2 misc_model transform representations mutually exclusive', () => {
+    const editor = new Editor();
+    const entity = createEntity('misc_model');
+    editor.entities = [createEntity('worldspawn'), entity];
+    entity.properties.angle = '90';
+    entity.properties.modelscale = '2';
+
+    setTypedEntityProperty(editor, entity, 'angles', '10 20 30', 'vector');
+    expect(entity.properties).not.toHaveProperty('angle');
+    expect(entity.properties.angles).toBe('10 20 30');
+
+    setTypedEntityProperty(editor, entity, 'modelscale_vec', '1 2 3', 'vector');
+    expect(entity.properties).not.toHaveProperty('modelscale');
+    expect(entity.properties.modelscale_vec).toBe('1 2 3');
+
+    editor.undo();
+    expect(editor.entities[1].properties.modelscale).toBe('2');
+    expect(editor.entities[1].properties).not.toHaveProperty('modelscale_vec');
+    editor.undo();
+    expect(editor.entities[1].properties.angle).toBe('90');
+    expect(editor.entities[1].properties).not.toHaveProperty('angles');
+  });
+
   test('toggles documented spawnflags without losing unknown bits', () => {
     const { editor, entity } = editorWithEntity();
     entity.properties.spawnflags = String(0x80);

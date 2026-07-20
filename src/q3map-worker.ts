@@ -42,7 +42,7 @@ function setupFS(
   bspData: Uint8Array | null,
   shaderFiles: Record<string, string> | undefined,
   prtData: Uint8Array | null,
-  imageFiles: [string, Uint8Array][] | undefined,
+  assetFiles: [string, Uint8Array][] | undefined,
 ) {
   const basePath = '/quake/baseq3'
   const mapDir = `${basePath}/maps`
@@ -68,9 +68,9 @@ function setupFS(
   }
   mod.FS.writeFile(`${basePath}/scripts/shaderlist.txt`, shaderNames.join('\n') + '\n')
 
-  if (imageFiles) {
+  if (assetFiles) {
     const createdDirs = new Set<string>()
-    for (const [path, data] of imageFiles) {
+    for (const [path, data] of assetFiles) {
       const fullPath = `${basePath}/${path}`
       const dir = fullPath.substring(0, fullPath.lastIndexOf('/'))
       if (!createdDirs.has(dir)) { mkdirp(mod, dir); createdDirs.add(dir) }
@@ -128,7 +128,7 @@ self.onmessage = async (e: MessageEvent) => {
       vis?: boolean
       visArgs?: string[]
       shaderFiles?: Record<string, string>
-      imageFiles?: [string, Uint8Array][]
+      assetFiles?: [string, Uint8Array][]
     }
   }
 
@@ -145,7 +145,7 @@ self.onmessage = async (e: MessageEvent) => {
   // Stage 1: BSP
   emit('=== Stage 1: BSP ===')
   const bspMod = await createModule(emit)
-  setupFS(bspMod, mapText, null, options.shaderFiles, null, options.imageFiles)
+  setupFS(bspMod, mapText, null, options.shaderFiles, null, options.assetFiles)
 
   const bspExit = runQ3Map(bspMod, [...(options.args || []), mapPath], emit)
 
@@ -166,7 +166,7 @@ self.onmessage = async (e: MessageEvent) => {
     emit('')
     emit('=== Stage 2: Vis ===')
     const visMod = await createModule(emit)
-    setupFS(visMod, mapText, bsp, options.shaderFiles, prt, options.imageFiles)
+    setupFS(visMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
 
     const visExit = runQ3Map(visMod, ['-vis', ...(options.visArgs || []), bspPath], emit)
     try { bsp = visMod.FS.readFile(bspPath) } catch { /* */ }
@@ -178,7 +178,7 @@ self.onmessage = async (e: MessageEvent) => {
     emit('')
     emit('=== Stage 3: Light ===')
     const lightMod = await createModule(emit)
-    setupFS(lightMod, mapText, bsp, options.shaderFiles, prt, options.imageFiles)
+    setupFS(lightMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
 
     const lightExit = runQ3Map(lightMod, ['-light', ...(options.lightArgs || []), bspPath], emit)
     try { bsp = lightMod.FS.readFile(bspPath) } catch { /* */ }

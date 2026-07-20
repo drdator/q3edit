@@ -46,6 +46,96 @@ int		c_triangleIndexes;
 loadedModel_t		loadedModels[MAX_LOADED_MODELS];
 int					numLoadedModels;
 
+#define MAX_SKIN_MAPPINGS 256
+
+typedef struct {
+	char			surface[MAX_QPATH];
+	char			shader[MAX_QPATH];
+} skinMapping_t;
+
+static char *TrimSkinToken( char *text ) {
+	char *end;
+
+	while ( *text == ' ' || *text == '\t' || *text == '\r' ) {
+		text++;
+	}
+	end = text + strlen( text );
+	while ( end > text && ( end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' ) ) {
+		*--end = 0;
+	}
+	return text;
+}
+
+static int LoadSkinMappings( const char *skinName, skinMapping_t *mappings, qboolean warnMissing ) {
+	char			filename[1024];
+	char			fallbackName[1024];
+	char			*data, *line, *next, *comma, *comment;
+	char			*surface, *shader;
+	int				len, count;
+
+	if ( !skinName || !skinName[0] ) {
+		return 0;
+	}
+	strncpy( fallbackName, skinName, sizeof( fallbackName ) - 1 );
+	fallbackName[sizeof( fallbackName ) - 1] = 0;
+	for ( line = fallbackName ; *line ; line++ ) {
+		if ( *line == '\\' ) *line = '/';
+	}
+	sprintf( filename, "%s%s", gamedir, fallbackName );
+	len = TryLoadFile( filename, (void **)&data );
+	if ( len <= 0 && Q_strncasecmp( fallbackName, "models/", 7 ) ) {
+		sprintf( filename, "%smodels/%s", gamedir, fallbackName );
+		len = TryLoadFile( filename, (void **)&data );
+	}
+	if ( len <= 0 ) {
+		if ( warnMissing ) {
+			_printf( "WARNING: Couldn't load misc_model skin %s\n", skinName );
+		}
+		return 0;
+	}
+
+	count = 0;
+	line = data;
+	while ( line && *line && count < MAX_SKIN_MAPPINGS ) {
+		next = strchr( line, '\n' );
+		if ( next ) *next++ = 0;
+		comment = strstr( line, "//" );
+		if ( comment ) *comment = 0;
+		comma = strchr( line, ',' );
+		if ( comma ) {
+			*comma = 0;
+			surface = TrimSkinToken( line );
+			shader = TrimSkinToken( comma + 1 );
+			if ( surface[0] && shader[0] && Q_strncasecmp( surface, "tag_", 4 ) ) {
+				strncpy( mappings[count].surface, surface, MAX_QPATH - 1 );
+				mappings[count].surface[MAX_QPATH - 1] = 0;
+				strncpy( mappings[count].shader, shader, MAX_QPATH - 1 );
+				mappings[count].shader[MAX_QPATH - 1] = 0;
+				count++;
+			}
+		}
+		line = next;
+	}
+	free( data );
+	qprintf( "Loaded misc_model skin %s (%i mappings)\n", skinName, count );
+	return count;
+}
+
+static int LoadModelSkinMappings( const char *modelName, const char *skinName, skinMapping_t *mappings ) {
+	char	defaultSkin[1024];
+	char	*extension;
+
+	if ( skinName && skinName[0] ) {
+		return LoadSkinMappings( skinName, mappings, qtrue );
+	}
+	strncpy( defaultSkin, modelName, sizeof( defaultSkin ) - 1 );
+	defaultSkin[sizeof( defaultSkin ) - 1] = 0;
+	extension = strrchr( defaultSkin, '.' );
+	if ( extension ) *extension = 0;
+	strncat( defaultSkin, "_default.skin", sizeof( defaultSkin ) - strlen( defaultSkin ) - 1 );
+	return LoadSkinMappings( defaultSkin, mappings, qfalse );
+}
+
 /*
 =================
 R_LoadMD3
@@ -200,6 +290,48 @@ md3Header_t *LoadModel( const char *modelName ) {
 	return lm->header;
 }
 
+/* Apply the Q3Map2-compatible model scale and pitch/yaw/roll transform. */
+static void TransformModelVector( const vec3_t input, const vec3_t scale, const vec3_t angles, qboolean normal, vec3_t output ) {
+	float x, y, z;
+	float c, s;
+
+	if ( normal ) {
+		x = input[0] / ( scale[0] != 0 ? scale[0] : 1 );
+		y = input[1] / ( scale[1] != 0 ? scale[1] : 1 );
+		z = input[2] / ( scale[2] != 0 ? scale[2] : 1 );
+	}
+	else {
+		x = input[0] * scale[0];
+		y = input[1] * scale[1];
+		z = input[2] * scale[2];
+	}
+
+	/* Match Q3Map2's eXYZ matrix: scale, roll (X), pitch (Y), then yaw (Z). */
+	c = cos( angles[2] * Q_PI / 180 );
+	s = sin( angles[2] * Q_PI / 180 );
+	output[1] = y * c - z * s;
+	output[2] = y * s + z * c;
+	y = output[1];
+	z = output[2];
+
+	c = cos( angles[0] * Q_PI / 180 );
+	s = sin( angles[0] * Q_PI / 180 );
+	output[0] = x * c + z * s;
+	output[2] = -x * s + z * c;
+	x = output[0];
+	z = output[2];
+
+	c = cos( angles[1] * Q_PI / 180 );
+	s = sin( angles[1] * Q_PI / 180 );
+	output[0] = x * c - y * s;
+	output[1] = x * s + y * c;
+	output[2] = z;
+
+	if ( normal ) {
+		VectorNormalize( output, output );
+	}
+}
+
 /*
 ============
 InsertMD3Model
@@ -207,7 +339,7 @@ InsertMD3Model
 Convert a model entity to raw geometry surfaces and insert it in the tree
 ============
 */
-void InsertMD3Model( const char *modelName, vec3_t origin, float angle, tree_t *tree ) {
+void InsertMD3Model( const char *modelName, const char *skinName, vec3_t origin, vec3_t angles, vec3_t scale, tree_t *tree ) {
 	int					i, j;
 	md3Header_t			*md3;
 	md3Surface_t		*surf;
@@ -217,36 +349,47 @@ void InsertMD3Model( const char *modelName, vec3_t origin, float angle, tree_t *
 	md3XyzNormal_t		*xyz;
 	drawVert_t			*outv;
 	float				lat, lng;
-	float				angleCos, angleSin;
 	mapDrawSurface_t	*out;
 	vec3_t				temp;
-
-	angle = angle / 180 * Q_PI;
-	angleCos = cos( angle );
-	angleSin = sin( angle );
+	vec3_t				transformed;
+	skinMapping_t		skinMappings[MAX_SKIN_MAPPINGS];
+	int					numSkinMappings;
+	const char			*shaderName;
 
 	// load the model
 	md3 = LoadModel( modelName );
 	if ( !md3 ) {
 		return;
 	}
+	numSkinMappings = LoadModelSkinMappings( modelName, skinName, skinMappings );
 
 	// each md3 surface will become a new bsp surface
 
 	c_triangleModels++;
-	c_triangleSurfaces += md3->numSurfaces;
 
 	// expand, translate, and rotate the vertexes
 	// swap all the surfaces
 	surf = (md3Surface_t *) ( (byte *)md3 + md3->ofsSurfaces );
 	for ( i = 0 ; i < md3->numSurfaces ; i++) {
+        shader = (md3Shader_t *) ( (byte *)surf + surf->ofsShaders );
+		shaderName = shader->name;
+		for ( j = 0 ; j < numSkinMappings ; j++ ) {
+			if ( !Q_stricmp( skinMappings[j].surface, surf->name ) ) {
+				shaderName = skinMappings[j].shader;
+				break;
+			}
+		}
+		if ( !Q_stricmp( shaderName, "*off" ) ) {
+			surf = (md3Surface_t *)( (byte *)surf + surf->ofsEnd );
+			continue;
+		}
+
 		// allocate a surface
 		out = AllocDrawSurf();
 		out->miscModel = qtrue;
+		c_triangleSurfaces++;
 
-        shader = (md3Shader_t *) ( (byte *)surf + surf->ofsShaders );
-
-		out->shaderInfo = ShaderInfoForShader( shader->name );
+		out->shaderInfo = ShaderInfoForShader( shaderName );
 
 		out->numVerts = surf->numVerts;
 		out->verts = malloc( out->numVerts * sizeof( out->verts[0] ) );
@@ -286,9 +429,13 @@ void InsertMD3Model( const char *modelName, vec3_t origin, float angle, tree_t *
 			outv->color[2] = 255;
 			outv->color[3] = 255;
 
-			outv->xyz[0] = origin[0] + MD3_XYZ_SCALE * ( xyz->xyz[0] * angleCos - xyz->xyz[1] * angleSin );
-			outv->xyz[1] = origin[1] + MD3_XYZ_SCALE * ( xyz->xyz[0] * angleSin +  xyz->xyz[1] * angleCos );
-			outv->xyz[2] = origin[2] + MD3_XYZ_SCALE * ( xyz->xyz[2] );
+			temp[0] = MD3_XYZ_SCALE * xyz->xyz[0];
+			temp[1] = MD3_XYZ_SCALE * xyz->xyz[1];
+			temp[2] = MD3_XYZ_SCALE * xyz->xyz[2];
+			TransformModelVector( temp, scale, angles, qfalse, transformed );
+			outv->xyz[0] = origin[0] + transformed[0];
+			outv->xyz[1] = origin[1] + transformed[1];
+			outv->xyz[2] = origin[2] + transformed[2];
 
 			// decode the lat/lng normal to a 3 float normal
 			lat = ( xyz->normal >> 8 ) & 0xff;
@@ -300,10 +447,8 @@ void InsertMD3Model( const char *modelName, vec3_t origin, float angle, tree_t *
 			temp[1] = sin(lat) * sin(lng);
 			temp[2] = cos(lng);
 
-			// rotate the normal
-			outv->normal[0] = temp[0] * angleCos - temp[1] * angleSin;
-			outv->normal[1] = temp[0] * angleSin +  temp[1] * angleCos;
-			outv->normal[2] = temp[2];
+			// apply the inverse-transpose scale and rotation to the normal
+			TransformModelVector( temp, scale, angles, qtrue, outv->normal );
 		}
 
 		// find the next surface
@@ -322,22 +467,18 @@ InsertASEModel
 Convert a model entity to raw geometry surfaces and insert it in the tree
 ============
 */
-void InsertASEModel( const char *modelName, vec3_t origin, float angle, tree_t *tree ) {
+void InsertASEModel( const char *modelName, vec3_t origin, vec3_t angles, vec3_t scale, tree_t *tree ) {
 	int					i, j;
 	drawVert_t			*outv;
-	float				angleCos, angleSin;
 	mapDrawSurface_t	*out;
 	int					numSurfaces;
 	const char			*name;
 	polyset_t			*pset;
 	int					numFrames;
 	char				filename[1024];
+	vec3_t				transformed;
 
 	sprintf( filename, "%s%s", gamedir, modelName );
-
-	angle = angle / 180 * Q_PI;
-	angleCos = cos( angle );
-	angleSin = sin( angle );
 
 	// load the model
 	ASE_Load( filename, qfalse, qfalse );
@@ -402,14 +543,12 @@ void InsertASEModel( const char *modelName, vec3_t origin, float angle, tree_t *
 			outv->color[2] = 255;
 			outv->color[3] = 255;
 
-			outv->xyz[0] = origin[0] + tri->verts[index][0];
-			outv->xyz[1] = origin[1] + tri->verts[index][1];
-			outv->xyz[2] = origin[2] + tri->verts[index][2];
+			TransformModelVector( tri->verts[index], scale, angles, qfalse, transformed );
+			outv->xyz[0] = origin[0] + transformed[0];
+			outv->xyz[1] = origin[1] + transformed[1];
+			outv->xyz[2] = origin[2] + transformed[2];
 
-			// rotate the normal
-			outv->normal[0] = tri->normals[index][0];
-			outv->normal[1] = tri->normals[index][1];
-			outv->normal[2] = tri->normals[index][2];
+			TransformModelVector( tri->normals[index], scale, angles, qtrue, outv->normal );
 		}
 	}
 
@@ -437,11 +576,30 @@ void AddTriangleModels( tree_t *tree ) {
 		// convert misc_models into raw geometry
 		if ( !Q_stricmp( "misc_model", ValueForKey( entity, "classname" ) ) ) {
 			const char	*model;
+			const char	*skin;
+			const char	*value;
 			vec3_t	origin;
-			float	angle;
+			vec3_t	angles;
+			vec3_t	scale;
+			float	uniformScale;
 
-			// get the angle for rotation  FIXME: support full matrix positioning
-			angle = FloatForKey( entity, "angle" );
+			// Match Q3Map2 map conventions: `angles` is pitch yaw roll and overrides `angle`.
+			angles[0] = angles[1] = angles[2] = 0;
+			angles[1] = FloatForKey( entity, "angle" );
+			value = ValueForKey( entity, "angles" );
+			if ( value[0] ) {
+				sscanf( value, "%f %f %f", &angles[0], &angles[1], &angles[2] );
+			}
+
+			scale[0] = scale[1] = scale[2] = 1;
+			uniformScale = FloatForKey( entity, "modelscale" );
+			if ( uniformScale != 0 ) {
+				scale[0] = scale[1] = scale[2] = uniformScale;
+			}
+			value = ValueForKey( entity, "modelscale_vec" );
+			if ( value[0] ) {
+				sscanf( value, "%f %f %f", &scale[0], &scale[1], &scale[2] );
+			}
 
 			GetVectorForKey( entity, "origin", origin );
 
@@ -451,12 +609,14 @@ void AddTriangleModels( tree_t *tree ) {
 					(int)origin[1], (int)origin[2] );
 				continue;
 			}
+			skin = ValueForKey( entity, "skin" );
+			if ( !skin[0] ) skin = ValueForKey( entity, "_skin" );
 			if ( strstr( model, ".md3" ) || strstr( model, ".MD3" ) ) {
-				InsertMD3Model( model, origin, angle, tree );
+				InsertMD3Model( model, skin, origin, angles, scale, tree );
 				continue;
 			}
 			if ( strstr( model, ".ase" ) || strstr( model, ".ASE" ) ) {
-				InsertASEModel( model, origin, angle, tree );
+				InsertASEModel( model, origin, angles, scale, tree );
 				continue;
 			}
 			_printf( "Unknown misc_model type: %s\n", model );
@@ -469,4 +629,3 @@ void AddTriangleModels( tree_t *tree ) {
 	qprintf( "%5i triangle vertexes\n", c_triangleVertexes );
 	qprintf( "%5i triangle indexes\n", c_triangleIndexes );
 }
-
