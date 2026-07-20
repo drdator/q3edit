@@ -1295,6 +1295,10 @@ textarea:focus-visible {
   padding: 0;
 }
 
+.panel-body .named-group-actions > .btn.icon-btn > .ph {
+  font-size: 16px;
+}
+
 .panel-body .named-group-actions > .named-group-delete {
   margin-left: auto;
 }
