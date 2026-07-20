@@ -32,6 +32,15 @@ export type BridgeToEditorMessage =
       fileName: string;
       mapText: string;
     }
+  | {
+      type: 'new_document';
+      requestId: string;
+      expectedRevision: number;
+      template: 'empty' | 'starter';
+      preserveWorldspawn: boolean;
+      worldspawnProperties?: Record<string, string>;
+      fileName: string;
+    }
   | { type: 'request_snapshot'; requestId: string }
   | { type: 'texture_search'; requestId: string; query: string; limit: number }
   | { type: 'texture_preview'; requestId: string; name: string }

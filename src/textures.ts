@@ -446,6 +446,7 @@ export class TextureManager {
   }
 
   hasTextureSource(name: string): boolean {
+    if (this.isShader(name)) return true;
     if (this.getTextureAsset(name)) return true;
     const key = name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '');
     return this.shaderImages.has(key) || this.shaderImages.has(`textures/${key}`);

@@ -8,6 +8,7 @@ import { collectCompileModelFiles, compileMap } from './q3map';
 import { structureCompilerOutput } from './compile-diagnostics';
 import { cloneMapSnapshot } from './history';
 import { entityBounds } from './editor-queries';
+import { createWorldspawn } from './entity';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -233,6 +234,47 @@ export class LiveMapBridge {
           type: 'operation_error', requestId: message.requestId,
           message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
         });
+      }
+      return;
+    }
+
+    if (message.type === 'new_document') {
+      if (message.expectedRevision !== this.editor.documentRevision) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: `Revision conflict: expected ${message.expectedRevision}, current revision is ${this.editor.documentRevision}`,
+          revision: this.editor.documentRevision,
+        });
+        return;
+      }
+      this.suppressDocumentSync = true;
+      try {
+        const preserved = message.preserveWorldspawn ? { ...this.editor.worldspawn.properties } : {};
+        delete preserved.classname;
+        this.editor.transact('MCP: New map', () => {
+          if (message.template === 'starter') this.editor.createDefaultMap();
+          else this.editor.entities = [createWorldspawn()];
+          Object.assign(this.editor.worldspawn.properties, preserved, message.worldspawnProperties ?? {}, { classname: 'worldspawn' });
+          this.editor.worldspawn.classname = 'worldspawn';
+          this.editor.fileName = message.fileName;
+          this.editor.mapDiagnostics = [];
+          this.editor.unsupportedMapConstructs = [];
+          this.editor.selection = [];
+          this.editor.regionBounds = null;
+          this.editor.clearPointfile(false);
+          this.editor.clearHiddenState();
+          this.editor.redrawRequested = true;
+        });
+        this.compiledBsp = null;
+        this.editor.statusMessage = `MCP created ${message.template} map ${message.fileName}`;
+        this.send({ type: 'document_replaced', requestId: message.requestId, snapshot: this.snapshot() });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      } finally {
+        this.suppressDocumentSync = false;
       }
       return;
     }

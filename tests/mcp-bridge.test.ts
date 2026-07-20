@@ -76,6 +76,11 @@ class FakeEditorSocket extends EventEmitter {
           diagnostics: [],
         },
       }));
+    } else if (request.type === 'new_document') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'document_replaced', requestId: request.requestId,
+        snapshot: { ...snapshot(request.expectedRevision + 1), fileName: request.fileName },
+      }));
     } else if (request.type === 'request_snapshot') {
       queueMicrotask(() => this.emitMessage({ type: 'snapshot', requestId: request.requestId, snapshot: snapshot() }));
     } else if (request.type === 'texture_search') {
@@ -243,6 +248,7 @@ describe('live MCP bridge', () => {
         'map_create_jump_pad',
         'map_create_teleporter',
         'map_apply',
+        'map_new',
         'map_open',
         'map_save',
       ]);
@@ -398,6 +404,17 @@ describe('live MCP bridge', () => {
       expect(invalid.content).toEqual(expect.arrayContaining([
         expect.objectContaining({ text: expect.stringContaining('Invalid operation 1') }),
       ]));
+
+      const fresh = await client.callTool({
+        name: 'map_new',
+        arguments: {
+          expectedRevision: 8, template: 'empty', preserveWorldspawn: false,
+          worldspawnProperties: { message: 'Agent Arena' }, fileName: 'agent-arena.map',
+        },
+      });
+      expect(fresh.structuredContent).toMatchObject({
+        sessionId: 'editor-a', fileName: 'agent-arena.map', revision: 9,
+      });
     } finally {
       await client.close();
       await server.close();

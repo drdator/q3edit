@@ -826,6 +826,33 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('map_new', {
+    title: 'Create a new map document',
+    description: 'Atomically replace one editor session with an empty or starter document. Requires the current revision, always preserves a valid worldspawn, resets the active save path, and can retain or override worldspawn properties.',
+    inputSchema: {
+      ...sessionInput,
+      expectedRevision: z.number().int().nonnegative(),
+      template: z.enum(['empty', 'starter']).optional().default('empty'),
+      preserveWorldspawn: z.boolean().optional().default(true),
+      worldspawnProperties: z.record(z.string(), z.string()).optional(),
+      fileName: z.string().min(1).max(200).optional().default('untitled.map'),
+    },
+    annotations: { destructiveHint: true, openWorldHint: false },
+  }, async ({ sessionId, expectedRevision, template, preserveWorldspawn, worldspawnProperties, fileName }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = await hub.newMap({
+        expectedRevision, template, preserveWorldspawn, worldspawnProperties, fileName,
+      }, resolved);
+      return toolResult({
+        sessionId: resolved, fileName: snapshot.fileName, revision: snapshot.revision,
+        mapInfo: snapshot.mapInfo, diagnostics: snapshot.diagnostics,
+      });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_open', {
     title: 'Open map in Q3Edit',
     description: 'Read a local .map file and replace the connected browser document with it.',

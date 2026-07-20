@@ -153,6 +153,22 @@ export class BridgeHub {
     return message.snapshot;
   }
 
+  async newMap(options: {
+    expectedRevision: number;
+    template: 'empty' | 'starter';
+    preserveWorldspawn: boolean;
+    worldspawnProperties?: Record<string, string>;
+    fileName: string;
+  }, sessionId?: string): Promise<LiveMapSnapshot> {
+    const session = this.session(sessionId);
+    const message = await this.request(session.id, {
+      type: 'new_document', requestId: randomUUID(), ...options,
+    });
+    if (message.type !== 'document_replaced') throw new Error('Editor returned an unexpected new-map response');
+    session.activeMapPath = null;
+    return message.snapshot;
+  }
+
   async requestSnapshot(sessionId?: string): Promise<LiveMapSnapshot> {
     const message = await this.request(sessionId, { type: 'request_snapshot', requestId: randomUUID() });
     if (message.type !== 'snapshot') throw new Error('Editor returned an unexpected snapshot response');

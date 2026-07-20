@@ -70,8 +70,11 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
 - `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, and diagnostics without changing the document.
 - `map_create_jump_pad` and `map_create_teleporter` create complete, correctly linked trigger/destination pairs and persistently group them for later edits.
+- `map_new` replaces the targeted editor with an empty or starter document using revision protection. It can preserve existing worldspawn keys and apply explicit worldspawn properties without enumerating starter objects.
 - `map_open` opens a local `.map` file in the connected browser.
 - `map_save` writes the current browser document to the active path or a supplied path.
+
+Declared shaders count as valid texture sources even when they intentionally have no image, so tool, trigger, clip, and sky shaders do not produce false missing-texture diagnostics.
 
 Initial `map_apply` operations are:
 
