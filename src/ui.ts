@@ -4,7 +4,7 @@ import { TextureManager } from './textures';
 import { PropertiesPanel } from './properties-panel';
 import { Brush } from './brush';
 import { Patch } from './patch';
-import { compileMap } from './q3map';
+import { collectCompileModelFiles, compileMap } from './q3map';
 import { buildMenuBar as buildMenuBarUI } from './ui-menu';
 import { buildToolbar as buildToolbarUI } from './ui-toolbar';
 import { setupKeyboard as setupKeyboardUI } from './ui-keyboard';
@@ -2369,9 +2369,8 @@ export class UI {
       const compileEntities = compileWithRegion
         ? this.editor.collectRegionEntities(true)
         : this.editor.entities;
-      let imageFiles: Map<string, Uint8Array> | undefined;
+      const assetFiles = collectCompileModelFiles(compileEntities, this.editor.modelManager);
       if (this.texMgr) {
-        imageFiles = new Map();
         const usedTextures = new Set<string>();
         for (const ent of compileEntities) {
           for (const brush of ent.brushes) {
@@ -2381,7 +2380,7 @@ export class UI {
         }
         for (const tex of usedTextures) {
           const found = this.texMgr.findImageFile(tex);
-          if (found) imageFiles.set(found[0], found[1]);
+          if (found) assetFiles.set(found[0], found[1]);
         }
       }
       const shaderFiles = this.texMgr?.getShaderFiles();
@@ -2407,7 +2406,7 @@ export class UI {
         light: quality !== 'fast' && compile.light,
         lightArgs: compile.lightArgs,
         shaderFiles,
-        imageFiles,
+        assetFiles: assetFiles.size > 0 ? assetFiles : undefined,
         onOutput: (line) => {
           log.textContent += line + '\n';
           log.scrollTop = log.scrollHeight;

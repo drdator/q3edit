@@ -7,6 +7,7 @@ import { decodeMd3, Md3Error } from '../src/md3';
 import { ModelManager } from '../src/model-manager';
 import { buildModelGeometry, transformedModelBounds } from '../src/model-geometry';
 import { filterModelPaths, projectModelPreview } from '../src/model-browser';
+import { collectCompileModelFiles } from '../src/q3map';
 import { createMinimalMd3 } from './fixtures/minimal-md3';
 
 function archive(name: string, files: Record<string, Uint8Array>) {
@@ -66,6 +67,7 @@ describe('ModelManager', () => {
       frame: 0,
       skinPath: 'models/red.skin',
     });
+    expect(manager.getModelFile('test')?.[0]).toBe('models/test.md3');
     entity.properties.origin = '10 20 30';
     entity.properties.angle = '90';
     entity.properties.modelscale = '2';
@@ -76,6 +78,22 @@ describe('ModelManager', () => {
     delete entity.properties.skin;
     expect(manager.resolveEntity(entity)?.surfaceTextures.get('body')).toBe('textures/models/default');
     setEntityClassRegistry(new EntityClassRegistry());
+  });
+
+  it('collects misc_model source files for q3map compilation', () => {
+    const model = createMinimalMd3();
+    const manager = new ModelManager(new AssetIndex([archive('models.pk3', {
+      'models/test.md3': model,
+    })]));
+    const miscModel = createEntity('misc_model');
+    miscModel.properties.model = 'models/test.md3';
+    const unrelated = createEntity('info_player_deathmatch');
+    unrelated.properties.model = 'models/test.md3';
+
+    const files = collectCompileModelFiles([miscModel, unrelated], manager);
+
+    expect([...files.keys()]).toEqual(['models/test.md3']);
+    expect(files.get('models/test.md3')).toEqual(model);
   });
 
   it('uses archive precedence and invalidates the decoded cache when its index changes', () => {

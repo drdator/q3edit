@@ -50,6 +50,13 @@ export class ModelManager {
     }
   }
 
+  getModelFile(path: string): [string, Uint8Array] | null {
+    const resolved = normalizeModelPath(path).find(candidate => this.assets.get(candidate));
+    if (!resolved) return null;
+    const data = this.assets.readBytes(resolved);
+    return data ? [resolved, data] : null;
+  }
+
   error(path: string): Error | null {
     const resolved = normalizeModelPath(path).find(candidate => this.assets.get(candidate));
     if (!resolved) return null;
