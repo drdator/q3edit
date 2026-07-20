@@ -48,11 +48,19 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
   const dialog = document.createElement('div'); dialog.className = 'editor-dialog diagnostics-dialog';
   const title = document.createElement('div'); title.id = 'diagnostics-title'; title.className = 'editor-dialog-title'; title.textContent = 'Map Diagnostics & Brush Utilities';
   const tabs = document.createElement('div'); tabs.className = 'diagnostics-tabs';
-  const content = document.createElement('div'); content.className = 'diagnostics-content';
+  tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Diagnostics views');
+  const content = document.createElement('div'); content.id = 'diagnostics-content'; content.className = 'diagnostics-content'; content.setAttribute('role', 'tabpanel');
 
   const render = () => {
     content.innerHTML = '';
-    for (const tabButton of tabs.children) (tabButton as HTMLElement).classList.toggle('active', (tabButton as HTMLElement).dataset.tab === activeTab);
+    content.setAttribute('aria-labelledby', `diagnostics-tab-${activeTab}`);
+    for (const tabButton of tabs.children) {
+      const element = tabButton as HTMLElement;
+      const selected = element.dataset.tab === activeTab;
+      element.classList.toggle('active', selected);
+      element.setAttribute('aria-selected', String(selected));
+      element.tabIndex = selected ? 0 : -1;
+    }
     const diagnostics = collectEditorDiagnostics(editor);
     if (activeTab === 'map') {
       const info = collectMapInfo(editor, diagnostics);
@@ -103,7 +111,7 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
       form.append(help, query, button('Find & select', find, true), status); content.appendChild(form); query.focus();
     } else {
       const help = document.createElement('p');
-      help.textContent = 'Q3Radiant Brush Scripts were an unstable INI macro engine. Q3Edit supports its useful copy/move/rotate subset as validated JSON: no arbitrary code, at most 64 steps, and one undo transaction.';
+      help.textContent = 'Brush macros automate repeatable edits to selected brushes. Define duplicate, translate, and rotate steps in JSON, then run the entire sequence as one undoable action.';
       const editorArea = document.createElement('textarea'); editorArea.className = 'brush-macro-editor';
       editorArea.value = JSON.stringify({ version: 1, name: 'Offset copy', steps: [
         { operation: 'duplicate' }, { operation: 'translate', offset: [128, 0, 0] },
@@ -120,8 +128,24 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
   };
 
   for (const [tab, label] of [['map', 'Map Info'], ['entities', 'Entity Info'], ['find', 'Find Brush'], ['brush-macros', 'Brush Macros']] as const) {
-    const tabButton = button(label, () => { activeTab = tab; render(); }); tabButton.dataset.tab = tab; tabs.appendChild(tabButton);
+    const tabButton = button(label, () => { activeTab = tab; render(); });
+    tabButton.id = `diagnostics-tab-${tab}`;
+    tabButton.classList.add('diagnostics-tab');
+    tabButton.dataset.tab = tab;
+    tabButton.setAttribute('role', 'tab');
+    tabButton.setAttribute('aria-controls', content.id);
+    tabs.appendChild(tabButton);
   }
+  tabs.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const tabButtons = [...tabs.querySelectorAll<HTMLButtonElement>('.diagnostics-tab')];
+    const current = Math.max(0, tabButtons.findIndex(tabButton => tabButton.dataset.tab === activeTab));
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? tabButtons.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabButtons.length) % tabButtons.length;
+    activeTab = tabButtons[next].dataset.tab as DiagnosticsTab;
+    render(); tabButtons[next].focus(); event.preventDefault();
+  });
   const actions = document.createElement('div'); actions.className = 'editor-dialog-actions'; actions.appendChild(button('Close', () => overlay.remove()));
   dialog.append(title, tabs, content, actions); overlay.appendChild(dialog); document.body.appendChild(overlay); render();
   overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { overlay.remove(); event.stopPropagation(); } });

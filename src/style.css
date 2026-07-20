@@ -2038,8 +2038,33 @@ textarea:focus-visible {
   flex-direction: column;
 }
 
-.diagnostics-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
-.diagnostics-tabs .active { color: var(--bg-dark); background: var(--accent); border-color: var(--accent); }
+.diagnostics-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border-dark);
+}
+.editor-dialog .diagnostics-tabs .diagnostics-tab {
+  position: relative;
+  min-height: 27px;
+  padding: 4px 10px 5px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 0;
+}
+.editor-dialog .diagnostics-tabs .diagnostics-tab:hover:not(:disabled) {
+  color: var(--text-bright);
+  background: color-mix(in srgb, var(--bg-dark) 55%, transparent);
+}
+.editor-dialog .diagnostics-tabs .diagnostics-tab.active {
+  z-index: 1;
+  margin-bottom: -1px;
+  color: var(--accent);
+  background: var(--bg-dark);
+  border-color: var(--border-dark);
+}
 .diagnostics-content { flex: 1; min-height: 0; overflow: auto; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border-dark); }
 .diagnostics-content h3 { margin: 14px 0 6px; color: var(--text-bright); }
 .diagnostics-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
