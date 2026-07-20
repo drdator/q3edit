@@ -75,6 +75,13 @@ describe('ModelManager', () => {
     expect(geometry[0].texture).toBe('textures/models/red');
     expect(geometry[0].vertices.slice(8, 11)).toEqual([10, 22, 30]);
     expect(transformedModelBounds(entity, resolved)).toEqual({ mins: [8, 18, 28], maxs: [12, 22, 32] });
+    entity.properties.angles = '90 0 0';
+    expect(buildModelGeometry(entity, resolved)[0].vertices.slice(8, 11)[2]).toBeCloseTo(28);
+    entity.properties.angles = '0 0 90';
+    expect(buildModelGeometry(entity, resolved)[0].vertices.slice(16, 19)[2]).toBeCloseTo(32);
+    delete entity.properties.angles;
+    entity.properties.modelscale = '0';
+    expect(buildModelGeometry(entity, resolved)[0].vertices.slice(8, 11)[1]).toBeCloseTo(21);
     delete entity.properties.skin;
     expect(manager.resolveEntity(entity)?.surfaceTextures.get('body')).toBe('textures/models/default');
     setEntityClassRegistry(new EntityClassRegistry());

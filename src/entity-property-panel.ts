@@ -141,13 +141,33 @@ export function buildDefinedEntityProperties(
   }
   if (definition.classname === 'misc_model' && !definedProperties.angle) {
     definedProperties.angle = {
-      key: 'angle', name: 'Angle', type: 'angle', default: '0', description: 'Yaw rotation around the vertical axis.',
+      key: 'angle', name: 'Angle (Yaw)', type: 'angle', default: '0',
+      description: 'Legacy yaw-only rotation. Adding Angles replaces this value.',
     };
   }
+  if (definition.classname === 'misc_model' && !definedProperties.angles) {
+    definedProperties.angles = {
+      key: 'angles', name: 'Angles (Pitch Yaw Roll)', type: 'vector', default: '0 0 0',
+      description: 'Q3Map2-compatible 3-axis rotation. Adding this replaces the yaw-only Angle value.',
+    };
+  }
+  if (definition.classname === 'misc_model' && !definedProperties.modelscale) {
+    definedProperties.modelscale = {
+      key: 'modelscale', name: 'Model Scale', type: 'number', default: '1',
+      description: 'Q3Map2-compatible uniform model scale. Adding Model Scale Vector replaces this value.',
+    };
+  }
+  if (definition.classname === 'misc_model' && !definedProperties.modelscale_vec) {
+    definedProperties.modelscale_vec = {
+      key: 'modelscale_vec', name: 'Model Scale Vector', type: 'vector', default: '1 1 1',
+      description: 'Q3Map2-compatible non-uniform XYZ scale. Adding this replaces Model Scale.',
+    };
+  }
+  const modelRotationKey = 'angles' in entity.properties ? 'angles' : 'angle';
   for (const property of Object.values(definedProperties)) {
     const hasValue = property.key in entity.properties;
     const alwaysShowControl = definition.classname === 'misc_model'
-      && (property.key === 'model' || property.key === 'skin' || property.key === 'angle');
+      && (property.key === 'model' || property.key === 'skin' || property.key === modelRotationKey);
     const row = document.createElement('div');
     row.className = 'entity-defined-property';
     const label = document.createElement('label');

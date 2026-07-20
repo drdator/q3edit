@@ -72,7 +72,15 @@ export function setTypedEntityProperty(
   value: string,
   _type: EntityPropertyType,
 ): void {
-  setEntityProperty(editor, entity, key, value);
+  editor.transact('Edit entity property', () => {
+    entity.properties[key] = value;
+    if (entity.classname === 'misc_model' && key === 'angle') delete entity.properties.angles;
+    if (entity.classname === 'misc_model' && key === 'angles') delete entity.properties.angle;
+    if (entity.classname === 'misc_model' && key === 'modelscale') delete entity.properties.modelscale_vec;
+    if (entity.classname === 'misc_model' && key === 'modelscale_vec') delete entity.properties.modelscale;
+  }, {
+    coalesceKey: `entity-property:${objectId(entity)}:${key}`,
+  });
 }
 
 export function setEntitySpawnflag(

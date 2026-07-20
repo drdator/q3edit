@@ -84,6 +84,54 @@ describe('transactional editor mutations', () => {
     expect(model.properties.angle).toBe('80');
   });
 
+  test('uses Q3Map2 pitch yaw roll ordering for three-axis misc_model rotations', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [0, 0, 0]);
+    model.properties.angle = '20';
+    editor.entities = [createEntity('worldspawn'), model];
+    editor.selection = [{ type: 'entity', entity: model }];
+
+    editor.rotationAxis = 0;
+    editor.rotateSelection(30);
+    expect(model.properties.angles).toBe('0 20 30');
+    expect(model.properties.angle).toBeUndefined();
+
+    editor.rotationAxis = 1;
+    editor.rotateSelection(40);
+    expect(model.properties.angles).toBe('40 20 30');
+
+    editor.rotationAxis = 2;
+    editor.rotateSelection(50);
+    expect(model.properties.angles).toBe('40 70 30');
+    expect(model.properties.angle).toBeUndefined();
+  });
+
+  test('rebuilds interactive model angles from the drag snapshot', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [0, 0, 0]);
+    model.properties.angles = '10 20 30';
+    editor.entities = [createEntity('worldspawn'), model];
+    const original = [{ entity: model, origin: [0, 0, 0] as [number, number, number], angles: '10 20 30' }];
+
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 1, Math.PI / 6);
+    expect(model.properties.angles).toBe('40 20 30');
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 1, Math.PI / 3);
+    expect(model.properties.angles).toBe('70 20 30');
+  });
+
+  test('does not accumulate interactive roll previews after converting a yaw-only model', () => {
+    const editor = new Editor();
+    const model = createEntity('misc_model', [0, 0, 0]);
+    model.properties.angle = '20';
+    editor.entities = [createEntity('worldspawn'), model];
+    const original = [{ entity: model, origin: [0, 0, 0] as [number, number, number], angle: '20' }];
+
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 0, Math.PI / 6);
+    expect(model.properties.angles).toBe('0 20 30');
+    rotateGeometryFromOriginals(editor, [], [], original, [0, 0, 0], 0, Math.PI / 3);
+    expect(model.properties.angles).toBe('0 20 60');
+  });
+
   test('makes terrain creation one undoable command', () => {
     const editor = editorWithBrush();
 
