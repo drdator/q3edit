@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 import type { BridgeHub } from './bridge-hub';
 import { inspectMapObjects } from './map-inspection';
+import { queryMap, type MapQueryOptions } from './map-query';
 import type { MapObjectRef, MapOperation } from '../src/map-operations';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
@@ -98,7 +99,7 @@ function toolResult(value: unknown, text?: string) {
 
 export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
-    instructions: 'Inspect map_status before editing. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references are revision-sensitive. Creation operations may declare id and later operations in the same batch may target @id.',
+    instructions: 'Inspect map_status before editing. Use map_query and the texture/entity discovery tools instead of guessing object, asset, or classname data. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references are revision-sensitive. Creation operations may declare id and later operations in the same batch may target @id.',
   });
 
   server.registerTool('map_status', {
@@ -154,6 +155,112 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     try {
       const snapshot = hub.snapshot();
       return toolResult({ revision: snapshot.revision, diagnostics: snapshot.diagnostics });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_query', {
+    title: 'Query live map objects',
+    description: 'Find entities, brushes, or patches by classname, texture, entity property, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
+    inputSchema: {
+      kind: z.enum(['entity', 'brush', 'patch']).optional(),
+      classname: z.string().optional().describe('Exact entity classname; geometry results are limited to geometry owned by matching entities'),
+      texture: z.string().optional().describe('Case-insensitive texture name substring'),
+      propertyKey: z.string().optional().describe('Entity property key that must exist'),
+      propertyValue: z.string().optional().describe('Case-insensitive value substring; requires propertyKey'),
+      mins: compatibleVec3.optional().describe('Minimum world-space bounds; must be provided together with maxs'),
+      maxs: compatibleVec3.optional().describe('Maximum world-space bounds; must be provided together with mins'),
+      boundsMode: z.enum(['intersects', 'inside']).optional().default('intersects'),
+      limit: z.number().int().min(1).max(500).optional().default(100),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ kind, classname, texture, propertyKey, propertyValue, mins, maxs, boundsMode, limit }) => {
+    try {
+      if ((mins && !maxs) || (!mins && maxs)) throw new Error('mins and maxs must be provided together');
+      if (propertyValue !== undefined && !propertyKey) throw new Error('propertyValue requires propertyKey');
+      const snapshot = hub.snapshot();
+      const options: MapQueryOptions = {
+        kind,
+        classname,
+        texture,
+        propertyKey,
+        propertyValue,
+        bounds: mins && maxs ? {
+          mins: mins as [number, number, number],
+          maxs: maxs as [number, number, number],
+          mode: boundsMode,
+        } : undefined,
+        limit,
+      };
+      const matches = queryMap(snapshot.mapText, options);
+      return toolResult({ revision: snapshot.revision, count: matches.length, matches });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('texture_search', {
+    title: 'Search loaded textures',
+    description: 'Search the texture assets currently loaded by Q3Edit. Use returned names when creating or texturing geometry.',
+    inputSchema: {
+      query: z.string().optional().default(''),
+      limit: z.number().int().min(1).max(200).optional().default(50),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ query, limit }) => {
+    try {
+      return toolResult(await hub.textureSearch(query, limit));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('texture_preview', {
+    title: 'Preview a loaded texture',
+    description: 'Return an image preview for an exact texture name from texture_search.',
+    inputSchema: { name: z.string().min(1) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ name }) => {
+    try {
+      const preview = await hub.texturePreview(name);
+      return {
+        content: [
+          { type: 'text' as const, text: `Texture preview: ${preview.name}` },
+          { type: 'image' as const, data: preview.data, mimeType: preview.mimeType },
+        ],
+        structuredContent: { name: preview.name, mimeType: preview.mimeType },
+      };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('entity_class_search', {
+    title: 'Search entity classes',
+    description: 'Search Q3Edit entity definitions by classname, category, or description before creating an entity.',
+    inputSchema: {
+      query: z.string().optional().default(''),
+      classType: z.enum(['point', 'brush']).optional(),
+      limit: z.number().int().min(1).max(200).optional().default(50),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ query, classType, limit }) => {
+    try {
+      return toolResult(await hub.entityClassSearch(query, classType, limit));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('entity_class_schema', {
+    title: 'Get an entity class schema',
+    description: 'Return the full live definition, defaults, typed properties, and spawnflags for an exact entity classname.',
+    inputSchema: { classname: z.string().min(1) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ classname }) => {
+    try {
+      return toolResult(await hub.entityClassSchema(classname));
     } catch (error) {
       return toolError(error);
     }

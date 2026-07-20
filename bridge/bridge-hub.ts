@@ -89,6 +89,22 @@ export class BridgeHub {
     return message.snapshot;
   }
 
+  async textureSearch(query: string, limit: number): Promise<unknown> {
+    return this.capabilityRequest({ type: 'texture_search', requestId: randomUUID(), query, limit });
+  }
+
+  async texturePreview(name: string): Promise<{ name: string; mimeType: string; data: string }> {
+    return await this.capabilityRequest({ type: 'texture_preview', requestId: randomUUID(), name }) as { name: string; mimeType: string; data: string };
+  }
+
+  async entityClassSearch(query: string, classType: 'point' | 'brush' | undefined, limit: number): Promise<unknown> {
+    return this.capabilityRequest({ type: 'entity_class_search', requestId: randomUUID(), query, classType, limit });
+  }
+
+  async entityClassSchema(classname: string): Promise<unknown> {
+    return this.capabilityRequest({ type: 'entity_class_schema', requestId: randomUUID(), classname });
+  }
+
   async saveMap(path = this.activeMapPath): Promise<{ path: string; revision: number }> {
     if (!path) throw new Error('No map path is active; pass a path to map_save or call map_open first');
     const snapshot = await this.requestSnapshot();
@@ -112,6 +128,12 @@ export class BridgeHub {
       this.pending.set(message.requestId, { resolve, reject, timer });
       this.send(message);
     });
+  }
+
+  private async capabilityRequest(message: BridgeToEditorMessage & { requestId: string }): Promise<unknown> {
+    const response = await this.request(message);
+    if (response.type !== 'capability_result') throw new Error('Editor returned an unexpected capability response');
+    return response.result;
   }
 
   private send(message: BridgeToEditorMessage): void {

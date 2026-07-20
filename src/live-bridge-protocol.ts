@@ -25,6 +25,10 @@ export type BridgeToEditorMessage =
       mapText: string;
     }
   | { type: 'request_snapshot'; requestId: string }
+  | { type: 'texture_search'; requestId: string; query: string; limit: number }
+  | { type: 'texture_preview'; requestId: string; name: string }
+  | { type: 'entity_class_search'; requestId: string; query: string; classType?: 'point' | 'brush'; limit: number }
+  | { type: 'entity_class_schema'; requestId: string; classname: string }
   | { type: 'mark_saved'; revision: number };
 
 export type EditorToBridgeMessage =
@@ -33,4 +37,5 @@ export type EditorToBridgeMessage =
   | { type: 'operation_result'; requestId: string; result: MapOperationResult; snapshot: LiveMapSnapshot }
   | { type: 'document_replaced'; requestId: string; snapshot: LiveMapSnapshot }
   | { type: 'snapshot'; requestId: string; snapshot: LiveMapSnapshot }
+  | { type: 'capability_result'; requestId: string; result: unknown }
   | { type: 'operation_error'; requestId: string; message: string; revision: number };

@@ -65,6 +65,26 @@ class FakeEditorSocket extends EventEmitter {
       }));
     } else if (request.type === 'request_snapshot') {
       queueMicrotask(() => this.emitMessage({ type: 'snapshot', requestId: request.requestId, snapshot: snapshot() }));
+    } else if (request.type === 'texture_search') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { query: request.query, matches: [{ name: 'base_wall/metal' }] },
+      }));
+    } else if (request.type === 'texture_preview') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { name: request.name, mimeType: 'image/png', data: 'aW1hZ2U=' },
+      }));
+    } else if (request.type === 'entity_class_search') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { query: request.query, matches: [{ classname: 'light', type: 'point' }] },
+      }));
+    } else if (request.type === 'entity_class_schema') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { classname: request.classname, type: 'point', properties: { light: { type: 'number' } } },
+      }));
     }
   }
 
@@ -136,6 +156,11 @@ describe('live MCP bridge', () => {
         'map_entities',
         'map_inspect',
         'map_validate',
+        'map_query',
+        'texture_search',
+        'texture_preview',
+        'entity_class_search',
+        'entity_class_schema',
         'map_apply',
         'map_open',
         'map_save',
@@ -146,6 +171,17 @@ describe('live MCP bridge', () => {
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ editorConnected: true, snapshot: { revision: 4 } });
+
+      const textures = await client.callTool({ name: 'texture_search', arguments: { query: 'metal' } });
+      expect(textures.structuredContent).toMatchObject({ matches: [{ name: 'base_wall/metal' }] });
+
+      const preview = await client.callTool({ name: 'texture_preview', arguments: { name: 'base_wall/metal' } });
+      expect(preview.content).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'image', mimeType: 'image/png', data: 'aW1hZ2U=' }),
+      ]));
+
+      const entityClasses = await client.callTool({ name: 'entity_class_search', arguments: { query: 'light' } });
+      expect(entityClasses.structuredContent).toMatchObject({ matches: [{ classname: 'light' }] });
 
       const applied = await client.callTool({
         name: 'map_apply',
