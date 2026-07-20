@@ -87,7 +87,7 @@ app.delete('/mcp', async (req, res) => {
   await transport.handleRequest(req, res);
 });
 
-app.get('/bridge/status', (_, res) => res.json(hub.status()));
+app.get('/bridge/status', (_, res) => res.json({ sessions: hub.listSessions() }));
 if (existsSync(q3mapDistPath)) app.use('/q3map-compiler/dist', express.static(q3mapDistPath));
 else console.warn(`q3map artifacts are unavailable at ${q3mapDistPath}; run npm run build:q3map to enable map_compile`);
 app.use(express.static(distPath));
@@ -99,7 +99,10 @@ const httpServer = app.listen(options.port, options.host, error => {
 });
 
 const webSockets = new WebSocketServer({ server: httpServer, path: '/editor' });
-webSockets.on('connection', socket => hub.attachEditor(socket));
+webSockets.on('connection', (socket, request) => {
+  const url = new URL(request.url ?? '/editor', `http://${request.headers.host ?? '127.0.0.1'}`);
+  hub.attachEditor(socket, url.searchParams.get('sessionId') ?? undefined);
+});
 
 let shuttingDown = false;
 

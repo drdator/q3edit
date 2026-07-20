@@ -12,37 +12,99 @@ interface PendingRequest {
 }
 
 export interface BridgeStatus {
+  sessionId: string;
   editorConnected: boolean;
   activeMapPath: string | null;
   snapshot: Omit<LiveMapSnapshot, 'mapText'> | null;
 }
 
-export class BridgeHub {
-  private editorSocket: WebSocket | null = null;
-  private currentSnapshot: LiveMapSnapshot | null = null;
-  private pending = new Map<string, PendingRequest>();
-  activeMapPath: string | null = null;
+export interface EditorSessionSummary {
+  sessionId: string;
+  connected: boolean;
+  fileName: string | null;
+  revision: number | null;
+  activeMapPath: string | null;
+  connectedAt: string;
+  lastActiveAt: string;
+}
 
-  attachEditor(socket: WebSocket): void {
-    this.editorSocket?.close(1012, 'A newer Q3Edit connection replaced this editor');
-    this.editorSocket = socket;
-    socket.on('message', data => this.handleEditorMessage(String(data)));
-    socket.on('close', () => {
-      if (this.editorSocket !== socket) return;
-      this.editorSocket = null;
-      for (const [requestId, pending] of this.pending) {
+interface EditorSession {
+  id: string;
+  socket: WebSocket;
+  snapshot: LiveMapSnapshot | null;
+  pending: Map<string, PendingRequest>;
+  activeMapPath: string | null;
+  connectedAt: number;
+  lastActiveAt: number;
+}
+
+export class BridgeHub {
+  private sessions = new Map<string, EditorSession>();
+
+  attachEditor(socket: WebSocket, requestedSessionId: string = randomUUID()): string {
+    const sessionId = requestedSessionId.trim() || randomUUID();
+    const previous = this.sessions.get(sessionId);
+    const now = Date.now();
+    if (previous) {
+      for (const [requestId, pending] of previous.pending) {
         clearTimeout(pending.timer);
-        pending.reject(new Error(`Editor disconnected while handling ${requestId}`));
+        pending.reject(new Error(`Editor session ${sessionId} reconnected while handling ${requestId}`));
       }
-      this.pending.clear();
+      previous.socket.close(1012, 'This Q3Edit session reconnected');
+    }
+    const session: EditorSession = {
+      id: sessionId,
+      socket,
+      snapshot: previous?.snapshot ?? null,
+      pending: new Map(),
+      activeMapPath: previous?.activeMapPath ?? null,
+      connectedAt: previous?.connectedAt ?? now,
+      lastActiveAt: now,
+    };
+    this.sessions.set(sessionId, session);
+    socket.on('message', data => this.handleEditorMessage(session, String(data)));
+    socket.on('close', () => {
+      if (this.sessions.get(sessionId)?.socket !== socket) return;
+      this.sessions.delete(sessionId);
+      for (const [requestId, pending] of session.pending) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error(`Editor session ${sessionId} disconnected while handling ${requestId}`));
+      }
+      session.pending.clear();
     });
+    return sessionId;
   }
 
-  status(): BridgeStatus {
-    const snapshot = this.currentSnapshot;
+  listSessions(): EditorSessionSummary[] {
+    return [...this.sessions.values()].map(session => ({
+      sessionId: session.id,
+      connected: session.socket.readyState === 1,
+      fileName: session.snapshot?.fileName ?? null,
+      revision: session.snapshot?.revision ?? null,
+      activeMapPath: session.activeMapPath,
+      connectedAt: new Date(session.connectedAt).toISOString(),
+      lastActiveAt: new Date(session.lastActiveAt).toISOString(),
+    })).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+  }
+
+  resolveSessionId(requestedSessionId?: string): string {
+    if (requestedSessionId) {
+      if (!this.sessions.has(requestedSessionId)) throw new Error(`Q3Edit editor session ${requestedSessionId} is not connected`);
+      return requestedSessionId;
+    }
+    const connected = [...this.sessions.values()].filter(session => session.socket.readyState === 1);
+    if (connected.length === 0) throw new Error('No Q3Edit browser is connected; open the bridge editor URL first');
+    if (connected.length > 1) throw new Error(`Multiple Q3Edit editor sessions are connected (${connected.map(session => session.id).join(', ')}); pass sessionId or call editor_session_select`);
+    return connected[0].id;
+  }
+
+  status(sessionId?: string): BridgeStatus {
+    const session = this.session(sessionId);
+    const snapshot = session.snapshot;
     return {
-      editorConnected: this.editorSocket?.readyState === 1,
-      activeMapPath: this.activeMapPath,
+      sessionId: session.id,
+      editorConnected: session.socket.readyState === 1,
+      activeMapPath: session.activeMapPath,
       snapshot: snapshot ? {
         fileName: snapshot.fileName,
         revision: snapshot.revision,
@@ -53,13 +115,14 @@ export class BridgeHub {
     };
   }
 
-  snapshot(): LiveMapSnapshot {
-    if (!this.currentSnapshot) throw new Error('No Q3Edit browser is connected yet');
-    return this.currentSnapshot;
+  snapshot(sessionId?: string): LiveMapSnapshot {
+    const session = this.session(sessionId);
+    if (!session.snapshot) throw new Error(`Q3Edit editor session ${session.id} has not sent its document yet`);
+    return session.snapshot;
   }
 
-  async applyOperations(expectedRevision: number, label: string, operations: MapOperation[]): Promise<{ result: MapOperationResult; snapshot: LiveMapSnapshot }> {
-    const message = await this.request({
+  async applyOperations(expectedRevision: number, label: string, operations: MapOperation[], sessionId?: string): Promise<{ result: MapOperationResult; snapshot: LiveMapSnapshot }> {
+    const message = await this.request(sessionId, {
       type: 'apply_operations',
       requestId: randomUUID(),
       expectedRevision,
@@ -70,120 +133,129 @@ export class BridgeHub {
     return { result: message.result, snapshot: message.snapshot };
   }
 
-  async previewOperations(expectedRevision: number, label: string, operations: MapOperation[]): Promise<unknown> {
-    return this.capabilityRequest({
+  async previewOperations(expectedRevision: number, label: string, operations: MapOperation[], sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, {
       type: 'preview_operations', requestId: randomUUID(), expectedRevision, label, operations,
     });
   }
 
-  async openMap(path: string): Promise<LiveMapSnapshot> {
+  async openMap(path: string, sessionId?: string): Promise<LiveMapSnapshot> {
     const mapText = await readFile(path, 'utf8');
-    const message = await this.request({
+    const session = this.session(sessionId);
+    const message = await this.request(session.id, {
       type: 'replace_document',
       requestId: randomUUID(),
       fileName: basename(path),
       mapText,
     });
     if (message.type !== 'document_replaced') throw new Error('Editor returned an unexpected open response');
-    this.activeMapPath = path;
+    session.activeMapPath = path;
     return message.snapshot;
   }
 
-  async requestSnapshot(): Promise<LiveMapSnapshot> {
-    const message = await this.request({ type: 'request_snapshot', requestId: randomUUID() });
+  async requestSnapshot(sessionId?: string): Promise<LiveMapSnapshot> {
+    const message = await this.request(sessionId, { type: 'request_snapshot', requestId: randomUUID() });
     if (message.type !== 'snapshot') throw new Error('Editor returned an unexpected snapshot response');
     return message.snapshot;
   }
 
-  async textureSearch(query: string, limit: number): Promise<unknown> {
-    return this.capabilityRequest({ type: 'texture_search', requestId: randomUUID(), query, limit });
+  async textureSearch(query: string, limit: number, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'texture_search', requestId: randomUUID(), query, limit });
   }
 
-  async texturePreview(name: string): Promise<{ name: string; mimeType: string; data: string }> {
-    return await this.capabilityRequest({ type: 'texture_preview', requestId: randomUUID(), name }) as { name: string; mimeType: string; data: string };
+  async texturePreview(name: string, sessionId?: string): Promise<{ name: string; mimeType: string; data: string }> {
+    return await this.capabilityRequest(sessionId, { type: 'texture_preview', requestId: randomUUID(), name }) as { name: string; mimeType: string; data: string };
   }
 
-  async texturePreviews(names: string[]): Promise<Array<{ name: string; mimeType: string; data: string }>> {
-    return Promise.all(names.map(name => this.texturePreview(name)));
+  async texturePreviews(names: string[], sessionId?: string): Promise<Array<{ name: string; mimeType: string; data: string }>> {
+    const resolvedSessionId = this.resolveSessionId(sessionId);
+    return Promise.all(names.map(name => this.texturePreview(name, resolvedSessionId)));
   }
 
-  async entityClassSearch(query: string, classType: 'point' | 'brush' | undefined, limit: number): Promise<unknown> {
-    return this.capabilityRequest({ type: 'entity_class_search', requestId: randomUUID(), query, classType, limit });
+  async entityClassSearch(query: string, classType: 'point' | 'brush' | undefined, limit: number, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'entity_class_search', requestId: randomUUID(), query, classType, limit });
   }
 
-  async entityClassSchema(classname: string): Promise<unknown> {
-    return this.capabilityRequest({ type: 'entity_class_schema', requestId: randomUUID(), classname });
+  async entityClassSchema(classname: string, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'entity_class_schema', requestId: randomUUID(), classname });
   }
 
-  async selectObjects(refs: string[], replace: boolean): Promise<unknown> {
-    return this.capabilityRequest({ type: 'editor_select', requestId: randomUUID(), refs, replace });
+  async selectObjects(refs: string[], replace: boolean, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'editor_select', requestId: randomUUID(), refs, replace });
   }
 
-  async frameObjects(refs: string[]): Promise<unknown> {
-    return this.capabilityRequest({ type: 'editor_frame_objects', requestId: randomUUID(), refs });
+  async frameObjects(refs: string[], sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'editor_frame_objects', requestId: randomUUID(), refs });
   }
 
-  async setCamera(position: [number, number, number], yaw: number, pitch: number): Promise<unknown> {
-    return this.capabilityRequest({ type: 'editor_set_camera', requestId: randomUUID(), position, yaw, pitch });
+  async setCamera(position: [number, number, number], yaw: number, pitch: number, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'editor_set_camera', requestId: randomUUID(), position, yaw, pitch });
   }
 
-  async screenshot(width?: number, height?: number, hideEntityMarkers?: boolean): Promise<{ mimeType: string; data: string; width: number; height: number }> {
-    return await this.capabilityRequest({ type: 'editor_screenshot', requestId: randomUUID(), width, height, hideEntityMarkers }) as {
+  async screenshot(width?: number, height?: number, hideEntityMarkers?: boolean, sessionId?: string): Promise<{ mimeType: string; data: string; width: number; height: number }> {
+    return await this.capabilityRequest(sessionId, { type: 'editor_screenshot', requestId: randomUUID(), width, height, hideEntityMarkers }) as {
       mimeType: string; data: string; width: number; height: number;
     };
   }
 
-  async compileMap(quality: 'fast' | 'normal' | 'full'): Promise<unknown> {
-    return this.capabilityRequest({ type: 'map_compile', requestId: randomUUID(), quality }, 180_000);
+  async compileMap(quality: 'fast' | 'normal' | 'full', sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'map_compile', requestId: randomUUID(), quality }, 180_000);
   }
 
-  async playMap(noclip: boolean): Promise<unknown> {
-    return this.capabilityRequest({ type: 'map_play', requestId: randomUUID(), noclip });
+  async playMap(noclip: boolean, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'map_play', requestId: randomUUID(), noclip });
   }
 
-  async gameScreenshot(): Promise<{ mimeType: string; data: string; width: number; height: number }> {
-    return await this.capabilityRequest({ type: 'game_screenshot', requestId: randomUUID() }) as {
+  async gameScreenshot(sessionId?: string): Promise<{ mimeType: string; data: string; width: number; height: number }> {
+    return await this.capabilityRequest(sessionId, { type: 'game_screenshot', requestId: randomUUID() }) as {
       mimeType: string; data: string; width: number; height: number;
     };
   }
 
-  async saveMap(path = this.activeMapPath): Promise<{ path: string; revision: number }> {
+  async saveMap(path?: string, sessionId?: string): Promise<{ path: string; revision: number }> {
+    const session = this.session(sessionId);
+    path ??= session.activeMapPath ?? undefined;
     if (!path) throw new Error('No map path is active; pass a path to map_save or call map_open first');
-    const snapshot = await this.requestSnapshot();
+    const snapshot = await this.requestSnapshot(session.id);
     const temporaryPath = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
     await writeFile(temporaryPath, snapshot.mapText, 'utf8');
     await rename(temporaryPath, path);
-    this.activeMapPath = path;
-    this.send({ type: 'mark_saved', revision: snapshot.revision });
+    session.activeMapPath = path;
+    this.send(session, { type: 'mark_saved', revision: snapshot.revision });
     return { path, revision: snapshot.revision };
   }
 
-  private request(message: BridgeToEditorMessage & { requestId: string }, timeoutMs = 30_000): Promise<EditorToBridgeMessage> {
-    if (!this.editorSocket || this.editorSocket.readyState !== 1) {
-      return Promise.reject(new Error('No Q3Edit browser is connected; open the bridge editor URL first'));
-    }
+  private session(sessionId?: string): EditorSession {
+    const resolvedSessionId = this.resolveSessionId(sessionId);
+    return this.sessions.get(resolvedSessionId)!;
+  }
+
+  private request(sessionId: string | undefined, message: BridgeToEditorMessage & { requestId: string }, timeoutMs = 30_000): Promise<EditorToBridgeMessage> {
+    const session = this.session(sessionId);
+    if (session.socket.readyState !== 1) return Promise.reject(new Error(`Q3Edit editor session ${session.id} is not connected`));
+    session.lastActiveAt = Date.now();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(message.requestId);
-        reject(new Error(`Editor request ${message.requestId} timed out`));
+        session.pending.delete(message.requestId);
+        reject(new Error(`Editor session ${session.id} request ${message.requestId} timed out`));
       }, timeoutMs);
-      this.pending.set(message.requestId, { resolve, reject, timer });
-      this.send(message);
+      session.pending.set(message.requestId, { resolve, reject, timer });
+      this.send(session, message);
     });
   }
 
-  private async capabilityRequest(message: BridgeToEditorMessage & { requestId: string }, timeoutMs?: number): Promise<unknown> {
-    const response = await this.request(message, timeoutMs);
+  private async capabilityRequest(sessionId: string | undefined, message: BridgeToEditorMessage & { requestId: string }, timeoutMs?: number): Promise<unknown> {
+    const response = await this.request(sessionId, message, timeoutMs);
     if (response.type !== 'capability_result') throw new Error('Editor returned an unexpected capability response');
     return response.result;
   }
 
-  private send(message: BridgeToEditorMessage): void {
-    if (!this.editorSocket || this.editorSocket.readyState !== 1) throw new Error('No Q3Edit browser is connected');
-    this.editorSocket.send(JSON.stringify(message));
+  private send(session: EditorSession, message: BridgeToEditorMessage): void {
+    if (session.socket.readyState !== 1) throw new Error(`Q3Edit editor session ${session.id} is not connected`);
+    session.socket.send(JSON.stringify(message));
   }
 
-  private handleEditorMessage(raw: string): void {
+  private handleEditorMessage(session: EditorSession, raw: string): void {
     let message: EditorToBridgeMessage;
     try {
       message = JSON.parse(raw) as EditorToBridgeMessage;
@@ -192,19 +264,24 @@ export class BridgeHub {
       return;
     }
 
-    if ('snapshot' in message) this.currentSnapshot = message.snapshot;
+    session.lastActiveAt = Date.now();
+    const previousFileName = session.snapshot?.fileName;
+    if ('snapshot' in message) session.snapshot = message.snapshot;
     if (message.type === 'editor_ready') {
-      this.activeMapPath = null;
+      if (previousFileName && previousFileName !== message.snapshot.fileName) session.activeMapPath = null;
       return;
     }
-    if (message.type === 'document_changed') return;
+    if (message.type === 'document_changed') {
+      if (previousFileName && previousFileName !== message.snapshot.fileName) session.activeMapPath = null;
+      return;
+    }
 
     const requestId = message.requestId;
-    const pending = this.pending.get(requestId);
+    const pending = session.pending.get(requestId);
     if (!pending) return;
     clearTimeout(pending.timer);
-    this.pending.delete(requestId);
-    if (message.type === 'operation_error') pending.reject(new Error(message.message));
+    session.pending.delete(requestId);
+    if (message.type === 'operation_error') pending.reject(new Error(`Editor session ${session.id}: ${message.message}`));
     else pending.resolve(message);
   }
 }

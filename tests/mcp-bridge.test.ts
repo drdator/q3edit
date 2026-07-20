@@ -144,7 +144,7 @@ class FakeEditorSocket extends EventEmitter {
 function connectedHub(): { hub: BridgeHub; socket: FakeEditorSocket } {
   const hub = new BridgeHub();
   const socket = new FakeEditorSocket();
-  hub.attachEditor(socket as unknown as WebSocket);
+  hub.attachEditor(socket as unknown as WebSocket, 'editor-a');
   socket.emitMessage({ type: 'editor_ready', snapshot: snapshot() });
   return { hub, socket };
 }
@@ -172,6 +172,28 @@ describe('live MCP bridge', () => {
     expect(hub.status().snapshot?.revision).toBe(5);
   });
 
+  test('keeps multiple editor sessions stable and rejects ambiguous routing', async () => {
+    const hub = new BridgeHub();
+    const first = new FakeEditorSocket();
+    const second = new FakeEditorSocket();
+    hub.attachEditor(first as unknown as WebSocket, 'editor-a');
+    hub.attachEditor(second as unknown as WebSocket, 'editor-b');
+    first.emitMessage({ type: 'editor_ready', snapshot: { ...snapshot(4), fileName: 'first.map' } });
+    second.emitMessage({ type: 'editor_ready', snapshot: { ...snapshot(10), fileName: 'second.map' } });
+
+    expect(() => hub.status()).toThrow(/Multiple Q3Edit editor sessions/);
+    expect(hub.status('editor-a')).toMatchObject({ sessionId: 'editor-a', snapshot: { fileName: 'first.map', revision: 4 } });
+    expect(hub.status('editor-b')).toMatchObject({ sessionId: 'editor-b', snapshot: { fileName: 'second.map', revision: 10 } });
+
+    await hub.applyOperations(4, 'MCP: First only', [
+      { type: 'create_box', mins: [0, 0, 0], maxs: [32, 32, 32] },
+    ], 'editor-a');
+    expect(first.sent).toHaveLength(1);
+    expect(second.sent).toHaveLength(0);
+    expect(hub.status('editor-a').snapshot?.revision).toBe(5);
+    expect(hub.status('editor-b').snapshot?.revision).toBe(10);
+  });
+
   test('writes a requested browser snapshot to disk', async () => {
     const { hub } = connectedHub();
     const directory = await mkdtemp(join(tmpdir(), 'q3edit-mcp-test-'));
@@ -195,6 +217,8 @@ describe('live MCP bridge', () => {
     try {
       const tools = await client.listTools();
       expect(tools.tools.map(tool => tool.name)).toEqual([
+        'editor_sessions',
+        'editor_session_select',
         'map_status',
         'map_entities',
         'map_inspect',
@@ -227,7 +251,15 @@ describe('live MCP bridge', () => {
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
-      expect(status.structuredContent).toMatchObject({ editorConnected: true, snapshot: { revision: 4 } });
+      expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });
+
+      const sessions = await client.callTool({ name: 'editor_sessions', arguments: {} });
+      expect(sessions.structuredContent).toMatchObject({
+        selectedSessionId: null,
+        sessions: [{ sessionId: 'editor-a', fileName: 'live.map', revision: 4 }],
+      });
+      const selected = await client.callTool({ name: 'editor_session_select', arguments: { sessionId: 'editor-a' } });
+      expect(selected.structuredContent).toMatchObject({ selectedSessionId: 'editor-a' });
 
       const lint = await client.callTool({ name: 'map_gameplay_lint', arguments: {} });
       expect(lint.structuredContent).toMatchObject({ revision: 4, issueCount: 0 });

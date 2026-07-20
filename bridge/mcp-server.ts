@@ -13,6 +13,8 @@ const operationRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?|@[A-Za-z][A-Za-z0-9
 const faceRef = z.string().regex(/^(?:E\d+:B\d+:F\d+|@[A-Za-z][A-Za-z0-9_-]{0,63}(?::F\d+)?)$/, 'Expected a face reference such as E0:B2:F4, @trim, or @trim:F4');
 const compatibleTargetRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?(?::F\d+)?|@[A-Za-z][A-Za-z0-9_-]{0,63}(?::F\d+)?)$/);
 const symbolicId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
+const editorSessionId = z.string().min(1).max(160);
+const sessionInput = { sessionId: editorSessionId.optional().describe('Explicit editor session; otherwise uses this MCP connection’s selected session or the sole connected editor') };
 
 const mapOperation = z.discriminatedUnion('type', [
   z.object({
@@ -220,6 +222,7 @@ const compatibleMapOperationInput = z.object({
 });
 
 const mapOperationBatchInputSchema = {
+  ...sessionInput,
   expectedRevision: z.number().int().nonnegative(),
   label: z.string().min(1).max(120).describe('Undo or preview label, for example MCP: Add side room'),
   operations: z.array(compatibleMapOperationInput).min(1).max(128),
@@ -246,29 +249,65 @@ function validatedMapOperations(operations: unknown[]): MapOperation[] {
 }
 
 export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
+  let selectedEditorSessionId: string | undefined;
+  const session = (requested?: string): string => hub.resolveSessionId(requested ?? selectedEditorSessionId);
+  const sessionValue = (sessionId: string, value: unknown): Record<string, unknown> => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return { sessionId, ...(value as Record<string, unknown>) };
+    return { sessionId, result: value };
+  };
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
-    instructions: 'Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references are revision-sensitive. Creation operations may declare id and later operations in the same batch may target @id. Use assign_group when objects need a stable identity across later revisions or reloads.',
+    instructions: 'Call editor_sessions first when more than one Q3Edit browser may be open, then pass sessionId or select one with editor_session_select. Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
+  });
+
+  server.registerTool('editor_sessions', {
+    title: 'List connected Q3Edit editor sessions',
+    description: 'List stable browser-tab session IDs with filenames, revisions, active save paths, and activity timestamps. Use this before document tools when multiple editors are open.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async () => toolResult({ selectedSessionId: selectedEditorSessionId ?? null, sessions: hub.listSessions() }));
+
+  server.registerTool('editor_session_select', {
+    title: 'Select a Q3Edit editor session',
+    description: 'Set the default editor session for subsequent tools on this MCP connection. Explicit sessionId arguments still override it.',
+    inputSchema: { sessionId: editorSessionId },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      selectedEditorSessionId = hub.resolveSessionId(sessionId);
+      return toolResult({ selectedSessionId: selectedEditorSessionId, status: hub.status(selectedEditorSessionId) });
+    } catch (error) {
+      return toolError(error);
+    }
   });
 
   server.registerTool('map_status', {
     title: 'Get live Q3Edit map status',
     description: 'Return the connected editor, active map, revision, map counts, and diagnostics summary.',
-    inputSchema: {},
+    inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async () => toolResult(hub.status()));
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      return toolResult(hub.status(resolved));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
 
   server.registerTool('map_entities', {
     title: 'List live map entities',
     description: 'List entity references, classnames, property counts, geometry counts, targets, and diagnostics.',
     inputSchema: {
+      ...sessionInput,
       classname: z.string().optional().describe('Optional exact classname filter'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ classname }) => {
+  }, async ({ sessionId, classname }) => {
     try {
-      const snapshot = hub.snapshot();
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
       const entities = classname ? snapshot.entities.filter(entity => entity.classname === classname) : snapshot.entities;
-      return toolResult({ revision: snapshot.revision, entities });
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, entities });
     } catch (error) {
       return toolError(error);
     }
@@ -278,14 +317,17 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Inspect live map objects',
     description: 'Return properties, bounds, textures, and optional geometry for current revision object references.',
     inputSchema: {
+      ...sessionInput,
       refs: z.array(objectRef).min(1).max(50),
       includeGeometry: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ refs, includeGeometry }) => {
+  }, async ({ sessionId, refs, includeGeometry }) => {
     try {
-      const snapshot = hub.snapshot();
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
       return toolResult({
+        sessionId: resolved,
         revision: snapshot.revision,
         objects: inspectMapObjects(snapshot.mapText, refs as MapDocumentRef[], includeGeometry),
       });
@@ -297,12 +339,13 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('map_validate', {
     title: 'Validate live map',
     description: 'Return all current parser, geometry, entity-link, texture, and model diagnostics from Q3Edit.',
-    inputSchema: {},
+    inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async () => {
+  }, async ({ sessionId }) => {
     try {
-      const snapshot = hub.snapshot();
-      return toolResult({ revision: snapshot.revision, diagnostics: snapshot.diagnostics });
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, diagnostics: snapshot.diagnostics });
     } catch (error) {
       return toolError(error);
     }
@@ -311,13 +354,14 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('map_gameplay_lint', {
     title: 'Lint gameplay placement',
     description: 'Run approximate gameplay checks for point entities embedded in solids, player-spawn hull clearance, and pickup support height. Results include implicated object references.',
-    inputSchema: {},
+    inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async () => {
+  }, async ({ sessionId }) => {
     try {
-      const snapshot = hub.snapshot();
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
       const issues = lintGameplay(snapshot.mapText);
-      return toolResult({ revision: snapshot.revision, issueCount: issues.length, issues });
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, issueCount: issues.length, issues });
     } catch (error) {
       return toolError(error);
     }
@@ -327,12 +371,14 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Compile the live map',
     description: 'Run the browser-based q3map toolchain against the current document and return BSP success, leak status, byte size, structured diagnostics with implicated references where possible, and complete compiler output. Fast runs BSP only; normal adds fast VIS and LIGHT; full uses configured full VIS and LIGHT settings.',
     inputSchema: {
+      ...sessionInput,
       quality: z.enum(['fast', 'normal', 'full']).optional().default('fast'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ quality }) => {
+  }, async ({ sessionId, quality }) => {
     try {
-      return toolResult(await hub.compileMap(quality));
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.compileMap(quality, resolved)));
     } catch (error) {
       return toolError(error);
     }
@@ -342,22 +388,24 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Compile and playtest the live map',
     description: 'Compile the current map and launch the resulting BSP in Q3Edit’s browser ioquake3 preview. Noclip enables cheats and starts the noclip command for route inspection.',
     inputSchema: {
+      ...sessionInput,
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
       noclip: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ quality, noclip }) => {
+  }, async ({ sessionId, quality, noclip }) => {
     try {
-      const compile = await hub.compileMap(quality) as { success?: boolean; output?: string[] };
+      const resolved = session(sessionId);
+      const compile = await hub.compileMap(quality, resolved) as { success?: boolean; output?: string[] };
       if (!compile.success) {
         return {
           isError: true,
           content: [{ type: 'text' as const, text: JSON.stringify(compile, null, 2) }],
-          structuredContent: compile as Record<string, unknown>,
+          structuredContent: sessionValue(resolved, compile),
         };
       }
-      const launch = await hub.playMap(noclip);
-      return toolResult({ compile, launch }, `Compiled and launched the current map (${quality}${noclip ? ', noclip' : ''}).`);
+      const launch = await hub.playMap(noclip, resolved);
+      return toolResult({ sessionId: resolved, compile, launch }, `Compiled and launched editor session ${resolved} (${quality}${noclip ? ', noclip' : ''}).`);
     } catch (error) {
       return toolError(error);
     }
@@ -366,12 +414,13 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('map_groups', {
     title: 'List persistent map groups',
     description: 'List stable named groups and their current member references. Group names and IDs survive revisions, save, and reload.',
-    inputSchema: {},
+    inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async () => {
+  }, async ({ sessionId }) => {
     try {
-      const snapshot = hub.snapshot();
-      return toolResult({ revision: snapshot.revision, groups: inspectMapGroups(snapshot.mapText) });
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, groups: inspectMapGroups(snapshot.mapText) });
     } catch (error) {
       return toolError(error);
     }
@@ -381,6 +430,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Query live map objects',
     description: 'Find entities, brushes, or patches by classname, texture, entity property, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
     inputSchema: {
+      ...sessionInput,
       kind: z.enum(['entity', 'brush', 'face', 'patch']).optional(),
       classname: z.string().optional().describe('Exact entity classname; geometry results are limited to geometry owned by matching entities'),
       texture: z.string().optional().describe('Case-insensitive texture name substring'),
@@ -393,11 +443,12 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       limit: z.number().int().min(1).max(500).optional().default(100),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit }) => {
+  }, async ({ sessionId, kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit }) => {
     try {
       if ((mins && !maxs) || (!mins && maxs)) throw new Error('mins and maxs must be provided together');
       if (propertyValue !== undefined && !propertyKey) throw new Error('propertyValue requires propertyKey');
-      const snapshot = hub.snapshot();
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
       const options: MapQueryOptions = {
         kind,
         classname,
@@ -413,7 +464,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
         limit,
       };
       const matches = queryMap(snapshot.mapText, options);
-      return toolResult({ revision: snapshot.revision, count: matches.length, matches });
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, count: matches.length, matches });
     } catch (error) {
       return toolError(error);
     }
@@ -423,13 +474,15 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Search loaded textures',
     description: 'Search the texture assets currently loaded by Q3Edit. Use returned names when creating or texturing geometry.',
     inputSchema: {
+      ...sessionInput,
       query: z.string().optional().default(''),
       limit: z.number().int().min(1).max(200).optional().default(50),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ query, limit }) => {
+  }, async ({ sessionId, query, limit }) => {
     try {
-      return toolResult(await hub.textureSearch(query, limit));
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.textureSearch(query, limit, resolved)));
     } catch (error) {
       return toolError(error);
     }
@@ -438,17 +491,18 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('texture_preview', {
     title: 'Preview a loaded texture',
     description: 'Return an image preview for an exact texture name from texture_search.',
-    inputSchema: { name: z.string().min(1) },
+    inputSchema: { ...sessionInput, name: z.string().min(1) },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ name }) => {
+  }, async ({ sessionId, name }) => {
     try {
-      const preview = await hub.texturePreview(name);
+      const resolved = session(sessionId);
+      const preview = await hub.texturePreview(name, resolved);
       return {
         content: [
           { type: 'text' as const, text: `Texture preview: ${preview.name}` },
           { type: 'image' as const, data: preview.data, mimeType: preview.mimeType },
         ],
-        structuredContent: { name: preview.name, mimeType: preview.mimeType },
+        structuredContent: { sessionId: resolved, name: preview.name, mimeType: preview.mimeType },
       };
     } catch (error) {
       return toolError(error);
@@ -458,17 +512,18 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('texture_preview_many', {
     title: 'Preview several loaded textures',
     description: 'Return image previews for up to 12 exact previewable names from texture_search, useful for choosing a coherent palette in one call.',
-    inputSchema: { names: z.array(z.string().min(1)).min(1).max(12) },
+    inputSchema: { ...sessionInput, names: z.array(z.string().min(1)).min(1).max(12) },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ names }) => {
+  }, async ({ sessionId, names }) => {
     try {
-      const previews = await hub.texturePreviews(names);
+      const resolved = session(sessionId);
+      const previews = await hub.texturePreviews(names, resolved);
       return {
         content: previews.flatMap(preview => [
           { type: 'text' as const, text: preview.name },
           { type: 'image' as const, data: preview.data, mimeType: preview.mimeType },
         ]),
-        structuredContent: { textures: previews.map(({ name, mimeType }) => ({ name, mimeType })) },
+        structuredContent: { sessionId: resolved, textures: previews.map(({ name, mimeType }) => ({ name, mimeType })) },
       };
     } catch (error) {
       return toolError(error);
@@ -479,14 +534,16 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Search entity classes',
     description: 'Search Q3Edit entity definitions by classname, category, or description before creating an entity.',
     inputSchema: {
+      ...sessionInput,
       query: z.string().optional().default(''),
       classType: z.enum(['point', 'brush']).optional(),
       limit: z.number().int().min(1).max(200).optional().default(50),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ query, classType, limit }) => {
+  }, async ({ sessionId, query, classType, limit }) => {
     try {
-      return toolResult(await hub.entityClassSearch(query, classType, limit));
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.entityClassSearch(query, classType, limit, resolved)));
     } catch (error) {
       return toolError(error);
     }
@@ -495,11 +552,12 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('entity_class_schema', {
     title: 'Get an entity class schema',
     description: 'Return the full live definition, defaults, typed properties, spawnflags, and required incoming/outgoing target relationships for an exact entity classname.',
-    inputSchema: { classname: z.string().min(1) },
+    inputSchema: { ...sessionInput, classname: z.string().min(1) },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ classname }) => {
+  }, async ({ sessionId, classname }) => {
     try {
-      return toolResult(await hub.entityClassSchema(classname));
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.entityClassSchema(classname, resolved)));
     } catch (error) {
       return toolError(error);
     }
@@ -509,13 +567,15 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Select objects in Q3Edit',
     description: 'Select current-revision entity, brush, or patch references in the live editor so the user can inspect them.',
     inputSchema: {
+      ...sessionInput,
       refs: z.array(objectRef).min(1).max(100),
       replace: z.boolean().optional().default(true).describe('Replace the current selection; false adds to it'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ refs, replace }) => {
+  }, async ({ sessionId, refs, replace }) => {
     try {
-      return toolResult(await hub.selectObjects(refs, replace));
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.selectObjects(refs, replace, resolved)));
     } catch (error) {
       return toolError(error);
     }
@@ -524,11 +584,12 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('editor_frame_objects', {
     title: 'Frame objects in Q3Edit',
     description: 'Select object references and move all editor viewports to frame that selection.',
-    inputSchema: { refs: z.array(objectRef).min(1).max(100) },
+    inputSchema: { ...sessionInput, refs: z.array(objectRef).min(1).max(100) },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ refs }) => {
+  }, async ({ sessionId, refs }) => {
     try {
-      return toolResult(await hub.frameObjects(refs));
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.frameObjects(refs, resolved)));
     } catch (error) {
       return toolError(error);
     }
@@ -538,19 +599,22 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Position the Q3Edit 3D camera',
     description: 'Set the live 3D viewport camera using world coordinates and degree angles. Yaw is rotation around Z; pitch is positive when looking upward.',
     inputSchema: {
+      ...sessionInput,
       position: compatibleVec3,
       yawDegrees: z.number(),
       pitchDegrees: z.number().min(-89.8).max(89.8),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ position, yawDegrees, pitchDegrees }) => {
+  }, async ({ sessionId, position, yawDegrees, pitchDegrees }) => {
     try {
+      const resolved = session(sessionId);
       await hub.setCamera(
         position as [number, number, number],
         yawDegrees * Math.PI / 180,
         pitchDegrees * Math.PI / 180,
+        resolved,
       );
-      return toolResult({ position, yawDegrees, pitchDegrees });
+      return toolResult({ sessionId: resolved, position, yawDegrees, pitchDegrees });
     } catch (error) {
       return toolError(error);
     }
@@ -559,18 +623,19 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('editor_look_at', {
     title: 'Point the Q3Edit 3D camera at a target',
     description: 'Position the 3D camera and calculate yaw/pitch so it looks directly at a world-space target.',
-    inputSchema: { position: compatibleVec3, target: compatibleVec3 },
+    inputSchema: { ...sessionInput, position: compatibleVec3, target: compatibleVec3 },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ position, target }) => {
+  }, async ({ sessionId, position, target }) => {
     try {
+      const resolved = session(sessionId);
       const delta = target.map((value, axis) => value - position[axis]);
       const horizontal = Math.hypot(delta[0], delta[1]);
       if (horizontal < 1e-9 && Math.abs(delta[2]) < 1e-9) throw new Error('position and target must differ');
       const yaw = Math.atan2(delta[1], delta[0]);
       const pitch = Math.atan2(delta[2], horizontal);
-      await hub.setCamera(position as [number, number, number], yaw, pitch);
+      await hub.setCamera(position as [number, number, number], yaw, pitch, resolved);
       return toolResult({
-        position, target,
+        sessionId: resolved, position, target,
         yawDegrees: yaw * 180 / Math.PI,
         pitchDegrees: pitch * 180 / Math.PI,
       });
@@ -583,20 +648,23 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Capture the Q3Edit 3D viewport',
     description: 'Render and return a PNG of the live textured 3D viewport for visual review. Use editor_frame_objects or editor_set_camera first to control the view.',
     inputSchema: {
+      ...sessionInput,
       width: z.number().int().min(64).max(2048).optional(),
       height: z.number().int().min(64).max(2048).optional(),
       hideEntityMarkers: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ width, height, hideEntityMarkers }) => {
+  }, async ({ sessionId, width, height, hideEntityMarkers }) => {
     try {
-      const screenshot = await hub.screenshot(width, height, hideEntityMarkers);
+      const resolved = session(sessionId);
+      const screenshot = await hub.screenshot(width, height, hideEntityMarkers, resolved);
       return {
         content: [
           { type: 'text' as const, text: `Q3Edit 3D viewport · ${screenshot.width} × ${screenshot.height}` },
           { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
         ],
         structuredContent: {
+          sessionId: resolved,
           mimeType: screenshot.mimeType,
           width: screenshot.width,
           height: screenshot.height,
@@ -610,17 +678,18 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('game_screenshot', {
     title: 'Capture the compiled BSP playtest',
     description: 'Return a PNG from the currently running browser ioquake3 preview started by map_play.',
-    inputSchema: {},
+    inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async () => {
+  }, async ({ sessionId }) => {
     try {
-      const screenshot = await hub.gameScreenshot();
+      const resolved = session(sessionId);
+      const screenshot = await hub.gameScreenshot(resolved);
       return {
         content: [
           { type: 'text' as const, text: `Compiled BSP preview · ${screenshot.width} × ${screenshot.height}` },
           { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
         ],
-        structuredContent: { mimeType: screenshot.mimeType, width: screenshot.width, height: screenshot.height },
+        structuredContent: { sessionId: resolved, mimeType: screenshot.mimeType, width: screenshot.width, height: screenshot.height },
       };
     } catch (error) {
       return toolError(error);
@@ -632,9 +701,10 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     description: 'Run an operation batch against an in-memory clone of the current revision. Returns generated references, aliases, object bounds, map counts, and diagnostics without changing the live document or undo history.',
     inputSchema: mapOperationBatchInputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ expectedRevision, label, operations }) => {
+  }, async ({ sessionId, expectedRevision, label, operations }) => {
     try {
-      return toolResult(await hub.previewOperations(expectedRevision, label, validatedMapOperations(operations)));
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.previewOperations(expectedRevision, label, validatedMapOperations(operations), resolved)));
     } catch (error) {
       return toolError(error);
     }
@@ -644,6 +714,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Create a wired jump pad',
     description: 'Atomically create a trigger_push volume and its target_position apex, wire their target keys, and place both in a persistent named group.',
     inputSchema: {
+      ...sessionInput,
       expectedRevision: z.number().int().nonnegative(),
       mins: compatibleVec3,
       maxs: compatibleVec3,
@@ -652,16 +723,17 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       group: z.string().min(1).max(120).optional().default('Jump Pad'),
     },
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ expectedRevision, mins, maxs, apex, targetname, group }) => {
+  }, async ({ sessionId, expectedRevision, mins, maxs, apex, targetname, group }) => {
     try {
+      const resolved = session(sessionId);
       const link = targetname ?? `mcp_jump_${expectedRevision}`;
       const applied = await hub.applyOperations(expectedRevision, 'MCP: Create jump pad', [
         { type: 'create_entity', id: 'jump_trigger', classname: 'trigger_push', properties: { target: link } },
         { type: 'create_box', id: 'jump_volume', parent: '@jump_trigger', mins: mins as [number, number, number], maxs: maxs as [number, number, number], texture: 'common/trigger' },
         { type: 'create_entity', id: 'jump_apex', classname: 'target_position', origin: apex as [number, number, number], properties: { targetname: link } },
         { type: 'assign_group', targets: ['@jump_trigger', '@jump_apex'], group },
-      ]);
-      return toolResult({ ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
+      ], resolved);
+      return toolResult({ sessionId: resolved, ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
     } catch (error) {
       return toolError(error);
     }
@@ -671,6 +743,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Create a wired teleporter',
     description: 'Atomically create a trigger_teleport volume and misc_teleporter_dest, wire their target keys, and place both in a persistent named group.',
     inputSchema: {
+      ...sessionInput,
       expectedRevision: z.number().int().nonnegative(),
       mins: compatibleVec3,
       maxs: compatibleVec3,
@@ -680,16 +753,17 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       group: z.string().min(1).max(120).optional().default('Teleporter'),
     },
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ expectedRevision, mins, maxs, destination, exitAngle, targetname, group }) => {
+  }, async ({ sessionId, expectedRevision, mins, maxs, destination, exitAngle, targetname, group }) => {
     try {
+      const resolved = session(sessionId);
       const link = targetname ?? `mcp_teleport_${expectedRevision}`;
       const applied = await hub.applyOperations(expectedRevision, 'MCP: Create teleporter', [
         { type: 'create_entity', id: 'teleport_trigger', classname: 'trigger_teleport', properties: { target: link } },
         { type: 'create_box', id: 'teleport_volume', parent: '@teleport_trigger', mins: mins as [number, number, number], maxs: maxs as [number, number, number], texture: 'common/trigger' },
         { type: 'create_entity', id: 'teleport_destination', classname: 'misc_teleporter_dest', origin: destination as [number, number, number], properties: { targetname: link, angle: String(exitAngle) } },
         { type: 'assign_group', targets: ['@teleport_trigger', '@teleport_destination'], group },
-      ]);
-      return toolResult({ ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
+      ], resolved);
+      return toolResult({ sessionId: resolved, ...applied.result, targetname: link, mapInfo: applied.snapshot.mapInfo, diagnostics: applied.snapshot.diagnostics });
     } catch (error) {
       return toolError(error);
     }
@@ -700,11 +774,13 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, and convex plane brushes. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Use the advertised schema for exact fields.',
     inputSchema: mapOperationBatchInputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ expectedRevision, label, operations }) => {
+  }, async ({ sessionId, expectedRevision, label, operations }) => {
     try {
+      const resolved = session(sessionId);
       const validatedOperations = validatedMapOperations(operations);
-      const applied = await hub.applyOperations(expectedRevision, label, validatedOperations);
+      const applied = await hub.applyOperations(expectedRevision, label, validatedOperations, resolved);
       const value = {
+        sessionId: resolved,
         ...applied.result,
         mapInfo: applied.snapshot.mapInfo,
         diagnostics: applied.snapshot.diagnostics,
@@ -712,7 +788,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const aliases = Object.keys(applied.result.aliases).length > 0
         ? `\nAliases: ${JSON.stringify(applied.result.aliases)}`
         : '';
-      return toolResult(value, `${applied.result.summary}\nRevision: ${applied.result.revision}${aliases}`);
+      return toolResult(value, `${applied.result.summary}\nEditor session: ${resolved}\nRevision: ${applied.result.revision}${aliases}`);
     } catch (error) {
       return toolError(error);
     }
@@ -721,12 +797,13 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('map_open', {
     title: 'Open map in Q3Edit',
     description: 'Read a local .map file and replace the connected browser document with it.',
-    inputSchema: { path: z.string().min(1) },
+    inputSchema: { ...sessionInput, path: z.string().min(1) },
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ path }) => {
+  }, async ({ sessionId, path }) => {
     try {
-      const snapshot = await hub.openMap(path);
-      return toolResult({ path, revision: snapshot.revision, mapInfo: snapshot.mapInfo, diagnostics: snapshot.diagnostics });
+      const resolved = session(sessionId);
+      const snapshot = await hub.openMap(path, resolved);
+      return toolResult({ sessionId: resolved, path, revision: snapshot.revision, mapInfo: snapshot.mapInfo, diagnostics: snapshot.diagnostics });
     } catch (error) {
       return toolError(error);
     }
@@ -735,12 +812,13 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   server.registerTool('map_save', {
     title: 'Save live map',
     description: 'Atomically save the connected browser document to the active path or a supplied local path.',
-    inputSchema: { path: z.string().min(1).optional() },
+    inputSchema: { ...sessionInput, path: z.string().min(1).optional() },
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ path }) => {
+  }, async ({ sessionId, path }) => {
     try {
-      const result = await hub.saveMap(path);
-      return toolResult(result, `Saved revision ${result.revision} to ${result.path}`);
+      const resolved = session(sessionId);
+      const result = await hub.saveMap(path, resolved);
+      return toolResult({ sessionId: resolved, ...result }, `Saved editor session ${resolved} revision ${result.revision} to ${result.path}`);
     } catch (error) {
       return toolError(error);
     }

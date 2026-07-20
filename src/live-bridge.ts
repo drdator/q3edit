@@ -68,12 +68,30 @@ function configuredBridgeUrl(): string | null {
   }
 }
 
+const EDITOR_SESSION_STORAGE_KEY = 'q3edit.mcpEditorSessionId';
+
+function stableEditorSessionId(): string {
+  try {
+    const existing = window.sessionStorage.getItem(EDITOR_SESSION_STORAGE_KEY);
+    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    // sessionStorage survives reloads but can be copied into a duplicated tab.
+    // A fresh navigation gets a new identity; reload/back-forward keeps routing stable.
+    if (existing && navigation?.type !== 'navigate') return existing;
+    const created = globalThis.crypto?.randomUUID?.() ?? `editor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    window.sessionStorage.setItem(EDITOR_SESSION_STORAGE_KEY, created);
+    return created;
+  } catch {
+    return globalThis.crypto?.randomUUID?.() ?? `editor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
 export class LiveMapBridge {
   private socket: WebSocket | null = null;
   private reconnectTimer: number | null = null;
   private suppressDocumentSync = false;
   private stopped = false;
   private compiledBsp: { revision: number; data: Uint8Array } | null = null;
+  readonly sessionId = stableEditorSessionId();
 
   constructor(
     private readonly editor: Editor,
@@ -93,7 +111,9 @@ export class LiveMapBridge {
   connect(): void {
     if (this.stopped || this.socket?.readyState === WebSocket.OPEN || this.socket?.readyState === WebSocket.CONNECTING) return;
     this.setStatus('connecting', 'MCP connecting');
-    const socket = new WebSocket(this.url);
+    const target = new URL(this.url);
+    target.searchParams.set('sessionId', this.sessionId);
+    const socket = new WebSocket(target);
     this.socket = socket;
     socket.addEventListener('open', () => {
       this.setStatus('connected', 'MCP connected');
@@ -510,7 +530,7 @@ export class LiveMapBridge {
     if (!element) return;
     element.textContent = label;
     element.className = `status-item status-mcp ${status}`;
-    element.title = this.url;
+    element.title = `${this.url}\nEditor session: ${this.sessionId}`;
   }
 }
 
