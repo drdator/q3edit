@@ -108,7 +108,7 @@ Mark decorative geometry as detail before compiling so it does not unnecessarily
 }
 ```
 
-Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as large horizontally, while `fit: true` fits one texture repeat to the face:
+Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as large horizontally, while `fit: true` fits one texture repeat to the face. In a batch, `@trim` edits every face of aliased brush geometry and `@trim:F4` edits face 4 without predicting its numeric brush index:
 
 ```json
 {

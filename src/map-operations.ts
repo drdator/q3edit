@@ -38,6 +38,7 @@ export type MapFaceRef = `E${number}:B${number}:F${number}`;
 export type MapDocumentRef = MapObjectRef | MapFaceRef;
 export type MapSymbolicRef = `@${string}`;
 export type MapTargetRef = MapObjectRef | MapSymbolicRef;
+export type MapFaceTargetRef = MapFaceRef | MapSymbolicRef | `${MapSymbolicRef}:F${number}`;
 
 export interface CreateEntityOperation {
   type: 'create_entity';
@@ -165,7 +166,7 @@ export interface SetTextureOperation {
 
 export interface EditFacesOperation {
   type: 'edit_faces';
-  targets: MapFaceRef[];
+  targets: MapFaceTargetRef[];
   texture?: string;
   shift?: [number, number];
   scale?: [number, number];
@@ -307,10 +308,35 @@ function resolveObject(editor: Pick<Editor, 'entities'>, ref: MapObjectRef): Res
   return { ref, kind: 'patch', entityIndex, entity, objectIndex, patch };
 }
 
-function resolveFaces(editor: Pick<Editor, 'entities'>, refs: readonly MapFaceRef[]): ResolvedFace[] {
+function resolveFaces(editor: Pick<Editor, 'entities'>, refs: readonly MapFaceTargetRef[], aliases: SymbolicReferences): ResolvedFace[] {
   const result: ResolvedFace[] = [];
   const seen = new Set<BrushFace>();
   for (const ref of refs) {
+    if (ref.startsWith('@')) {
+      const match = /^@([A-Za-z][A-Za-z0-9_-]{0,63})(?::F(\d+))?$/.exec(ref);
+      if (!match) throw new Error(`Invalid symbolic face reference ${ref}`);
+      const handles = aliases.get(match[1]);
+      if (!handles) throw new Error(`Unknown symbolic reference @${match[1]}`);
+      const faceIndex = match[2] === undefined ? null : Number(match[2]);
+      for (const handle of handles) {
+        const resolved = resolveHandle(editor, handle);
+        const brushes = resolved.kind === 'entity' ? resolved.entity.brushes : resolved.kind === 'brush' ? [resolved.brush] : [];
+        if (brushes.length === 0) throw new Error(`${ref} does not resolve to brush geometry`);
+        for (const brush of brushes) {
+          const faces = faceIndex === null ? brush.faces : [brush.faces[faceIndex]];
+          if (faces.some(face => !face)) throw new Error(`Face ${ref} does not exist`);
+          for (const face of faces) {
+            if (seen.has(face)) continue;
+            seen.add(face);
+            const entityIndex = editor.entities.indexOf(resolved.entity);
+            const brushIndex = resolved.entity.brushes.indexOf(brush);
+            const index = brush.faces.indexOf(face);
+            result.push({ ref: `E${entityIndex}:B${brushIndex}:F${index}`, entity: resolved.entity, brush, face });
+          }
+        }
+      }
+      continue;
+    }
     const match = /^E(\d+):B(\d+):F(\d+)$/.exec(ref);
     if (!match) throw new Error(`Invalid face reference ${ref}`);
     const entity = editor.entities[Number(match[1])];
@@ -319,7 +345,7 @@ function resolveFaces(editor: Pick<Editor, 'entities'>, refs: readonly MapFaceRe
     if (!entity || !brush || !face) throw new Error(`Face ${ref} does not exist`);
     if (seen.has(face)) continue;
     seen.add(face);
-    result.push({ ref, entity, brush, face });
+    result.push({ ref: ref as MapFaceRef, entity, brush, face });
   }
   return result;
 }
@@ -851,7 +877,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           changedHandles.add(objectHandle(target));
         }
       } else if (operation.type === 'edit_faces') {
-        const faces = resolveFaces(editor, operation.targets);
+        const faces = resolveFaces(editor, operation.targets, aliases);
         for (const resolved of faces) {
           editFace(editor, resolved.face, operation);
           changedFaceRefs.add(resolved.ref);

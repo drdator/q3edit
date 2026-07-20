@@ -10,8 +10,8 @@ const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
 const objectRef = z.string().regex(/^E\d+(?::[BP]\d+)?(?::F\d+)?$/, 'Expected an object reference such as E1, E0:B2, E0:B2:F4, or E0:P0');
 const operationRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?|@[A-Za-z][A-Za-z0-9_-]{0,63})$/, 'Expected an object reference or symbolic reference such as @north_tower');
-const faceRef = z.string().regex(/^E\d+:B\d+:F\d+$/, 'Expected a face reference such as E0:B2:F4');
-const compatibleTargetRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?(?::F\d+)?|@[A-Za-z][A-Za-z0-9_-]{0,63})$/);
+const faceRef = z.string().regex(/^(?:E\d+:B\d+:F\d+|@[A-Za-z][A-Za-z0-9_-]{0,63}(?::F\d+)?)$/, 'Expected a face reference such as E0:B2:F4, @trim, or @trim:F4');
+const compatibleTargetRef = z.string().regex(/^(?:E\d+(?::[BP]\d+)?(?::F\d+)?|@[A-Za-z][A-Za-z0-9_-]{0,63}(?::F\d+)?)$/);
 const symbolicId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
 
 const mapOperation = z.discriminatedUnion('type', [

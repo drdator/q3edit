@@ -174,10 +174,10 @@ describe('serializable map operations', () => {
     const result = applyMapOperations(editor, [
       { type: 'create_box', id: 'trim', mins: [0, 0, 0], maxs: [64, 96, 128], texture: 'common/caulk' },
       {
-        type: 'edit_faces', targets: ['E0:B0:F4'], texture: 'base_trim/metal', fit: true,
+        type: 'edit_faces', targets: ['@trim:F4'], texture: 'base_trim/metal', fit: true,
         contentFlags: 8, surfaceFlags: 16, value: 3,
       },
-      { type: 'edit_faces', targets: ['E0:B0:F0'], shift: [16, -8], scale: [2, 0.5], rotateDegrees: 90 },
+      { type: 'edit_faces', targets: ['@trim:F0'], shift: [16, -8], scale: [2, 0.5], rotateDegrees: 90 },
       { type: 'set_brush_classification', targets: ['@trim'], classification: 'detail' },
     ], 'MCP: Finish trim brush');
 
