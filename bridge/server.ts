@@ -27,6 +27,7 @@ const options: ServerOptions = {
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const distPath = resolve(projectRoot, 'dist');
+const q3mapDistPath = resolve(projectRoot, 'q3map-compiler/dist');
 if (!existsSync(distPath)) throw new Error(`Missing ${distPath}; run npm run build first`);
 
 const hub = new BridgeHub();
@@ -87,6 +88,8 @@ app.delete('/mcp', async (req, res) => {
 });
 
 app.get('/bridge/status', (_, res) => res.json(hub.status()));
+if (existsSync(q3mapDistPath)) app.use('/q3map-compiler/dist', express.static(q3mapDistPath));
+else console.warn(`q3map artifacts are unavailable at ${q3mapDistPath}; run npm run build:q3map to enable map_compile`);
 app.use(express.static(distPath));
 
 const httpServer = app.listen(options.port, options.host, error => {

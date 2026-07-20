@@ -123,6 +123,10 @@ export class BridgeHub {
     };
   }
 
+  async compileMap(quality: 'fast' | 'normal' | 'full'): Promise<unknown> {
+    return this.capabilityRequest({ type: 'map_compile', requestId: randomUUID(), quality }, 180_000);
+  }
+
   async saveMap(path = this.activeMapPath): Promise<{ path: string; revision: number }> {
     if (!path) throw new Error('No map path is active; pass a path to map_save or call map_open first');
     const snapshot = await this.requestSnapshot();
@@ -134,7 +138,7 @@ export class BridgeHub {
     return { path, revision: snapshot.revision };
   }
 
-  private request(message: BridgeToEditorMessage & { requestId: string }): Promise<EditorToBridgeMessage> {
+  private request(message: BridgeToEditorMessage & { requestId: string }, timeoutMs = 30_000): Promise<EditorToBridgeMessage> {
     if (!this.editorSocket || this.editorSocket.readyState !== 1) {
       return Promise.reject(new Error('No Q3Edit browser is connected; open the bridge editor URL first'));
     }
@@ -142,14 +146,14 @@ export class BridgeHub {
       const timer = setTimeout(() => {
         this.pending.delete(message.requestId);
         reject(new Error(`Editor request ${message.requestId} timed out`));
-      }, 30_000);
+      }, timeoutMs);
       this.pending.set(message.requestId, { resolve, reject, timer });
       this.send(message);
     });
   }
 
-  private async capabilityRequest(message: BridgeToEditorMessage & { requestId: string }): Promise<unknown> {
-    const response = await this.request(message);
+  private async capabilityRequest(message: BridgeToEditorMessage & { requestId: string }, timeoutMs?: number): Promise<unknown> {
+    const response = await this.request(message, timeoutMs);
     if (response.type !== 'capability_result') throw new Error('Editor returned an unexpected capability response');
     return response.result;
   }

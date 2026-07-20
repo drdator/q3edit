@@ -5,6 +5,7 @@ import type { Vec3 } from './math';
 import type { BridgeToEditorMessage, EditorToBridgeMessage, LiveMapSnapshot } from './live-bridge-protocol';
 import { applyMapOperations } from './map-operations';
 import { getEntityClassRegistry } from './entity-definitions';
+import { collectCompileModelFiles, compileMap } from './q3map';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -313,6 +314,63 @@ export class LiveMapBridge {
           result: this.controls.captureScreenshot(message.width, message.height),
         });
       } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'map_compile') {
+      try {
+        const assetFiles = collectCompileModelFiles(this.editor.entities, this.editor.modelManager);
+        const textureManager = this.editor.textureManager;
+        if (textureManager) {
+          const usedTextures = new Set<string>();
+          for (const entity of this.editor.entities) {
+            for (const brush of entity.brushes) for (const face of brush.faces) usedTextures.add(face.texture);
+            for (const patch of entity.patches) usedTextures.add(patch.texture);
+            if (entity.classname === 'misc_model') {
+              const resolved = this.editor.modelManager?.resolveEntity(entity);
+              for (const texture of resolved?.surfaceTextures.values() ?? []) usedTextures.add(texture);
+            }
+          }
+          for (const texture of usedTextures) {
+            const found = textureManager.findImageFile(texture);
+            if (found) assetFiles.set(found[0], found[1]);
+          }
+        }
+        this.editor.statusMessage = `MCP compiling map (${message.quality})`;
+        const compile = this.editor.projectConfiguration.compile;
+        const result = await compileMap(this.editor.serializeMap(), {
+          args: compile.bspArgs.length > 0 ? compile.bspArgs : ['-v'],
+          vis: message.quality !== 'fast' && compile.vis,
+          visArgs: message.quality === 'full' ? compile.visArgs : ['-fast', ...compile.visArgs],
+          light: message.quality !== 'fast' && compile.light,
+          lightArgs: compile.lightArgs,
+          shaderFiles: textureManager?.getShaderFiles(),
+          assetFiles: assetFiles.size > 0 ? assetFiles : undefined,
+        });
+        const leaked = Boolean(result.pointfileText);
+        if (result.pointfileText) this.editor.loadPointfileText(result.pointfileText, 'MCP compile leak: loaded pointfile');
+        else this.editor.clearPointfile(false);
+        this.editor.statusMessage = result.success
+          ? leaked ? 'MCP compile succeeded with a leak' : 'MCP compile succeeded'
+          : leaked ? 'MCP compile failed with a leak' : 'MCP compile failed';
+        this.send({
+          type: 'capability_result', requestId: message.requestId,
+          result: {
+            success: result.success,
+            quality: message.quality,
+            bspBytes: result.bsp?.byteLength ?? 0,
+            leaked,
+            pointfileLoaded: leaked,
+            output: result.output,
+          },
+        });
+      } catch (error) {
+        this.editor.statusMessage = 'MCP compile failed';
         this.send({
           type: 'operation_error', requestId: message.requestId,
           message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,

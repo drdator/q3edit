@@ -55,6 +55,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
+- `map_compile` runs the live map through q3map at fast, normal, or full quality and returns compiler/leak diagnostics.
 - `map_query` finds entities, brushes, and patches by bounds, kind, classname, texture, or entity property.
 - `texture_search` searches the live PK3 asset index and `texture_preview` returns an image for an exact result.
 - `entity_class_search` searches loaded entity definitions and `entity_class_schema` returns typed properties, defaults, and spawnflags.

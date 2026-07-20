@@ -100,6 +100,11 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: { mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==', width: request.width ?? 800, height: request.height ?? 600 },
       }));
+    } else if (request.type === 'map_compile') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { success: true, quality: request.quality, bspBytes: 4096, leaked: false, pointfileLoaded: false, output: ['BSP done'] },
+      }));
     }
   }
 
@@ -171,6 +176,7 @@ describe('live MCP bridge', () => {
         'map_entities',
         'map_inspect',
         'map_validate',
+        'map_compile',
         'map_query',
         'texture_search',
         'texture_preview',
@@ -190,6 +196,9 @@ describe('live MCP bridge', () => {
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ editorConnected: true, snapshot: { revision: 4 } });
+
+      const compiled = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast' } });
+      expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
 
       const textures = await client.callTool({ name: 'texture_search', arguments: { query: 'metal' } });
       expect(textures.structuredContent).toMatchObject({ matches: [{ name: 'base_wall/metal' }] });

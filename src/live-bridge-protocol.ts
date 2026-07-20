@@ -34,6 +34,7 @@ export type BridgeToEditorMessage =
   | { type: 'editor_frame_objects'; requestId: string; refs: string[] }
   | { type: 'editor_set_camera'; requestId: string; position: Vec3; yaw: number; pitch: number }
   | { type: 'editor_screenshot'; requestId: string; width?: number; height?: number }
+  | { type: 'map_compile'; requestId: string; quality: 'fast' | 'normal' | 'full' }
   | { type: 'mark_saved'; revision: number };
 
 export type EditorToBridgeMessage =

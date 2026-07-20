@@ -224,6 +224,21 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('map_compile', {
+    title: 'Compile the live map',
+    description: 'Run the browser-based q3map toolchain against the current document and return BSP success, leak status, byte size, and complete compiler output. Fast runs BSP only; normal adds fast VIS and LIGHT; full uses configured full VIS and LIGHT settings.',
+    inputSchema: {
+      quality: z.enum(['fast', 'normal', 'full']).optional().default('fast'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ quality }) => {
+    try {
+      return toolResult(await hub.compileMap(quality));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_query', {
     title: 'Query live map objects',
     description: 'Find entities, brushes, or patches by classname, texture, entity property, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
