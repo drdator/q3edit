@@ -1,11 +1,22 @@
 import type { Editor } from './editor';
 import { countNamedGroupMembers } from './named-groups';
 
-function button(label: string, title: string, action: () => void, className = ''): HTMLButtonElement {
+const NAMED_GROUP_ICON_NAMES = {
+  select: 'selection-all',
+  add: 'selection-plus',
+  hide: 'eye-slash',
+  show: 'eye',
+  lock: 'lock',
+  unlock: 'lock-open',
+  delete: 'trash',
+};
+
+function button(icon: string, label: string, title: string, action: () => void, className = ''): HTMLButtonElement {
   const element = document.createElement('button');
   element.type = 'button';
-  element.className = `btn named-group-action ${className}`.trim();
-  element.textContent = label;
+  element.className = `btn icon-btn named-group-action ${className}`.trim();
+  element.innerHTML = `<i class="ph ph-${icon}" aria-hidden="true"></i>`;
+  element.setAttribute('aria-label', label);
   element.title = title;
   element.addEventListener('mousedown', event => { event.stopPropagation(); action(); });
   return element;
@@ -53,11 +64,14 @@ export function buildGroupsPanel(container: HTMLElement, editor: Editor): void {
     const actions = document.createElement('div');
     actions.className = 'named-group-actions';
     actions.append(
-      button('Select', 'Select all group members', () => editor.selectNamedGroup(group.id)),
-      button('Add', 'Add current selection', () => editor.addSelectionToNamedGroup(group.id)),
-      button(group.hidden ? 'Show' : 'Hide', 'Toggle group visibility', () => editor.setNamedGroupHidden(group.id, !group.hidden)),
-      button(group.locked ? 'Unlock' : 'Lock', 'Toggle group selection lock', () => editor.setNamedGroupLocked(group.id, !group.locked)),
-      button('Delete', 'Delete group but keep its objects', () => editor.deleteNamedGroup(group.id), 'named-group-delete'),
+      button(NAMED_GROUP_ICON_NAMES.select, 'Select group', 'Select all group members', () => editor.selectNamedGroup(group.id)),
+      button(NAMED_GROUP_ICON_NAMES.add, 'Add selection', 'Add current selection to group', () => editor.addSelectionToNamedGroup(group.id)),
+      button(group.hidden ? NAMED_GROUP_ICON_NAMES.show : NAMED_GROUP_ICON_NAMES.hide,
+        group.hidden ? 'Show group' : 'Hide group', 'Toggle group visibility', () => editor.setNamedGroupHidden(group.id, !group.hidden)),
+      button(group.locked ? NAMED_GROUP_ICON_NAMES.unlock : NAMED_GROUP_ICON_NAMES.lock,
+        group.locked ? 'Unlock group' : 'Lock group', 'Toggle group selection lock', () => editor.setNamedGroupLocked(group.id, !group.locked)),
+      button(NAMED_GROUP_ICON_NAMES.delete, 'Delete group', 'Delete group but keep its objects',
+        () => editor.deleteNamedGroup(group.id), 'named-group-delete'),
     );
     (actions.children[0] as HTMLButtonElement).disabled = members === 0;
     (actions.children[1] as HTMLButtonElement).disabled = editor.selection.length === 0;

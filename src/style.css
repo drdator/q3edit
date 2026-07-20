@@ -1287,7 +1287,12 @@ textarea:focus-visible {
   flex: 0 0 auto;
   min-width: 0;
   margin: 0;
-  padding: 3px 3px;
+}
+
+.panel-body .named-group-actions > .btn.icon-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
 }
 
 .panel-body .named-group-actions > .named-group-delete {
