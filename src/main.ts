@@ -15,6 +15,7 @@ import {
 } from './pak-storage';
 import { TextureManager } from './textures';
 import { saveProjectConfiguration, type ProjectConfiguration } from './project-config';
+import { connectConfiguredLiveBridge } from './live-bridge';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -66,6 +67,7 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor);
+  connectConfiguredLiveBridge(editor);
 
   let defaultArchives: PakArchive[] = [];
   let defaultPakLoaded = false;

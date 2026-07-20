@@ -1740,6 +1740,7 @@ export class UI {
       <span class="status-item" id="status-clip"></span>
       <span class="status-item" id="status-brushes">Brushes: 0</span>
       <span class="status-item" id="status-gizmo"></span>
+      <span class="status-item status-mcp" id="status-mcp"></span>
     `;
   }
 

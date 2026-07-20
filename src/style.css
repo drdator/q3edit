@@ -3305,6 +3305,37 @@ button.diagnostic-row:hover { border-color: var(--accent); }
   white-space: nowrap;
 }
 
+.status-mcp {
+  margin-left: auto;
+}
+
+.status-mcp:empty {
+  display: none;
+}
+
+.status-mcp::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  vertical-align: 1px;
+}
+
+.status-mcp.connected::before {
+  background: #64c86a;
+}
+
+.status-mcp.connecting::before {
+  background: var(--accent);
+}
+
+.status-mcp.error::before {
+  background: #d96868;
+}
+
 /* ── Scrollbar styling ── */
 ::-webkit-scrollbar {
   width: 8px;
