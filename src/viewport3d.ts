@@ -177,6 +177,13 @@ export class Viewport3D {
       }
       this.editor.redrawRequested = true;
     });
+    this.editor.onCameraPlaybackSeek(pose => {
+      this.position = [...pose.position];
+      this.yaw = pose.yaw;
+      this.pitch = pose.pitch;
+      this.fov = pose.fov * Math.PI / 180;
+      this.editor.redrawRequested = true;
+    });
   }
 
   private createFullscreenUI(): void {

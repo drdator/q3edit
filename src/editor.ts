@@ -194,6 +194,7 @@ import {
   setCameraPathClosed as setEditorCameraPathClosed,
   startCameraPlayback as startEditorCameraPlayback,
   stopCameraPlayback as stopEditorCameraPlayback,
+  toggleCameraPlayback as toggleEditorCameraPlayback,
   updateCameraPoint as updateEditorCameraPoint,
   type CameraPath,
   type CameraPlaybackState,
@@ -466,6 +467,7 @@ export class Editor {
   // Center-on-selection callbacks (registered by viewports)
   private centerOnSelectionCallbacks: (() => void)[] = [];
   private locatePointCallbacks: ((point: Vec3, lookAt: Vec3 | null) => void)[] = [];
+  private cameraPlaybackSeekCallbacks: ((pose: CameraPose) => void)[] = [];
 
   get worldspawn(): Entity {
     const worldspawn = this.entities[0];
@@ -824,7 +826,15 @@ export class Editor {
   setCameraPathClosed(id: string, closed: boolean): void { setEditorCameraPathClosed(this, id, closed); }
   startCameraPlayback(id: string): void { startEditorCameraPlayback(this, id); }
   stopCameraPlayback(): void { stopEditorCameraPlayback(this); }
-  seekCameraPlayback(elapsed: number): CameraPose | null { return seekEditorCameraPlayback(this, elapsed); }
+  toggleCameraPlayback(id: string): void { toggleEditorCameraPlayback(this, id); }
+  seekCameraPlayback(elapsed: number): CameraPose | null {
+    const pose = seekEditorCameraPlayback(this, elapsed);
+    if (!pose) return null;
+    this.camera3d = { position: [...pose.position], yaw: pose.yaw, pitch: pose.pitch };
+    for (const callback of this.cameraPlaybackSeekCallbacks) callback(pose);
+    this.redrawRequested = true;
+    return pose;
+  }
   advanceCameraPlayback(deltaSeconds: number): CameraPose | null { return advanceEditorCameraPlayback(this, deltaSeconds); }
   createSmartPath(count = 4, spacing = 128, closed = false): Entity[] { return createEditorSmartPath(this, count, spacing, closed); }
   createSmartTrainPath(count = 4, spacing = 128): Entity[] { return createEditorSmartTrainPath(this, count, spacing); }
@@ -1042,6 +1052,10 @@ export class Editor {
   locatePoint(point: Vec3, lookAt: Vec3 | null = null): void {
     for (const cb of this.locatePointCallbacks) cb(point, lookAt);
     this.redrawRequested = true;
+  }
+
+  onCameraPlaybackSeek(callback: (pose: CameraPose) => void): void {
+    this.cameraPlaybackSeekCallbacks.push(callback);
   }
 
   loadPointfileText(text: string, statusPrefix?: string): boolean {

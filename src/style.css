@@ -1467,6 +1467,414 @@ body.sidepanel-resizing * {
   border-bottom: 1px solid var(--border-dark);
 }
 
+/* ── Camera paths ── */
+.camera-paths-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 7px;
+}
+
+.camera-create {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-dark);
+}
+
+.camera-section-heading {
+  margin-bottom: 5px;
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: bold;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.camera-create-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr);
+  gap: 4px;
+}
+
+.panel-body .camera-action {
+  justify-content: center;
+  min-width: 0;
+  min-height: 24px;
+  margin: 0;
+  padding: 3px 5px;
+  white-space: nowrap;
+}
+
+.panel-body .camera-create-actions .camera-action:disabled {
+  color: color-mix(in srgb, var(--text) 72%, var(--bg) 28%);
+  background: color-mix(in srgb, var(--bg-light) 75%, var(--bg) 25%);
+  opacity: 1;
+}
+
+.camera-action .ph {
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.camera-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.camera-help {
+  margin-top: 5px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.camera-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  color: var(--text-dim);
+}
+
+.camera-empty .ph {
+  font-size: 15px;
+}
+
+.camera-path-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.camera-path-card {
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-dark) 55%, var(--bg) 45%);
+  border: 1px solid var(--border-dark);
+}
+
+.camera-path-summary {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 5px 7px;
+  color: var(--text);
+  cursor: default;
+  list-style: none;
+}
+
+.camera-path-summary::-webkit-details-marker,
+.camera-point-summary::-webkit-details-marker {
+  display: none;
+}
+
+.camera-path-summary::before {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  margin: 0 8px 0 2px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--text-dim);
+  content: "";
+}
+
+.camera-path-card[open] > .camera-path-summary::before {
+  transform: rotate(90deg);
+}
+
+.camera-path-summary:hover {
+  background: var(--bg-light);
+}
+
+.camera-path-summary-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.camera-path-name {
+  overflow: hidden;
+  color: var(--text-bright);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-path-meta {
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: normal;
+}
+
+.camera-path-content {
+  padding: 7px;
+  border-top: 1px solid var(--border-dark);
+}
+
+.camera-path-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px 26px;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.panel-body .btn.icon-btn.camera-transport-button {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border-color: transparent;
+  font-size: 18px;
+}
+
+.panel-body .btn.icon-btn.camera-transport-button .ph {
+  width: 18px;
+  height: 18px;
+}
+
+.panel-body .btn.icon-btn.camera-transport-button:hover:not(:disabled) {
+  color: var(--text-bright);
+  background: transparent;
+  border-color: transparent;
+}
+
+.panel-body .btn.icon-btn.camera-transport-button:active:not(:disabled) {
+  color: var(--accent);
+  background: transparent;
+  border-color: transparent;
+}
+
+.panel-body .btn.icon-btn.camera-loop-toggle.active {
+  color: var(--accent);
+  background: transparent;
+  border-color: transparent;
+}
+
+.panel-body .camera-path-controls .camera-path-timeline {
+  margin: 0;
+}
+
+.camera-points-heading {
+  margin: 0 0 4px;
+}
+
+.camera-point {
+  border-top: 1px solid var(--border-dark);
+}
+
+.camera-point:last-child {
+  border-bottom: 1px solid var(--border-dark);
+}
+
+.camera-point-summary {
+  --camera-point-row-bg: color-mix(in srgb, var(--bg-dark) 55%, var(--bg) 45%);
+  --camera-point-hover-bg: color-mix(in srgb, var(--bg-light) 62%, var(--bg-dark));
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  min-height: 34px;
+  gap: 2px;
+  padding: 4px 2px;
+  cursor: default;
+}
+
+.camera-point-summary:hover,
+.camera-point-summary:focus-within {
+  background: var(--camera-point-hover-bg);
+}
+
+.camera-point.selected > .camera-point-summary {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.camera-point-header-select {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  align-self: stretch;
+  min-width: 0;
+  gap: 5px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.camera-point-header-select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.camera-point-number {
+  color: var(--accent);
+  font: 9px/1 monospace;
+  text-align: center;
+}
+
+.camera-point-summary-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.camera-point-summary-copy strong {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.camera-point-summary-copy span {
+  overflow: hidden;
+  color: var(--text-dim);
+  font: 9px/1.2 monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-point-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 2px 8px 27px;
+}
+
+.camera-point-body[hidden] {
+  display: none;
+}
+
+.camera-point-actions {
+  position: absolute;
+  top: 50%;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding-left: 12px;
+  background: linear-gradient(90deg, transparent, var(--camera-point-row-bg) 12px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.panel-body .btn.icon-btn.camera-point-expand {
+  position: relative;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border-color: transparent;
+  font-size: 14px;
+}
+
+.panel-body .btn.icon-btn.camera-point-expand:hover,
+.panel-body .btn.icon-btn.camera-point-expand:focus-visible {
+  color: var(--text-bright);
+  background: transparent;
+  border-color: transparent;
+}
+
+.camera-point-expand .ph {
+  transition: transform 100ms ease;
+}
+
+.camera-point.open .camera-point-expand .ph {
+  transform: rotate(90deg);
+}
+
+.camera-point-summary:hover .camera-point-actions,
+.camera-point-actions:focus-within {
+  background: linear-gradient(90deg, transparent, var(--camera-point-hover-bg) 12px);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.panel-body .btn.camera-point-icon-button {
+  width: 24px;
+  height: 24px;
+  color: var(--text-dim);
+  background: transparent;
+  border-color: transparent;
+  font-size: 16px;
+}
+
+.panel-body .btn.camera-point-icon-button:hover:not(:disabled) {
+  color: var(--text-bright);
+  background: transparent;
+  border-color: transparent;
+}
+
+.panel-body .btn.camera-point-icon-button:active:not(:disabled),
+.panel-body .btn.camera-point-icon-button.active {
+  color: var(--accent);
+  background: transparent;
+  border-color: transparent;
+}
+
+@media (hover: none) {
+  .camera-point-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.camera-point-timing-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.panel-body .camera-point-field {
+  min-width: 0;
+  margin: 0;
+}
+
+.camera-point-field > span {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.panel-body .camera-point-field > input {
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+}
+
+.camera-point-advanced {
+  padding-top: 1px;
+}
+
+.camera-point-advanced > summary {
+  margin-bottom: 5px;
+  color: var(--text-dim);
+  font-size: 9px;
+  cursor: default;
+}
+
+.camera-point-advanced:not([open]) > summary {
+  margin-bottom: 0;
+}
+
+.camera-point-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1.3;
+}
+
 .named-groups-panel {
   display: flex;
   flex-direction: column;

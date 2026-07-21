@@ -265,6 +265,22 @@ export function stopCameraPlayback(editor: Editor): void {
   editor.cameraPlayback = null; editor.statusMessage = 'Camera playback stopped'; editor.redrawRequested = true;
 }
 
+export function toggleCameraPlayback(editor: Editor, pathId: string): void {
+  const path = collectCameraPaths(editor).find(item => item.id === pathId);
+  if (!path || path.points.length < 2) { editor.statusMessage = 'Camera path needs at least two valid points'; return; }
+  const state = editor.cameraPlayback;
+  if (!state || state.pathId !== pathId) { startCameraPlayback(editor, pathId); return; }
+  if (state.playing) {
+    state.playing = false;
+    editor.statusMessage = `Paused camera path ${path.name}`;
+  } else {
+    if (!path.closed && state.elapsed >= cameraPathDuration(path)) state.elapsed = 0;
+    state.playing = true;
+    editor.statusMessage = `Playing camera path ${path.name}`;
+  }
+  editor.redrawRequested = true;
+}
+
 export function seekCameraPlayback(editor: Editor, elapsed: number): CameraPose | null {
   if (!editor.cameraPlayback) return null;
   const path = collectCameraPaths(editor).find(item => item.id === editor.cameraPlayback?.pathId);
