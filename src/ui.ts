@@ -30,7 +30,7 @@ import {
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import 'virtual:phosphor-icons.css';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge-protocol';
-import { McpActivityDialog } from './mcp-activity-dialog';
+import { McpActivityPanel } from './mcp-activity-panel';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -89,7 +89,7 @@ export class UI {
   private gamePreviewLaunch: GamePreviewLaunch | null = null;
   private gamePreviewClose: ((markClosed?: boolean) => void) | null = null;
   private gamePreviewListeners = new Set<() => void>();
-  private readonly mcpActivity = new McpActivityDialog();
+  private readonly mcpActivity: McpActivityPanel;
   private gamePreviewStatus: GamePreviewStatus = {
     state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
     launchedAt: null, runningAt: null, error: null, consoleTail: [],
@@ -99,6 +99,21 @@ export class UI {
   constructor(editor: Editor) {
     this.editor = editor;
     this.propertiesPanel = new PropertiesPanel(editor);
+    this.mcpActivity = new McpActivityPanel({
+      initialVisible: this.editor.preferences.mcpActivity.visible,
+      initialHeight: this.editor.preferences.mcpActivity.height,
+      onVisibilityChange: visible => {
+        this.editor.preferences.mcpActivity.visible = visible;
+        this.editor.persistCurrentPreferences();
+        this.commands.notifyStateChanged();
+        this.editor.statusMessage = `${visible ? 'Opened' : 'Closed'} MCP Activity`;
+      },
+      onHeightChange: (height, committed) => {
+        this.editor.preferences.mcpActivity.height = height;
+        if (committed) this.editor.persistCurrentPreferences();
+      },
+      onLayoutChange: () => { this.editor.redrawRequested = true; },
+    });
     this.commands = createEditorCommandRegistry({
       editor: this.editor,
       handleExitVertexMode: () => this.handleExitVertexMode(),
@@ -110,7 +125,8 @@ export class UI {
       openPreferences: () => this.openPreferences(),
       openProjectSettings: () => this.openProjectSettings(),
       openDiagnostics: tab => this.openDiagnostics(tab),
-      openMcpActivity: () => this.mcpActivity.open(),
+      toggleMcpActivity: () => this.mcpActivity.toggle(),
+      isMcpActivityOpen: () => this.mcpActivity.isOpen(),
       openTerrainPanel: () => this.openTerrainPanel(),
       toggleSidebar: () => this.toggleSidebar(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),

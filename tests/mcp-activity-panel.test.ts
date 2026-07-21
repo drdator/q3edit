@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { filterMcpActivity, summarizeMcpActivity } from '../src/mcp-activity-dialog';
+import {
+  clampMcpActivityPanelHeight,
+  filterMcpActivity,
+  resizedMcpActivityPanelHeight,
+  summarizeMcpActivity,
+} from '../src/mcp-activity-panel';
 import type { McpActivityEntry } from '../src/live-bridge-protocol';
 
 function entry(overrides: Partial<McpActivityEntry>): McpActivityEntry {
@@ -11,7 +16,7 @@ function entry(overrides: Partial<McpActivityEntry>): McpActivityEntry {
   };
 }
 
-describe('MCP activity dialog model', () => {
+describe('MCP activity panel helpers', () => {
   const entries = [
     entry({ id: 'mcp:1' }),
     entry({
@@ -31,5 +36,12 @@ describe('MCP activity dialog model', () => {
 
   it('summarizes calls, actions, errors, and document revisions', () => {
     expect(summarizeMcpActivity(entries)).toEqual({ total: 3, actions: 1, errors: 1, revisions: 1 });
+  });
+
+  it('clamps and resizes the bottom drawer within the available viewport', () => {
+    expect(clampMcpActivityPanelHeight(50, 900)).toBe(140);
+    expect(clampMcpActivityPanelHeight(900, 900)).toBe(720);
+    expect(resizedMcpActivityPanelHeight(280, 600, 500, 900)).toBe(380);
+    expect(resizedMcpActivityPanelHeight(280, 600, 760, 900)).toBe(140);
   });
 });

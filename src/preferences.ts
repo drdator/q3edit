@@ -8,6 +8,7 @@ import {
 import type { BrushPrimitive } from './brush-primitives';
 import type { InvisibleMode } from './editor';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH } from './sidebar-layout';
+import { clampMcpActivityPanelHeight, DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT } from './mcp-activity-panel';
 
 export const PREFERENCES_VERSION = 2;
 export const PREFERENCES_STORAGE_KEY = 'q3edit.preferences.v2';
@@ -32,6 +33,7 @@ export interface GlobalPreferences {
   shortcuts: Record<string, string | null>;
   collapsedPanels: Record<string, boolean>;
   sidebar: { visible: boolean; width: number };
+  mcpActivity: { visible: boolean; height: number };
   theme: { preset: ThemePreset; colors: ThemeColors };
   viewportLayout: ViewportLayout;
   editorDefaults: {
@@ -62,6 +64,7 @@ export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
   shortcuts: {},
   collapsedPanels: {},
   sidebar: { visible: true, width: DEFAULT_SIDEBAR_WIDTH },
+  mcpActivity: { visible: false, height: DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT },
   theme: { preset: 'dark', colors: DEFAULT_THEME_COLORS },
   viewportLayout: 'quad',
   editorDefaults: {
@@ -106,6 +109,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   const editor = isRecord(value.editorDefaults) ? value.editorDefaults : value;
   const theme = isRecord(value.theme) ? value.theme : {};
   const sidebar = isRecord(value.sidebar) ? value.sidebar : {};
+  const mcpActivity = isRecord(value.mcpActivity) ? value.mcpActivity : {};
   const colors = isRecord(theme.colors) ? theme.colors : {};
   const rawGrid = Number(editor.gridSize);
   const gridSize = Number.isFinite(rawGrid) ? Math.min(256, Math.max(1, Math.round(rawGrid))) : defaults.editorDefaults.gridSize;
@@ -135,6 +139,10 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
     sidebar: {
       visible: typeof sidebar.visible === 'boolean' ? sidebar.visible : defaults.sidebar.visible,
       width: clampSidebarWidth(Number(sidebar.width)),
+    },
+    mcpActivity: {
+      visible: typeof mcpActivity.visible === 'boolean' ? mcpActivity.visible : defaults.mcpActivity.visible,
+      height: clampMcpActivityPanelHeight(Number(mcpActivity.height)),
     },
     theme: {
       preset: presets.includes(theme.preset as ThemePreset) ? theme.preset as ThemePreset : defaults.theme.preset,

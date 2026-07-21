@@ -22,6 +22,7 @@ describe('global preferences', () => {
     preferences.shortcuts['file.save'] = 'Ctrl+Shift+S';
     preferences.collapsedPanels['entity-panel'] = true;
     preferences.sidebar = { visible: false, width: 420 };
+    preferences.mcpActivity = { visible: true, height: 360 };
     saveGlobalPreferences(preferences, storage);
 
     const loaded = loadGlobalPreferences(storage);
@@ -30,6 +31,7 @@ describe('global preferences', () => {
     expect(loaded.preferences.shortcuts['file.save']).toBe('Ctrl+Shift+S');
     expect(loaded.preferences.collapsedPanels).toEqual({ 'entity-panel': true });
     expect(loaded.preferences.sidebar).toEqual({ visible: false, width: 420 });
+    expect(loaded.preferences.mcpActivity).toEqual({ visible: true, height: 360 });
   });
 
   it('ignores invalid persisted panel states', () => {
@@ -55,6 +57,19 @@ describe('global preferences', () => {
     expect(loadGlobalPreferences(storage).preferences.sidebar).toEqual({
       visible: true,
       width: 600,
+    });
+  });
+
+  it('normalizes persisted MCP activity panel visibility and height', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 2,
+      mcpActivity: { visible: 'yes', height: 5000 },
+    }));
+
+    expect(loadGlobalPreferences(storage).preferences.mcpActivity).toEqual({
+      visible: false,
+      height: 800,
     });
   });
 
