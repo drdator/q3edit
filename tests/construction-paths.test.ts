@@ -64,4 +64,29 @@ describe('MCP construction paths', () => {
     }])).toThrow(/generated .* objects/);
     expect(editor.worldspawn.brushes).toHaveLength(0);
   });
+
+  test('applies bounded reproducible per-segment variation', () => {
+    const build = (seed: number) => {
+      const editor = emptyEditor();
+      applyMapOperations(editor, [{
+        type: 'create_path', id: 'varied_beam', kind: 'beam',
+        points: [[0, 0, 64], [96, 0, 64], [192, 48, 72], [288, 48, 80], [384, 0, 96]],
+        width: 32, height: 24, join: 'bevel', bankDegrees: 3,
+        variation: { seed, width: 6, height: 4, bankDegrees: 2, grid: 1 },
+      }]);
+      return {
+        bounds: editor.worldspawn.brushes.map(brush => ({ mins: brush.mins, maxs: brush.maxs })),
+        record: readConstructionPaths(editor.worldspawn.properties).paths[0],
+      };
+    };
+    expect(build(17)).toEqual(build(17));
+    expect(build(17).bounds).not.toEqual(build(18).bounds);
+    expect(build(17).record.variation).toEqual({ seed: 17, width: 6, height: 4, bankDegrees: 2, grid: 1 });
+
+    const editor = emptyEditor();
+    expect(() => applyMapOperations(editor, [{
+      type: 'create_path', id: 'unsafe', kind: 'beam', points: [[0, 0, 0], [128, 0, 0]],
+      width: 16, height: 16, variation: { seed: 1, width: 16 },
+    }])).toThrow(/smaller than their base/);
+  });
 });

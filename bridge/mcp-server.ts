@@ -310,6 +310,10 @@ const constructionPathSchema = z.object({
   capEnds: z.boolean(), bankDegrees: z.number().min(-180).max(180), texture: z.string(),
   classification: z.enum(['detail', 'structural']), groupId: z.string(), objectCount: z.number().int().positive(),
   replacedObjectCount: z.number().int().nonnegative().optional(),
+  variation: z.object({
+    seed: z.number().int(), width: z.number().nonnegative().optional(), height: z.number().nonnegative().optional(),
+    spacing: z.number().nonnegative().optional(), bankDegrees: z.number().nonnegative().optional(), grid: z.number().positive().optional(),
+  }).optional(),
   bounds: screenshotBounds,
 });
 const constructionPathsOutputSchema = z.object({
@@ -711,6 +715,10 @@ const mapOperationVariants = [
     texture: z.string().min(1).optional(),
     classification: z.enum(['detail', 'structural']).optional(),
     replaceTargets: z.array(operationRef).min(1).optional(),
+    variation: z.object({
+      seed: z.number().int(), width: z.number().nonnegative().optional(), height: z.number().nonnegative().optional(),
+      spacing: z.number().nonnegative().optional(), bankDegrees: z.number().nonnegative().optional(), grid: z.number().positive().optional(),
+    }).optional(),
   }),
   z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
   z.object({ type: z.literal('rotate'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']), angleDegrees: z.number() }),
@@ -921,6 +929,7 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'Use map_preview first to inspect generated references, bounds, counts, and diagnostics. map_construction_paths_get returns the durable source-to-generated relationship after applying.',
     'Path brushes are closed compiler-safe solids, so their physical ends are always capped. join controls overlap versus four-sided beveled corner fillers; bankDegrees applies a constant roll.',
     'replaceTargets atomically deletes selected straight source geometry after the replacement path validates, while preserving the durable path/group record.',
+    'variation applies bounded deterministic per-segment width, height, spacing, and bank deviations using a required integer seed. Dimensions snap to variation.grid (default 1); preview before applying.',
   ],
   reshape_room: [
     'Replaces a complete selected rectangular room shell with an editable two-cap/eight-wall octagonal shell using its aggregate bounds.',
@@ -1096,7 +1105,11 @@ const compatibleMapOperationInput = z.object({
   scaleSequence: z.array(compatibleVec3).optional(),
   materialSequence: z.array(z.object({ texture: z.string(), role: z.string().optional() })).optional(),
   seed: z.number().int().optional(),
-  variation: z.object({ position: compatibleVec3.optional(), rotationDegrees: z.number().optional(), scale: compatibleVec3.optional() }).optional(),
+  variation: z.object({
+    position: compatibleVec3.optional(), rotationDegrees: z.number().optional(), scale: compatibleVec3.optional(),
+    seed: z.number().int().optional(), width: z.number().optional(), height: z.number().optional(), spacing: z.number().optional(),
+    bankDegrees: z.number().optional(), grid: z.number().optional(),
+  }).optional(),
   grid: z.number().optional(),
   delta: compatibleVec3.optional(),
   shift: z.array(z.number()).length(2).optional(),
@@ -1338,7 +1351,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 9, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 10, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
           persistent: true,
           tools: ['map_spatial_plan_get', 'map_spatial_plan_preview'],
@@ -1358,6 +1371,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           curves: ['polyline', 'catmull-rom'],
           maxControlPoints: 64,
           maxGeneratedObjects: 256,
+          controlledVariation: ['width', 'height', 'spacing', 'bankDegrees'],
         },
         brushRefinement: {
           operations: ['offset_faces', 'chamfer_brushes', 'taper_brushes', 'clip_brushes', 'hollow_brushes', 'csg_subtract', 'reshape_room'],

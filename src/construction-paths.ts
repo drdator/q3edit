@@ -26,6 +26,7 @@ export interface ConstructionPathRecord {
   groupId: string;
   objectCount: number;
   replacedObjectCount?: number;
+  variation?: { seed: number; width?: number; height?: number; spacing?: number; bankDegrees?: number; grid?: number };
   bounds: { mins: Vec3; maxs: Vec3 };
 }
 

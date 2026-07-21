@@ -112,7 +112,7 @@ objects rather than hidden modules.
 - [x] Create pipes, beams, and trim along a path.
 - [x] Create stairs along a curved or segmented path.
 - [x] Distribute generated supports or objects along a path.
-- [ ] Support corners, joins, caps, spacing, banking, and controlled variation.
+- [x] Support corners, joins, caps, spacing, banking, and controlled variation.
 - [x] Preview generated bounds and object counts before applying.
 - [x] Return the underlying path and generated-object relationships so later
   edits remain understandable.
@@ -122,13 +122,15 @@ of constructing dozens of fragile individual pieces.
 
 Implementation note: `create_path` generates ordinary brushes for eight roles
 from a polyline or Catmull-Rom curve. It supports overlapping or beveled corner
-fills, closed brush ends, deterministic spacing, and constant banking. A
+fills, closed brush ends, deterministic spacing, and constant banking. Optional
+seeded path variation adds bounded per-segment width, height, spacing, and bank
+changes with grid-snapped dimensions. A
 256-object limit protects preview/apply calls. Each source path persists in
 worldspawn with its control points, settings, generated named group, bounds,
 and object count, exposed through `map_construction_paths_get`. `map_preview`
-provides the pre-commit objects and aggregate bounds. The combined variation
-item remains open because per-segment deterministic variation belongs to phase
-7 rather than this initial path generator.
+provides the pre-commit objects, collisions, and aggregate bounds. Broader
+repetition and material variation remains available through the phase-7
+`repeat_variation` operation.
 
 ### 5. Brush refinement
 

@@ -314,6 +314,14 @@ export interface CreatePathOperation extends CreationMetadata {
   texture?: string;
   classification?: 'detail' | 'structural';
   replaceTargets?: MapTargetRef[];
+  variation?: {
+    seed: number;
+    width?: number;
+    height?: number;
+    spacing?: number;
+    bankDegrees?: number;
+    grid?: number;
+  };
 }
 
 export interface ReshapeRoomOperation extends CreationMetadata {
@@ -1172,26 +1180,40 @@ function sampleConstructionPath(points: Vec3[], curve: ConstructionPathCurve, su
   return sampled;
 }
 
-function resampleBySpacing(points: Vec3[], spacing: number): Vec3[] {
+function resampleBySpacing(points: Vec3[], spacing: number | ((index: number) => number)): Vec3[] {
   const result: Vec3[] = [[...points[0]] as Vec3];
   let carry = 0;
   for (let index = 0; index < points.length - 1; index++) {
     let start = [...points[index]] as Vec3;
     const end = points[index + 1];
     let remaining = Math.hypot(...end.map((value, axis) => value - start[axis]));
-    while (remaining + carry >= spacing && remaining > 0.0001) {
-      const distance = spacing - carry;
+    let nextSpacing = typeof spacing === 'number' ? spacing : spacing(result.length - 1);
+    while (remaining + carry >= nextSpacing && remaining > 0.0001) {
+      const distance = nextSpacing - carry;
       const t = distance / remaining;
       start = start.map((value, axis) => value + (end[axis] - value) * t) as Vec3;
       result.push([...start] as Vec3);
       remaining = Math.hypot(...end.map((value, axis) => value - start[axis]));
       carry = 0;
+      nextSpacing = typeof spacing === 'number' ? spacing : spacing(result.length - 1);
     }
     carry += remaining;
   }
   const last = points[points.length - 1];
   if (Math.hypot(...last.map((value, axis) => value - result[result.length - 1][axis])) > 0.001) result.push([...last] as Vec3);
   return result;
+}
+
+function pathVariationNoise(seed: number, index: number, channel: number): number {
+  let value = (seed ^ Math.imul(index + 1, 0x9E3779B1) ^ Math.imul(channel + 1, 0x85EBCA77)) >>> 0;
+  value = Math.imul(value ^ value >>> 16, 0x7FEB352D);
+  value = Math.imul(value ^ value >>> 15, 0x846CA68B);
+  return ((value ^ value >>> 16) >>> 0) / 2147483648 - 1;
+}
+
+function variedPathValue(base: number, bound: number | undefined, seed: number, index: number, channel: number, grid = 1): number {
+  if (!bound) return base;
+  return Math.round((base + pathVariationNoise(seed, index, channel) * bound) / grid) * grid;
 }
 
 function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases: SymbolicReferences): ObjectHandle[] {
@@ -1209,6 +1231,22 @@ function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases
   if (!Number.isInteger(subdivisions) || subdivisions < 1 || subdivisions > 16) throw new Error('create_path subdivisions must be an integer from 1 to 16');
   if (!Number.isInteger(sides) || sides < 3 || sides > 32) throw new Error('create_path sides must be an integer from 3 to 32');
   if (!Number.isFinite(bankDegrees) || Math.abs(bankDegrees) > 180) throw new Error('create_path bankDegrees must be between -180 and 180');
+  const variation = operation.variation;
+  if (variation) {
+    if (!Number.isInteger(variation.seed)) throw new Error('create_path variation.seed must be an integer');
+    const bounds = [variation.width, variation.height, variation.spacing, variation.bankDegrees].filter((value): value is number => value !== undefined);
+    if (bounds.some(value => !Number.isFinite(value) || value < 0)) throw new Error('create_path variation bounds must be non-negative finite numbers');
+    if (variation.grid !== undefined && (!Number.isFinite(variation.grid) || variation.grid <= 0)) throw new Error('create_path variation.grid must be positive');
+    if ((variation.width ?? 0) >= operation.width || (variation.height ?? 0) >= height || (variation.spacing ?? 0) >= spacing) {
+      throw new Error('create_path variation bounds must be smaller than their base width, height, and spacing');
+    }
+  }
+  const seed = variation?.seed ?? 1;
+  const variationGrid = variation?.grid ?? 1;
+  const widthAt = (index: number) => variedPathValue(operation.width, variation?.width, seed, index, 0, variationGrid);
+  const heightAt = (index: number) => variedPathValue(height, variation?.height, seed, index, 1, variationGrid);
+  const spacingAt = (index: number) => variedPathValue(spacing, variation?.spacing, seed, index, 2, variationGrid);
+  const bankAt = (index: number) => variedPathValue(bankDegrees, variation?.bankDegrees, seed, index, 3, 0.1);
   const curve = operation.curve ?? 'polyline';
   const sampled = sampleConstructionPath(operation.points, curve, subdivisions);
   const texture = operation.texture ?? 'common/caulk';
@@ -1217,54 +1255,58 @@ function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases
   const add = (brush: Brush) => { classifyBrush(brush, operation.classification ?? (['wall', 'corridor', 'stairs'].includes(operation.kind) ? 'structural' : 'detail')); entity.brushes.push(brush); brushes.push(brush); };
 
   if (operation.kind === 'stairs') {
-    const steps = resampleBySpacing(sampled, spacing);
+    const steps = resampleBySpacing(sampled, spacingAt);
     const baseZ = Math.min(...steps.map(point => point[2])) - thickness;
     for (let index = 0; index < steps.length - 1; index++) {
       const top = steps[index][2];
       const start: Vec3 = [steps[index][0], steps[index][1], (baseZ + top) / 2];
       const end: Vec3 = [steps[index + 1][0], steps[index + 1][1], (baseZ + top) / 2];
-      add(createBoxBetween(editor, start, end, operation.width, top - baseZ, texture, bankDegrees));
+      add(createBoxBetween(editor, start, end, widthAt(index), top - baseZ, texture, bankAt(index)));
     }
   } else if (operation.kind === 'supports') {
-    for (const point of resampleBySpacing(sampled, spacing)) {
+    for (const [index, point] of resampleBySpacing(sampled, spacingAt).entries()) {
+      const supportWidth = widthAt(index); const supportHeight = heightAt(index);
       add(createBoxBrush(
-        [point[0] - operation.width / 2, point[1] - operation.width / 2, point[2] - height],
-        [point[0] + operation.width / 2, point[1] + operation.width / 2, point[2]], texture,
+        [point[0] - supportWidth / 2, point[1] - supportWidth / 2, point[2] - supportHeight],
+        [point[0] + supportWidth / 2, point[1] + supportWidth / 2, point[2]], texture,
       ));
     }
   } else {
     for (let index = 0; index < sampled.length - 1; index++) {
       let start = sampled[index]; let end = sampled[index + 1];
+      const segmentWidth = widthAt(index); const segmentHeight = heightAt(index); const segmentBank = bankAt(index);
       if (operation.kind === 'wall') {
-        start = [start[0], start[1], start[2] + height / 2];
-        end = [end[0], end[1], end[2] + height / 2];
+        start = [start[0], start[1], start[2] + segmentHeight / 2];
+        end = [end[0], end[1], end[2] + segmentHeight / 2];
       } else if (operation.kind === 'railing') {
-        start = [start[0], start[1], start[2] + height];
-        end = [end[0], end[1], end[2] + height];
+        start = [start[0], start[1], start[2] + segmentHeight];
+        end = [end[0], end[1], end[2] + segmentHeight];
       }
-      if (operation.kind === 'pipe') add(createCylinderBetween(editor, start, end, operation.width, sides, texture, bankDegrees));
+      if (operation.kind === 'pipe') add(createCylinderBetween(editor, start, end, segmentWidth, sides, texture, segmentBank));
       else add(createBoxBetween(
         editor, start, end,
-        operation.kind === 'wall' ? operation.width : operation.kind === 'railing' ? thickness : operation.width,
-        operation.kind === 'wall' ? height : operation.kind === 'railing' ? thickness : height,
-        texture, bankDegrees,
+        operation.kind === 'wall' ? segmentWidth : operation.kind === 'railing' ? thickness : segmentWidth,
+        operation.kind === 'wall' ? segmentHeight : operation.kind === 'railing' ? thickness : segmentHeight,
+        texture, segmentBank,
       ));
     }
-    if (operation.kind === 'railing') for (const point of resampleBySpacing(sampled, spacing)) {
+    if (operation.kind === 'railing') for (const [index, point] of resampleBySpacing(sampled, spacingAt).entries()) {
+      const postHeight = heightAt(index);
       add(createBoxBrush(
         [point[0] - thickness / 2, point[1] - thickness / 2, point[2]],
-        [point[0] + thickness / 2, point[1] + thickness / 2, point[2] + height], texture,
+        [point[0] + thickness / 2, point[1] + thickness / 2, point[2] + postHeight], texture,
       ));
     }
   }
 
   if (['corridor', 'wall', 'beam', 'trim'].includes(operation.kind) && sampled.length > 2) {
-    for (const point of sampled.slice(1, -1)) {
-      const jointHeight = operation.kind === 'wall' ? height : operation.kind === 'corridor' ? thickness : height;
-      const centerZ = operation.kind === 'wall' ? point[2] + height / 2 : point[2];
+    for (const [jointIndex, point] of sampled.slice(1, -1).entries()) {
+      const jointWidth = widthAt(jointIndex); const variedHeight = heightAt(jointIndex);
+      const jointHeight = operation.kind === 'wall' ? variedHeight : operation.kind === 'corridor' ? thickness : variedHeight;
+      const centerZ = operation.kind === 'wall' ? point[2] + variedHeight / 2 : point[2];
       const joint = operation.join === 'bevel'
-        ? createBrushPrimitive('cylinder', [point[0] - operation.width / 2, point[1] - operation.width / 2, centerZ - jointHeight / 2], [point[0] + operation.width / 2, point[1] + operation.width / 2, centerZ + jointHeight / 2], texture, 2, 4)
-        : createBoxBrush([point[0] - operation.width / 2, point[1] - operation.width / 2, centerZ - jointHeight / 2], [point[0] + operation.width / 2, point[1] + operation.width / 2, centerZ + jointHeight / 2], texture);
+        ? createBrushPrimitive('cylinder', [point[0] - jointWidth / 2, point[1] - jointWidth / 2, centerZ - jointHeight / 2], [point[0] + jointWidth / 2, point[1] + jointWidth / 2, centerZ + jointHeight / 2], texture, 2, 4)
+        : createBoxBrush([point[0] - jointWidth / 2, point[1] - jointWidth / 2, centerZ - jointHeight / 2], [point[0] + jointWidth / 2, point[1] + jointWidth / 2, centerZ + jointHeight / 2], texture);
       add(joint);
     }
   }
@@ -1283,7 +1325,7 @@ function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases
     sampledPointCount: sampled.length, width: operation.width, height: operation.height, thickness, spacing: operation.spacing,
     subdivisions, sides: operation.kind === 'pipe' ? sides : undefined, join: operation.join ?? 'overlap',
     capEnds: operation.capEnds ?? true, bankDegrees, texture, classification: operation.classification ?? (['wall', 'corridor', 'stairs'].includes(operation.kind) ? 'structural' : 'detail'),
-    groupId, objectCount: handles.length, replacedObjectCount: operation.replaceTargets?.length, bounds,
+    groupId, objectCount: handles.length, replacedObjectCount: operation.replaceTargets?.length, variation: operation.variation, bounds,
   }));
   return handles;
 }

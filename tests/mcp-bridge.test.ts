@@ -436,10 +436,13 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 9, maxPerBatch: 128 },
+        operations: { version: 10, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
-        pathConstruction: { persistent: true, operation: 'create_path', maxControlPoints: 64, maxGeneratedObjects: 256 },
+        pathConstruction: {
+          persistent: true, operation: 'create_path', maxControlPoints: 64, maxGeneratedObjects: 256,
+          controlledVariation: ['width', 'height', 'spacing', 'bankDegrees'],
+        },
         brushRefinement: { groupPreserving: true, textureModes: ['preserve', 'fit'], atomicPathReplacement: true },
         controlledVariation: { operation: 'repeat_variation', seeded: true, gridSnapped: true, previewCollisionReporting: true },
         textureProjection: {
@@ -482,7 +485,10 @@ describe('live MCP bridge', () => {
       const pathSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_path' } });
       expect(pathSchema.structuredContent).toMatchObject({
         type: 'create_path', required: ['type', 'id', 'kind', 'points', 'width'],
-        notes: expect.arrayContaining([expect.stringContaining('ordinary editable grouped brushes'), expect.stringContaining('replaceTargets')]),
+        notes: expect.arrayContaining([
+          expect.stringContaining('ordinary editable grouped brushes'), expect.stringContaining('replaceTargets'),
+          expect.stringContaining('per-segment width'),
+        ]),
       });
       const reshapeSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'reshape_room' } });
       expect(reshapeSchema.structuredContent).toMatchObject({
