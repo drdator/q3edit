@@ -46,6 +46,14 @@ interface CreationMetadata {
   groupId?: string;
 }
 
+export interface TextureTransform {
+  /** Fit one complete texture repeat to the face before applying the other relative transforms. */
+  fit?: boolean;
+  shift?: [number, number];
+  scale?: [number, number];
+  rotateDegrees?: number;
+}
+
 export interface CreateEntityOperation extends CreationMetadata {
   type: 'create_entity';
   classname: string;
@@ -77,6 +85,8 @@ export interface CreateBoxOperation extends CreationMetadata {
   maxs: Vec3;
   texture?: string;
   textures?: { top?: string; bottom?: string; sides?: string };
+  textureTransform?: TextureTransform;
+  textureTransforms?: { top?: TextureTransform; bottom?: TextureTransform; sides?: TextureTransform };
 }
 
 export interface CreateRoomOperation extends CreationMetadata {
@@ -90,6 +100,8 @@ export interface CreateRoomOperation extends CreationMetadata {
     floor?: string;
     ceiling?: string;
   };
+  textureTransform?: TextureTransform;
+  textureTransforms?: { walls?: TextureTransform; floor?: TextureTransform; ceiling?: TextureTransform };
 }
 
 export interface CreateBoxArrayOperation extends CreationMetadata {
@@ -101,6 +113,8 @@ export interface CreateBoxArrayOperation extends CreationMetadata {
   delta: Vec3;
   texture?: string;
   textures?: { top?: string; bottom?: string; sides?: string };
+  textureTransform?: TextureTransform;
+  textureTransforms?: { top?: TextureTransform; bottom?: TextureTransform; sides?: TextureTransform };
   classification?: 'detail' | 'structural';
 }
 
@@ -114,6 +128,8 @@ export interface CreatePrimitiveOperation extends CreationMetadata {
   maxs: Vec3;
   texture?: string;
   textures?: { top?: string; bottom?: string; sides?: string };
+  textureTransform?: TextureTransform;
+  textureTransforms?: { top?: TextureTransform; bottom?: TextureTransform; sides?: TextureTransform };
   axis?: MapAxis;
   sides?: number;
 }
@@ -124,6 +140,7 @@ export interface CreateWedgeOperation extends CreationMetadata {
   mins: Vec3;
   maxs: Vec3;
   texture?: string;
+  textureTransform?: TextureTransform;
   direction?: WedgeDirection;
 }
 
@@ -134,6 +151,10 @@ export interface CreateStairsOperation extends CreationMetadata {
   maxs: Vec3;
   texture?: string;
   textures?: { treads?: string; risers?: string; sides?: string; underside?: string };
+  textureTransform?: TextureTransform;
+  textureTransforms?: {
+    treads?: TextureTransform; risers?: TextureTransform; sides?: TextureTransform; underside?: TextureTransform;
+  };
   direction?: WedgeDirection;
   steps: number;
 }
@@ -142,7 +163,8 @@ export interface CreateBrushOperation extends CreationMetadata {
   type: 'create_brush';
   parent?: MapTargetRef;
   texture?: string;
-  faces: Array<{ points: [Vec3, Vec3, Vec3]; texture?: string }>;
+  textureTransform?: TextureTransform;
+  faces: Array<{ points: [Vec3, Vec3, Vec3]; texture?: string; textureTransform?: TextureTransform }>;
 }
 
 export interface TranslateObjectsOperation {
@@ -452,20 +474,34 @@ function addBox(entity: Entity, mins: Vec3, maxs: Vec3, texture: string): Brush 
   return brush;
 }
 
+function mergedTextureTransform(
+  base: TextureTransform | undefined,
+  override: TextureTransform | undefined,
+): TextureTransform | undefined {
+  if (!base) return override;
+  if (!override) return base;
+  return { ...base, ...override };
+}
+
+function applyBrushTextureTransform(editor: Editor, brush: Brush, transform: TextureTransform | undefined): void {
+  if (!transform) return;
+  for (const face of brush.faces) transformFaceTexture(editor, face, transform);
+}
+
 function applyCapSideTextures(
+  editor: Editor,
   brush: Brush,
   axis: number,
   textures: { top?: string; bottom?: string; sides?: string } | undefined,
+  textureTransform: TextureTransform | undefined,
+  textureTransforms: { top?: TextureTransform; bottom?: TextureTransform; sides?: TextureTransform } | undefined,
   fallback: string,
 ): void {
-  if (!textures) return;
   for (const face of brush.faces) {
     const component = face.plane.normal[axis];
-    face.texture = component > 0.9
-      ? textures.top ?? fallback
-      : component < -0.9
-        ? textures.bottom ?? fallback
-        : textures.sides ?? fallback;
+    const slot = component > 0.9 ? 'top' : component < -0.9 ? 'bottom' : 'sides';
+    if (textures) face.texture = textures[slot] ?? fallback;
+    transformFaceTexture(editor, face, mergedTextureTransform(textureTransform, textureTransforms?.[slot]));
   }
 }
 
@@ -473,7 +509,7 @@ function axisIndex(axis: MapAxis): number {
   return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
 }
 
-function addPrimitive(entity: Entity, operation: CreatePrimitiveOperation): Brush {
+function addPrimitive(editor: Editor, entity: Entity, operation: CreatePrimitiveOperation): Brush {
   assertBounds(operation.mins, operation.maxs);
   const brush = createBrushPrimitive(
     operation.primitive,
@@ -483,21 +519,25 @@ function addPrimitive(entity: Entity, operation: CreatePrimitiveOperation): Brus
     axisIndex(operation.axis ?? 'z'),
     operation.sides ?? 8,
   );
-  applyCapSideTextures(brush, operation.primitive === 'box' ? 2 : axisIndex(operation.axis ?? 'z'), operation.textures, operation.texture ?? 'common/caulk');
-  entity.brushes.push(brush);
-  return brush;
-}
-
-function addWedge(entity: Entity, operation: CreateWedgeOperation): Brush {
-  assertBounds(operation.mins, operation.maxs);
-  const brush = createWedgeBrush(
-    operation.mins, operation.maxs, operation.texture ?? 'common/caulk', operation.direction ?? 'x+',
+  applyCapSideTextures(
+    editor, brush, operation.primitive === 'box' ? 2 : axisIndex(operation.axis ?? 'z'),
+    operation.textures, operation.textureTransform, operation.textureTransforms, operation.texture ?? 'common/caulk',
   );
   entity.brushes.push(brush);
   return brush;
 }
 
-function addStairs(entity: Entity, operation: CreateStairsOperation): ObjectHandle[] {
+function addWedge(editor: Editor, entity: Entity, operation: CreateWedgeOperation): Brush {
+  assertBounds(operation.mins, operation.maxs);
+  const brush = createWedgeBrush(
+    operation.mins, operation.maxs, operation.texture ?? 'common/caulk', operation.direction ?? 'x+',
+  );
+  applyBrushTextureTransform(editor, brush, operation.textureTransform);
+  entity.brushes.push(brush);
+  return brush;
+}
+
+function addStairs(editor: Editor, entity: Entity, operation: CreateStairsOperation): ObjectHandle[] {
   assertBounds(operation.mins, operation.maxs);
   if (!Number.isInteger(operation.steps) || operation.steps < 2 || operation.steps > 64) {
     throw new Error('steps must be an integer from 2 to 64');
@@ -524,13 +564,17 @@ function addStairs(entity: Entity, operation: CreateStairsOperation): ObjectHand
       brush: (() => {
         const fallback = operation.texture ?? 'common/caulk';
         const brush = addBox(entity, mins, maxs, fallback);
-        if (operation.textures) {
-          for (const face of brush.faces) {
-            if (face.plane.normal[2] > 0.9) face.texture = operation.textures.treads ?? fallback;
-            else if (face.plane.normal[2] < -0.9) face.texture = operation.textures.underside ?? fallback;
-            else if (Math.abs(face.plane.normal[travelAxis]) > 0.9) face.texture = operation.textures.risers ?? fallback;
-            else face.texture = operation.textures.sides ?? fallback;
-          }
+        for (const face of brush.faces) {
+          const slot = face.plane.normal[2] > 0.9
+            ? 'treads'
+            : face.plane.normal[2] < -0.9
+              ? 'underside'
+              : Math.abs(face.plane.normal[travelAxis]) > 0.9 ? 'risers' : 'sides';
+          if (operation.textures) face.texture = operation.textures[slot] ?? fallback;
+          transformFaceTexture(
+            editor, face,
+            mergedTextureTransform(operation.textureTransform, operation.textureTransforms?.[slot]),
+          );
         }
         return brush;
       })(),
@@ -539,7 +583,7 @@ function addStairs(entity: Entity, operation: CreateStairsOperation): ObjectHand
   return handles;
 }
 
-function addPlaneBrush(entity: Entity, operation: CreateBrushOperation): Brush {
+function addPlaneBrush(editor: Editor, entity: Entity, operation: CreateBrushOperation): Brush {
   if (operation.faces.length < 4 || operation.faces.length > 128) throw new Error('faces must contain 4 to 128 planes');
   const faces = operation.faces.map((face, index) => {
     if (face.points.length !== 3) throw new Error(`face ${index + 1} must contain exactly three points`);
@@ -550,6 +594,12 @@ function addPlaneBrush(entity: Entity, operation: CreateBrushOperation): Brush {
   computeBrushGeometry(brush);
   const validation = validateBrush(brush);
   if (!validation.valid) throw new Error(`Invalid plane brush: ${validation.issues.join('; ')}`);
+  brush.faces.forEach((face, index) => {
+    transformFaceTexture(
+      editor, face,
+      mergedTextureTransform(operation.textureTransform, operation.faces[index].textureTransform),
+    );
+  });
   entity.brushes.push(brush);
   return brush;
 }
@@ -567,15 +617,22 @@ function applyCreateRoom(editor: Editor, operation: CreateRoomOperation, aliases
   const wallTexture = operation.textures?.walls ?? 'common/caulk';
   const floorTexture = operation.textures?.floor ?? wallTexture;
   const ceilingTexture = operation.textures?.ceiling ?? wallTexture;
-  const boxes: Array<[Vec3, Vec3, string]> = [
-    [[x0, y0, z0], [x1, y1, z0 + thickness], floorTexture],
-    [[x0, y0, z1 - thickness], [x1, y1, z1], ceilingTexture],
-    [[x0, y0, z0 + thickness], [x0 + thickness, y1, z1 - thickness], wallTexture],
-    [[x1 - thickness, y0, z0 + thickness], [x1, y1, z1 - thickness], wallTexture],
-    [[x0 + thickness, y0, z0 + thickness], [x1 - thickness, y0 + thickness, z1 - thickness], wallTexture],
-    [[x0 + thickness, y1 - thickness, z0 + thickness], [x1 - thickness, y1, z1 - thickness], wallTexture],
+  const boxes: Array<[Vec3, Vec3, string, 'floor' | 'ceiling' | 'walls']> = [
+    [[x0, y0, z0], [x1, y1, z0 + thickness], floorTexture, 'floor'],
+    [[x0, y0, z1 - thickness], [x1, y1, z1], ceilingTexture, 'ceiling'],
+    [[x0, y0, z0 + thickness], [x0 + thickness, y1, z1 - thickness], wallTexture, 'walls'],
+    [[x1 - thickness, y0, z0 + thickness], [x1, y1, z1 - thickness], wallTexture, 'walls'],
+    [[x0 + thickness, y0, z0 + thickness], [x1 - thickness, y0 + thickness, z1 - thickness], wallTexture, 'walls'],
+    [[x0 + thickness, y1 - thickness, z0 + thickness], [x1 - thickness, y1, z1 - thickness], wallTexture, 'walls'],
   ];
-  return boxes.map(([mins, maxs, texture]) => ({ kind: 'brush' as const, entity, brush: addBox(entity, mins, maxs, texture) }));
+  return boxes.map(([mins, maxs, texture, slot]) => {
+    const brush = addBox(entity, mins, maxs, texture);
+    applyBrushTextureTransform(
+      editor, brush,
+      mergedTextureTransform(operation.textureTransform, operation.textureTransforms?.[slot]),
+    );
+    return { kind: 'brush' as const, entity, brush };
+  });
 }
 
 function setObjectTexture(resolved: ResolvedObject, texture: string): void {
@@ -613,42 +670,37 @@ function fitFaceTexture(editor: Editor, face: BrushFace): void {
   }
 }
 
-function editFace(editor: Editor, face: BrushFace, operation: EditFacesOperation): void {
-  if (operation.texture !== undefined) {
-    if (!operation.texture.trim()) throw new Error('texture must not be empty');
-    face.texture = operation.texture;
-  }
-  if (operation.contentFlags !== undefined) face.contentFlags = operation.contentFlags;
-  if (operation.surfaceFlags !== undefined) face.surfaceFlags = operation.surfaceFlags;
-  if (operation.value !== undefined) face.value = operation.value;
+function transformFaceTexture(editor: Editor, face: BrushFace, transform: TextureTransform | undefined): void {
+  if (!transform) return;
+  if (transform.fit) fitFaceTexture(editor, face);
   const [width, height] = textureDimensions(editor, face);
   const projection = classicTextureProjection(face);
-  if (operation.shift) {
-    if (!operation.shift.every(Number.isFinite)) throw new Error('shift must contain two finite numbers');
+  if (transform.shift) {
+    if (!transform.shift.every(Number.isFinite)) throw new Error('shift must contain two finite numbers');
     if (projection) {
-      projection.offsetX += operation.shift[0]; projection.offsetY += operation.shift[1];
+      projection.offsetX += transform.shift[0]; projection.offsetY += transform.shift[1];
     } else if (face.textureProjection.kind === 'brush-primitive') {
-      face.textureProjection.matrix[0][2] += operation.shift[0] / width;
-      face.textureProjection.matrix[1][2] += operation.shift[1] / height;
+      face.textureProjection.matrix[0][2] += transform.shift[0] / width;
+      face.textureProjection.matrix[1][2] += transform.shift[1] / height;
     }
   }
-  if (operation.scale) {
-    if (!operation.scale.every(value => Number.isFinite(value) && value > 0)) throw new Error('scale must contain two positive finite multipliers');
+  if (transform.scale) {
+    if (!transform.scale.every(value => Number.isFinite(value) && value > 0)) throw new Error('scale must contain two positive finite multipliers');
     if (projection) {
-      projection.scaleX *= operation.scale[0]; projection.scaleY *= operation.scale[1];
+      projection.scaleX *= transform.scale[0]; projection.scaleY *= transform.scale[1];
     } else if (face.textureProjection.kind === 'brush-primitive') {
       for (let column = 0; column < 2; column++) {
-        face.textureProjection.matrix[0][column] /= operation.scale[0];
-        face.textureProjection.matrix[1][column] /= operation.scale[1];
+        face.textureProjection.matrix[0][column] /= transform.scale[0];
+        face.textureProjection.matrix[1][column] /= transform.scale[1];
       }
     }
   }
-  if (operation.rotateDegrees !== undefined) {
-    if (!Number.isFinite(operation.rotateDegrees)) throw new Error('rotateDegrees must be finite');
+  if (transform.rotateDegrees !== undefined) {
+    if (!Number.isFinite(transform.rotateDegrees)) throw new Error('rotateDegrees must be finite');
     if (projection) {
-      projection.rotation = ((projection.rotation + operation.rotateDegrees) % 360 + 360) % 360;
+      projection.rotation = ((projection.rotation + transform.rotateDegrees) % 360 + 360) % 360;
     } else if (face.textureProjection.kind === 'brush-primitive') {
-      const angle = operation.rotateDegrees * Math.PI / 180;
+      const angle = transform.rotateDegrees * Math.PI / 180;
       const cos = Math.cos(angle); const sin = Math.sin(angle);
       const [uRow, vRow] = face.textureProjection.matrix;
       const uPixels = uRow.map(value => value * width);
@@ -659,7 +711,17 @@ function editFace(editor: Editor, face: BrushFace, operation: EditFacesOperation
       }
     }
   }
-  if (operation.fit) fitFaceTexture(editor, face);
+}
+
+function editFace(editor: Editor, face: BrushFace, operation: EditFacesOperation): void {
+  if (operation.texture !== undefined) {
+    if (!operation.texture.trim()) throw new Error('texture must not be empty');
+    face.texture = operation.texture;
+  }
+  if (operation.contentFlags !== undefined) face.contentFlags = operation.contentFlags;
+  if (operation.surfaceFlags !== undefined) face.surfaceFlags = operation.surfaceFlags;
+  if (operation.value !== undefined) face.value = operation.value;
+  transformFaceTexture(editor, face, operation);
 }
 
 function classifyBrushes(targets: ResolvedObject[], classification: 'detail' | 'structural'): Brush[] {
@@ -968,7 +1030,10 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const fallback = operation.texture ?? 'common/caulk';
         const brush = addBox(entity, operation.mins, operation.maxs, fallback);
-        applyCapSideTextures(brush, 2, operation.textures, fallback);
+        applyCapSideTextures(
+          editor, brush, 2, operation.textures,
+          operation.textureTransform, operation.textureTransforms, fallback,
+        );
         const handle: ObjectHandle = { kind: 'brush', entity, brush };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_room') {
@@ -985,26 +1050,29 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           const mins = operation.mins.map((value, axis) => value + offset[axis]) as Vec3;
           const maxs = operation.maxs.map((value, axis) => value + offset[axis]) as Vec3;
           const brush = addBox(entity, mins, maxs, fallback);
-          applyCapSideTextures(brush, 2, operation.textures, fallback);
+          applyCapSideTextures(
+            editor, brush, 2, operation.textures,
+            operation.textureTransform, operation.textureTransforms, fallback,
+          );
           if (operation.classification) classifyBrush(brush, operation.classification);
           handles.push({ kind: 'brush', entity, brush });
         }
         recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'create_primitive') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
-        const handle: ObjectHandle = { kind: 'brush', entity, brush: addPrimitive(entity, operation) };
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addPrimitive(editor, entity, operation) };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_wedge') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
-        const handle: ObjectHandle = { kind: 'brush', entity, brush: addWedge(entity, operation) };
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addWedge(editor, entity, operation) };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_stairs') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
-        const handles = addStairs(entity, operation);
+        const handles = addStairs(editor, entity, operation);
         recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'create_brush') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
-        const handle: ObjectHandle = { kind: 'brush', entity, brush: addPlaneBrush(entity, operation) };
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addPlaneBrush(editor, entity, operation) };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_jump_pad' || operation.type === 'create_teleporter') {
         const created = createGameplayLink(editor, operation, ++gameplayLinkSequence);

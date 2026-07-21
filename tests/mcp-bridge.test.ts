@@ -361,7 +361,11 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { maxPerBatch: 128 },
+        operations: { version: 2, maxPerBatch: 128 },
+        textureProjection: {
+          creationFields: ['textureTransform', 'textureTransforms'],
+          controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
+        },
         screenshots: { maxWidth: 2048, modes: ['perspective', 'top', 'front', 'side'] },
         compiler: { available: false },
         editor: { project: { gameDirectory: 'baseq3' } },
@@ -376,6 +380,18 @@ describe('live MCP bridge', () => {
       const jumpJson = JSON.stringify((jumpSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
       expect(jumpJson).toContain('"apex"');
       expect(jumpJson).not.toContain('"destination"');
+
+      const boxSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_box' } });
+      expect(boxSchema.structuredContent).toMatchObject({
+        type: 'create_box',
+        notes: expect.arrayContaining([
+          expect.stringContaining('textureTransform applies to every created face'),
+          expect.stringContaining('textureTransforms.top'),
+        ]),
+      });
+      const boxJson = JSON.stringify((boxSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
+      expect(boxJson).toContain('"textureTransform"');
+      expect(boxJson).toContain('"textureTransforms"');
 
       const sessions = await client.callTool({ name: 'editor_sessions', arguments: {} });
       expect(sessions.structuredContent).toMatchObject({
@@ -535,6 +551,7 @@ describe('live MCP bridge', () => {
           operations: [{
             type: 'create_stairs', id: 'stairs', mins: [0, 0, 0], maxs: [256, 128, 128],
             direction: 'x+', steps: 8, texture: 'base_floor/stone',
+            textureTransforms: { treads: { fit: true, scale: [0.5, 1] } },
           }],
           responseDetail: 'compact',
         },

@@ -120,6 +120,44 @@ Creation operations accept `group` and an optional stable `groupId`. The created
 
 `create_box` and `create_primitive` accept semantic `textures.top`, `textures.bottom`, and `textures.sides` slots. For non-box primitives, top/bottom are the positive/negative caps along `axis`. `create_stairs` accepts `textures.treads`, `textures.risers`, `textures.sides`, and `textures.underside`; unspecified slots fall back to `texture`.
 
+## Texture projection quality
+
+Treat texture projection as part of geometry creation rather than a cleanup pass. Brush-creation operations accept `textureTransform` for every created face and `textureTransforms` for semantic overrides:
+
+- Boxes, box arrays, and primitives: `top`, `bottom`, `sides`
+- Rooms: `walls`, `floor`, `ceiling`
+- Stairs: `treads`, `risers`, `sides`, `underside`
+- Plane brushes: a global `textureTransform` plus `faces[].textureTransform`
+- Wedges: a global `textureTransform`
+
+Each transform accepts `fit`, `shift`, `scale`, and `rotateDegrees`. Fitting happens first, followed by the relative shift, scale, and rotation. Semantic transforms inherit unspecified fields from the global transform.
+
+Use `fit: true` for a focal surface intended to show one complete image, such as a jump-pad top, sign, door, console, or trim cap. Do not blindly fit large walls and floors: one repeat across a large face usually looks stretched. Preserve natural tiling there, or fit and then choose an intentional repeat count with relative scale. For example, `fit: true, scale: [0.5, 1]` produces two horizontal repeats because a smaller scale multiplier makes the texture repeat more often.
+
+This cylinder fits the jump-pad artwork once on its top while leaving its sides naturally tiled:
+
+```json
+{
+  "type": "create_primitive",
+  "id": "jump_pad_art",
+  "primitive": "cylinder",
+  "axis": "z",
+  "sides": 16,
+  "mins": [0, 0, 0],
+  "maxs": [128, 128, 16],
+  "textures": {
+    "top": "sfx/jumppadsmall",
+    "bottom": "common/caulk",
+    "sides": "base_trim/pewter_shiney"
+  },
+  "textureTransforms": {
+    "top": { "fit": true }
+  }
+}
+```
+
+Before choosing unfamiliar materials, use `texture_search`, `texture_inspect`, and `texture_preview_many` instead of guessing. After creating textured geometry, frame it and inspect it with `editor_screenshot`; use more than one angle when seams, caps, or side materials matter. Use `operation_schema` for the exact transform slots supported by a creation operation.
+
 Large `map_apply` and `map_preview` batches can set `responseDetail: "compact"`. Reference and alias lists then return total counts, the first/last samples, and an explicit `truncated` flag instead of flooding the MCP response.
 
 Object references use the current document indices: `E1`, `E0:B2`, `E0:B2:F4`, and `E0:P0`. Face references can be inspected, queried, selected, framed, or passed to `edit_faces`. References are revision-sensitive, so call `map_status`, `map_query`, or `map_entities` again after a revision conflict.
@@ -134,7 +172,7 @@ Mark decorative geometry as detail before compiling so it does not unnecessarily
 }
 ```
 
-Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as large horizontally, while `fit: true` fits one texture repeat to the face. In a batch, `@trim` edits every face of aliased brush geometry and `@trim:F4` edits face 4 without predicting its numeric brush index:
+Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as large horizontally, while `fit: true` fits one texture repeat to the face before applying any shift, scale, or rotation in the same operation. In a batch, `@trim` edits every face of aliased brush geometry and `@trim:F4` edits face 4 without predicting its numeric brush index:
 
 ```json
 {

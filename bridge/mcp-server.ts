@@ -26,6 +26,35 @@ const creationMetadataSchema = {
   group: z.string().min(1).max(120).optional(),
   groupId: groupId.optional(),
 };
+const textureTransformSchema = z.object({
+  fit: z.boolean().optional().describe('Fit one complete texture repeat to each targeted face before applying shift, scale, and rotation'),
+  shift: z.tuple([z.number(), z.number()]).optional().describe('Relative texture shift in pixels'),
+  scale: z.tuple([z.number().positive(), z.number().positive()]).optional()
+    .describe('Relative texture-size multiplier; 2 makes the texture twice as large, while 0.5 produces twice as many repeats'),
+  rotateDegrees: z.number().optional().describe('Relative clockwise texture rotation in degrees'),
+});
+const compatibleTextureTransformSchema = z.object({
+  fit: z.boolean().optional(),
+  shift: z.array(z.number()).length(2).optional(),
+  scale: z.array(z.number().positive()).length(2).optional(),
+  rotateDegrees: z.number().optional(),
+});
+const capSideTextureTransformsSchema = z.object({
+  top: textureTransformSchema.optional(),
+  bottom: textureTransformSchema.optional(),
+  sides: textureTransformSchema.optional(),
+});
+const roomTextureTransformsSchema = z.object({
+  walls: textureTransformSchema.optional(),
+  floor: textureTransformSchema.optional(),
+  ceiling: textureTransformSchema.optional(),
+});
+const stairTextureTransformsSchema = z.object({
+  treads: textureTransformSchema.optional(),
+  risers: textureTransformSchema.optional(),
+  sides: textureTransformSchema.optional(),
+  underside: textureTransformSchema.optional(),
+});
 const screenshotBounds = z.object({ mins: vec3, maxs: vec3 });
 const nullableBounds = screenshotBounds.nullable();
 const issueSeverity = z.enum(['error', 'warning', 'info']);
@@ -247,6 +276,8 @@ const mapOperationVariants = [
     textures: z.object({
       top: z.string().min(1).optional(), bottom: z.string().min(1).optional(), sides: z.string().min(1).optional(),
     }).optional(),
+    textureTransform: textureTransformSchema.optional(),
+    textureTransforms: capSideTextureTransformsSchema.optional(),
   }),
   z.object({
     type: z.literal('create_room'),
@@ -260,6 +291,8 @@ const mapOperationVariants = [
       floor: z.string().min(1).optional(),
       ceiling: z.string().min(1).optional(),
     }).optional(),
+    textureTransform: textureTransformSchema.optional(),
+    textureTransforms: roomTextureTransformsSchema.optional(),
   }),
   z.object({
     type: z.literal('create_box_array'),
@@ -273,6 +306,8 @@ const mapOperationVariants = [
     textures: z.object({
       top: z.string().min(1).optional(), bottom: z.string().min(1).optional(), sides: z.string().min(1).optional(),
     }).optional(),
+    textureTransform: textureTransformSchema.optional(),
+    textureTransforms: capSideTextureTransformsSchema.optional(),
     classification: z.enum(['detail', 'structural']).optional(),
   }),
   z.object({
@@ -286,6 +321,8 @@ const mapOperationVariants = [
     textures: z.object({
       top: z.string().min(1).optional(), bottom: z.string().min(1).optional(), sides: z.string().min(1).optional(),
     }).optional(),
+    textureTransform: textureTransformSchema.optional(),
+    textureTransforms: capSideTextureTransformsSchema.optional(),
     axis: z.enum(['x', 'y', 'z']).optional(),
     sides: z.number().int().optional(),
   }),
@@ -296,6 +333,7 @@ const mapOperationVariants = [
     mins: vec3,
     maxs: vec3,
     texture: z.string().min(1).optional(),
+    textureTransform: textureTransformSchema.optional(),
     direction: z.enum(['x+', 'x-', 'y+', 'y-']).optional(),
   }),
   z.object({
@@ -309,6 +347,8 @@ const mapOperationVariants = [
       treads: z.string().min(1).optional(), risers: z.string().min(1).optional(),
       sides: z.string().min(1).optional(), underside: z.string().min(1).optional(),
     }).optional(),
+    textureTransform: textureTransformSchema.optional(),
+    textureTransforms: stairTextureTransformsSchema.optional(),
     direction: z.enum(['x+', 'x-', 'y+', 'y-']).optional(),
     steps: z.number().int().min(2).max(64),
   }),
@@ -317,9 +357,11 @@ const mapOperationVariants = [
     ...creationMetadataSchema,
     parent: operationRef.optional(),
     texture: z.string().min(1).optional(),
+    textureTransform: textureTransformSchema.optional(),
     faces: z.array(z.object({
       points: z.tuple([vec3, vec3, vec3]),
       texture: z.string().min(1).optional(),
+      textureTransform: textureTransformSchema.optional(),
     })).min(4).max(128),
   }),
   z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
@@ -396,7 +438,30 @@ const mapOperationVariants = [
 ] as const;
 const mapOperation = z.discriminatedUnion('type', mapOperationVariants);
 const operationSchemaByType = new Map(mapOperationVariants.map(schema => [schema.shape.type.value, schema]));
+const GLOBAL_TEXTURE_TRANSFORM_NOTE = 'textureTransform applies to every created face. fit runs first, then relative shift, scale, and rotation.';
 const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[number], string[]>> = {
+  create_box: [
+    GLOBAL_TEXTURE_TRANSFORM_NOTE,
+    'textureTransforms.top, bottom, and sides override individual fields from textureTransform for those semantic faces.',
+  ],
+  create_room: [
+    GLOBAL_TEXTURE_TRANSFORM_NOTE,
+    'textureTransforms.walls, floor, and ceiling override individual fields from textureTransform for each room component.',
+  ],
+  create_box_array: [
+    'Creates count evenly spaced brushes at mins/maxs + delta × index; classification can mark every brush detail immediately.',
+    GLOBAL_TEXTURE_TRANSFORM_NOTE,
+    'textureTransforms.top, bottom, and sides override individual fields from textureTransform for every created box.',
+  ],
+  create_primitive: [
+    GLOBAL_TEXTURE_TRANSFORM_NOTE,
+    'textureTransforms.top, bottom, and sides use the primitive axis for cap classification; a box always uses Z caps.',
+  ],
+  create_wedge: [GLOBAL_TEXTURE_TRANSFORM_NOTE],
+  create_stairs: [
+    GLOBAL_TEXTURE_TRANSFORM_NOTE,
+    'textureTransforms.treads, risers, sides, and underside override individual fields from textureTransform on every step.',
+  ],
   create_jump_pad: [
     'apex is required and is the target_position at the top of the trajectory; destination is not valid.',
     'The operation creates and wires trigger_push, its trigger brush, and target_position atomically.',
@@ -405,10 +470,15 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'destination is required and is the misc_teleporter_dest origin; apex is not valid.',
     'exitAngle controls the destination facing angle in degrees.',
   ],
-  create_brush: ['Each face is a plane defined by three points. Point winding must face outward.'],
+  create_brush: [
+    'Each face is a plane defined by three points. Point winding must face outward.',
+    'textureTransform applies to every face; faces[].textureTransform overrides individual transform fields for that face.',
+  ],
   create_entity_array: ['Creates count entities at start + delta × index in one operation and one undo transaction.'],
-  create_box_array: ['Creates count evenly spaced brushes at mins/maxs + delta × index; classification can mark every brush detail immediately.'],
-  edit_faces: ['Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.'],
+  edit_faces: [
+    'Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.',
+    'fit runs before relative shift, scale, and rotation, so they can intentionally adjust a fitted texture in one operation.',
+  ],
   assign_group: ['The group name reuses an existing case-insensitive match or creates a persistent named group.'],
 };
 
@@ -469,6 +539,18 @@ const compatibleMapOperationInput = z.object({
     risers: z.string().optional(),
     underside: z.string().optional(),
   }).optional(),
+  textureTransform: compatibleTextureTransformSchema.optional(),
+  textureTransforms: z.object({
+    walls: compatibleTextureTransformSchema.optional(),
+    floor: compatibleTextureTransformSchema.optional(),
+    ceiling: compatibleTextureTransformSchema.optional(),
+    top: compatibleTextureTransformSchema.optional(),
+    bottom: compatibleTextureTransformSchema.optional(),
+    sides: compatibleTextureTransformSchema.optional(),
+    treads: compatibleTextureTransformSchema.optional(),
+    risers: compatibleTextureTransformSchema.optional(),
+    underside: compatibleTextureTransformSchema.optional(),
+  }).optional(),
   primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'pyramid']).optional(),
   axis: z.enum(['x', 'y', 'z']).optional(),
   sides: z.number().int().optional(),
@@ -477,6 +559,7 @@ const compatibleMapOperationInput = z.object({
   faces: z.array(z.object({
     points: z.array(compatibleVec3).length(3),
     texture: z.string().optional(),
+    textureTransform: compatibleTextureTransformSchema.optional(),
   })).optional(),
   center: compatibleVec3.optional(),
   angleDegrees: z.number().optional(),
@@ -558,7 +641,14 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     return { sessionId, result: value };
   };
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
-    instructions: 'Call editor_sessions first when more than one Q3Edit browser may be open, then pass sessionId or select one with editor_session_select. Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
+    instructions: [
+      'Call editor_sessions first when more than one Q3Edit browser may be open, then pass sessionId or select one with editor_session_select.',
+      'Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data.',
+      'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
+      'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
+      'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
+      'Use fit for focal surfaces that should show one complete image, but preserve intentional tiling on large walls and floors. Inspect unfamiliar materials and verify textured geometry with editor_screenshot.',
+    ].join(' '),
   });
   if (activityLog) {
     const registerTool = server.registerTool.bind(server) as any;
@@ -670,7 +760,14 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 1, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 2, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        textureProjection: {
+          creationFields: ['textureTransform', 'textureTransforms'],
+          controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
+          order: ['fit', 'shift', 'scale', 'rotateDegrees'],
+          semanticSlots: ['top', 'bottom', 'sides', 'walls', 'floor', 'ceiling', 'treads', 'risers', 'underside'],
+          note: 'Fit focal one-image surfaces; keep intentional tiling on large architectural surfaces and verify with editor_screenshot.',
+        },
         coordinates: {
           finiteNumbersRequired: true,
           enforcedRange: null,
@@ -1474,7 +1571,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, convex plane brushes, and bulk entity/box arrays. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Set responseDetail to compact for large batches and call operation_schema for exact fields.',
+    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, convex plane brushes, and bulk entity/box arrays. Geometry creation accepts textureTransform for all faces and textureTransforms for semantic face overrides; edit_faces controls existing face textures, projection, fit, and flags. Set responseDetail to compact for large batches and call operation_schema for exact fields.',
     inputSchema: mapOperationBatchInputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, label, operations, responseDetail }) => {

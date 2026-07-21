@@ -317,6 +317,46 @@ describe('serializable map operations', () => {
     expect(firstStep.faces.find(face => Math.abs(face.plane.normal[0]) > 0.9)?.texture).toBe('stairs/side');
   });
 
+  test('applies global and semantic texture transforms while creating geometry', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      {
+        type: 'create_box', mins: [0, 0, 0], maxs: [256, 128, 32], texture: 'base',
+        textureTransform: { scale: [2, 1] },
+        textureTransforms: {
+          top: { fit: true, scale: [0.5, 1], rotateDegrees: 90 },
+          sides: { shift: [8, 0] },
+        },
+      },
+      {
+        type: 'create_room', mins: [0, 256, 0], maxs: [256, 384, 128],
+        textureTransforms: { floor: { fit: true } },
+      },
+      {
+        type: 'create_stairs', direction: 'x+', steps: 2,
+        mins: [320, 0, 0], maxs: [448, 128, 64],
+        textureTransforms: { treads: { fit: true }, risers: { rotateDegrees: 90 } },
+      },
+    ]);
+
+    const box = editor.worldspawn.brushes[0];
+    const top = box.faces.find(face => face.plane.normal[2] > 0.9)!;
+    const bottom = box.faces.find(face => face.plane.normal[2] < -0.9)!;
+    const side = box.faces.find(face => face.plane.normal[0] > 0.9)!;
+    expect(top.textureProjection).toMatchObject({ kind: 'classic', scaleX: 1, scaleY: 1, rotation: 90 });
+    expect(bottom.textureProjection).toMatchObject({ kind: 'classic', scaleX: 1, scaleY: 0.5, rotation: 0 });
+    expect(side.textureProjection).toMatchObject({ kind: 'classic', offsetX: 8, scaleX: 1, scaleY: 0.5 });
+
+    const roomFloorTop = editor.worldspawn.brushes[1].faces.find(face => face.plane.normal[2] > 0.9)!;
+    expect(roomFloorTop.textureProjection).toMatchObject({ kind: 'classic', scaleX: 2, scaleY: 1 });
+
+    const firstStep = editor.worldspawn.brushes[7];
+    const tread = firstStep.faces.find(face => face.plane.normal[2] > 0.9)!;
+    const riser = firstStep.faces.find(face => face.plane.normal[0] > 0.9)!;
+    expect(tread.textureProjection).toMatchObject({ kind: 'classic', scaleX: 0.5, scaleY: 1 });
+    expect(riser.textureProjection).toMatchObject({ kind: 'classic', rotation: 90 });
+  });
+
   test('creates repeated entities and classified detail geometry atomically', () => {
     const editor = emptyEditor();
     const result = applyMapOperations(editor, [
