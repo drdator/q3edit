@@ -59,6 +59,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_statistics` summarizes world bounds, structural/detail geometry, texture usage, approximate light influence, and spawn/item distribution and spacing.
 - `map_texture_review` measures brush-face projection density and reports stretched, over-tiled, suspiciously fitted, or inconsistent materials with exact face references and suggested `edit_faces` transforms.
+- `map_geometry_lint` finds duplicate brushes, coplanar z-fighting candidates, thin brushes, sliver faces, compiler-grid coordinates, and small structural geometry that is probably detail. Its findings are also included in `map_design_review`.
 - `map_summary` is the token-efficient orientation call for iterative work: revision, file, bounds, geometry/detail totals, diagnostics, major entity classes, and spawn/item distribution without full object dumps.
 - `map_design_review` combines editor validation, gameplay placement lint, jump-pad results, approximate route reachability, and compact spatial context in one revision-consistent response. It reports pass/needs-attention/blocked plus categorized findings without pretending the heuristics form an objective numeric quality score.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.

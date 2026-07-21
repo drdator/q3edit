@@ -11,6 +11,7 @@ import { collectMapStatistics } from './map-statistics';
 import { compactMapSummary, reviewMap } from './design-review';
 import type { McpActivityLog } from './activity-log';
 import { reviewTextureQuality, textureNamesForReview, type TextureDimensions } from './texture-review';
+import { lintGeometry } from './geometry-lint';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -73,6 +74,11 @@ const routeLintIssueSchema = z.object({
   ]),
   message: z.string(),
   refs: z.array(z.string()),
+});
+const geometryLintIssueSchema = z.object({
+  severity: z.enum(['warning', 'info']),
+  code: z.enum(['duplicate-brush', 'coplanar-overlap', 'thin-brush', 'sliver-face', 'off-grid-geometry', 'likely-structural-detail']),
+  message: z.string(), refs: z.array(z.string()),
 });
 const jumpPadAnalysisSchema = z.object({
   model: z.string(),
@@ -149,6 +155,10 @@ const gameplayLintOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), issueCount: z.number().int().nonnegative(),
   issues: z.array(gameplayLintIssueSchema),
 });
+const geometryLintOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), issueCount: z.number().int().nonnegative(),
+  issues: z.array(geometryLintIssueSchema),
+});
 const jumpPadOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), ...jumpPadAnalysisSchema.shape,
 });
@@ -178,7 +188,7 @@ const compactMapSummarySchema = z.object({
 });
 const sampledDesignFindingSchema = z.object({
   count: z.number().int(),
-  sample: z.array(z.object({ source: z.enum(['validation', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
+  sample: z.array(z.object({ source: z.enum(['validation', 'geometry', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
   truncated: z.boolean(),
 });
 const designReviewOutputSchema = z.object({
@@ -187,6 +197,10 @@ const designReviewOutputSchema = z.object({
   severityCounts: z.object({ errors: z.number().int(), warnings: z.number().int(), info: z.number().int() }),
   findingCount: z.number().int(), findings: sampledDesignFindingSchema, map: compactMapSummarySchema,
   validation: sampledDesignFindingSchema,
+  geometry: z.object({
+    issueCount: z.number().int(),
+    issues: z.object({ count: z.number().int(), sample: z.array(geometryLintIssueSchema), truncated: z.boolean() }),
+  }),
   gameplay: z.object({
     issueCount: z.number().int(),
     issues: z.object({ count: z.number().int(), sample: z.array(gameplayLintIssueSchema), truncated: z.boolean() }),
@@ -909,6 +923,22 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     }
   });
 
+  server.registerTool('map_geometry_lint', {
+    title: 'Lint geometry construction quality',
+    description: 'Find duplicate brushes, coplanar same-facing overlaps that may z-fight, sub-unit brush thickness, sliver faces, coordinates outside the compiler eighth-unit grid, and small structural brushes that are likely decorative detail. Returns exact brush or face references.',
+    inputSchema: { ...sessionInput },
+    outputSchema: geometryLintOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...lintGeometry(snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_summary', {
     title: 'Get a compact map orientation summary',
     description: 'Return a token-efficient revision snapshot with world bounds, object/detail counts, diagnostic totals, major entity classes, and spawn/item distribution. Use this between edit batches instead of dumping the full document.',
@@ -932,7 +962,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_design_review', {
     title: 'Run a combined map design review',
-    description: 'Return one revision-consistent review combining editor validation, gameplay placement lint, jump-pad analysis, approximate route reachability, and compact spatial statistics. Compact mode caps repeated findings; focused lint tools remain available for deeper follow-up.',
+    description: 'Return one revision-consistent review combining editor validation, geometry construction quality, gameplay placement lint, jump-pad analysis, approximate route reachability, and compact spatial statistics. Compact mode caps repeated findings; focused lint tools remain available for deeper follow-up.',
     inputSchema: {
       ...sessionInput,
       detail: z.enum(['compact', 'full']).optional().default('compact'),

@@ -3,6 +3,7 @@ import type { Vec3 } from '../src/math';
 import { lintGameplay, type GameplayLintIssue } from './gameplay-lint';
 import { collectMapStatistics, type MapStatistics } from './map-statistics';
 import { lintRoutes, type RouteLintIssue } from './route-lint';
+import { lintGeometry, type GeometryLintIssue } from './geometry-lint';
 
 export interface CompactMapSummary {
   world: { bounds: { mins: Vec3; maxs: Vec3 } | null; size: number[] | null };
@@ -22,7 +23,7 @@ export interface CompactMapSummary {
 }
 
 export interface DesignFinding {
-  source: 'validation' | 'gameplay' | 'routes';
+  source: 'validation' | 'geometry' | 'gameplay' | 'routes';
   severity: 'error' | 'warning' | 'info';
   code: string;
   message: string;
@@ -80,14 +81,16 @@ export function reviewMap(
   const limit = detail === 'full' ? Number.MAX_SAFE_INTEGER : 20;
   const statistics = collectMapStatistics(mapText);
   const gameplayIssues = lintGameplay(mapText);
+  const geometry = lintGeometry(mapText);
   const routes = lintRoutes(mapText);
   const validationFindings: DesignFinding[] = diagnostics.map(diagnostic => ({
     source: 'validation', severity: diagnostic.severity, code: diagnostic.code,
     message: diagnostic.message, refs: diagnosticRefs(diagnostic),
   }));
   const gameplayFindings: DesignFinding[] = gameplayIssues.map((issue: GameplayLintIssue) => ({ source: 'gameplay', ...issue }));
+  const geometryFindings: DesignFinding[] = geometry.issues.map((issue: GeometryLintIssue) => ({ source: 'geometry', ...issue }));
   const routeFindings: DesignFinding[] = routes.issues.map((issue: RouteLintIssue) => ({ source: 'routes', ...issue }));
-  const findings = [...validationFindings, ...gameplayFindings, ...routeFindings];
+  const findings = [...validationFindings, ...geometryFindings, ...gameplayFindings, ...routeFindings];
   const severityCounts = {
     errors: findings.filter(finding => finding.severity === 'error').length,
     warnings: findings.filter(finding => finding.severity === 'warning').length,
@@ -109,7 +112,7 @@ export function reviewMap(
     warnings: analysis.warnings,
   }));
   return {
-    model: 'Combined editor validation, placement lint, and approximate platform-route review; route findings are heuristics, not AAS or playtest proof.',
+    model: 'Combined editor validation, geometry quality, placement lint, and approximate platform-route review; findings are authoring heuristics, not compiler or playtest proof.',
     detail,
     status: severityCounts.errors > 0 ? 'blocked' : severityCounts.warnings > 0 ? 'needs-attention' : 'pass',
     severityCounts,
@@ -117,6 +120,7 @@ export function reviewMap(
     findings: sampled(findings, limit),
     map: compactMapSummary(mapInfo, statistics),
     validation: sampled(validationFindings, limit),
+    geometry: { issueCount: geometry.issueCount, issues: sampled(geometry.issues, limit) },
     gameplay: { issueCount: gameplayIssues.length, issues: sampled(gameplayIssues, limit) },
     routes: {
       issueCount: routes.issueCount,
