@@ -2,6 +2,7 @@ import {
   classicTextureProjection,
   clipBrush,
   cloneBrush,
+  cloneTextureProjection,
   computeBrushGeometry,
   createBoxBrush,
   createFace,
@@ -395,6 +396,34 @@ export interface CsgSubtractOperation {
   deleteCarvers?: boolean;
 }
 
+export interface OffsetFacesOperation {
+  type: 'offset_faces';
+  targets: MapFaceTargetRef[];
+  distance: number;
+  textureMode?: 'preserve' | 'fit';
+}
+
+export interface ChamferBrushesOperation {
+  type: 'chamfer_brushes';
+  id?: string;
+  targets: MapTargetRef[];
+  amount: number;
+  axis?: MapAxis;
+  corners?: Array<'min-min' | 'min-max' | 'max-min' | 'max-max'>;
+  texture?: string;
+  textureMode?: 'preserve' | 'fit';
+}
+
+export interface TaperBrushesOperation {
+  type: 'taper_brushes';
+  id?: string;
+  targets: MapTargetRef[];
+  axis?: MapAxis;
+  endScale: [number, number];
+  endOffset?: [number, number];
+  textureMode?: 'preserve' | 'fit';
+}
+
 export interface CreateJumpPadOperation extends CreationMetadata {
   type: 'create_jump_pad';
   mins: Vec3;
@@ -461,6 +490,9 @@ export type MapOperation =
   | ClipBrushesOperation
   | HollowBrushesOperation
   | CsgSubtractOperation
+  | OffsetFacesOperation
+  | ChamferBrushesOperation
+  | TaperBrushesOperation
   | CreateJumpPadOperation
   | CreateTeleporterOperation
   | AssignGroupOperation
@@ -1438,6 +1470,142 @@ function applyCsgSubtract(
   return handles;
 }
 
+function applyFaceStyle(target: BrushFace, source: BrushFace, texture?: string): void {
+  target.texture = texture ?? source.texture;
+  target.textureProjection = cloneTextureProjection(source.textureProjection);
+  target.contentFlags = source.contentFlags;
+  target.surfaceFlags = source.surfaceFlags;
+  target.value = source.value;
+}
+
+function closestStyledFace(brush: Brush, normal: Vec3): BrushFace {
+  return brush.faces.reduce((best, face) =>
+    vec3Dot(face.plane.normal, normal) > vec3Dot(best.plane.normal, normal) ? face : best,
+  brush.faces[0]);
+}
+
+function applyOffsetFaces(editor: Editor, operation: OffsetFacesOperation, faces: ResolvedFace[]): void {
+  if (!Number.isFinite(operation.distance) || Math.abs(operation.distance) < 0.001) throw new Error('offset_faces distance must be a non-zero finite number');
+  const byBrush = new Map<Brush, BrushFace[]>();
+  for (const resolved of faces) {
+    const list = byBrush.get(resolved.brush) ?? [];
+    list.push(resolved.face);
+    byBrush.set(resolved.brush, list);
+  }
+  for (const [brush, selected] of byBrush) {
+    for (const face of selected) {
+      const delta = face.plane.normal.map(value => value * operation.distance) as Vec3;
+      face.points = face.points.map(point => point.map((value, axis) => value + delta[axis]) as Vec3) as [Vec3, Vec3, Vec3];
+    }
+    computeBrushGeometry(brush);
+    const validation = validateBrush(brush);
+    if (!validation.valid) throw new Error(`offset_faces produced an invalid brush: ${validation.issues.join('; ')}`);
+    if (operation.textureMode === 'fit') selected.forEach(face => fitFaceTexture(editor, face));
+  }
+}
+
+function transverseAxes(axis: number): [number, number] {
+  return axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
+}
+
+function applyChamferBrushes(
+  editor: Editor,
+  operation: ChamferBrushesOperation,
+  targets: Array<ResolvedObject & { kind: 'brush' }>,
+): ObjectHandle[] {
+  if (!Number.isFinite(operation.amount) || operation.amount <= 0) throw new Error('chamfer_brushes amount must be positive');
+  const axis = axisIndex(operation.axis ?? 'z');
+  const [u, v] = transverseAxes(axis);
+  const requested = operation.corners ?? ['min-min', 'min-max', 'max-min', 'max-max'];
+  if (requested.length === 0) throw new Error('chamfer_brushes corners must not be empty');
+  const corners = [...new Set(requested)];
+  const handles: ObjectHandle[] = [];
+  for (const target of targets) {
+    const sizeU = target.brush.maxs[u] - target.brush.mins[u];
+    const sizeV = target.brush.maxs[v] - target.brush.mins[v];
+    if (operation.amount * 2 >= Math.min(sizeU, sizeV)) throw new Error(`chamfer amount is too large for ${target.ref}`);
+    let current = target.brush;
+    for (const corner of corners) {
+      const [uSide, vSide] = corner.split('-') as ['min' | 'max', 'min' | 'max'];
+      const signU = uSide === 'min' ? -1 : 1;
+      const signV = vSide === 'min' ? -1 : 1;
+      const normal: Vec3 = [0, 0, 0];
+      normal[u] = signU / Math.SQRT2; normal[v] = signV / Math.SQRT2;
+      const cornerPoint: Vec3 = [0, 0, 0];
+      cornerPoint[u] = signU < 0 ? current.mins[u] : current.maxs[u];
+      cornerPoint[v] = signV < 0 ? current.mins[v] : current.maxs[v];
+      cornerPoint[axis] = (current.mins[axis] + current.maxs[axis]) / 2;
+      const dist = vec3Dot(normal, cornerPoint) - operation.amount / Math.SQRT2;
+      const center = normal.map(value => value * dist) as Vec3;
+      center[axis] = cornerPoint[axis];
+      const tangent: Vec3 = [0, 0, 0];
+      tangent[u] = -normal[v]; tangent[v] = normal[u];
+      const extent = Math.max(sizeU, sizeV, current.maxs[axis] - current.mins[axis]) * 2;
+      let p1 = center.map((value, dimension) => value - tangent[dimension] * extent) as Vec3;
+      let p2 = center.map((value, dimension) => value + tangent[dimension] * extent) as Vec3;
+      const p3 = [...center] as Vec3; p3[axis] += extent;
+      if (axis === 1) [p1, p2] = [p2, p1];
+      const clipped = clipBrush(current, [p1, p2, p3], operation.texture);
+      if (!clipped) throw new Error(`Could not chamfer ${corner} on ${target.ref}`);
+      const newFace = clipped.faces.reduce((best, face) =>
+        vec3Dot(face.plane.normal, normal) > vec3Dot(best.plane.normal, normal) ? face : best,
+      clipped.faces[0]);
+      applyFaceStyle(newFace, closestStyledFace(target.brush, normal), operation.texture);
+      if (operation.textureMode === 'fit') fitFaceTexture(editor, newFace);
+      current = clipped;
+    }
+    handles.push(...replaceBrush(target, [current]));
+  }
+  return handles;
+}
+
+function isAxisAlignedBox(brush: Brush): boolean {
+  if (brush.faces.length !== 6) return false;
+  const directions = new Set<string>();
+  for (const face of brush.faces) {
+    const axis = face.plane.normal.findIndex(value => Math.abs(value) > 0.999);
+    if (axis < 0 || face.plane.normal.some((value, index) => index !== axis && Math.abs(value) > 0.001)) return false;
+    directions.add(`${axis}:${Math.sign(face.plane.normal[axis])}`);
+  }
+  return directions.size === 6;
+}
+
+function remapFromTaperAxis(point: Vec3, axis: number, u: number, v: number): Vec3 {
+  const result: Vec3 = [0, 0, 0];
+  result[u] = point[0]; result[v] = point[1]; result[axis] = point[2];
+  return result;
+}
+
+function applyTaperBrushes(
+  editor: Editor,
+  operation: TaperBrushesOperation,
+  targets: Array<ResolvedObject & { kind: 'brush' }>,
+): ObjectHandle[] {
+  if (!operation.endScale.every(value => Number.isFinite(value) && value > 0 && value <= 4)) throw new Error('taper_brushes endScale values must be positive and at most 4');
+  const endOffset = operation.endOffset ?? [0, 0];
+  if (!endOffset.every(Number.isFinite)) throw new Error('taper_brushes endOffset values must be finite');
+  const axis = axisIndex(operation.axis ?? 'z');
+  const [u, v] = transverseAxes(axis);
+  const handles: ObjectHandle[] = [];
+  for (const target of targets) {
+    if (!isAxisAlignedBox(target.brush)) throw new Error(`${target.ref} must be an axis-aligned six-face box before tapering`);
+    const mappedMins: Vec3 = [target.brush.mins[u], target.brush.mins[v], target.brush.mins[axis]];
+    const mappedMaxs: Vec3 = [target.brush.maxs[u], target.brush.maxs[v], target.brush.maxs[axis]];
+    const replacement = createTaperedBrush(mappedMins, mappedMaxs, target.brush.faces[0].texture, operation.endScale, endOffset);
+    for (const face of replacement.faces) face.points = face.points.map(point => remapFromTaperAxis(point, axis, u, v)) as [Vec3, Vec3, Vec3];
+    computeBrushGeometry(replacement);
+    for (const face of replacement.faces) {
+      applyFaceStyle(face, closestStyledFace(target.brush, face.plane.normal));
+      if (operation.textureMode === 'fit') fitFaceTexture(editor, face);
+    }
+    replacement.name = target.brush.name;
+    replacement.editorGroupId = target.brush.editorGroupId;
+    replacement.properties = target.brush.properties ? { ...target.brush.properties } : undefined;
+    handles.push(...replaceBrush(target, [replacement]));
+  }
+  return handles;
+}
+
 function generatedGroupId(editor: Editor, name: string): string {
   const base = `mcp-${name.toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '') || 'group'}`.slice(0, 120);
   const used = new Set(listNamedGroups(editor.entities).map(group => group.id));
@@ -1801,6 +1969,20 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'csg_subtract');
         const carvers = requireBrushes(resolveTargets(editor, operation.carvers, aliases), 'csg_subtract');
         const handles = applyCsgSubtract(operation, targets, carvers);
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
+      } else if (operation.type === 'offset_faces') {
+        const faces = resolveFaces(editor, operation.targets, aliases);
+        applyOffsetFaces(editor, operation, faces);
+        faces.forEach(face => changedFaceRefs.add(face.ref));
+      } else if (operation.type === 'chamfer_brushes') {
+        const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'chamfer_brushes');
+        const handles = applyChamferBrushes(editor, operation, targets);
+        createdHandles.push(...handles);
+        registerAlias(aliases, operation.id, handles);
+      } else if (operation.type === 'taper_brushes') {
+        const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'taper_brushes');
+        const handles = applyTaperBrushes(editor, operation, targets);
         createdHandles.push(...handles);
         registerAlias(aliases, operation.id, handles);
       } else if (operation.type === 'assign_group') {

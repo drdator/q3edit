@@ -428,10 +428,11 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 6, maxPerBatch: 128 },
+        operations: { version: 7, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
         pathConstruction: { persistent: true, operation: 'create_path', maxControlPoints: 64, maxGeneratedObjects: 256 },
+        brushRefinement: { groupPreserving: true, textureModes: ['preserve', 'fit'] },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -473,6 +474,16 @@ describe('live MCP bridge', () => {
       expect(pathSchema.structuredContent).toMatchObject({
         type: 'create_path', required: ['type', 'id', 'kind', 'points', 'width'],
         notes: expect.arrayContaining([expect.stringContaining('ordinary editable grouped brushes')]),
+      });
+      const chamferSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'chamfer_brushes' } });
+      expect(chamferSchema.structuredContent).toMatchObject({
+        type: 'chamfer_brushes', required: ['type', 'targets', 'amount'],
+        notes: expect.arrayContaining([expect.stringContaining('octagonal')]),
+      });
+      const offsetSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'offset_faces' } });
+      expect(offsetSchema.structuredContent).toMatchObject({
+        type: 'offset_faces', required: ['type', 'targets', 'distance'],
+        notes: expect.arrayContaining([expect.stringContaining('extrude outward')]),
       });
       const boxJson = JSON.stringify((boxSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
       expect(boxJson).toContain('"textureTransform"');

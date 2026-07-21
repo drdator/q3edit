@@ -132,17 +132,28 @@ item remains open because per-segment deterministic variation belongs to phase
 
 ### 5. Brush refinement
 
-- [ ] Chamfer or bevel selected corners.
-- [ ] Taper a brush.
-- [ ] Inset or extrude a face.
-- [ ] Clip/slice corners and split brushes.
+- [x] Chamfer or bevel selected corners.
+- [x] Taper a brush.
+- [x] Inset or extrude a face.
+- [x] Clip/slice corners and split brushes.
 - [ ] Turn a rectangular room into an octagonal or angled room.
-- [ ] Add recesses and openings without rebuilding surrounding geometry.
+- [x] Add recesses and openings without rebuilding surrounding geometry.
 - [ ] Replace selected straight sections with angled or curved alternatives.
-- [ ] Preserve or deliberately refit face materials during refinement.
+- [x] Preserve or deliberately refit face materials during refinement.
 
 These operations are especially valuable for revising a safe blockout into a
 more expressive final layout.
+
+Implementation note: `offset_faces` moves one or more selected convex planes
+with signed distances; `chamfer_brushes` clips chosen cross-section corners
+around any axis; and `taper_brushes` refines existing axis-aligned boxes along
+any axis. They validate before commit and preserve materials, projections,
+compile flags, properties, and named groups unless an explicit fit is
+requested. Existing arbitrary `clip_brushes`, `hollow_brushes`, and
+`csg_subtract` cover slicing, shells, recesses, and openings, and now retain
+groups on replacement fragments. Whole room-shell conversion and automatic
+straight-section replacement remain open because they need semantic
+multi-brush handling rather than a misleading per-brush shortcut.
 
 ### 6. Abstract design-pattern guidance
 

@@ -456,7 +456,7 @@ const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
   'create_wedge', 'create_tapered', 'create_stairs', 'create_brush', 'create_prefab', 'create_patch', 'create_area', 'connect_areas', 'create_path',
   'translate', 'rotate', 'mirror', 'clone', 'array', 'set_texture', 'edit_faces', 'edit_patches', 'thicken_patch', 'set_brush_classification', 'clip_brushes',
-  'hollow_brushes', 'csg_subtract', 'create_jump_pad', 'create_teleporter', 'delete',
+  'hollow_brushes', 'csg_subtract', 'offset_faces', 'chamfer_brushes', 'taper_brushes', 'create_jump_pad', 'create_teleporter', 'delete',
   'assign_group', 'remove_from_group',
 ] as const;
 
@@ -740,6 +740,31 @@ const mapOperationVariants = [
     deleteCarvers: z.boolean().optional(),
   }),
   z.object({
+    type: z.literal('offset_faces'),
+    targets: z.array(faceRef).min(1),
+    distance: z.number().refine(value => Math.abs(value) >= 0.001, 'distance must be non-zero'),
+    textureMode: z.enum(['preserve', 'fit']).optional(),
+  }),
+  z.object({
+    type: z.literal('chamfer_brushes'),
+    id: symbolicId.optional(),
+    targets: z.array(operationRef).min(1),
+    amount: z.number().positive(),
+    axis: z.enum(['x', 'y', 'z']).optional(),
+    corners: z.array(z.enum(['min-min', 'min-max', 'max-min', 'max-max'])).min(1).max(4).optional(),
+    texture: z.string().min(1).optional(),
+    textureMode: z.enum(['preserve', 'fit']).optional(),
+  }),
+  z.object({
+    type: z.literal('taper_brushes'),
+    id: symbolicId.optional(),
+    targets: z.array(operationRef).min(1),
+    axis: z.enum(['x', 'y', 'z']).optional(),
+    endScale: z.tuple([z.number().positive().max(4), z.number().positive().max(4)]),
+    endOffset: z.tuple([z.number(), z.number()]).optional(),
+    textureMode: z.enum(['preserve', 'fit']).optional(),
+  }),
+  z.object({
     type: z.literal('create_jump_pad'),
     ...creationMetadataSchema,
     mins: vec3,
@@ -849,6 +874,18 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.',
     'fit runs before relative shift, scale, and rotation, so they can intentionally adjust a fitted texture in one operation.',
   ],
+  offset_faces: [
+    'Moves each selected convex brush plane by signed world units along its outward normal; positive distances extrude outward and negative distances inset the plane.',
+    'Existing projections remain unchanged by default. textureMode=fit refits the moved faces after the brush is rebuilt and validated.',
+  ],
+  chamfer_brushes: [
+    'Clips selected cross-section corners around axis (Z by default). Omit corners to bevel all four and turn a rectangular footprint into an octagonal one.',
+    'Existing face styles and named-group membership are preserved. texture optionally overrides new bevel faces; textureMode=fit fits only those faces.',
+  ],
+  taper_brushes: [
+    'Replaces selected axis-aligned six-face boxes with tapered convex brushes along axis while preserving the closest semantic face materials, flags, projections, properties, and group.',
+    'endScale controls the two transverse dimensions at the positive end; endOffset shifts that end. textureMode=fit deliberately refits every replacement face.',
+  ],
   assign_group: ['The group name reuses an existing case-insensitive match or creates a persistent named group.'],
 };
 
@@ -886,6 +923,9 @@ const compatibleMapOperationInput = z.object({
     'clip_brushes',
     'hollow_brushes',
     'csg_subtract',
+    'offset_faces',
+    'chamfer_brushes',
+    'taper_brushes',
     'create_jump_pad',
     'create_teleporter',
     'assign_group',
@@ -974,7 +1014,7 @@ const compatibleMapOperationInput = z.object({
   topScale: z.array(z.number()).length(2).optional(),
   topOffset: z.array(z.number()).length(2).optional(),
   subdivisions: z.number().int().optional(),
-  textureMode: z.enum(['natural', 'fit']).optional(),
+  textureMode: z.enum(['natural', 'fit', 'preserve']).optional(),
   faces: z.array(z.object({
     points: z.array(compatibleVec3).length(3),
     texture: z.string().optional(),
@@ -996,6 +1036,10 @@ const compatibleMapOperationInput = z.object({
   keep: z.enum(['front', 'back', 'both']).optional(),
   thickness: z.number().optional(),
   amount: z.number().optional(),
+  distance: z.number().optional(),
+  corners: z.array(z.enum(['min-min', 'min-max', 'max-min', 'max-max'])).optional(),
+  endScale: z.array(z.number()).length(2).optional(),
+  endOffset: z.array(z.number()).length(2).optional(),
   caps: z.boolean().optional(),
   carvers: z.array(operationRef).optional(),
   deleteCarvers: z.boolean().optional(),
@@ -1079,6 +1123,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'For substantial layouts, call map_spatial_plan_get and preview semantic areas and connections before generating detailed geometry. Use create_area and connect_areas to keep spatial intent persistent and inspectable.',
       'Prefer create_tapered and native create_patch bevel, endcap, cylinder, arch, pipe, or ramp surfaces when spatial review shows excessive box and axis-aligned geometry.',
       'Use create_path for curved or segmented corridors, walls, railings, pipes, beams, trim, stairs, and supports. Preview complex paths first, then inspect their persistent source/group relationship with map_construction_paths_get.',
+      'Refine blockout brushes with offset_faces, chamfer_brushes, taper_brushes, clip_brushes, hollow_brushes, and csg_subtract; preserve projections unless an intentional fit is requested.',
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
@@ -1197,7 +1242,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 6, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 7, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
           persistent: true,
           tools: ['map_spatial_plan_get', 'map_spatial_plan_preview'],
@@ -1217,6 +1262,11 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           curves: ['polyline', 'catmull-rom'],
           maxControlPoints: 64,
           maxGeneratedObjects: 256,
+        },
+        brushRefinement: {
+          operations: ['offset_faces', 'chamfer_brushes', 'taper_brushes', 'clip_brushes', 'hollow_brushes', 'csg_subtract'],
+          textureModes: ['preserve', 'fit'],
+          groupPreserving: true,
         },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],

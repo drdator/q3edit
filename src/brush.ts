@@ -410,6 +410,7 @@ export function clipBrush(brush: Brush, planePoints: [Vec3, Vec3, Vec3], texture
   const newBrush: Brush = {
     faces,
     name: brush.name,
+    editorGroupId: brush.editorGroupId,
     properties: brush.properties ? { ...brush.properties } : undefined,
     mins: [0, 0, 0],
     maxs: [0, 0, 0],
@@ -797,6 +798,7 @@ function assembleBrush(faces: BrushFace[], source?: Brush): Brush {
   return {
     faces,
     name: source?.name,
+    editorGroupId: source?.editorGroupId,
     properties: source?.properties ? { ...source.properties } : undefined,
     mins,
     maxs,
