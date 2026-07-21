@@ -51,6 +51,12 @@ class FakeEditorSocket extends EventEmitter {
     const request = JSON.parse(data);
     if (request.type === 'apply_operations') {
       const next = snapshot(request.expectedRevision + 1);
+      const styleValue = request.operations.find((operation: any) => operation.type === 'set_entity_properties')
+        ?.properties?._q3edit_style_brief;
+      if (typeof styleValue === 'string') {
+        const escaped = styleValue.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        next.mapText = `// entity 0\n{\n"classname" "worldspawn"\n"_q3edit_style_brief" "${escaped}"\n}\n`;
+      }
       const aliases = Object.fromEntries(request.operations
         .filter((operation: { id?: string }) => operation.id)
         .map((operation: { id: string }) => [`@${operation.id}`, ['E0:B0']]));
@@ -290,6 +296,9 @@ describe('live MCP bridge', () => {
         'map_texture_review',
         'map_geometry_lint',
         'map_summary',
+        'map_style_get',
+        'map_style_set',
+        'map_style_review',
         'map_design_review',
         'map_inspect',
         'map_validate',
@@ -329,7 +338,7 @@ describe('live MCP bridge', () => {
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
@@ -370,6 +379,13 @@ describe('live MCP bridge', () => {
         severityCounts: { errors: 0, warnings: 1, info: 0 },
         findings: { count: 1, sample: [{ source: 'routes', code: 'missing-spawn' }], truncated: false },
         routes: { connectivity: { spawnCount: 0, pickupCount: 0 } },
+      });
+
+      const styleBrief = await client.callTool({ name: 'map_style_get', arguments: {} });
+      expect(styleBrief.structuredContent).toMatchObject({ sessionId: 'editor-a', revision: 4, brief: null });
+      const styleReview = await client.callTool({ name: 'map_style_review', arguments: {} });
+      expect(styleReview.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, brief: null, status: 'not-configured', issueCount: 0,
       });
 
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
@@ -626,6 +642,21 @@ describe('live MCP bridge', () => {
       });
       expect(fresh.structuredContent).toMatchObject({
         sessionId: 'editor-a', fileName: 'agent-arena.map', revision: 9,
+      });
+
+      const styled = await client.callTool({
+        name: 'map_style_set',
+        arguments: {
+          expectedRevision: 9,
+          brief: {
+            name: 'Industrial arena', palette: ['base_wall/*'], modularGrid: 16,
+            targetTexelsPerUnit: 2, lightingMood: 'dramatic', detailDensity: 'rich',
+          },
+        },
+      });
+      expect(styled.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 10,
+        brief: { name: 'Industrial arena', palette: ['base_wall/*'], modularGrid: 16 },
       });
     } finally {
       await client.close();

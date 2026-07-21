@@ -4,6 +4,7 @@ import { lintGameplay, type GameplayLintIssue } from './gameplay-lint';
 import { collectMapStatistics, type MapStatistics } from './map-statistics';
 import { lintRoutes, type RouteLintIssue } from './route-lint';
 import { lintGeometry, type GeometryLintIssue } from './geometry-lint';
+import { reviewStyleBrief, type StyleFinding } from './style-brief';
 
 export interface CompactMapSummary {
   world: { bounds: { mins: Vec3; maxs: Vec3 } | null; size: number[] | null };
@@ -23,7 +24,7 @@ export interface CompactMapSummary {
 }
 
 export interface DesignFinding {
-  source: 'validation' | 'geometry' | 'gameplay' | 'routes';
+  source: 'validation' | 'geometry' | 'style' | 'gameplay' | 'routes';
   severity: 'error' | 'warning' | 'info';
   code: string;
   message: string;
@@ -82,6 +83,7 @@ export function reviewMap(
   const statistics = collectMapStatistics(mapText);
   const gameplayIssues = lintGameplay(mapText);
   const geometry = lintGeometry(mapText);
+  const style = reviewStyleBrief(mapText);
   const routes = lintRoutes(mapText);
   const validationFindings: DesignFinding[] = diagnostics.map(diagnostic => ({
     source: 'validation', severity: diagnostic.severity, code: diagnostic.code,
@@ -89,8 +91,9 @@ export function reviewMap(
   }));
   const gameplayFindings: DesignFinding[] = gameplayIssues.map((issue: GameplayLintIssue) => ({ source: 'gameplay', ...issue }));
   const geometryFindings: DesignFinding[] = geometry.issues.map((issue: GeometryLintIssue) => ({ source: 'geometry', ...issue }));
+  const styleFindings: DesignFinding[] = style.issues.map((issue: StyleFinding) => ({ source: 'style', ...issue }));
   const routeFindings: DesignFinding[] = routes.issues.map((issue: RouteLintIssue) => ({ source: 'routes', ...issue }));
-  const findings = [...validationFindings, ...geometryFindings, ...gameplayFindings, ...routeFindings];
+  const findings = [...validationFindings, ...geometryFindings, ...styleFindings, ...gameplayFindings, ...routeFindings];
   const severityCounts = {
     errors: findings.filter(finding => finding.severity === 'error').length,
     warnings: findings.filter(finding => finding.severity === 'warning').length,
@@ -121,6 +124,7 @@ export function reviewMap(
     map: compactMapSummary(mapInfo, statistics),
     validation: sampled(validationFindings, limit),
     geometry: { issueCount: geometry.issueCount, issues: sampled(geometry.issues, limit) },
+    style: { ...style, issues: sampled(style.issues, limit) },
     gameplay: { issueCount: gameplayIssues.length, issues: sampled(gameplayIssues, limit) },
     routes: {
       issueCount: routes.issueCount,

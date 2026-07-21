@@ -12,6 +12,12 @@ import { compactMapSummary, reviewMap } from './design-review';
 import type { McpActivityLog } from './activity-log';
 import { reviewTextureQuality, textureNamesForReview, type TextureDimensions } from './texture-review';
 import { lintGeometry } from './geometry-lint';
+import {
+  MAP_STYLE_BRIEF_KEY,
+  readStyleBrief,
+  reviewStyleBrief,
+  serializeStyleBrief,
+} from './style-brief';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -186,9 +192,30 @@ const compactMapSummarySchema = z.object({
     spawnNearestNeighbor: nearestNeighborSchema, itemNearestNeighbor: nearestNeighborSchema,
   }),
 });
+const mapStyleBriefSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  theme: z.string().min(1).max(500).optional(),
+  palette: z.array(z.string().min(1).max(240)).max(64).optional(),
+  paletteMode: z.enum(['guide', 'strict']).optional(),
+  modularGrid: z.number().positive().optional(),
+  targetTexelsPerUnit: z.number().positive().optional(),
+  lightingMood: z.enum(['dark', 'balanced', 'bright', 'dramatic']).optional(),
+  detailDensity: z.enum(['sparse', 'balanced', 'rich']).optional(),
+  notes: z.string().max(4000).optional(),
+});
+const styleFindingSchema = z.object({
+  severity: z.enum(['warning', 'info']),
+  code: z.enum(['style-grid-deviation', 'style-palette-deviation', 'style-detail-density', 'style-lighting-mood', 'style-texture-density']),
+  message: z.string(), refs: z.array(z.string()),
+});
+const styleMetricsSchema = z.object({
+  paletteMaterials: z.number().int(), outOfPaletteMaterials: z.array(z.string()),
+  onGridBrushes: z.number().int(), offGridBrushes: z.number().int(), detailRatio: z.number().nullable(),
+  lightCount: z.number().int(), averageLightIntensity: z.number().nullable(),
+});
 const sampledDesignFindingSchema = z.object({
   count: z.number().int(),
-  sample: z.array(z.object({ source: z.enum(['validation', 'geometry', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
+  sample: z.array(z.object({ source: z.enum(['validation', 'geometry', 'style', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
   truncated: z.boolean(),
 });
 const designReviewOutputSchema = z.object({
@@ -200,6 +227,11 @@ const designReviewOutputSchema = z.object({
   geometry: z.object({
     issueCount: z.number().int(),
     issues: z.object({ count: z.number().int(), sample: z.array(geometryLintIssueSchema), truncated: z.boolean() }),
+  }),
+  style: z.object({
+    brief: mapStyleBriefSchema.nullable(), status: z.enum(['not-configured', 'pass', 'needs-attention']),
+    metrics: styleMetricsSchema, issueCount: z.number().int(),
+    issues: z.object({ count: z.number().int(), sample: z.array(styleFindingSchema), truncated: z.boolean() }),
   }),
   gameplay: z.object({
     issueCount: z.number().int(),
@@ -265,6 +297,14 @@ const textureReviewOutputSchema = z.object({
     density: z.object({ minimum: z.number(), maximum: z.number(), median: z.number() }).nullable(),
   }),
   issues: z.object({ count: z.number().int(), sample: z.array(textureReviewIssueSchema), truncated: z.boolean() }),
+});
+const styleReviewOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int(), brief: mapStyleBriefSchema.nullable(),
+  status: z.enum(['not-configured', 'pass', 'needs-attention']), metrics: styleMetricsSchema,
+  issueCount: z.number().int(), issues: z.array(styleFindingSchema),
+});
+const styleBriefOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int(), brief: mapStyleBriefSchema.nullable(),
 });
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
@@ -677,6 +717,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     instructions: [
       'Call editor_sessions first when more than one Q3Edit browser may be open, then pass sessionId or select one with editor_session_select.',
       'Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data.',
+      'Call map_style_get before substantial authoring and follow its persistent palette, grid, density, lighting, and visual notes when configured.',
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
@@ -955,6 +996,66 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         sessionId: resolved, revision: snapshot.revision, fileName: snapshot.fileName,
         activeMapPath: status.activeMapPath, ...summary,
       });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_style_get', {
+    title: 'Get the persistent map style brief',
+    description: 'Read the structured visual direction stored in worldspawn for this map: theme, approved texture palette, modular grid, target texel density, lighting mood, detail density, and notes. Call this before substantial authoring work.',
+    inputSchema: { ...sessionInput },
+    outputSchema: styleBriefOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, brief: readStyleBrief(snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_style_set', {
+    title: 'Set the persistent map style brief',
+    description: 'Store or replace structured visual direction in worldspawn as one undoable document revision. Palette entries may be exact materials or folder patterns such as base_wall/*. Guide palettes report informational deviations; strict palettes report warnings.',
+    inputSchema: {
+      ...sessionInput,
+      expectedRevision: z.number().int().nonnegative(),
+      brief: mapStyleBriefSchema,
+    },
+    outputSchema: styleBriefOutputSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ sessionId, expectedRevision, brief }) => {
+    try {
+      if (Object.keys(brief).length === 0) throw new Error('brief must define at least one style field');
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const worldspawn = snapshot.entities.find(entity => entity.classname === 'worldspawn');
+      if (!worldspawn) throw new Error('The map has no worldspawn entity');
+      const serialized = serializeStyleBrief(brief);
+      const applied = await hub.applyOperations(expectedRevision, 'MCP: Set map style brief', [{
+        type: 'set_entity_properties', target: worldspawn.id as `E${number}`,
+        properties: { [MAP_STYLE_BRIEF_KEY]: serialized },
+      }], resolved);
+      return toolResult({ sessionId: resolved, revision: applied.result.revision, brief: readStyleBrief(applied.snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_style_review', {
+    title: 'Review the map against its style brief',
+    description: 'Measure palette adherence, modular-grid alignment, detail ratio, lighting mood, and target texture density against the persistent map style brief. Guide-level differences are informational; strict palette differences are warnings.',
+    inputSchema: { ...sessionInput },
+    outputSchema: styleReviewOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...reviewStyleBrief(snapshot.mapText) });
     } catch (error) {
       return toolError(error);
     }

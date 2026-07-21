@@ -61,6 +61,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_texture_review` measures brush-face projection density and reports stretched, over-tiled, suspiciously fitted, or inconsistent materials with exact face references and suggested `edit_faces` transforms.
 - `map_geometry_lint` finds duplicate brushes, coplanar z-fighting candidates, thin brushes, sliver faces, compiler-grid coordinates, and small structural geometry that is probably detail. Its findings are also included in `map_design_review`.
 - `map_summary` is the token-efficient orientation call for iterative work: revision, file, bounds, geometry/detail totals, diagnostics, major entity classes, and spawn/item distribution without full object dumps.
+- `map_style_get`, `map_style_set`, and `map_style_review` keep a structured visual brief in worldspawn so theme, exact or folder-based texture palette, modular grid, texel-density target, lighting mood, detail density, and notes survive save/reload and different agent sessions. Guide palettes produce informational deviations; strict palettes produce warnings.
 - `map_design_review` combines editor validation, gameplay placement lint, jump-pad results, approximate route reachability, and compact spatial context in one revision-consistent response. It reports pass/needs-attention/blocked plus categorized findings without pretending the heuristics form an objective numeric quality score.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
@@ -189,7 +190,7 @@ Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as
 
 A useful authoring loop is:
 
-1. Call `map_status`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document and assets.
+1. Call `map_status` and `map_style_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its visual brief, and available assets.
 2. For complex geometry, call `map_preview` first; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.
