@@ -29,10 +29,10 @@ const SUPPORTED_MAP_OPERATIONS = [
   'create_wedge', 'create_stairs', 'create_brush', 'translate', 'rotate', 'mirror', 'clone',
   'array', 'set_texture', 'edit_faces', 'set_brush_classification', 'clip_brushes',
   'hollow_brushes', 'csg_subtract', 'create_jump_pad', 'create_teleporter', 'delete',
-  'assign_group',
+  'assign_group', 'remove_from_group',
 ] as const;
 
-const mapOperation = z.discriminatedUnion('type', [
+const mapOperationVariants = [
   z.object({
     type: z.literal('create_entity'),
     ...creationMetadataSchema,
@@ -179,7 +179,22 @@ const mapOperation = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('remove_from_group'), targets: z.array(operationRef).min(1) }),
   z.object({ type: z.literal('delete'), targets: z.array(operationRef).min(1) }),
-]);
+] as const;
+const mapOperation = z.discriminatedUnion('type', mapOperationVariants);
+const operationSchemaByType = new Map(mapOperationVariants.map(schema => [schema.shape.type.value, schema]));
+const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[number], string[]>> = {
+  create_jump_pad: [
+    'apex is required and is the target_position at the top of the trajectory; destination is not valid.',
+    'The operation creates and wires trigger_push, its trigger brush, and target_position atomically.',
+  ],
+  create_teleporter: [
+    'destination is required and is the misc_teleporter_dest origin; apex is not valid.',
+    'exitAngle controls the destination facing angle in degrees.',
+  ],
+  create_brush: ['Each face is a plane defined by three points. Point winding must face outward.'],
+  edit_faces: ['Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.'],
+  assign_group: ['The group name reuses an existing case-insensitive match or creates a persistent named group.'],
+};
 
 // Keep the client-facing schema flat. Some MCP hosts omit tools whose JSON
 // Schema contains nested oneOf/anyOf unions. Strict per-operation validation
@@ -365,6 +380,24 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     } catch (error) {
       return toolError(error);
     }
+  });
+
+  server.registerTool('operation_schema', {
+    title: 'Get the exact schema for one map operation',
+    description: 'Return the discriminated JSON Schema, required fields, constraints, and semantic notes for one operation accepted by map_apply and map_preview. Use this instead of inferring fields from the compatibility-oriented flat batch schema.',
+    inputSchema: { type: z.enum(SUPPORTED_MAP_OPERATIONS) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ type }) => {
+    const schema = operationSchemaByType.get(type);
+    if (!schema) return toolError(new Error(`Unknown map operation ${type}`));
+    const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
+    return toolResult({
+      type,
+      acceptedBy: ['map_apply', 'map_preview'],
+      jsonSchema,
+      required: jsonSchema.required ?? [],
+      notes: OPERATION_SCHEMA_NOTES[type] ?? [],
+    });
   });
 
   server.registerTool('map_entities', {

@@ -235,6 +235,7 @@ describe('live MCP bridge', () => {
         'editor_session_select',
         'map_status',
         'map_capabilities',
+        'operation_schema',
         'map_entities',
         'map_inspect',
         'map_validate',
@@ -278,6 +279,16 @@ describe('live MCP bridge', () => {
         compiler: { available: false },
         editor: { project: { gameDirectory: 'baseq3' } },
       });
+
+      const jumpSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_jump_pad' } });
+      expect(jumpSchema.structuredContent).toMatchObject({
+        type: 'create_jump_pad',
+        required: ['type', 'mins', 'maxs', 'apex'],
+        notes: expect.arrayContaining([expect.stringContaining('apex is required')]),
+      });
+      const jumpJson = JSON.stringify((jumpSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
+      expect(jumpJson).toContain('"apex"');
+      expect(jumpJson).not.toContain('"destination"');
 
       const sessions = await client.callTool({ name: 'editor_sessions', arguments: {} });
       expect(sessions.structuredContent).toMatchObject({

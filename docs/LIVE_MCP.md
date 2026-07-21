@@ -53,6 +53,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 
 - `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
 - `map_capabilities` advertises the batch limit and supported operation version/types, coordinate guidance, screenshot dimensions and modes, compiler availability, and the targeted editor's active game/project and loaded asset counts.
+- `operation_schema` returns the exact discriminated JSON Schema and semantic notes for one `map_apply`/`map_preview` operation. The batch tool intentionally keeps a flat compatibility schema because some MCP hosts omit tools containing `oneOf`/`anyOf`.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
