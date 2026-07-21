@@ -297,6 +297,7 @@ describe('live MCP bridge', () => {
         'map_geometry_lint',
         'map_spatial_plan_get',
         'map_spatial_plan_preview',
+        'map_construction_paths_get',
         'map_spatial_review',
         'map_summary',
         'map_style_get',
@@ -342,7 +343,7 @@ describe('live MCP bridge', () => {
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'map_spatial_plan_preview', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
@@ -395,6 +396,11 @@ describe('live MCP bridge', () => {
         revision: 4, plan: { areas: [{ id: 'atrium' }, { id: 'upper' }], connections: [{ id: 'upper_route' }] },
         inspection: { connectedComponents: [['atrium', 'upper']], routeTypes: { ramp: 1 } },
       });
+      const constructionPaths = await client.callTool({ name: 'map_construction_paths_get', arguments: {} });
+      expect(constructionPaths.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, document: { version: 1, paths: [] },
+        summary: { count: 0, totalObjects: 0, bounds: null },
+      });
 
       const summary = await client.callTool({ name: 'map_summary', arguments: {} });
       expect(summary.structuredContent).toMatchObject({
@@ -422,9 +428,10 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 5, maxPerBatch: 128 },
+        operations: { version: 6, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
+        pathConstruction: { persistent: true, operation: 'create_path', maxControlPoints: 64, maxGeneratedObjects: 256 },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -461,6 +468,11 @@ describe('live MCP bridge', () => {
       expect(patchSchema.structuredContent).toMatchObject({
         type: 'create_patch', required: ['type', 'preset', 'mins', 'maxs'],
         notes: expect.arrayContaining([expect.stringContaining('native editable patchDef2')]),
+      });
+      const pathSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_path' } });
+      expect(pathSchema.structuredContent).toMatchObject({
+        type: 'create_path', required: ['type', 'id', 'kind', 'points', 'width'],
+        notes: expect.arrayContaining([expect.stringContaining('ordinary editable grouped brushes')]),
       });
       const boxJson = JSON.stringify((boxSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
       expect(boxJson).toContain('"textureTransform"');

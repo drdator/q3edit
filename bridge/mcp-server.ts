@@ -28,6 +28,7 @@ import {
   reviewStyleBrief,
   serializeStyleBrief,
 } from './style-brief';
+import { constructionPathSummary, readConstructionPaths } from '../src/construction-paths';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -298,6 +299,29 @@ const spatialPlanOutputSchema = z.object({
   plan: z.object({ version: z.literal(1), areas: z.array(spatialAreaSchema), connections: z.array(spatialConnectionSchema) }),
   inspection: spatialPlanInspectionSchema,
 });
+const constructionPathKindSchema = z.enum(['corridor', 'wall', 'railing', 'pipe', 'beam', 'trim', 'stairs', 'supports']);
+const constructionPathSchema = z.object({
+  id: symbolicId, kind: constructionPathKindSchema, curve: z.enum(['polyline', 'catmull-rom']),
+  controlPoints: z.array(vec3).min(2).max(64), sampledPointCount: z.number().int().positive(),
+  width: z.number().positive(), height: z.number().positive().optional(), thickness: z.number().positive(),
+  spacing: z.number().positive().optional(), subdivisions: z.number().int().min(1).max(16),
+  sides: z.number().int().min(3).max(32).optional(), join: z.enum(['overlap', 'bevel']),
+  capEnds: z.boolean(), bankDegrees: z.number().min(-180).max(180), texture: z.string(),
+  classification: z.enum(['detail', 'structural']), groupId: z.string(), objectCount: z.number().int().positive(),
+  bounds: screenshotBounds,
+});
+const constructionPathsOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(),
+  document: z.object({ version: z.literal(1), paths: z.array(constructionPathSchema) }),
+  summary: z.object({
+    count: z.number().int(), totalObjects: z.number().int(),
+    byKind: z.object({
+      corridor: z.number().int(), wall: z.number().int(), railing: z.number().int(), pipe: z.number().int(),
+      beam: z.number().int(), trim: z.number().int(), stairs: z.number().int(), supports: z.number().int(),
+    }),
+    bounds: nullableBounds,
+  }),
+});
 const spatialAreaProposalSchema = z.object({
   id: symbolicId, purpose: z.string().min(1).max(500), shape: spatialAreaShapeSchema, center: vec3,
   bounds: screenshotBounds.optional(), radius: z.number().positive().optional(), height: z.number().positive(),
@@ -430,7 +454,7 @@ const styleBriefOutputSchema = z.object({
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
-  'create_wedge', 'create_tapered', 'create_stairs', 'create_brush', 'create_prefab', 'create_patch', 'create_area', 'connect_areas',
+  'create_wedge', 'create_tapered', 'create_stairs', 'create_brush', 'create_prefab', 'create_patch', 'create_area', 'connect_areas', 'create_path',
   'translate', 'rotate', 'mirror', 'clone', 'array', 'set_texture', 'edit_faces', 'edit_patches', 'thicken_patch', 'set_brush_classification', 'clip_brushes',
   'hollow_brushes', 'csg_subtract', 'create_jump_pad', 'create_teleporter', 'delete',
   'assign_group', 'remove_from_group',
@@ -634,6 +658,26 @@ const mapOperationVariants = [
     thickness: z.number().positive().optional(),
     texture: z.string().min(1).optional(),
   }),
+  z.object({
+    type: z.literal('create_path'),
+    ...creationMetadataSchema,
+    id: symbolicId,
+    parent: operationRef.optional(),
+    kind: constructionPathKindSchema,
+    curve: z.enum(['polyline', 'catmull-rom']).optional(),
+    points: z.array(vec3).min(2).max(64),
+    width: z.number().positive(),
+    height: z.number().positive().optional(),
+    thickness: z.number().positive().optional(),
+    spacing: z.number().positive().optional(),
+    subdivisions: z.number().int().min(1).max(16).optional(),
+    sides: z.number().int().min(3).max(32).optional(),
+    join: z.enum(['overlap', 'bevel']).optional(),
+    capEnds: z.boolean().optional(),
+    bankDegrees: z.number().min(-180).max(180).optional(),
+    texture: z.string().min(1).optional(),
+    classification: z.enum(['detail', 'structural']).optional(),
+  }),
   z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
   z.object({ type: z.literal('rotate'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']), angleDegrees: z.number() }),
   z.object({ type: z.literal('mirror'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']) }),
@@ -794,6 +838,12 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'Persists route intent independently of geometry. geometry=floor creates one editable grouped straight connector that may slope between area centers.',
     'curvature records normalized design intent from -1 to 1; curved realization is handled by later path construction rather than hidden geometry.',
   ],
+  create_path: [
+    'Creates ordinary editable grouped brushes along a polyline or Catmull-Rom path and persists the control points plus generated group, bounds, and object count in worldspawn.',
+    'corridor, wall, beam, and trim create joined oriented boxes; railing adds spaced posts; pipe uses oriented cylinders; supports are distributed vertically; stairs follow resampled path points.',
+    'Use map_preview first to inspect generated references, bounds, counts, and diagnostics. map_construction_paths_get returns the durable source-to-generated relationship after applying.',
+    'Path brushes are closed compiler-safe solids, so their physical ends are always capped. join controls overlap versus four-sided beveled corner fillers; bankDegrees applies a constant roll.',
+  ],
   create_entity_array: ['Creates count entities at start + delta × index in one operation and one undo transaction.'],
   edit_faces: [
     'Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.',
@@ -822,6 +872,7 @@ const compatibleMapOperationInput = z.object({
     'create_patch',
     'create_area',
     'connect_areas',
+    'create_path',
     'translate',
     'rotate',
     'mirror',
@@ -887,6 +938,13 @@ const compatibleMapOperationInput = z.object({
   primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'pyramid']).optional(),
   prefab: z.enum(['pillar', 'door_frame', 'jump_pad_base']).optional(),
   preset: z.enum(['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp']).optional(),
+  kind: constructionPathKindSchema.optional(),
+  curve: z.enum(['polyline', 'catmull-rom']).optional(),
+  points: z.array(compatibleVec3).optional(),
+  spacing: z.number().optional(),
+  join: z.enum(['overlap', 'bevel']).optional(),
+  capEnds: z.boolean().optional(),
+  bankDegrees: z.number().optional(),
   purpose: z.string().optional(),
   shape: spatialAreaShapeSchema.optional(),
   bounds: z.object({ mins: compatibleVec3, maxs: compatibleVec3 }).optional(),
@@ -982,6 +1040,11 @@ function spatialPlanFromMapText(mapText: string) {
   return readSpatialPlan(worldspawn?.properties ?? {});
 }
 
+function constructionPathsFromMapText(mapText: string) {
+  const worldspawn = parseMapWithDiagnostics(mapText).document.entities.find(entity => entity.classname === 'worldspawn');
+  return readConstructionPaths(worldspawn?.properties ?? {});
+}
+
 function compactRefs(refs: string[]): { count: number; refs: string[]; truncated: boolean } {
   if (refs.length <= 8) return { count: refs.length, refs, truncated: false };
   return { count: refs.length, refs: [...refs.slice(0, 4), ...refs.slice(-4)], truncated: true };
@@ -1015,6 +1078,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Call map_style_get before substantial authoring and follow its persistent palette, grid, density, lighting, and visual notes when configured.',
       'For substantial layouts, call map_spatial_plan_get and preview semantic areas and connections before generating detailed geometry. Use create_area and connect_areas to keep spatial intent persistent and inspectable.',
       'Prefer create_tapered and native create_patch bevel, endcap, cylinder, arch, pipe, or ramp surfaces when spatial review shows excessive box and axis-aligned geometry.',
+      'Use create_path for curved or segmented corridors, walls, railings, pipes, beams, trim, stairs, and supports. Preview complex paths first, then inspect their persistent source/group relationship with map_construction_paths_get.',
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
@@ -1133,7 +1197,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 5, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 6, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
           persistent: true,
           tools: ['map_spatial_plan_get', 'map_spatial_plan_preview'],
@@ -1144,6 +1208,15 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'],
           operations: ['create_patch', 'edit_patches', 'thicken_patch'],
           textureModes: ['natural', 'fit'],
+        },
+        pathConstruction: {
+          persistent: true,
+          tools: ['map_construction_paths_get'],
+          operation: 'create_path',
+          kinds: ['corridor', 'wall', 'railing', 'pipe', 'beam', 'trim', 'stairs', 'supports'],
+          curves: ['polyline', 'catmull-rom'],
+          maxControlPoints: 64,
+          maxGeneratedObjects: 256,
         },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
@@ -1328,6 +1401,23 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       } as SpatialArea);
       for (const connection of connections) plan = upsertSpatialConnection(plan, connection as SpatialConnection);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, plan, inspection: inspectSpatialPlan(plan) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_construction_paths_get', {
+    title: 'Get persistent construction paths',
+    description: 'Return every path source stored in worldspawn, including control points, generation settings, generated named group, object count, and bounds. The grouped output remains ordinary editable map geometry.',
+    inputSchema: { ...sessionInput },
+    outputSchema: constructionPathsOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const document = constructionPathsFromMapText(snapshot.mapText);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, document, summary: constructionPathSummary(document) });
     } catch (error) {
       return toolError(error);
     }

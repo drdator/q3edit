@@ -106,19 +106,29 @@ objects rather than hidden modules.
 
 ### 4. Path-based construction
 
-- [ ] Create a corridor along a polyline or spline.
-- [ ] Create walls along a path.
-- [ ] Create railings along a path.
-- [ ] Create pipes, beams, and trim along a path.
-- [ ] Create stairs along a curved or segmented path.
-- [ ] Distribute generated supports or objects along a path.
+- [x] Create a corridor along a polyline or spline.
+- [x] Create walls along a path.
+- [x] Create railings along a path.
+- [x] Create pipes, beams, and trim along a path.
+- [x] Create stairs along a curved or segmented path.
+- [x] Distribute generated supports or objects along a path.
 - [ ] Support corners, joins, caps, spacing, banking, and controlled variation.
-- [ ] Preview generated bounds and object counts before applying.
-- [ ] Return the underlying path and generated-object relationships so later
+- [x] Preview generated bounds and object counts before applying.
+- [x] Return the underlying path and generated-object relationships so later
   edits remain understandable.
 
 Path-based tools let an agent express intent with a few control points instead
 of constructing dozens of fragile individual pieces.
+
+Implementation note: `create_path` generates ordinary brushes for eight roles
+from a polyline or Catmull-Rom curve. It supports overlapping or beveled corner
+fills, closed brush ends, deterministic spacing, and constant banking. A
+256-object limit protects preview/apply calls. Each source path persists in
+worldspawn with its control points, settings, generated named group, bounds,
+and object count, exposed through `map_construction_paths_get`. `map_preview`
+provides the pre-commit objects and aggregate bounds. The combined variation
+item remains open because per-segment deterministic variation belongs to phase
+7 rather than this initial path generator.
 
 ### 5. Brush refinement
 

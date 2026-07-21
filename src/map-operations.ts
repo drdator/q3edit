@@ -55,6 +55,14 @@ import {
   type SpatialOpening,
   type SpatialRouteType,
 } from './spatial-plan';
+import {
+  CONSTRUCTION_PATHS_KEY,
+  readConstructionPaths,
+  serializeConstructionPaths,
+  upsertConstructionPath,
+  type ConstructionPathCurve,
+  type ConstructionPathKind,
+} from './construction-paths';
 
 export type MapObjectRef = `E${number}` | `E${number}:B${number}` | `E${number}:P${number}`;
 export type MapFaceRef = `E${number}:B${number}:F${number}`;
@@ -284,6 +292,26 @@ export interface ConnectAreasOperation extends CreationMetadata {
   texture?: string;
 }
 
+export interface CreatePathOperation extends CreationMetadata {
+  type: 'create_path';
+  id: string;
+  parent?: MapTargetRef;
+  kind: ConstructionPathKind;
+  curve?: ConstructionPathCurve;
+  points: Vec3[];
+  width: number;
+  height?: number;
+  thickness?: number;
+  spacing?: number;
+  subdivisions?: number;
+  sides?: number;
+  join?: 'overlap' | 'bevel';
+  capEnds?: boolean;
+  bankDegrees?: number;
+  texture?: string;
+  classification?: 'detail' | 'structural';
+}
+
 export interface TranslateObjectsOperation {
   type: 'translate';
   targets: MapTargetRef[];
@@ -421,6 +449,7 @@ export type MapOperation =
   | ThickenPatchOperation
   | CreateAreaOperation
   | ConnectAreasOperation
+  | CreatePathOperation
   | TranslateObjectsOperation
   | RotateObjectsOperation
   | MirrorObjectsOperation
@@ -1032,6 +1061,169 @@ function applyCreateArea(editor: Editor, operation: CreateAreaOperation, aliases
   return handles;
 }
 
+function orientBrushBetween(editor: Editor, brush: Brush, start: Vec3, end: Vec3, bankDegrees = 0): void {
+  const delta = end.map((value, axis) => value - start[axis]) as Vec3;
+  const horizontalLength = Math.hypot(delta[0], delta[1]);
+  if (bankDegrees) rotateEditorBrush(editor, brush, [0, 0, 0], 0, bankDegrees * Math.PI / 180);
+  rotateEditorBrush(editor, brush, [0, 0, 0], 1, -Math.atan2(delta[2], Math.max(0.0001, horizontalLength)));
+  rotateEditorBrush(editor, brush, [0, 0, 0], 2, Math.atan2(delta[1], delta[0]));
+  translateEditorBrush(editor, brush, start.map((value, axis) => (value + end[axis]) / 2) as Vec3);
+}
+
+function createBoxBetween(editor: Editor, start: Vec3, end: Vec3, width: number, height: number, texture: string, bankDegrees = 0): Brush {
+  const length = Math.hypot(...end.map((value, axis) => value - start[axis]));
+  if (length < 0.001) throw new Error('Path segment endpoints must be distinct');
+  const brush = createBoxBrush([-length / 2, -width / 2, -height / 2], [length / 2, width / 2, height / 2], texture);
+  orientBrushBetween(editor, brush, start, end, bankDegrees);
+  return brush;
+}
+
+function createCylinderBetween(editor: Editor, start: Vec3, end: Vec3, diameter: number, sides: number, texture: string, bankDegrees = 0): Brush {
+  const length = Math.hypot(...end.map((value, axis) => value - start[axis]));
+  if (length < 0.001) throw new Error('Path segment endpoints must be distinct');
+  const brush = createBrushPrimitive('cylinder', [-length / 2, -diameter / 2, -diameter / 2], [length / 2, diameter / 2, diameter / 2], texture, 0, sides);
+  orientBrushBetween(editor, brush, start, end, bankDegrees);
+  return brush;
+}
+
+function catmullRomPoint(a: Vec3, b: Vec3, c: Vec3, d: Vec3, t: number): Vec3 {
+  return [0, 1, 2].map(axis => 0.5 * (
+    2 * b[axis] + (-a[axis] + c[axis]) * t +
+    (2 * a[axis] - 5 * b[axis] + 4 * c[axis] - d[axis]) * t * t +
+    (-a[axis] + 3 * b[axis] - 3 * c[axis] + d[axis]) * t * t * t
+  )) as Vec3;
+}
+
+function sampleConstructionPath(points: Vec3[], curve: ConstructionPathCurve, subdivisions: number): Vec3[] {
+  if (curve === 'polyline') return points.map(point => [...point] as Vec3);
+  const sampled: Vec3[] = [];
+  for (let segment = 0; segment < points.length - 1; segment++) {
+    const a = points[Math.max(0, segment - 1)];
+    const b = points[segment];
+    const c = points[segment + 1];
+    const d = points[Math.min(points.length - 1, segment + 2)];
+    for (let step = 0; step < subdivisions; step++) sampled.push(catmullRomPoint(a, b, c, d, step / subdivisions));
+  }
+  sampled.push([...points[points.length - 1]] as Vec3);
+  return sampled;
+}
+
+function resampleBySpacing(points: Vec3[], spacing: number): Vec3[] {
+  const result: Vec3[] = [[...points[0]] as Vec3];
+  let carry = 0;
+  for (let index = 0; index < points.length - 1; index++) {
+    let start = [...points[index]] as Vec3;
+    const end = points[index + 1];
+    let remaining = Math.hypot(...end.map((value, axis) => value - start[axis]));
+    while (remaining + carry >= spacing && remaining > 0.0001) {
+      const distance = spacing - carry;
+      const t = distance / remaining;
+      start = start.map((value, axis) => value + (end[axis] - value) * t) as Vec3;
+      result.push([...start] as Vec3);
+      remaining = Math.hypot(...end.map((value, axis) => value - start[axis]));
+      carry = 0;
+    }
+    carry += remaining;
+  }
+  const last = points[points.length - 1];
+  if (Math.hypot(...last.map((value, axis) => value - result[result.length - 1][axis])) > 0.001) result.push([...last] as Vec3);
+  return result;
+}
+
+function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases: SymbolicReferences): ObjectHandle[] {
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(operation.id)) throw new Error('create_path id must be a stable identifier');
+  if (operation.points.length < 2 || operation.points.length > 64) throw new Error('create_path points must contain 2 to 64 control points');
+  operation.points.forEach((point, index) => assertVector(`path point ${index + 1}`, point));
+  if (!Number.isFinite(operation.width) || operation.width <= 0) throw new Error('create_path width must be positive');
+  const thickness = operation.thickness ?? 16;
+  const height = operation.height ?? (operation.kind === 'wall' ? 192 : operation.kind === 'railing' ? 48 : thickness);
+  const spacing = operation.spacing ?? (operation.kind === 'stairs' ? 16 : 96);
+  const subdivisions = operation.subdivisions ?? 6;
+  const sides = operation.sides ?? 8;
+  const bankDegrees = operation.bankDegrees ?? 0;
+  if (![thickness, height, spacing].every(value => Number.isFinite(value) && value > 0)) throw new Error('create_path thickness, height, and spacing must be positive');
+  if (!Number.isInteger(subdivisions) || subdivisions < 1 || subdivisions > 16) throw new Error('create_path subdivisions must be an integer from 1 to 16');
+  if (!Number.isInteger(sides) || sides < 3 || sides > 32) throw new Error('create_path sides must be an integer from 3 to 32');
+  if (!Number.isFinite(bankDegrees) || Math.abs(bankDegrees) > 180) throw new Error('create_path bankDegrees must be between -180 and 180');
+  const curve = operation.curve ?? 'polyline';
+  const sampled = sampleConstructionPath(operation.points, curve, subdivisions);
+  const texture = operation.texture ?? 'common/caulk';
+  const { entity } = resolveEntity(editor, operation.parent, aliases);
+  const brushes: Brush[] = [];
+  const add = (brush: Brush) => { classifyBrush(brush, operation.classification ?? (['wall', 'corridor', 'stairs'].includes(operation.kind) ? 'structural' : 'detail')); entity.brushes.push(brush); brushes.push(brush); };
+
+  if (operation.kind === 'stairs') {
+    const steps = resampleBySpacing(sampled, spacing);
+    const baseZ = Math.min(...steps.map(point => point[2])) - thickness;
+    for (let index = 0; index < steps.length - 1; index++) {
+      const top = steps[index][2];
+      const start: Vec3 = [steps[index][0], steps[index][1], (baseZ + top) / 2];
+      const end: Vec3 = [steps[index + 1][0], steps[index + 1][1], (baseZ + top) / 2];
+      add(createBoxBetween(editor, start, end, operation.width, top - baseZ, texture, bankDegrees));
+    }
+  } else if (operation.kind === 'supports') {
+    for (const point of resampleBySpacing(sampled, spacing)) {
+      add(createBoxBrush(
+        [point[0] - operation.width / 2, point[1] - operation.width / 2, point[2] - height],
+        [point[0] + operation.width / 2, point[1] + operation.width / 2, point[2]], texture,
+      ));
+    }
+  } else {
+    for (let index = 0; index < sampled.length - 1; index++) {
+      let start = sampled[index]; let end = sampled[index + 1];
+      if (operation.kind === 'wall') {
+        start = [start[0], start[1], start[2] + height / 2];
+        end = [end[0], end[1], end[2] + height / 2];
+      } else if (operation.kind === 'railing') {
+        start = [start[0], start[1], start[2] + height];
+        end = [end[0], end[1], end[2] + height];
+      }
+      if (operation.kind === 'pipe') add(createCylinderBetween(editor, start, end, operation.width, sides, texture, bankDegrees));
+      else add(createBoxBetween(
+        editor, start, end,
+        operation.kind === 'wall' ? operation.width : operation.kind === 'railing' ? thickness : operation.width,
+        operation.kind === 'wall' ? height : operation.kind === 'railing' ? thickness : height,
+        texture, bankDegrees,
+      ));
+    }
+    if (operation.kind === 'railing') for (const point of resampleBySpacing(sampled, spacing)) {
+      add(createBoxBrush(
+        [point[0] - thickness / 2, point[1] - thickness / 2, point[2]],
+        [point[0] + thickness / 2, point[1] + thickness / 2, point[2] + height], texture,
+      ));
+    }
+  }
+
+  if (['corridor', 'wall', 'beam', 'trim'].includes(operation.kind) && sampled.length > 2) {
+    for (const point of sampled.slice(1, -1)) {
+      const jointHeight = operation.kind === 'wall' ? height : operation.kind === 'corridor' ? thickness : height;
+      const centerZ = operation.kind === 'wall' ? point[2] + height / 2 : point[2];
+      const joint = operation.join === 'bevel'
+        ? createBrushPrimitive('cylinder', [point[0] - operation.width / 2, point[1] - operation.width / 2, centerZ - jointHeight / 2], [point[0] + operation.width / 2, point[1] + operation.width / 2, centerZ + jointHeight / 2], texture, 2, 4)
+        : createBoxBrush([point[0] - operation.width / 2, point[1] - operation.width / 2, centerZ - jointHeight / 2], [point[0] + operation.width / 2, point[1] + operation.width / 2, centerZ + jointHeight / 2], texture);
+      add(joint);
+    }
+  }
+
+  if (brushes.length === 0 || brushes.length > 256) throw new Error(`create_path generated ${brushes.length} objects; adjust spacing/subdivisions to produce 1 through 256`);
+  const handles = brushes.map(brush => ({ kind: 'brush' as const, entity, brush }));
+  const groupId = ensureGroup(editor, operation.group ?? `Path: ${operation.id}`, operation.groupId ?? spatialGroupId('connection', `path-${operation.id}`));
+  for (const handle of handles) setResolvedGroup(resolveHandle(editor, handle), groupId);
+  const bounds = {
+    mins: [0, 1, 2].map(axis => Math.min(...brushes.map(brush => brush.mins[axis]))) as Vec3,
+    maxs: [0, 1, 2].map(axis => Math.max(...brushes.map(brush => brush.maxs[axis]))) as Vec3,
+  };
+  const document = readConstructionPaths(editor.worldspawn.properties);
+  editor.worldspawn.properties[CONSTRUCTION_PATHS_KEY] = serializeConstructionPaths(upsertConstructionPath(document, {
+    id: operation.id, kind: operation.kind, curve, controlPoints: operation.points.map(point => [...point] as Vec3),
+    sampledPointCount: sampled.length, width: operation.width, height: operation.height, thickness, spacing: operation.spacing,
+    subdivisions, sides: operation.kind === 'pipe' ? sides : undefined, join: operation.join ?? 'overlap',
+    capEnds: operation.capEnds ?? true, bankDegrees, texture, classification: operation.classification ?? (['wall', 'corridor', 'stairs'].includes(operation.kind) ? 'structural' : 'detail'),
+    groupId, objectCount: handles.length, bounds,
+  }));
+  return handles;
+}
+
 function applyConnectAreas(editor: Editor, operation: ConnectAreasOperation): ObjectHandle[] {
   if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(operation.id)) throw new Error('connect_areas id must be a stable identifier');
   if (!Number.isFinite(operation.width) || operation.width <= 0) throw new Error('connect_areas width must be positive');
@@ -1048,16 +1240,7 @@ function applyConnectAreas(editor: Editor, operation: ConnectAreasOperation): Ob
     const start = [...from.center] as Vec3;
     const end = [...to.center] as Vec3;
     if (operation.verticalChange !== undefined) end[2] = start[2] + operation.verticalChange;
-    const delta = end.map((value, axis) => value - start[axis]) as Vec3;
-    const horizontalLength = Math.hypot(delta[0], delta[1]);
-    const length = Math.hypot(...delta);
-    if (length < 1) throw new Error('connect_areas geometry requires distinct area centers');
-    const brush = createBoxBrush([-length / 2, -operation.width / 2, -thickness / 2], [length / 2, operation.width / 2, thickness / 2], operation.texture ?? 'common/caulk');
-    const pitch = -Math.atan2(delta[2], Math.max(0.0001, horizontalLength));
-    const yaw = Math.atan2(delta[1], delta[0]);
-    rotateEditorBrush(editor, brush, [0, 0, 0], 1, pitch);
-    rotateEditorBrush(editor, brush, [0, 0, 0], 2, yaw);
-    translateEditorBrush(editor, brush, start.map((value, axis) => (value + end[axis]) / 2) as Vec3);
+    const brush = createBoxBetween(editor, start, end, operation.width, thickness, operation.texture ?? 'common/caulk');
     editor.worldspawn.brushes.push(brush);
     handles.push({ kind: 'brush', entity: editor.worldspawn, brush });
   }
@@ -1540,6 +1723,10 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
       } else if (operation.type === 'connect_areas') {
         const handles = applyConnectAreas(editor, operation);
+        recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
+        changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
+      } else if (operation.type === 'create_path') {
+        const handles = applyCreatePath(editor, operation, aliases);
         recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
         changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
       } else if (operation.type === 'create_jump_pad' || operation.type === 'create_teleporter') {

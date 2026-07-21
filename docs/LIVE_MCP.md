@@ -61,6 +61,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_texture_review` measures brush-face projection density and reports stretched, over-tiled, suspiciously fitted, or inconsistent materials with exact face references and suggested `edit_faces` transforms.
 - `map_geometry_lint` finds duplicate brushes, coplanar z-fighting candidates, thin brushes, sliver faces, compiler-grid coordinates, and small structural geometry that is probably detail. Its findings are also included in `map_design_review`.
 - `map_spatial_plan_get` returns persistent semantic areas and connections plus their bounds, height levels, route distribution, connected components, and consistency findings. `map_spatial_plan_preview` merges proposed areas/routes in memory so an agent can review layout intent without changing the document or generating brushes.
+- `map_construction_paths_get` returns durable path sources, generation settings, named groups, generated object counts, and bounds for geometry created with `create_path`.
 - `map_spatial_review` measures box/axis alignment, walk-surface height bands, repeated brush proportions, approximate route branching/loops/dead ends, open-versus-enclosed rhythm, mirror symmetry, landmark and silhouette variation, and long flat walls. Every finding includes suggested corrective actions; these are design heuristics to guide screenshots and playtests, not an objective quality score.
 - `map_summary` is the token-efficient orientation call for iterative work: revision, file, bounds, geometry/detail totals, diagnostics, major entity classes, and spawn/item distribution without full object dumps.
 - `map_style_get`, `map_style_set`, and `map_style_review` keep a structured visual brief in worldspawn so theme, exact or folder-based texture palette, modular grid, texel-density target, lighting mood, detail density, and notes survive save/reload and different agent sessions. Guide palettes produce informational deviations; strict palettes produce warnings.
@@ -115,6 +116,7 @@ Initial `map_apply` operations are:
 - `edit_patches` for material, natural/fit UVs, relative UV transforms, and subdivisions
 - `thicken_patch` for offset front/back surfaces with optional caps
 - `create_area` and `connect_areas` for persistent semantic plans with optional transparent geometry
+- `create_path` for polyline or Catmull-Rom corridors, walls, railings, pipes, beams, trim, stairs, and distributed supports
 - `create_jump_pad` and `create_teleporter` as composable, wired gameplay operations
 - `translate`
 - `rotate`
@@ -137,6 +139,8 @@ Creation operations accept `group` and an optional stable `groupId`. The created
 `create_box` and `create_primitive` accept semantic `textures.top`, `textures.bottom`, and `textures.sides` slots. For non-box primitives, top/bottom are the positive/negative caps along `axis`. `create_stairs` accepts `textures.treads`, `textures.risers`, `textures.sides`, and `textures.underside`; unspecified slots fall back to `texture`.
 
 `create_patch` produces ordinary patchDef2 control grids and validates their dimensions, finite coordinates/UVs, bounds, and tessellation before committing. `axis` selects the extrusion axis for cylindrical/cap surfaces and arches; `direction` orients ramps. `textureMode: "fit"` maps one repeat over the grid, while `"natural"` derives world-scale UVs. `edit_patches` applies fit/natural mapping before relative shift, scale, and rotation. Thickening replaces a source with grouped editable patch surfaces and can expose the result through one symbolic alias.
+
+`create_path` samples two to 64 control points as a polyline or Catmull-Rom curve and produces ordinary grouped brushes. Its role-specific settings cover width, height/thickness, support/post/stair spacing, pipe sides, corner joins, constant banking, texture, and structural/detail classification. Every path is stored as versioned worldspawn metadata with its generated group, bounds, and object count; use `map_construction_paths_get` to recover that relationship in later sessions. Q3 brushes are closed solids, so physical segment ends are always capped. Use `map_preview` before applying a dense path to review exact generated objects, aggregate bounds, diagnostics, and the 256-object per-path limit.
 
 ## Texture projection quality
 
@@ -205,8 +209,8 @@ Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as
 
 A useful authoring loop is:
 
-1. Call `map_status`, `map_style_get`, and `map_spatial_plan_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its design intent, and available assets.
-2. For a substantial layout, call `map_spatial_plan_preview` before committing areas and routes. For complex geometry, call `map_preview`; then make one logical edit with `map_apply` and the same current revision.
+1. Call `map_status`, `map_style_get`, `map_spatial_plan_get`, and `map_construction_paths_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its design intent, generated path sources, and available assets.
+2. For a substantial layout, call `map_spatial_plan_preview` before committing areas and routes. Use `create_path` when a route or repeated architectural element should follow a curve or segmented line. For complex geometry, call `map_preview`; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.
    Use `editor_layout_screenshot` for flow, symmetry, spacing, and route-layout decisions, `map_spatial_review` for composition heuristics, `map_texture_review` for projection quality, and `map_design_review` for a combined structured quality pass.
