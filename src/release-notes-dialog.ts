@@ -11,8 +11,37 @@ export interface ReleaseNotes {
 }
 
 export const LATEST_RELEASE_NOTES: ReleaseNotes = {
-  title: 'July 2026 Update',
+  title: 'July 21, 2026 Update',
   label: 'Latest release',
+  summary: 'A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.',
+  sections: [
+    {
+      title: 'Editing workflow',
+      items: [
+        'Edit shared entity properties across multiple selected entities from the Entity Inspector, including adding and removing keys for the whole selection.',
+        'Start marquee selections over brushes in locked groups while the locked geometry itself remains protected from selection and editing.',
+      ],
+    },
+    {
+      title: 'Workspace',
+      items: [
+        'Show or hide the right sidebar from the View menu or the top-right toolbar button, and drag its edge to choose a comfortable width.',
+        'Solo any sidebar panel to temporarily collapse the others, with sidebar visibility, width, and panel states remembered between sessions.',
+      ],
+    },
+    {
+      title: 'Rendering & Quick Play',
+      items: [
+        'Dynamic-light preview now chooses up to 16 lights by their influence on the current view, keeping large and heavily lit maps accurate as you move around.',
+        'Quick Play now resolves mixed-case shader image paths correctly, preventing fitted textures such as jump pads from compiling at the wrong scale.',
+      ],
+    },
+  ],
+};
+
+export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
+  title: 'July 2026 Update',
+  label: 'Previous release',
   summary: 'A major editor update with richer Quake III compatibility, modern entity and model workflows, advanced geometry tools, camera paths, project configuration, and a more dependable editing core.',
   sections: [
     {
@@ -66,7 +95,14 @@ export const LATEST_RELEASE_NOTES: ReleaseNotes = {
   ],
 };
 
-export function openReleaseNotesDialog(release: ReleaseNotes = LATEST_RELEASE_NOTES): void {
+export const RELEASE_NOTES: readonly ReleaseNotes[] = [
+  LATEST_RELEASE_NOTES,
+  JULY_2026_RELEASE_NOTES,
+];
+
+export function openReleaseNotesDialog(
+  releaseNotes: ReleaseNotes | readonly ReleaseNotes[] = RELEASE_NOTES,
+): void {
   document.getElementById('release-notes-dialog')?.remove();
 
   const overlay = document.createElement('div');
@@ -85,33 +121,41 @@ export function openReleaseNotesDialog(release: ReleaseNotes = LATEST_RELEASE_NO
 
   const content = document.createElement('div');
   content.className = 'release-notes-content';
-  const intro = document.createElement('header');
-  intro.className = 'release-notes-intro';
-  const label = document.createElement('span');
-  label.className = 'release-notes-label';
-  label.textContent = release.label;
-  const heading = document.createElement('h2');
-  heading.textContent = release.title;
-  const summary = document.createElement('p');
-  summary.textContent = release.summary;
-  intro.append(label, heading, summary);
+  const releases: readonly ReleaseNotes[] = Array.isArray(releaseNotes)
+    ? releaseNotes
+    : [releaseNotes as ReleaseNotes];
+  for (const release of releases) {
+    const article = document.createElement('article');
+    article.className = 'release-notes-release';
+    const intro = document.createElement('header');
+    intro.className = 'release-notes-intro';
+    const label = document.createElement('span');
+    label.className = 'release-notes-label';
+    label.textContent = release.label;
+    const heading = document.createElement('h2');
+    heading.textContent = release.title;
+    const summary = document.createElement('p');
+    summary.textContent = release.summary;
+    intro.append(label, heading, summary);
 
-  const sections = document.createElement('div');
-  sections.className = 'release-notes-sections';
-  for (const releaseSection of release.sections) {
-    const section = document.createElement('section');
-    section.className = 'release-notes-section';
-    const sectionTitle = document.createElement('h3');
-    sectionTitle.textContent = releaseSection.title;
-    const list = document.createElement('ul');
-    for (const itemText of releaseSection.items) {
-      const item = document.createElement('li');
-      item.textContent = itemText;
-      list.appendChild(item);
+    const sections = document.createElement('div');
+    sections.className = 'release-notes-sections';
+    for (const releaseSection of release.sections) {
+      const section = document.createElement('section');
+      section.className = 'release-notes-section';
+      const sectionTitle = document.createElement('h3');
+      sectionTitle.textContent = releaseSection.title;
+      const list = document.createElement('ul');
+      for (const itemText of releaseSection.items) {
+        const item = document.createElement('li');
+        item.textContent = itemText;
+        list.appendChild(item);
+      }
+      section.append(sectionTitle, list); sections.appendChild(section);
     }
-    section.append(sectionTitle, list); sections.appendChild(section);
+    article.append(intro, sections);
+    content.appendChild(article);
   }
-  content.append(intro, sections);
 
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';

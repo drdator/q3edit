@@ -350,6 +350,109 @@ body.landing-active #app {
   color: var(--landing-text);
 }
 
+/* ── Public Release Notes Page ── */
+.release-notes-page {
+  min-height: 100svh;
+  overflow: visible !important;
+}
+
+.release-notes-page-content {
+  position: relative;
+  z-index: 1;
+  width: min(820px, calc(100% - 64px));
+  margin-inline: auto;
+  padding: 76px 0 104px;
+}
+
+.release-notes-page-header {
+  padding-bottom: 48px;
+  border-bottom: 1px solid var(--landing-line);
+}
+
+.release-notes-page-header h1 {
+  max-width: 720px;
+  color: var(--landing-text);
+  font-size: clamp(42px, 6vw, 68px);
+  font-weight: 650;
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+}
+
+.release-notes-page-header .landing-lede {
+  max-width: 690px;
+}
+
+.release-notes-history {
+  display: block;
+}
+
+.release-notes-entry {
+  padding: 50px 0 54px;
+  border-bottom: 1px solid var(--landing-line);
+}
+
+.release-notes-entry:last-child {
+  border-bottom: 0;
+}
+
+.release-notes-entry-label {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--landing-accent);
+  font: 600 10px/1 monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.release-notes-entry h2 {
+  margin: 0 0 14px;
+  color: var(--landing-text);
+  font-size: clamp(27px, 4vw, 38px);
+  font-weight: 620;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.release-notes-entry-summary {
+  max-width: 740px;
+  color: #a9aea4;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.release-notes-entry section {
+  margin-top: 32px;
+}
+
+.release-notes-entry h3 {
+  margin-bottom: 12px;
+  color: var(--landing-text);
+  font: 700 12px/1.3 monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.release-notes-entry ul {
+  display: grid;
+  gap: 10px;
+  padding-left: 21px;
+}
+
+.release-notes-entry li {
+  padding-left: 4px;
+  color: #a9aea4;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.release-notes-entry li::marker {
+  color: var(--landing-accent);
+}
+
+.release-notes-page .landing-footer {
+  margin-top: 0;
+}
+
 @media (max-width: 900px) {
   .landing-hero {
     grid-template-columns: 1fr;
@@ -421,6 +524,19 @@ body.landing-active #app {
     align-items: flex-start;
     justify-content: center;
     gap: 6px;
+  }
+
+  .release-notes-page-content {
+    width: min(100% - 36px, 820px);
+    padding: 56px 0 72px;
+  }
+
+  .release-notes-page-header {
+    padding-bottom: 36px;
+  }
+
+  .release-notes-entry {
+    padding: 40px 0 44px;
   }
 }
 
@@ -2210,6 +2326,12 @@ button.diagnostic-row:hover { border-color: var(--accent); }
   padding: 18px 20px;
   background: var(--bg-darker);
   border: 1px solid var(--border-dark);
+}
+
+.release-notes-release + .release-notes-release {
+  margin-top: 10px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-light);
 }
 
 .release-notes-intro {
