@@ -283,7 +283,9 @@ export class BridgeHub {
     await writeFile(temporaryPath, snapshot.mapText, 'utf8');
     await rename(temporaryPath, path);
     session.activeMapPath = path;
-    this.send(session, { type: 'mark_saved', revision: snapshot.revision });
+    const fileName = basename(path);
+    session.snapshot = { ...snapshot, fileName };
+    this.send(session, { type: 'mark_saved', revision: snapshot.revision, fileName });
     return { path, revision: snapshot.revision };
   }
 

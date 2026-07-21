@@ -228,6 +228,50 @@ unstructured randomness.
 9. Refine flagged sections instead of rebuilding the entire map.
 10. Save, compile, and playtest after the editor-level review converges.
 
+## Post-roadmap reliability and authoring pass
+
+Feedback from full-map agent sessions identified a second pass that is less
+about adding primitives and more about making the completed design vocabulary
+reliable in real production maps.
+
+### Compiler and document correctness
+
+- [x] Strip editor-only semantic metadata and group records from compile and
+  quick-play input while preserving them in the editable map.
+- [x] Keep named-group metadata outside `patchDef2` blocks so grouped patches
+  remain valid legacy `.map` syntax.
+- [x] Propagate Save As filenames into the live editor session and subsequent
+  compile/play map names.
+- [ ] Add a compiler preflight that identifies the offending construct and
+  object reference before invoking q3map.
+- [ ] Return an optional BSP artifact path from compile workflows.
+- [ ] Improve light-pass failure diagnostics and investigate large-map WASM
+  memory failures separately from BSP/VIS success.
+
+### Faster visual iteration
+
+- [ ] Make screenshot and review tools reliably discoverable in constrained
+  MCP clients.
+- [ ] Add spawn/entity targeting and fuller camera control to game preview.
+- [ ] Add a direct-reference form to `map_query`.
+- [ ] Let `map_preview` opt into route, gameplay, geometry, texture, style, and
+  spatial review before changes are committed.
+
+### Semantic and generated-geometry feedback
+
+- [ ] Let generated geometry declare `areaId` or `connectionId` so spatial
+  review can connect the semantic plan to its physical realization.
+- [ ] Add a cheap path estimate call for sample, segment, and brush counts.
+- [ ] Suppress expected overlap warnings inside one construction-path family.
+- [ ] Treat intentional non-axial generated geometry separately from accidental
+  modular-grid drift in style review.
+
+### MCP context efficiency
+
+- [ ] Move the full agent workflow into a shared MCP resource.
+- [ ] Keep per-tool descriptions focused on each tool's unique purpose, inputs,
+  and failure modes.
+
 ## Success criteria
 
 - Agents routinely create angled, curved, layered, and vertically varied maps.

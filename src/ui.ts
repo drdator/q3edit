@@ -2603,8 +2603,8 @@ export class UI {
       log.textContent = '';
 
       const mapText = compileWithRegion
-        ? this.editor.serializeRegionMap(true)
-        : this.editor.serializeMap();
+        ? this.editor.serializeRegionMap(true, true)
+        : this.editor.serializeCompileMap();
 
       const compile = this.editor.projectConfiguration.compile;
       const result = await compileMap(mapText, {

@@ -95,6 +95,12 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_save` writes the current browser document to the active path or a supplied path.
 - `map_save_and_compile` revision-checks, saves, and compiles in the common finalization workflow.
 
+Compile, quick-play, and region-compile workflows serialize a compiler-safe
+view of the document. Editor-only `_q3edit_*` semantic metadata, named-group
+records, group comments, and brush/patch editor properties stay in the saved
+editable map but are omitted from q3map input. This avoids legacy parser line
+limits and keeps grouped patches valid without discarding the authoring data.
+
 `create_area` and `connect_areas` store spatial intent in worldspawn independently of brush geometry. An area records its purpose, shape language, center, bounds/radius, height levels, openings, and landmark intent. A connection records its endpoint areas, traversal type, width, vertical change, curvature intent, cover, visibility, and traversal role. Both can remain plan-only or optionally create ordinary grouped floor/room/connector brushes. The generated objects are not opaque: they remain queryable, editable, and removable through normal map operations.
 
 Declared shaders count as valid texture sources even when they intentionally have no image, so tool, trigger, clip, and sky shaders do not produce false missing-texture diagnostics.

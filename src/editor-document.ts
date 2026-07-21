@@ -35,6 +35,10 @@ export function serializeMap(editor: Editor): string {
   return serializeEntities(editor.entities);
 }
 
+export function serializeCompileMap(editor: Editor): string {
+  return serializeEntities(editor.entities, { compilerSafe: true });
+}
+
 export function loadMap(editor: Editor, text: string): void {
   const result = parseMapWithDiagnostics(text);
   editor.transact('Open map', () => {

@@ -650,7 +650,7 @@ export class LiveMapBridge {
         }
         this.editor.statusMessage = `MCP compiling map (${message.quality})`;
         const compile = this.editor.projectConfiguration.compile;
-        const result = await compileMap(this.editor.serializeMap(), {
+        const result = await compileMap(this.editor.serializeCompileMap(), {
           args: compile.bspArgs.length > 0 ? compile.bspArgs : ['-v'],
           vis: message.quality !== 'fast' && compile.vis,
           visArgs: message.quality === 'full' ? compile.visArgs : ['-fast', ...compile.visArgs],
@@ -773,6 +773,7 @@ export class LiveMapBridge {
     }
 
     if (message.type === 'mark_saved' && message.revision === this.editor.documentRevision) {
+      if (message.fileName) this.editor.fileName = message.fileName;
       this.editor.markDocumentSaved();
       this.editor.statusMessage = `MCP saved ${this.editor.fileName}`;
     }

@@ -58,6 +58,7 @@ import {
   redo as redoDocument,
   saveMapToFile as saveEditorMapToFile,
   serializeMap as serializeEditorMap,
+  serializeCompileMap as serializeEditorCompileMap,
   undo as undoDocument,
 } from './editor-document';
 import {
@@ -915,8 +916,12 @@ export class Editor {
     return serializeEditorMap(this);
   }
 
-  serializeRegionMap(addCompileBoundaryBrushes = false): string {
-    return serializeEditorRegionMap(this, { addCompileBoundaryBrushes });
+  serializeCompileMap(): string {
+    return serializeEditorCompileMap(this);
+  }
+
+  serializeRegionMap(addCompileBoundaryBrushes = false, compilerSafe = false): string {
+    return serializeEditorRegionMap(this, { addCompileBoundaryBrushes, compilerSafe });
   }
 
   collectRegionEntities(addCompileBoundaryBrushes = false): Entity[] {

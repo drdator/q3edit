@@ -263,7 +263,7 @@ describe('live MCP bridge', () => {
   });
 
   test('writes a requested browser snapshot to disk', async () => {
-    const { hub } = connectedHub();
+    const { hub, socket } = connectedHub();
     const directory = await mkdtemp(join(tmpdir(), 'q3edit-mcp-test-'));
     temporaryDirectories.push(directory);
     const path = join(directory, 'saved.map');
@@ -272,6 +272,10 @@ describe('live MCP bridge', () => {
 
     expect(result).toEqual({ path, revision: 4 });
     expect(await readFile(path, 'utf8')).toBe('// live map\n');
+    expect(hub.status('editor-a')).toMatchObject({ activeMapPath: path, snapshot: { fileName: 'saved.map' } });
+    expect(socket.sent.map(message => JSON.parse(message))).toContainEqual(expect.objectContaining({
+      type: 'mark_saved', revision: 4, fileName: 'saved.map',
+    }));
   });
 
   test('exposes status and live editing through MCP', async () => {

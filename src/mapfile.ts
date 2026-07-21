@@ -20,17 +20,27 @@ export {
   type UnsupportedConstructPolicy,
 } from './map-parser';
 
-export function serializeMap(entities: Entity[]): string {
+export interface MapSerializeOptions {
+  compilerSafe?: boolean;
+}
+
+export function serializeMap(entities: Entity[], options: MapSerializeOptions = {}): string {
   const lines: string[] = [];
   const groupNames = groupNameMap(entities);
 
   for (let entityIndex = 0; entityIndex < entities.length; entityIndex++) {
     const entity = entities[entityIndex];
+    if (options.compilerSafe && isGroupInfoEntity(entity)) continue;
     lines.push(`// entity ${entityIndex}`);
     lines.push('{');
     const entityProperties = { ...entity.properties };
+    const editorGroupId = entityProperties[GROUP_ID_KEY];
     if (!isGroupInfoEntity(entity) && entityProperties[GROUP_ID_KEY]) {
       entityProperties[GROUP_NAME_KEY] = groupNames.get(entityProperties[GROUP_ID_KEY]) ?? entityProperties[GROUP_NAME_KEY] ?? entityProperties[GROUP_ID_KEY];
+    }
+    if (options.compilerSafe) {
+      for (const key of Object.keys(entityProperties)) if (key.startsWith('_q3edit_')) delete entityProperties[key];
+      if (editorGroupId) delete entityProperties[GROUP_NAME_KEY];
     }
     for (const [key, value] of Object.entries(entityProperties)) {
       lines.push(`${quoteMapString(key)} ${quoteMapString(value)}`);
@@ -39,9 +49,9 @@ export function serializeMap(entities: Entity[]): string {
     for (let brushIndex = 0; brushIndex < entity.brushes.length; brushIndex++) {
       const brush = entity.brushes[brushIndex];
       lines.push(brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
-      if (brush.editorGroupId) lines.push(`// q3edit-group ${encodeURIComponent(brush.editorGroupId)}`);
+      if (brush.editorGroupId && !options.compilerSafe) lines.push(`// q3edit-group ${encodeURIComponent(brush.editorGroupId)}`);
       lines.push('{');
-      serializeBrush(lines, brush, groupNames.get(brush.editorGroupId ?? ''));
+      serializeBrush(lines, brush, options.compilerSafe ? undefined : groupNames.get(brush.editorGroupId ?? ''), options.compilerSafe);
       lines.push('}');
     }
 
@@ -52,12 +62,12 @@ export function serializeMap(entities: Entity[]): string {
         assertTerrainSerializable(patch);
       }
       lines.push(`// patch ${patchIndex}`);
-      if (patch.editorGroupId) lines.push(`// q3edit-group ${encodeURIComponent(patch.editorGroupId)}`);
+      if (patch.editorGroupId && !options.compilerSafe) lines.push(`// q3edit-group ${encodeURIComponent(patch.editorGroupId)}`);
       lines.push('{');
       if (patch.terrainDef) {
         serializeTerrainDef(lines, patch);
       } else {
-        serializePatchDef2(lines, patch, groupNames.get(patch.editorGroupId ?? ''));
+        serializePatchDef2(lines, patch, options.compilerSafe);
       }
       lines.push('}');
     }
@@ -66,16 +76,16 @@ export function serializeMap(entities: Entity[]): string {
   return lines.join('\n') + '\n';
 }
 
-function serializeBrush(lines: string[], brush: Brush, groupName?: string): void {
+function serializeBrush(lines: string[], brush: Brush, groupName?: string, compilerSafe = false): void {
   const projectionKinds = new Set(brush.faces.map(face => face.textureProjection.kind));
   if (projectionKinds.size > 1) {
     throw new Error('Cannot serialize a brush containing mixed classic and brush-primitive projections');
   }
   if (projectionKinds.has('brush-primitive')) {
-    serializeBrushDef(lines, brush, groupName);
+    serializeBrushDef(lines, brush, groupName, compilerSafe);
     return;
   }
-  if (brush.properties && Object.keys(brush.properties).length > 0) {
+  if (!compilerSafe && brush.properties && Object.keys(brush.properties).length > 0) {
     throw new Error('Classic brush syntax cannot preserve brush-local properties');
   }
   for (const face of brush.faces) serializeClassicFace(lines, face);
@@ -93,10 +103,10 @@ function serializeClassicFace(lines: string[], face: BrushFace): void {
   );
 }
 
-function serializeBrushDef(lines: string[], brush: Brush, groupName?: string): void {
+function serializeBrushDef(lines: string[], brush: Brush, groupName?: string, compilerSafe = false): void {
   lines.push('brushDef');
   lines.push('{');
-  const properties = { ...(brush.properties ?? {}) };
+  const properties = compilerSafe ? {} : { ...(brush.properties ?? {}) };
   if (groupName) properties[GROUP_NAME_KEY] = groupName;
   for (const [key, value] of Object.entries(properties)) {
     lines.push(`${quoteMapString(key)} ${quoteMapString(value)}`);
@@ -120,7 +130,7 @@ function formatPoint(value: Vec3): string {
   return `( ${fmtNum(value[0])} ${fmtNum(value[1])} ${fmtNum(value[2])} )`;
 }
 
-function serializePatchDef2(lines: string[], patch: Patch, groupName?: string): void {
+function serializePatchDef2(lines: string[], patch: Patch, compilerSafe = false): void {
   lines.push('patchDef2');
   lines.push('{');
   lines.push(patch.texture);
@@ -133,8 +143,7 @@ function serializePatchDef2(lines: string[], patch: Patch, groupName?: string): 
     lines.push(`( ${points.join(' ')} )`);
   }
   lines.push(')');
-  const properties = { ...(patch.properties ?? {}) };
-  if (groupName) properties[GROUP_NAME_KEY] = groupName;
+  const properties = compilerSafe ? {} : { ...(patch.properties ?? {}) };
   for (const [key, value] of Object.entries(properties)) {
     lines.push(`${quoteMapString(key)} ${quoteMapString(value)}`);
   }

@@ -120,7 +120,7 @@ export type BridgeToEditorMessage =
   | { type: 'game_command'; requestId: string; command: 'noclip' | 'restart' }
   | { type: 'game_set_view'; requestId: string; position: Vec3; yaw: number }
   | { type: 'game_screenshot'; requestId: string }
-  | { type: 'mark_saved'; revision: number };
+  | { type: 'mark_saved'; revision: number; fileName?: string };
 
 export type EditorToBridgeMessage =
   | { type: 'editor_ready'; snapshot: LiveMapSnapshot }
