@@ -295,6 +295,7 @@ describe('live MCP bridge', () => {
         'map_statistics',
         'map_texture_review',
         'map_geometry_lint',
+        'map_spatial_review',
         'map_summary',
         'map_style_get',
         'map_style_set',
@@ -339,7 +340,7 @@ describe('live MCP bridge', () => {
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
@@ -367,6 +368,12 @@ describe('live MCP bridge', () => {
         sessionId: 'editor-a', revision: 4, issueCount: 0, issues: [],
       });
 
+      const spatialReview = await client.callTool({ name: 'map_spatial_review', arguments: {} });
+      expect(spatialReview.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, status: 'pass', issueCount: 0,
+        metrics: { geometry: { brushCount: 0, axisAlignedFaceRatio: null }, levels: { count: 0 } },
+      });
+
       const summary = await client.callTool({ name: 'map_summary', arguments: {} });
       expect(summary.structuredContent).toMatchObject({
         sessionId: 'editor-a', revision: 4, fileName: 'live.map', activeMapPath: null,
@@ -379,6 +386,7 @@ describe('live MCP bridge', () => {
         sessionId: 'editor-a', revision: 4, detail: 'compact', status: 'needs-attention',
         severityCounts: { errors: 0, warnings: 1, info: 0 },
         findings: { count: 1, sample: [{ source: 'routes', code: 'missing-spawn' }], truncated: false },
+        spatial: { status: 'pass', issueCount: 0 },
         routes: { connectivity: { spawnCount: 0, pickupCount: 0 } },
       });
 

@@ -12,6 +12,7 @@ import { compactMapSummary, reviewMap } from './design-review';
 import type { McpActivityLog } from './activity-log';
 import { reviewTextureQuality, textureNamesForReview, type TextureDimensions } from './texture-review';
 import { lintGeometry } from './geometry-lint';
+import { reviewSpatialDesign } from './spatial-review';
 import {
   MAP_STYLE_BRIEF_KEY,
   readStyleBrief,
@@ -93,6 +94,39 @@ const geometryLintIssueSchema = z.object({
   code: z.enum(['duplicate-brush', 'coplanar-overlap', 'thin-brush', 'sliver-face', 'off-grid-geometry', 'likely-structural-detail']),
   message: z.string(), refs: z.array(z.string()),
 });
+const spatialReviewIssueSchema = z.object({
+  severity: z.enum(['warning', 'info']),
+  code: z.enum([
+    'axis-aligned-dominance', 'limited-height-variation', 'repeated-dimensions', 'straight-layout-dominance',
+    'weak-route-branching', 'route-dead-ends', 'single-spatial-rhythm', 'excessive-symmetry',
+    'weak-landmark-distribution', 'flat-silhouette', 'long-flat-walls',
+  ]),
+  message: z.string(), refs: z.array(z.string()), suggestions: z.array(z.string()),
+});
+const spatialReviewMetricsSchema = z.object({
+  geometry: z.object({
+    brushCount: z.number().int(), faceCount: z.number().int(), axisAlignedFaces: z.number().int(),
+    axisAlignedFaceRatio: z.number().nullable(), angledBrushes: z.number().int(), elongatedBrushes: z.number().int(),
+    elongatedBrushRatio: z.number().nullable(),
+  }),
+  levels: z.object({ count: z.number().int(), values: z.array(z.number()), heightRange: z.number().nullable() }),
+  dimensions: z.object({
+    distinctFootprints: z.number().int(), distinctVolumes: z.number().int(), distinctHeights: z.number().int(),
+    dominantFootprintRatio: z.number().nullable(), dominantVolumeRatio: z.number().nullable(), dominantHeightRatio: z.number().nullable(),
+  }),
+  routes: z.object({
+    platformCount: z.number().int(), edgeCount: z.number().int(), components: z.number().int(),
+    branchNodes: z.number().int(), deadEnds: z.number().int(), estimatedLoops: z.number().int(),
+  }),
+  rhythm: z.object({
+    sampleCount: z.number().int(), compressed: z.number().int(), enclosed: z.number().int(),
+    open: z.number().int(), categoryCount: z.number().int(),
+  }),
+  symmetry: z.object({ xMatchRatio: z.number().nullable(), yMatchRatio: z.number().nullable() }),
+  landmarks: z.object({ candidateCount: z.number().int(), occupiedQuadrants: z.number().int(), refs: z.array(z.string()) }),
+  silhouette: z.object({ minimumTop: z.number().nullable(), maximumTop: z.number().nullable(), heightRange: z.number().nullable() }),
+  longFlatWalls: z.object({ count: z.number().int(), refs: z.array(z.string()) }),
+});
 const jumpPadAnalysisSchema = z.object({
   model: z.string(),
   triggerRef: z.string().nullable(),
@@ -172,6 +206,11 @@ const geometryLintOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), issueCount: z.number().int().nonnegative(),
   issues: z.array(geometryLintIssueSchema),
 });
+const spatialReviewOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), model: z.string(),
+  status: z.enum(['pass', 'needs-attention']), metrics: spatialReviewMetricsSchema,
+  issueCount: z.number().int().nonnegative(), issues: z.array(spatialReviewIssueSchema),
+});
 const jumpPadOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), ...jumpPadAnalysisSchema.shape,
 });
@@ -222,7 +261,7 @@ const styleMetricsSchema = z.object({
 });
 const sampledDesignFindingSchema = z.object({
   count: z.number().int(),
-  sample: z.array(z.object({ source: z.enum(['validation', 'geometry', 'style', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
+  sample: z.array(z.object({ source: z.enum(['validation', 'geometry', 'spatial', 'style', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
   truncated: z.boolean(),
 });
 const designReviewOutputSchema = z.object({
@@ -234,6 +273,11 @@ const designReviewOutputSchema = z.object({
   geometry: z.object({
     issueCount: z.number().int(),
     issues: z.object({ count: z.number().int(), sample: z.array(geometryLintIssueSchema), truncated: z.boolean() }),
+  }),
+  spatial: z.object({
+    model: z.string(), status: z.enum(['pass', 'needs-attention']), metrics: spatialReviewMetricsSchema,
+    issueCount: z.number().int(),
+    issues: z.object({ count: z.number().int(), sample: z.array(spatialReviewIssueSchema), truncated: z.boolean() }),
   }),
   style: z.object({
     brief: mapStyleBriefSchema.nullable(), status: z.enum(['not-configured', 'pass', 'needs-attention']),
@@ -770,6 +814,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
       'Use fit for focal surfaces that should show one complete image, but preserve intentional tiling on large walls and floors. Inspect unfamiliar materials, run map_texture_review, and verify textured geometry with editor_screenshot.',
+      'Run map_spatial_review after blockout changes and address repeated axis alignment, weak height or route variation, flat walls, and missing spatial rhythm before adding decoration.',
       'After a major edit, use editor_review_bundle for consistently framed perspective and orthographic visual review.',
     ].join(' '),
   });
@@ -1029,6 +1074,22 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     }
   });
 
+  server.registerTool('map_spatial_review', {
+    title: 'Review spatial design variety',
+    description: 'Measure axis-aligned geometry dominance, floor-level and brush-dimension variety, approximate route branching/loops/dead ends, open-versus-enclosed rhythm, mirror symmetry, landmark and silhouette variation, and long flat walls. Findings are transparent authoring heuristics with suggested corrective actions.',
+    inputSchema: { ...sessionInput },
+    outputSchema: spatialReviewOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...reviewSpatialDesign(snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('map_summary', {
     title: 'Get a compact map orientation summary',
     description: 'Return a token-efficient revision snapshot with world bounds, object/detail counts, diagnostic totals, major entity classes, and spawn/item distribution. Use this between edit batches instead of dumping the full document.',
@@ -1112,7 +1173,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_design_review', {
     title: 'Run a combined map design review',
-    description: 'Return one revision-consistent review combining editor validation, geometry construction quality, gameplay placement lint, jump-pad analysis, approximate route reachability, and compact spatial statistics. Compact mode caps repeated findings; focused lint tools remain available for deeper follow-up.',
+    description: 'Return one revision-consistent review combining editor validation, geometry construction quality, spatial design variety, gameplay placement lint, jump-pad analysis, approximate route reachability, and compact map statistics. Compact mode caps repeated findings; focused review tools remain available for deeper follow-up.',
     inputSchema: {
       ...sessionInput,
       detail: z.enum(['compact', 'full']).optional().default('compact'),

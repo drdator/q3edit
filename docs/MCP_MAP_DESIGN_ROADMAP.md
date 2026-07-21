@@ -37,18 +37,18 @@ construction and refinement operations over an expanding prefab catalog.
 
 ### 1. Spatial design review
 
-- [ ] Add `map_spatial_review` with typed output.
-- [ ] Measure the percentage of axis-aligned geometry.
-- [ ] Report distinct floor and traversal height levels.
-- [ ] Measure footprint, volume, and height diversity.
-- [ ] Detect excessive use of straight corridors and rectangular rooms.
-- [ ] Estimate route branching, loops, and dead ends.
-- [ ] Review open/enclosed and compression/release rhythm.
-- [ ] Detect excessive symmetry and repeated dimensions.
-- [ ] Review landmark distribution and silhouette variation.
-- [ ] Flag long, uninterrupted flat walls.
-- [ ] Integrate the findings into `map_design_review`.
-- [ ] Document suggested corrective operations for every finding type.
+- [x] Add `map_spatial_review` with typed output.
+- [x] Measure the percentage of axis-aligned geometry.
+- [x] Report distinct floor and traversal height levels.
+- [x] Measure footprint, volume, and height diversity.
+- [x] Detect excessive use of straight corridors and rectangular rooms.
+- [x] Estimate route branching, loops, and dead ends.
+- [x] Review open/enclosed and compression/release rhythm.
+- [x] Detect excessive symmetry and repeated dimensions.
+- [x] Review landmark distribution and silhouette variation.
+- [x] Flag long, uninterrupted flat walls.
+- [x] Integrate the findings into `map_design_review`.
+- [x] Document suggested corrective operations for every finding type.
 
 This should come first because it gives agents an objective signal to improve,
 and lets us measure whether later geometry tools actually produce better maps.
@@ -179,4 +179,3 @@ rhythm and making results reproducible.
 - The same request and seed produce reproducible geometry.
 - Spatial review scores and visual inspection improve across agent iterations.
 - Output quality does not depend on a bundled catalog of authored prefabs.
-

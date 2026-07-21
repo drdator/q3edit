@@ -1,0 +1,69 @@
+import { describe, expect, test } from 'vitest';
+import { reviewSpatialDesign } from '../bridge/spatial-review';
+import { Editor } from '../src/editor';
+import { createEntity } from '../src/entity';
+import { applyMapOperations } from '../src/map-operations';
+
+function emptyEditor(): Editor {
+  const editor = new Editor();
+  editor.entities = [createEntity('worldspawn')];
+  return editor;
+}
+
+describe('MCP spatial design review', () => {
+  test('passes an empty document without inventing design findings', () => {
+    const result = reviewSpatialDesign(emptyEditor().serializeMap());
+
+    expect(result.status).toBe('pass');
+    expect(result.issueCount).toBe(0);
+    expect(result.metrics.geometry).toMatchObject({ brushCount: 0, faceCount: 0, axisAlignedFaceRatio: null });
+    expect(result.metrics.levels).toEqual({ count: 0, values: [], heightRange: null });
+  });
+
+  test('reports box-dominant, single-level, repetitive construction with actionable suggestions', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, Array.from({ length: 10 }, (_, index) => ({
+      type: 'create_box' as const,
+      mins: [index * 80, 0, 0] as [number, number, number],
+      maxs: [index * 80 + 64, 64, 64] as [number, number, number],
+    })));
+
+    const result = reviewSpatialDesign(editor.serializeMap());
+
+    expect(result.status).toBe('needs-attention');
+    expect(result.metrics.geometry).toMatchObject({ brushCount: 10, axisAlignedFaceRatio: 1, angledBrushes: 0 });
+    expect(result.metrics.levels.count).toBe(1);
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'axis-aligned-dominance', severity: 'warning' }),
+      expect.objectContaining({ code: 'limited-height-variation', severity: 'warning' }),
+      expect.objectContaining({ code: 'repeated-dimensions' }),
+      expect.objectContaining({ code: 'weak-landmark-distribution' }),
+    ]));
+    expect(result.issues.every(issue => issue.suggestions.length > 0)).toBe(true);
+  });
+
+  test('measures route topology, spatial rhythm, symmetry, and long walls', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      { type: 'create_box', mins: [-512, -256, 0], maxs: [512, -240, 192] },
+      { type: 'create_box', mins: [-512, 240, 0], maxs: [512, 256, 192] },
+      { type: 'create_box', mins: [-256, -256, 0], maxs: [-240, 256, 192] },
+      { type: 'create_box', mins: [240, -256, 0], maxs: [256, 256, 192] },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        type: 'create_box' as const,
+        mins: [-192 + index * 64, -32, 0] as [number, number, number],
+        maxs: [-128 + index * 64, 32, index < 3 ? 32 : 96] as [number, number, number],
+      })),
+    ]);
+
+    const result = reviewSpatialDesign(editor.serializeMap());
+
+    expect(result.metrics.routes.platformCount).toBeGreaterThan(0);
+    expect(result.metrics.rhythm.sampleCount).toBeGreaterThan(0);
+    expect(result.metrics.symmetry.xMatchRatio).not.toBeNull();
+    expect(result.metrics.longFlatWalls.count).toBeGreaterThan(0);
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'long-flat-walls', refs: expect.any(Array) }),
+    ]));
+  });
+});
