@@ -32,6 +32,7 @@ import { constructionPathSummary, readConstructionPaths } from '../src/construct
 import { searchDesignPatterns } from './design-patterns';
 import { entityOrigin } from '../src/entity';
 import { inspectCompilerPreflight } from './compiler-preflight';
+import { explainDiagnostic } from './diagnostic-explain';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -2100,6 +2101,50 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, diagnostics: snapshot.diagnostics });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('diagnostic_explain', {
+    title: 'Explain a compiler or design diagnostic',
+    description: 'Resolve likely source refs for a compiler warning or review finding, explain its practical impact, and return concrete MCP tools and previewable operation templates for addressing it.',
+    inputSchema: {
+      ...sessionInput,
+      code: z.string().min(1).optional(),
+      message: z.string().min(1),
+      severity: z.enum(['error', 'warning', 'info']).optional(),
+      refs: z.array(z.string()).max(100).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, code, message, severity, refs }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const unavailableTextures = new Set<string>();
+      if (/noshader|missing.shader|missing.texture|couldn.t find image/i.test(`${code ?? ''} ${message}`)) {
+        const document = parseMapWithDiagnostics(snapshot.mapText).document;
+        const textures = [...new Set(document.entities.flatMap(entity => [
+          ...entity.brushes.flatMap(brush => brush.faces.map(face => face.texture)),
+          ...entity.patches.map(patch => patch.texture),
+        ]))].slice(0, 512);
+        await Promise.all(textures.map(async texture => {
+          try {
+            const inspection = await hub.textureInspect(texture, resolved) as {
+              compatibility?: { compilerSafe?: boolean }; found?: boolean; compilerAvailable?: boolean;
+            };
+            if (inspection.compatibility?.compilerSafe === false || inspection.found === false || inspection.compilerAvailable === false) {
+              unavailableTextures.add(texture);
+            }
+          } catch {
+            unavailableTextures.add(texture);
+          }
+        }));
+      }
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision,
+        ...explainDiagnostic(snapshot.mapText, { code, message, severity, refs, unavailableTextures }),
+      });
     } catch (error) {
       return toolError(error);
     }

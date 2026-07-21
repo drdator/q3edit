@@ -591,6 +591,23 @@ export class TextureManager {
           return { face, texture, available: this.findImageFile(texture) !== null };
         })
       : [];
+    const runtimeImages = (shader?.stages ?? []).flatMap(stage => stage.images).map(image => ({
+      image,
+      builtIn: image.startsWith('$') || image.startsWith('*'),
+      available: image.startsWith('$') || image.startsWith('*') || this.findImageFile(image) !== null,
+    }));
+    const expectedInvisible = Boolean(shader?.semantics.nodraw || shader?.semantics.trigger);
+    const runtimeRenderable = expectedInvisible ? false
+      : shader?.semantics.sky
+        ? Boolean((skyFaces.length > 0 && skyFaces.every(face => face.available)) || runtimeImages.some(image => !image.builtIn && image.available))
+        : shader
+          ? runtimeImages.length > 0 ? runtimeImages.every(image => image.available) : preview !== null
+          : preview !== null;
+    const compatibilityReasons: string[] = [];
+    if (expectedInvisible) compatibilityReasons.push('This tool shader is intentionally invisible at runtime.');
+    if (shader?.semantics.sky && !runtimeRenderable) compatibilityReasons.push('The shader is compiler-safe, but its skybox or rendered stage images are unavailable.');
+    if (!shader && !preview) compatibilityReasons.push('No declared shader or image asset was found.');
+    if (shader && !shader.semantics.sky && !expectedInvisible && !runtimeRenderable) compatibilityReasons.push('One or more runtime shader stage images are unavailable.');
     return {
       name,
       found: this.hasTextureSource(name),
@@ -602,6 +619,15 @@ export class TextureManager {
       } : null,
       previewAvailable: preview !== null,
       compilerAvailable: this.hasTextureSource(name),
+      compatibility: {
+        parserSafe: this.hasTextureSource(name),
+        compilerSafe: this.hasTextureSource(name),
+        editorPreviewable: preview !== null,
+        runtimeRenderable,
+        expectedInvisible,
+        reasons: compatibilityReasons,
+      },
+      runtimeImages,
       skyPreview: skyFaces.length > 0 ? { complete: skyFaces.every(face => face.available), faces: skyFaces } : null,
     };
   }

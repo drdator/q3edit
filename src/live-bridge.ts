@@ -18,6 +18,7 @@ import {
   isGroupInfoEntity,
   listNamedGroups,
 } from './named-groups';
+import { textureSearchScore } from './texture-search';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -437,11 +438,16 @@ export class LiveMapBridge {
       }
       const query = message.query.trim().toLowerCase();
       const matches = manager.listTextures()
-        .filter(name => !query || name.toLowerCase().includes(query))
-        .slice(0, message.limit)
         .map(name => {
-          const asset = manager.getTextureAsset(name);
           const metadata = manager.getShaderMetadata(name);
+          return { name, metadata, score: textureSearchScore(name, query, metadata?.semantics ?? null, metadata?.surfaceParms ?? []) };
+        })
+        .filter((candidate): candidate is typeof candidate & { score: number } => candidate.score !== null)
+        .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+        .slice(0, message.limit)
+        .map(({ name, metadata }) => {
+          const asset = manager.getTextureAsset(name);
+          const inspection = manager.inspectTexture(name) as { compatibility?: unknown };
           return {
             name,
             archive: asset?.source.archiveName,
@@ -452,6 +458,7 @@ export class LiveMapBridge {
             previewAvailable: manager.hasPreviewSource(name),
             semantics: metadata?.semantics ?? null,
             surfaceParms: metadata?.surfaceParms ?? [],
+            compatibility: inspection.compatibility ?? null,
           };
         });
       this.send({ type: 'capability_result', requestId: message.requestId, result: { query: message.query, matches } });
@@ -732,7 +739,9 @@ export class LiveMapBridge {
           ? { revision: this.editor.documentRevision, data: new Uint8Array(result.bsp) }
           : null;
         const compilerDiagnostics = structureCompilerOutput(
-          result.output, this.editor.entities, texture => textureManager?.isShader(texture) ?? false,
+          result.output, this.editor.entities,
+          texture => textureManager?.isShader(texture) ?? false,
+          texture => textureManager?.hasTextureSource(texture) ?? false,
         );
         if (leaked) compilerDiagnostics.push({
           severity: 'error', code: 'leak', message: 'The BSP compiler produced a leak pointfile.', refs: [],

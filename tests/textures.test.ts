@@ -77,6 +77,29 @@ describe('texture image resolution', () => {
     expect(manager.inspectTexture('skies/agent_space')).toMatchObject({
       found: true, shader: true, previewAvailable: true, compilerAvailable: true,
       image: { path: 'textures/skies/agent_preview.tga', width: 1, height: 1 },
+      compatibility: {
+        parserSafe: true, compilerSafe: true, editorPreviewable: true,
+        runtimeRenderable: false, expectedInvisible: false,
+      },
+    });
+  });
+
+  it('distinguishes intentionally invisible tool shaders from missing runtime assets', () => {
+    const packed = zipSync({
+      'scripts/tools.shader': strToU8('textures/common/agent_trigger\n{\n surfaceparm nodraw\n surfaceparm trigger\n}'),
+    });
+    const gl = {
+      TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TEXTURE_MIN_FILTER: 4, TEXTURE_MAG_FILTER: 5,
+      LINEAR_MIPMAP_LINEAR: 6, LINEAR: 7, TEXTURE_WRAP_S: 8, TEXTURE_WRAP_T: 9, REPEAT: 10,
+      createTexture: () => ({}), bindTexture: () => {}, texImage2D: () => {}, generateMipmap: () => {},
+      texParameteri: () => {}, deleteTexture: () => {},
+    } as unknown as WebGL2RenderingContext;
+    const manager = new TextureManager(gl, new AssetIndex([{ name: 'tools.pk3', data: new Uint8Array(packed).buffer }]));
+
+    expect(manager.inspectTexture('common/agent_trigger')).toMatchObject({
+      compatibility: {
+        compilerSafe: true, editorPreviewable: false, runtimeRenderable: false, expectedInvisible: true,
+      },
     });
   });
 });

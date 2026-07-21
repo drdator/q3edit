@@ -278,7 +278,7 @@ const FALLBACK_CLASSES: Array<[string, string, string, Record<string, string>?]>
   ...['target_position','target_speaker','target_delay','target_relay','target_give','info_notnull'].map(name => [name, 'Targets', '#888888'] as [string,string,string]),
   ['path_corner', 'Paths', '#66cc88'], ['info_null', 'Paths', '#66cc88'],
   ...['misc_model','misc_teleporter_dest'].map(name => [name, 'Misc', '#888888'] as [string,string,string]),
-  ...['func_group','func_detail','func_door','func_button','func_plat','func_rotating','func_bobbing','func_train','trigger_multiple','trigger_push','trigger_teleport','trigger_hurt'].map(name => [name, name.startsWith('trigger_') ? 'Triggers' : 'Brush Entities', '#888888'] as [string,string,string]),
+  ...['func_group','func_detail','func_door','func_button','func_plat','func_rotating','func_bobbing','func_train','trigger_multiple','trigger_once','trigger_always','trigger_push','trigger_teleport','trigger_hurt'].map(name => [name, name.startsWith('trigger_') ? 'Triggers' : 'Brush Entities', '#888888'] as [string,string,string]),
 ];
 
 type BuiltInProperty = Omit<EntityPropertyDefinition, 'key'>;
@@ -318,6 +318,46 @@ const BUILT_IN_PROPERTIES: Record<string, Record<string, BuiltInProperty>> = {
     wait: { name: 'Wait', type: 'number', default: '0.5', description: 'Seconds between activations; -1 makes the trigger single-use.' },
     random: { name: 'Random', type: 'number', default: '0', description: 'Random variance added to or subtracted from wait.' },
   },
+  trigger_once: {
+    target: { name: 'Target', type: 'entity-reference', description: 'Required targetname of one or more entities to activate once.' },
+  },
+  trigger_always: {
+    target: { name: 'Target', type: 'entity-reference', description: 'Required targetname activated shortly after the map starts.' },
+  },
+  trigger_hurt: {
+    dmg: { name: 'Damage', type: 'number', default: '5', description: 'Damage dealt on each activation. The stock Quake III key is dmg.' },
+    targetname: { name: 'Target name', type: 'entity-reference', description: 'Optional name used to toggle or activate the trigger.' },
+  },
+  target_delay: {
+    target: { name: 'Target', type: 'entity-reference', description: 'Entity or entities activated after the delay.' },
+    wait: { name: 'Delay', type: 'number', default: '1', description: 'Seconds before firing the target.' },
+    random: { name: 'Random', type: 'number', default: '0', description: 'Random variance added to or subtracted from wait.' },
+  },
+  target_relay: {
+    target: { name: 'Target', type: 'entity-reference', description: 'Entity or entities activated by this relay.' },
+    targetname: { name: 'Target name', type: 'entity-reference', description: 'Name used by another entity to activate this relay.' },
+  },
+  target_speaker: {
+    noise: { name: 'Sound', type: 'asset', description: 'Sound path below sound/, normally ending in .wav.' },
+    wait: { name: 'Wait', type: 'number', default: '0', description: 'Seconds between repeated sounds.' },
+    random: { name: 'Random', type: 'number', default: '0', description: 'Random variance applied to wait.' },
+    targetname: { name: 'Target name', type: 'entity-reference', description: 'Optional activation name for triggered speakers.' },
+  },
+  misc_model: {
+    model: { name: 'Model', type: 'asset', description: 'Path to an MD3 model below models/.' },
+    skin: { name: 'Skin', type: 'asset', description: 'Optional .skin file applied to the model.' },
+    angle: { name: 'Yaw', type: 'angle', default: '0', description: 'Rotation around the vertical axis.' },
+    angles: { name: 'Pitch yaw roll', type: 'angle', description: 'Three-axis rotation written as pitch yaw roll.' },
+  },
+  func_door: {
+    angle: { name: 'Move direction', type: 'angle', default: '0', description: 'Direction the door travels; use -1 for up and -2 for down.' },
+    speed: { name: 'Speed', type: 'number', default: '400', description: 'Movement speed in map units per second.' },
+    wait: { name: 'Wait', type: 'number', default: '2', description: 'Seconds before returning; -1 prevents automatic return.' },
+    lip: { name: 'Lip', type: 'number', default: '8', description: 'Amount left protruding when fully open.' },
+    dmg: { name: 'Damage', type: 'number', default: '2', description: 'Damage dealt when blocked.' },
+    health: { name: 'Health', type: 'number', description: 'When set, damage opens the door.' },
+    targetname: { name: 'Target name', type: 'entity-reference', description: 'Optional activation name.' },
+  },
 };
 
 const BUILT_IN_RELATIONSHIPS: Record<string, EntityRelationshipDefinition[]> = {
@@ -328,11 +368,25 @@ const BUILT_IN_RELATIONSHIPS: Record<string, EntityRelationshipDefinition[]> = {
   trigger_push: [{ key: 'target', direction: 'outgoing', required: true, targetClasses: ['target_position', 'info_notnull'], description: 'Must resolve to the apex position used to calculate launch velocity.' }],
   trigger_teleport: [{ key: 'target', direction: 'outgoing', required: true, targetClasses: ['misc_teleporter_dest', 'target_position'], description: 'Must resolve to the player destination.' }],
   trigger_multiple: [{ key: 'target', direction: 'outgoing', required: true, description: 'Must resolve to one or more entities to activate.' }],
+  trigger_once: [{ key: 'target', direction: 'outgoing', required: true, description: 'Must resolve to one or more entities to activate.' }],
+  trigger_always: [{ key: 'target', direction: 'outgoing', required: true, description: 'Must resolve to one or more entities to activate.' }],
+  target_delay: [{ key: 'target', direction: 'outgoing', required: true, description: 'Fires this target after the configured delay.' }],
+  target_relay: [
+    { key: 'targetname', direction: 'incoming', required: false, description: 'Optional name used to activate this relay.' },
+    { key: 'target', direction: 'outgoing', required: true, description: 'Forwards activation to this target.' },
+  ],
 };
 
 const BUILT_IN_SPAWNFLAGS: Record<string, EntitySpawnflagDefinition[]> = {
   light: [{ bit: 1, name: 'LINEAR', description: 'Use linear attenuation instead of inverse-square falloff.' }],
   trigger_teleport: [{ bit: 1, name: 'SPECTATOR', description: 'Only spectators can use this teleporter.' }],
+  trigger_hurt: [
+    { bit: 1, name: 'START_OFF', description: 'The trigger begins disabled.' },
+    { bit: 2, name: 'TOGGLE', description: 'Each activation toggles the trigger.' },
+    { bit: 4, name: 'SILENT', description: 'Do not play the normal pain sound.' },
+    { bit: 8, name: 'NO_PROTECTION', description: 'Damage ignores armor and protection powerups.' },
+    { bit: 16, name: 'SLOW', description: 'Apply damage once per second instead of every frame interval.' },
+  ],
 };
 
 function hexColor(value: string): [number, number, number] {

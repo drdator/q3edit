@@ -48,4 +48,17 @@ describe('structured compiler diagnostics', () => {
       expect.objectContaining({ severity: 'warning', code: 'compiler-warning', stage: 'light' }),
     ]));
   });
+
+  test('associates a noshader warning with unresolved map materials', () => {
+    const world = createEntity('worldspawn');
+    world.brushes.push(createBoxBrush([0, 0, 0], [64, 64, 64], 'custom/not_installed'));
+    const diagnostics = structureCompilerOutput([
+      "WARNING: Couldn't find image for shader noshader",
+    ], [world], () => false, texture => texture !== 'custom/not_installed');
+
+    expect(diagnostics[0]).toMatchObject({
+      code: 'missing-shader-image',
+      refs: ['E0:B0:F0', 'E0:B0:F1', 'E0:B0:F2', 'E0:B0:F3', 'E0:B0:F4', 'E0:B0:F5'],
+    });
+  });
 });

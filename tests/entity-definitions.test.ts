@@ -114,6 +114,16 @@ describe('entity definitions', () => {
       properties: { target: { type: 'entity-reference' } },
       spawnflags: [{ bit: 1, name: 'SPECTATOR' }],
     });
+    expect(registry.get('trigger_hurt')).toMatchObject({
+      properties: { dmg: { type: 'number', default: '5', name: 'Damage' } },
+      spawnflags: expect.arrayContaining([
+        { bit: 1, name: 'START_OFF', description: expect.any(String) },
+        { bit: 16, name: 'SLOW', description: expect.any(String) },
+      ]),
+    });
+    expect(registry.get('func_door')).toMatchObject({
+      properties: { speed: { default: '400' }, wait: { default: '2' }, lip: { default: '8' } },
+    });
   });
 
   it('keeps built-in relationship properties when a source definition omits them', () => {

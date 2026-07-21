@@ -35,10 +35,24 @@ function originRefs(entities: readonly Entity[], line: string): MapDocumentRef[]
   return refs;
 }
 
+function unresolvedTextureRefs(entities: readonly Entity[], isAvailable: (texture: string) => boolean): MapDocumentRef[] {
+  const refs: MapDocumentRef[] = [];
+  entities.forEach((entity, entityIndex) => {
+    entity.brushes.forEach((brush, brushIndex) => brush.faces.forEach((face, faceIndex) => {
+      if (!isAvailable(face.texture)) refs.push(`E${entityIndex}:B${brushIndex}:F${faceIndex}`);
+    }));
+    entity.patches.forEach((patch, patchIndex) => {
+      if (!isAvailable(patch.texture)) refs.push(`E${entityIndex}:P${patchIndex}`);
+    });
+  });
+  return refs.slice(0, 100);
+}
+
 export function structureCompilerOutput(
   output: readonly string[],
   entities: readonly Entity[],
   isDeclaredShader: (texture: string) => boolean = () => false,
+  isAvailableTexture: (texture: string) => boolean = () => true,
 ): StructuredCompilerDiagnostic[] {
   const diagnostics: StructuredCompilerDiagnostic[] = [];
   let stage: StructuredCompilerDiagnostic['stage'];
@@ -54,17 +68,25 @@ export function structureCompilerOutput(
     if (missing) {
       const texture = missing[1].trim();
       const expectedToolShader = isDeclaredShader(texture);
+      let refs = textureRefs(entities, texture);
+      if (refs.length === 0 && texture.toLowerCase().replace(/^textures\//, '') === 'noshader') {
+        refs = unresolvedTextureRefs(entities, isAvailableTexture);
+      }
       diagnostics.push({
         severity: expectedToolShader ? 'info' : 'warning',
         code: expectedToolShader ? 'expected-tool-shader' : 'missing-shader-image',
         message: expectedToolShader ? `${line} (declared shader without a preview image)` : line,
-        refs: textureRefs(entities, texture),
+        refs,
         stage,
       });
       continue;
     }
     if (/\bnoshader\b/i.test(line)) {
-      diagnostics.push({ severity: 'warning', code: 'missing-shader-image', message: line, refs: originRefs(entities, line), stage });
+      const refs = originRefs(entities, line);
+      diagnostics.push({
+        severity: 'warning', code: 'missing-shader-image', message: line,
+        refs: refs.length > 0 ? refs : unresolvedTextureRefs(entities, isAvailableTexture), stage,
+      });
       continue;
     }
     if (/^warning:/i.test(line)) {

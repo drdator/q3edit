@@ -330,6 +330,7 @@ describe('live MCP bridge', () => {
         'map_design_review',
         'map_inspect',
         'map_validate',
+        'diagnostic_explain',
         'map_gameplay_lint',
         'map_analyze_jump_pad',
         'map_route_lint',
@@ -577,6 +578,14 @@ describe('live MCP bridge', () => {
 
       const lint = await client.callTool({ name: 'map_gameplay_lint', arguments: {} });
       expect(lint.structuredContent).toMatchObject({ revision: 4, issueCount: 0 });
+
+      const explanation = await client.callTool({
+        name: 'diagnostic_explain',
+        arguments: { code: 'style-grid-deviation', message: 'Generated curve is off grid', severity: 'info', refs: ['E0:B0'] },
+      });
+      expect(explanation.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, impact: 'informational', matters: false, likelyRefs: ['E0:B0'],
+      });
 
       const jumpAnalysis = await client.callTool({
         name: 'map_analyze_jump_pad',
