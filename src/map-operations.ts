@@ -67,6 +67,7 @@ export interface CreateBoxOperation extends CreationMetadata {
   mins: Vec3;
   maxs: Vec3;
   texture?: string;
+  textures?: { top?: string; bottom?: string; sides?: string };
 }
 
 export interface CreateRoomOperation extends CreationMetadata {
@@ -91,6 +92,7 @@ export interface CreatePrimitiveOperation extends CreationMetadata {
   mins: Vec3;
   maxs: Vec3;
   texture?: string;
+  textures?: { top?: string; bottom?: string; sides?: string };
   axis?: MapAxis;
   sides?: number;
 }
@@ -110,6 +112,7 @@ export interface CreateStairsOperation extends CreationMetadata {
   mins: Vec3;
   maxs: Vec3;
   texture?: string;
+  textures?: { treads?: string; risers?: string; sides?: string; underside?: string };
   direction?: WedgeDirection;
   steps: number;
 }
@@ -426,6 +429,23 @@ function addBox(entity: Entity, mins: Vec3, maxs: Vec3, texture: string): Brush 
   return brush;
 }
 
+function applyCapSideTextures(
+  brush: Brush,
+  axis: number,
+  textures: { top?: string; bottom?: string; sides?: string } | undefined,
+  fallback: string,
+): void {
+  if (!textures) return;
+  for (const face of brush.faces) {
+    const component = face.plane.normal[axis];
+    face.texture = component > 0.9
+      ? textures.top ?? fallback
+      : component < -0.9
+        ? textures.bottom ?? fallback
+        : textures.sides ?? fallback;
+  }
+}
+
 function axisIndex(axis: MapAxis): number {
   return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
 }
@@ -440,6 +460,7 @@ function addPrimitive(entity: Entity, operation: CreatePrimitiveOperation): Brus
     axisIndex(operation.axis ?? 'z'),
     operation.sides ?? 8,
   );
+  applyCapSideTextures(brush, operation.primitive === 'box' ? 2 : axisIndex(operation.axis ?? 'z'), operation.textures, operation.texture ?? 'common/caulk');
   entity.brushes.push(brush);
   return brush;
 }
@@ -477,7 +498,19 @@ function addStairs(entity: Entity, operation: CreateStairsOperation): ObjectHand
     maxs[2] = operation.mins[2] + (step + 1) * rise;
     handles.push({
       kind: 'brush', entity,
-      brush: addBox(entity, mins, maxs, operation.texture ?? 'common/caulk'),
+      brush: (() => {
+        const fallback = operation.texture ?? 'common/caulk';
+        const brush = addBox(entity, mins, maxs, fallback);
+        if (operation.textures) {
+          for (const face of brush.faces) {
+            if (face.plane.normal[2] > 0.9) face.texture = operation.textures.treads ?? fallback;
+            else if (face.plane.normal[2] < -0.9) face.texture = operation.textures.underside ?? fallback;
+            else if (Math.abs(face.plane.normal[travelAxis]) > 0.9) face.texture = operation.textures.risers ?? fallback;
+            else face.texture = operation.textures.sides ?? fallback;
+          }
+        }
+        return brush;
+      })(),
     });
   }
   return handles;
@@ -894,7 +927,10 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         changedHandles.add(objectHandle(resolved));
       } else if (operation.type === 'create_box') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
-        const handle: ObjectHandle = { kind: 'brush', entity, brush: addBox(entity, operation.mins, operation.maxs, operation.texture ?? 'common/caulk') };
+        const fallback = operation.texture ?? 'common/caulk';
+        const brush = addBox(entity, operation.mins, operation.maxs, fallback);
+        applyCapSideTextures(brush, 2, operation.textures, fallback);
+        const handle: ObjectHandle = { kind: 'brush', entity, brush };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_room') {
         const handles = applyCreateRoom(editor, operation, aliases);

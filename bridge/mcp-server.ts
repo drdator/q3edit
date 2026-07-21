@@ -54,6 +54,9 @@ const mapOperationVariants = [
     mins: vec3,
     maxs: vec3,
     texture: z.string().min(1).optional(),
+    textures: z.object({
+      top: z.string().min(1).optional(), bottom: z.string().min(1).optional(), sides: z.string().min(1).optional(),
+    }).optional(),
   }),
   z.object({
     type: z.literal('create_room'),
@@ -76,6 +79,9 @@ const mapOperationVariants = [
     mins: vec3,
     maxs: vec3,
     texture: z.string().min(1).optional(),
+    textures: z.object({
+      top: z.string().min(1).optional(), bottom: z.string().min(1).optional(), sides: z.string().min(1).optional(),
+    }).optional(),
     axis: z.enum(['x', 'y', 'z']).optional(),
     sides: z.number().int().optional(),
   }),
@@ -95,6 +101,10 @@ const mapOperationVariants = [
     mins: vec3,
     maxs: vec3,
     texture: z.string().min(1).optional(),
+    textures: z.object({
+      treads: z.string().min(1).optional(), risers: z.string().min(1).optional(),
+      sides: z.string().min(1).optional(), underside: z.string().min(1).optional(),
+    }).optional(),
     direction: z.enum(['x+', 'x-', 'y+', 'y-']).optional(),
     steps: z.number().int().min(2).max(64),
   }),
@@ -242,6 +252,12 @@ const compatibleMapOperationInput = z.object({
     walls: z.string().optional(),
     floor: z.string().optional(),
     ceiling: z.string().optional(),
+    top: z.string().optional(),
+    bottom: z.string().optional(),
+    sides: z.string().optional(),
+    treads: z.string().optional(),
+    risers: z.string().optional(),
+    underside: z.string().optional(),
   }).optional(),
   primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'pyramid']).optional(),
   axis: z.enum(['x', 'y', 'z']).optional(),

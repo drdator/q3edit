@@ -109,6 +109,8 @@ Initial `map_apply` operations are:
 
 Creation operations accept `group` and an optional stable `groupId`. The created objects are assigned immediately, without a separate `assign_group` operation.
 
+`create_box` and `create_primitive` accept semantic `textures.top`, `textures.bottom`, and `textures.sides` slots. For non-box primitives, top/bottom are the positive/negative caps along `axis`. `create_stairs` accepts `textures.treads`, `textures.risers`, `textures.sides`, and `textures.underside`; unspecified slots fall back to `texture`.
+
 Object references use the current document indices: `E1`, `E0:B2`, `E0:B2:F4`, and `E0:P0`. Face references can be inspected, queried, selected, framed, or passed to `edit_faces`. References are revision-sensitive, so call `map_status`, `map_query`, or `map_entities` again after a revision conflict.
 
 Mark decorative geometry as detail before compiling so it does not unnecessarily split the BSP tree:

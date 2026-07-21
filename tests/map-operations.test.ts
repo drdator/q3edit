@@ -285,6 +285,38 @@ describe('serializable map operations', () => {
     expect([jump, apex, teleport, destination].every(entity => entity.properties._q3edit_group_id === 'traversal')).toBe(true);
   });
 
+  test('assigns semantic material slots while creating boxes, primitives, and stairs', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      {
+        type: 'create_box', mins: [0, 0, 0], maxs: [64, 64, 64], texture: 'fallback',
+        textures: { top: 'box/top', bottom: 'box/bottom', sides: 'box/sides' },
+      },
+      {
+        type: 'create_primitive', primitive: 'cylinder', axis: 'x', sides: 8,
+        mins: [80, 0, 0], maxs: [144, 64, 64], texture: 'fallback',
+        textures: { top: 'cylinder/top', bottom: 'cylinder/bottom', sides: 'cylinder/sides' },
+      },
+      {
+        type: 'create_stairs', direction: 'y+', steps: 2,
+        mins: [160, 0, 0], maxs: [224, 128, 64], texture: 'fallback',
+        textures: { treads: 'stairs/tread', risers: 'stairs/riser', sides: 'stairs/side', underside: 'stairs/under' },
+      },
+    ]);
+
+    const [box, cylinder, firstStep] = editor.worldspawn.brushes;
+    expect(box.faces.find(face => face.plane.normal[2] > 0.9)?.texture).toBe('box/top');
+    expect(box.faces.find(face => face.plane.normal[2] < -0.9)?.texture).toBe('box/bottom');
+    expect(box.faces.find(face => Math.abs(face.plane.normal[0]) > 0.9)?.texture).toBe('box/sides');
+    expect(cylinder.faces.find(face => face.plane.normal[0] > 0.9)?.texture).toBe('cylinder/top');
+    expect(cylinder.faces.find(face => face.plane.normal[0] < -0.9)?.texture).toBe('cylinder/bottom');
+    expect(cylinder.faces.find(face => Math.abs(face.plane.normal[0]) < 0.9)?.texture).toBe('cylinder/sides');
+    expect(firstStep.faces.find(face => face.plane.normal[2] > 0.9)?.texture).toBe('stairs/tread');
+    expect(firstStep.faces.find(face => face.plane.normal[2] < -0.9)?.texture).toBe('stairs/under');
+    expect(firstStep.faces.find(face => Math.abs(face.plane.normal[1]) > 0.9)?.texture).toBe('stairs/riser');
+    expect(firstStep.faces.find(face => Math.abs(face.plane.normal[0]) > 0.9)?.texture).toBe('stairs/side');
+  });
+
   test('rejects unknown and duplicate symbolic references transactionally', () => {
     const editor = emptyEditor();
     expect(() => applyMapOperations(editor, [
