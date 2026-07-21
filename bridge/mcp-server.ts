@@ -25,6 +25,108 @@ const creationMetadataSchema = {
   groupId: groupId.optional(),
 };
 const screenshotBounds = z.object({ mins: vec3, maxs: vec3 });
+const nullableBounds = screenshotBounds.nullable();
+const issueSeverity = z.enum(['error', 'warning', 'info']);
+const gameplayLintIssueSchema = z.object({
+  severity: issueSeverity,
+  code: z.enum(['entity-in-solid', 'spawn-clearance', 'unsupported-item']),
+  message: z.string(),
+  refs: z.array(z.string()),
+});
+const routeLintIssueSchema = z.object({
+  severity: issueSeverity,
+  code: z.enum([
+    'invalid-jump-pad', 'blocked-jump-pad', 'unsupported-jump-landing',
+    'blocked-jump-landing', 'unreachable-pickup', 'missing-spawn',
+  ]),
+  message: z.string(),
+  refs: z.array(z.string()),
+});
+const jumpPadAnalysisSchema = z.object({
+  model: z.string(),
+  triggerRef: z.string().nullable(),
+  targetRef: z.string().nullable(),
+  targetMatches: z.number().int(),
+  gravity: z.number(),
+  triggerBounds: screenshotBounds,
+  launchOrigin: vec3,
+  apex: vec3,
+  velocity: vec3,
+  horizontalSpeed: z.number(),
+  verticalSpeed: z.number(),
+  timeToApex: z.number(),
+  nominalFlightTime: z.number(),
+  nominalLandingOrigin: vec3,
+  landing: z.discriminatedUnion('supported', [
+    z.object({ supported: z.literal(false) }),
+    z.object({
+      supported: z.literal(true),
+      brushRef: z.string(),
+      time: z.number(),
+      origin: vec3,
+      feetPosition: vec3,
+      hullClear: z.boolean(),
+      blockers: z.array(z.string()),
+    }),
+  ]),
+  clearance: z.object({
+    clear: z.boolean(),
+    collisions: z.array(z.object({ ref: z.string(), firstTime: z.number(), position: vec3 })),
+  }),
+  trajectory: z.array(z.object({ time: z.number(), position: vec3 })),
+  warnings: z.array(z.string()),
+});
+const routeLintSchema = z.object({
+  model: z.string(),
+  issueCount: z.number().int().nonnegative(),
+  issues: z.array(routeLintIssueSchema),
+  jumpPads: z.array(jumpPadAnalysisSchema),
+  connectivity: z.object({
+    platformCount: z.number().int().nonnegative(),
+    edgeCount: z.number().int().nonnegative(),
+    spawnPlatforms: z.array(z.object({ entityRef: z.string(), platformRef: z.string() })),
+    reachablePlatformCount: z.number().int().nonnegative(),
+    pickups: z.array(z.object({
+      entityRef: z.string(), classname: z.string(), platformRef: z.string().nullable(), reachableFromSpawn: z.boolean(),
+    })),
+    edges: z.array(z.object({ from: z.string(), to: z.string(), kind: z.enum(['walk', 'jump', 'jump-pad']) })),
+  }),
+});
+const queryGroupSchema = z.object({ id: z.string(), name: z.string() }).nullable();
+const mapQueryMatchSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ref: z.string(), kind: z.literal('entity'), classname: z.string(), origin: vec3.nullable(), bounds: nullableBounds,
+    properties: z.record(z.string(), z.string()), brushCount: z.number().int(), patchCount: z.number().int(),
+    textures: z.array(z.string()), group: queryGroupSchema,
+  }),
+  z.object({
+    ref: z.string(), kind: z.literal('brush'), entity: z.string(), classname: z.string(), bounds: screenshotBounds,
+    faceCount: z.number().int(), textures: z.array(z.string()), group: queryGroupSchema,
+  }),
+  z.object({
+    ref: z.string(), kind: z.literal('face'), entity: z.string(), brush: z.string(), classname: z.string(),
+    texture: z.string(), bounds: nullableBounds, contentFlags: z.number().int(), surfaceFlags: z.number().int(),
+    value: z.number().int(), group: queryGroupSchema,
+  }),
+  z.object({
+    ref: z.string(), kind: z.literal('patch'), entity: z.string(), classname: z.string(), bounds: screenshotBounds,
+    width: z.number().int(), height: z.number().int(), textures: z.array(z.string()), group: queryGroupSchema,
+  }),
+]);
+const gameplayLintOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), issueCount: z.number().int().nonnegative(),
+  issues: z.array(gameplayLintIssueSchema),
+});
+const jumpPadOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), ...jumpPadAnalysisSchema.shape,
+});
+const routeLintOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), ...routeLintSchema.shape,
+});
+const mapQueryOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), count: z.number().int().nonnegative(),
+  matches: z.array(mapQueryMatchSchema),
+});
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
@@ -393,7 +495,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Select a Q3Edit editor session',
     description: 'Set the default editor session for subsequent tools on this MCP connection. Explicit sessionId arguments still override it.',
     inputSchema: { sessionId: editorSessionId },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
       selectedEditorSessionId = hub.resolveSessionId(sessionId);
@@ -543,6 +645,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Lint gameplay placement',
     description: 'Run approximate gameplay checks for point entities embedded in solids, player-spawn hull clearance, and pickup support height. Results include implicated object references.',
     inputSchema: { ...sessionInput },
+    outputSchema: gameplayLintOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
@@ -567,6 +670,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       gravity: z.number().positive().optional().describe('Defaults to worldspawn gravity or Quake III default 800'),
       sampleCount: z.number().int().min(4).max(128).optional().default(32),
     },
+    outputSchema: jumpPadOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, triggerRef, mins, maxs, apex, gravity, sampleCount }) => {
     try {
@@ -583,6 +687,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Lint jump pads and approximate gameplay routes',
     description: 'Analyze every trigger_push trajectory and landing, then build a conservative platform graph connecting spawns, pickups, ordinary walk/jump transitions, and directed jump-pad routes. Results are editor heuristics, not AAS or engine playtest proof.',
     inputSchema: { ...sessionInput },
+    outputSchema: routeLintOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
@@ -619,7 +724,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
       noclip: z.boolean().optional().default(false),
     },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ sessionId, quality, noclip }) => {
     try {
       const resolved = session(sessionId);
@@ -669,6 +774,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       boundsMode: z.enum(['intersects', 'inside']).optional().default('intersects'),
       limit: z.number().int().min(1).max(500).optional().default(100),
     },
+    outputSchema: mapQueryOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit }) => {
     try {
@@ -812,7 +918,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       refs: z.array(objectRef).min(1).max(100),
       replace: z.boolean().optional().default(true).describe('Replace the current selection; false adds to it'),
     },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId, refs, replace }) => {
     try {
       const resolved = session(sessionId);
@@ -826,7 +932,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Frame objects in Q3Edit',
     description: 'Select object references and move all editor viewports to frame that selection.',
     inputSchema: { ...sessionInput, refs: z.array(objectRef).min(1).max(100) },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId, refs }) => {
     try {
       const resolved = session(sessionId);
@@ -845,7 +951,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       yawDegrees: z.number(),
       pitchDegrees: z.number().min(-89.8).max(89.8),
     },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId, position, yawDegrees, pitchDegrees }) => {
     try {
       const resolved = session(sessionId);
@@ -865,7 +971,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Point the Q3Edit 3D camera at a target',
     description: 'Position the 3D camera and calculate yaw/pitch so it looks directly at a world-space target.',
     inputSchema: { ...sessionInput, position: compatibleVec3, target: compatibleVec3 },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId, position, target }) => {
     try {
       const resolved = session(sessionId);
@@ -987,7 +1093,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Run a safe compiled-preview command',
     description: 'Reliably relaunch the current compiled preview with a safe command. noclip enables cheats/noclip; restart reloads the current BSP.',
     inputSchema: { ...sessionInput, command: z.enum(['noclip', 'restart']) },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ sessionId, command }) => {
     try {
       const resolved = session(sessionId);
@@ -1001,7 +1107,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     title: 'Position the compiled-preview player',
     description: 'Relaunch the current BSP in noclip at a world-space position and yaw. Follow with game_wait_ready before capturing a screenshot.',
     inputSchema: { ...sessionInput, position: vec3, yawDegrees: z.number() },
-    annotations: { readOnlyHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ sessionId, position, yawDegrees }) => {
     try {
       const resolved = session(sessionId);

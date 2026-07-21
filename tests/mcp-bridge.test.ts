@@ -294,6 +294,12 @@ describe('live MCP bridge', () => {
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
+      for (const name of ['map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+        expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
+      }
+      for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
+        expect(tools.tools.find(tool => tool.name === name)?.annotations?.readOnlyHint, `${name} mutation annotation`).toBe(false);
+      }
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });
