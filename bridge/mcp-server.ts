@@ -29,6 +29,7 @@ import {
   serializeStyleBrief,
 } from './style-brief';
 import { constructionPathSummary, readConstructionPaths } from '../src/construction-paths';
+import { searchDesignPatterns } from './design-patterns';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -321,6 +322,28 @@ const constructionPathsOutputSchema = z.object({
     }),
     bounds: nullableBounds,
   }),
+});
+const designPatternScaleSchema = z.enum(['small', 'medium', 'large']);
+const designPatternSchema = z.object({
+  id: z.string(), name: z.string(), summary: z.string(), scale: z.array(designPatternScaleSchema),
+  gameplayPurposes: z.array(z.string()), matchReasons: z.array(z.string()),
+  areaConstraints: z.array(z.object({
+    role: z.string(), purpose: z.string(), shapes: z.array(z.string()), relativePosition: z.string(),
+    levelIntent: z.string(), landmarkIntent: z.string().optional(),
+  })),
+  routeConstraints: z.array(z.object({
+    fromRole: z.string(), toRole: z.string(), routeTypes: z.array(z.string()), traversalIntent: z.string(),
+    visibility: z.enum(['hidden', 'glimpse', 'visible']), cover: z.enum(['open', 'partial', 'enclosed']),
+  })),
+  risks: z.array(z.string()), variations: z.array(z.string()), adaptation: z.array(z.string()),
+  liveMapAdaptation: z.object({
+    worldBounds: nullableBounds, recommendedSpan: z.tuple([z.number(), z.number()]).nullable(), instructions: z.array(z.string()),
+  }),
+});
+const designPatternSearchOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int(), query: z.string(), goals: z.array(z.string()),
+  scale: designPatternScaleSchema.nullable(), count: z.number().int(), patterns: z.array(designPatternSchema),
+  note: z.string(),
 });
 const spatialAreaProposalSchema = z.object({
   id: symbolicId, purpose: z.string().min(1).max(500), shape: spatialAreaShapeSchema, center: vec3,
@@ -1124,6 +1147,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Prefer create_tapered and native create_patch bevel, endcap, cylinder, arch, pipe, or ramp surfaces when spatial review shows excessive box and axis-aligned geometry.',
       'Use create_path for curved or segmented corridors, walls, railings, pipes, beams, trim, stairs, and supports. Preview complex paths first, then inspect their persistent source/group relationship with map_construction_paths_get.',
       'Refine blockout brushes with offset_faces, chamfer_brushes, taper_brushes, clip_brushes, hollow_brushes, and csg_subtract; preserve projections unless an intentional fit is requested.',
+      'Use design_pattern_search for abstract area/route constraints when a layout needs stronger composition. Adapt roles to the live map; never treat a pattern as fixed prefab geometry.',
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
@@ -1425,6 +1449,33 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const snapshot = hub.snapshot(resolved);
       const plan = spatialPlanFromMapText(snapshot.mapText);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, plan, inspection: inspectSpatialPlan(plan) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('design_pattern_search', {
+    title: 'Search abstract level-design patterns',
+    description: 'Find constraint-based spatial patterns for stronger composition. Results describe roles, route relationships, risks, variations, and adaptation to the live map; they contain no prefab geometry or fixed coordinates.',
+    inputSchema: {
+      ...sessionInput,
+      query: z.string().max(500).optional().default(''),
+      goals: z.array(z.string().min(1).max(200)).max(12).optional().default([]),
+      scale: designPatternScaleSchema.optional(),
+      limit: z.number().int().min(1).max(8).optional().default(4),
+    },
+    outputSchema: designPatternSearchOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, query, goals, scale, limit }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const patterns = searchDesignPatterns(query, goals, scale, limit, collectMapStatistics(snapshot.mapText));
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision, query, goals, scale: scale ?? null,
+        count: patterns.length, patterns,
+        note: 'Patterns are semantic constraints, not templates. Adapt roles and proportions to the current bounds, style, gameplay, and route graph before using create_area/connect_areas.',
+      });
     } catch (error) {
       return toolError(error);
     }

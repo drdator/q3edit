@@ -157,8 +157,8 @@ multi-brush handling rather than a misleading per-brush shortcut.
 
 ### 6. Abstract design-pattern guidance
 
-- [ ] Add `design_pattern_search`.
-- [ ] Describe abstract spatial patterns such as:
+- [x] Add `design_pattern_search`.
+- [x] Describe abstract spatial patterns such as:
   - raised perimeter loop
   - crossing bridges
   - split-level room
@@ -167,13 +167,22 @@ multi-brush handling rather than a misleading per-brush shortcut.
   - compression-release entrance
   - vertical courtyard
   - layered arena with an exposed center
-- [ ] Describe appropriate scale, gameplay purpose, risks, and variations.
-- [ ] Express patterns as area-graph and route constraints rather than geometry.
-- [ ] Allow a selected pattern to guide `create_area` and `connect_areas` calls.
-- [ ] Require the agent to adapt each pattern to the current bounds, style,
+- [x] Describe appropriate scale, gameplay purpose, risks, and variations.
+- [x] Express patterns as area-graph and route constraints rather than geometry.
+- [x] Allow a selected pattern to guide `create_area` and `connect_areas` calls.
+- [x] Require the agent to adapt each pattern to the current bounds, style,
   gameplay needs, and existing layout.
-- [ ] Do not ship opaque brushwork, fixed coordinates, or authored map fragments
+- [x] Do not ship opaque brushwork, fixed coordinates, or authored map fragments
   as part of a pattern.
+
+Implementation note: `design_pattern_search` matches design goals and optional
+small/medium/large scale against eight abstract compositions. Each result
+provides semantic area roles, route constraints, gameplay purposes, risks,
+variations, and proportional guidance derived from the live world bounds. Its
+instructions explicitly route planning through `create_area`,
+`connect_areas`, spatial-plan preview, and only then generic construction.
+Pattern data contains no bounds, control points, brushwork, or authored map
+fragments.
 
 ### 7. Controlled variation
 

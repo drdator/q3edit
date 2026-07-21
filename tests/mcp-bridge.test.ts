@@ -296,6 +296,7 @@ describe('live MCP bridge', () => {
         'map_texture_review',
         'map_geometry_lint',
         'map_spatial_plan_get',
+        'design_pattern_search',
         'map_spatial_plan_preview',
         'map_construction_paths_get',
         'map_spatial_review',
@@ -343,7 +344,7 @@ describe('live MCP bridge', () => {
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
@@ -381,6 +382,13 @@ describe('live MCP bridge', () => {
       expect(spatialPlan.structuredContent).toMatchObject({
         sessionId: 'editor-a', revision: 4,
         plan: { version: 1, areas: [], connections: [] }, inspection: { connectedComponents: [], issues: [] },
+      });
+      const patterns = await client.callTool({
+        name: 'design_pattern_search', arguments: { query: 'vertical route', scale: 'medium', limit: 2 },
+      });
+      expect(patterns.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, query: 'vertical route', scale: 'medium', count: 2,
+        patterns: expect.arrayContaining([expect.objectContaining({ areaConstraints: expect.any(Array), routeConstraints: expect.any(Array) })]),
       });
       const spatialPreview = await client.callTool({
         name: 'map_spatial_plan_preview', arguments: {
