@@ -75,11 +75,12 @@ async function init() {
       vpXZ.frameBounds(bounds);
       vpYZ.frameBounds(bounds);
     },
-    captureScreenshot: (mode, width, height, xray) => {
-      if (mode === 'top') return vpXY.capturePng(width, height);
-      if (mode === 'front') return vpXZ.capturePng(width, height);
-      if (mode === 'side') return vpYZ.capturePng(width, height);
-      return vp3D.capturePng(width, height, xray);
+    captureScreenshot: options => {
+      const mode = options.mode ?? 'perspective';
+      if (mode === 'top') return vpXY.capturePng(options.width, options.height, options.layoutOverlay);
+      if (mode === 'front') return vpXZ.capturePng(options.width, options.height, options.layoutOverlay);
+      if (mode === 'side') return vpYZ.capturePng(options.width, options.height, options.layoutOverlay);
+      return vp3D.capturePng(options.width, options.height, options.xray);
     },
     launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
     gameStatus: () => ui.getGamePreviewStatus(),

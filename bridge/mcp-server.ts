@@ -187,6 +187,12 @@ const mapSummaryOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int(), fileName: z.string(), activeMapPath: z.string().nullable(),
   ...compactMapSummarySchema.shape,
 });
+const layoutScreenshotOutputSchema = z.object({
+  sessionId: z.string(), mimeType: z.literal('image/png'), width: z.number().int(), height: z.number().int(),
+  mode: z.enum(['top', 'front', 'side']), frameBounds: nullableBounds,
+  gridSize: z.number().positive(), majorGridSize: z.number().positive(),
+  axisLabels: z.tuple([z.string(), z.string()]), worldUnitsPerPixel: z.number().positive(),
+});
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
@@ -601,7 +607,11 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
         screenshots: {
           minWidth: 64, minHeight: 64, maxWidth: 2048, maxHeight: 2048,
           modes: ['perspective', 'top', 'front', 'side'],
-          controls: ['frameBounds', 'frameGroup', 'hideGroups', 'hideToolBrushes', 'hideSkyBrushes', 'sectionBounds', 'xray'],
+          controls: [
+            'frameBounds', 'frameGroup', 'hideGroups', 'hideToolBrushes', 'hideSkyBrushes', 'sectionBounds', 'xray',
+            'showEntityLabels', 'showCoordinates', 'layoutOverlay',
+          ],
+          layoutPreset: 'editor_layout_screenshot',
         },
         compiler: { available: hub.compilerAvailable, qualities: ['fast', 'normal', 'full'] },
         editor,
@@ -1110,6 +1120,9 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       frameBounds: screenshotBounds.optional(),
       frameGroup: z.string().min(1).optional(),
       xray: z.boolean().optional().default(false),
+      showEntityLabels: z.boolean().optional(),
+      showCoordinates: z.boolean().optional(),
+      layoutOverlay: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, ...options }) => {
@@ -1127,6 +1140,57 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
           width: screenshot.width,
           height: screenshot.height,
           mode: options.mode,
+          ...(screenshot.gridSize === undefined ? {} : {
+            gridSize: screenshot.gridSize, majorGridSize: screenshot.majorGridSize,
+            axisLabels: screenshot.axisLabels, worldUnitsPerPixel: screenshot.worldUnitsPerPixel,
+          }),
+        },
+      };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_layout_screenshot', {
+    title: 'Capture a map-design layout overview',
+    description: 'Capture a purpose-built top/front/side flat-shaded overview with grid, axis, and world-unit scale overlays. By default it frames the whole map, hides sky/tool brushes, and labels entities for spatial layout review.',
+    inputSchema: {
+      ...sessionInput,
+      mode: z.enum(['top', 'front', 'side']).optional().default('top'),
+      width: z.number().int().min(320).max(2048).optional().default(1200),
+      height: z.number().int().min(240).max(2048).optional().default(900),
+      frameBounds: screenshotBounds.optional(),
+      frameGroup: z.string().min(1).optional(),
+      sectionBounds: screenshotBounds.optional(),
+      hideGroups: z.array(z.string().min(1)).max(64).optional(),
+      hideToolBrushes: z.boolean().optional().default(true),
+      hideSkyBrushes: z.boolean().optional().default(true),
+      showEntityLabels: z.boolean().optional().default(true),
+      showCoordinates: z.boolean().optional().default(false),
+    },
+    outputSchema: layoutScreenshotOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, ...options }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const defaultBounds = collectMapStatistics(snapshot.mapText).worldBounds;
+      const frameBounds = options.frameBounds ?? (options.frameGroup ? undefined : defaultBounds ?? undefined);
+      const screenshot = await hub.screenshot({ ...options, frameBounds, layoutOverlay: true }, resolved);
+      if (screenshot.gridSize === undefined || screenshot.majorGridSize === undefined ||
+          screenshot.axisLabels === undefined || screenshot.worldUnitsPerPixel === undefined) {
+        throw new Error('The connected editor did not return layout screenshot metadata; reload Q3Edit from the current bridge build');
+      }
+      return {
+        content: [
+          { type: 'text' as const, text: `Q3Edit ${options.mode} layout · grid ${screenshot.gridSize} · ${screenshot.width} × ${screenshot.height}` },
+          { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
+        ],
+        structuredContent: {
+          sessionId: resolved, mimeType: 'image/png', width: screenshot.width, height: screenshot.height,
+          mode: options.mode, frameBounds: frameBounds ?? null,
+          gridSize: screenshot.gridSize, majorGridSize: screenshot.majorGridSize,
+          axisLabels: screenshot.axisLabels, worldUnitsPerPixel: screenshot.worldUnitsPerPixel,
         },
       };
     } catch (error) {

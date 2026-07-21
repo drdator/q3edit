@@ -122,7 +122,14 @@ class FakeEditorSocket extends EventEmitter {
     } else if (request.type === 'editor_screenshot') {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
-        result: { mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==', width: request.width ?? 800, height: request.height ?? 600 },
+        result: {
+          mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==', width: request.width ?? 800, height: request.height ?? 600,
+          ...(request.layoutOverlay ? {
+            gridSize: 16, majorGridSize: 128,
+            axisLabels: request.mode === 'side' ? ['Y', 'Z'] : request.mode === 'front' ? ['X', 'Z'] : ['X', 'Y'],
+            worldUnitsPerPixel: 0.5,
+          } : {}),
+        },
       }));
     } else if (request.type === 'editor_capabilities') {
       queueMicrotask(() => this.emitMessage({
@@ -279,6 +286,7 @@ describe('live MCP bridge', () => {
         'editor_set_camera',
         'editor_look_at',
         'editor_screenshot',
+        'editor_layout_screenshot',
         'game_screenshot',
         'game_status',
         'game_wait_ready',
@@ -467,6 +475,22 @@ describe('live MCP bridge', () => {
       ]));
       expect(JSON.parse(socket.sent.find(value => JSON.parse(value).type === 'editor_screenshot')!)).toMatchObject({
         type: 'editor_screenshot', mode: 'top', frameGroup: 'reactor', hideSkyBrushes: true,
+      });
+
+      const layout = await client.callTool({
+        name: 'editor_layout_screenshot', arguments: { mode: 'front', showCoordinates: true },
+      });
+      expect(layout.content).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'image', mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==' }),
+      ]));
+      expect(layout.structuredContent).toMatchObject({
+        sessionId: 'editor-a', mode: 'front', width: 1200, height: 900,
+        gridSize: 16, majorGridSize: 128, axisLabels: ['X', 'Z'], worldUnitsPerPixel: 0.5,
+      });
+      const screenshotRequests = socket.sent.filter(value => JSON.parse(value).type === 'editor_screenshot');
+      expect(JSON.parse(screenshotRequests[screenshotRequests.length - 1])).toMatchObject({
+        mode: 'front', hideToolBrushes: true, hideSkyBrushes: true,
+        showEntityLabels: true, showCoordinates: true, layoutOverlay: true,
       });
 
       const applied = await client.callTool({

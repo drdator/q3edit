@@ -218,9 +218,13 @@ export class BridgeHub {
     return this.capabilityRequest(sessionId, { type: 'editor_capabilities', requestId: randomUUID() });
   }
 
-  async screenshot(options: EditorScreenshotOptions, sessionId?: string): Promise<{ mimeType: string; data: string; width: number; height: number }> {
+  async screenshot(options: EditorScreenshotOptions, sessionId?: string): Promise<{
+    mimeType: string; data: string; width: number; height: number;
+    gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
+  }> {
     return await this.capabilityRequest(sessionId, { type: 'editor_screenshot', requestId: randomUUID(), ...options }) as {
       mimeType: string; data: string; width: number; height: number;
+      gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
     };
   }
 

@@ -24,7 +24,10 @@ export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'er
 export interface LiveBridgeEditorControls {
   setCamera(position: Vec3, yaw: number, pitch: number): void;
   frameBounds(bounds: ScreenshotBounds): void;
-  captureScreenshot(mode: NonNullable<EditorScreenshotOptions['mode']>, width?: number, height?: number, xray?: boolean): { mimeType: string; data: string; width: number; height: number };
+  captureScreenshot(options: EditorScreenshotOptions): {
+    mimeType: string; data: string; width: number; height: number;
+    gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
+  };
   launchBspPreview(mapName: string, bsp: Uint8Array, noclip: boolean): void;
   gameStatus(): GamePreviewStatus;
   waitForGameReady(timeoutMs: number): Promise<GamePreviewStatus>;
@@ -526,7 +529,10 @@ export class LiveMapBridge {
     if (message.type === 'editor_screenshot') {
       try {
         const categories = this.editor.display.categories;
-        const markers = { entities: categories.entities, lights: categories.lights, paths: categories.paths };
+        const markers = {
+          entities: categories.entities, lights: categories.lights, paths: categories.paths,
+          names: categories.names, coordinates: categories.coordinates,
+        };
         const addedBrushes = new Set<Brush>();
         const addedPatches = new Set<Patch>();
         const addedEntities = new Set<Entity>();
@@ -542,6 +548,8 @@ export class LiveMapBridge {
           categories.entities = false; categories.lights = false; categories.paths = false;
           this.editor.redrawRequested = true;
         }
+        if (message.showEntityLabels !== undefined) categories.names = message.showEntityLabels;
+        if (message.showCoordinates !== undefined) categories.coordinates = message.showCoordinates;
         for (const group of hiddenGroups) {
           if (!restoredGroups.has(group.entity)) restoredGroups.set(group.entity, group.entity.properties[GROUP_HIDDEN_KEY]);
           group.entity.properties[GROUP_HIDDEN_KEY] = '1';
@@ -584,11 +592,15 @@ export class LiveMapBridge {
         }
         if (frame) this.controls.frameBounds(frame);
         this.editor.redrawRequested = true;
-        let screenshot: { mimeType: string; data: string; width: number; height: number };
+        let screenshot: {
+          mimeType: string; data: string; width: number; height: number;
+          gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
+        };
         try {
-          screenshot = this.controls.captureScreenshot(message.mode ?? 'perspective', message.width, message.height, message.xray);
+          screenshot = this.controls.captureScreenshot(message);
         } finally {
           categories.entities = markers.entities; categories.lights = markers.lights; categories.paths = markers.paths;
+          categories.names = markers.names; categories.coordinates = markers.coordinates;
           for (const brush of addedBrushes) this.editor.hiddenBrushes.delete(brush);
           for (const patch of addedPatches) this.editor.hiddenPatches.delete(patch);
           for (const entity of addedEntities) this.editor.hiddenEntities.delete(entity);

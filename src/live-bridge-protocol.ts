@@ -28,6 +28,9 @@ export interface EditorScreenshotOptions {
   frameBounds?: ScreenshotBounds;
   frameGroup?: string;
   xray?: boolean;
+  showEntityLabels?: boolean;
+  showCoordinates?: boolean;
+  layoutOverlay?: boolean;
 }
 
 export interface GamePreviewStatus {
