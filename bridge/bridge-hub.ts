@@ -266,6 +266,10 @@ export class BridgeHub {
     return this.capabilityRequest(sessionId, { type: 'map_play', requestId: randomUUID(), noclip });
   }
 
+  async historyAction(action: 'undo' | 'redo', expectedRevision: number, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'history_action', requestId: randomUUID(), action, expectedRevision });
+  }
+
   async gameStatus(sessionId?: string): Promise<GamePreviewStatus> {
     return await this.capabilityRequest(sessionId, { type: 'game_status', requestId: randomUUID() }) as GamePreviewStatus;
   }
@@ -344,7 +348,7 @@ export class BridgeHub {
 
     session.lastActiveAt = Date.now();
     const previousFileName = session.snapshot?.fileName;
-    if ('snapshot' in message) session.snapshot = message.snapshot;
+    if ('snapshot' in message && message.snapshot) session.snapshot = message.snapshot;
     if (message.type === 'editor_ready') {
       if (previousFileName && previousFileName !== message.snapshot.fileName) session.activeMapPath = null;
       return;

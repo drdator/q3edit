@@ -91,6 +91,15 @@ class FakeEditorSocket extends EventEmitter {
       }));
     } else if (request.type === 'request_snapshot') {
       queueMicrotask(() => this.emitMessage({ type: 'snapshot', requestId: request.requestId, snapshot: snapshot() }));
+    } else if (request.type === 'history_action') {
+      const next = snapshot(request.expectedRevision + (request.action === 'undo' ? -1 : 1));
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId, snapshot: next,
+        result: {
+          action: request.action, label: 'MCP: Test change', revision: next.revision,
+          canUndo: request.action === 'redo', canRedo: request.action === 'undo',
+        },
+      }));
     } else if (request.type === 'texture_search') {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
@@ -174,7 +183,7 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: {
           state: request.type === 'game_command' || request.type === 'game_set_view' ? 'preparing' : 'running',
-          message: 'Running live', mapName: 'live', noclip: true,
+          message: 'Running live', mapName: 'live', noclip: true, noclipRequested: true, commandErrors: [],
           launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [],
         },
       }));
@@ -296,6 +305,10 @@ describe('live MCP bridge', () => {
         'activity_log',
         'editor_session_select',
         'map_status',
+        'map_undo',
+        'map_redo',
+        'game_command',
+        'game_set_view',
         'editor_capture',
         'editor_review',
         'map_capabilities',
@@ -341,8 +354,6 @@ describe('live MCP bridge', () => {
         'game_screenshot',
         'game_status',
         'game_wait_ready',
-        'game_command',
-        'game_set_view',
         'map_preview',
         'map_create_jump_pad',
         'map_create_teleporter',
@@ -372,6 +383,11 @@ describe('live MCP bridge', () => {
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });
+
+      const undone = await client.callTool({ name: 'map_undo', arguments: { expectedRevision: 4 } });
+      expect(undone.structuredContent).toMatchObject({ sessionId: 'editor-a', action: 'undo', revision: 3, canRedo: true });
+      const redone = await client.callTool({ name: 'map_redo', arguments: { expectedRevision: 3 } });
+      expect(redone.structuredContent).toMatchObject({ sessionId: 'editor-a', action: 'redo', revision: 4, canUndo: true });
 
       const statistics = await client.callTool({ name: 'map_statistics', arguments: {} });
       expect(statistics.structuredContent).toMatchObject({
@@ -454,7 +470,8 @@ describe('live MCP bridge', () => {
 
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
-        sessionId: 'editor-a', protocolVersion: 2,
+        sessionId: 'editor-a', protocolVersion: 3,
+        essentialTools: expect.arrayContaining(['editor_capture', 'editor_review', 'game_set_view', 'map_undo']),
         operations: { version: 11, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
@@ -469,7 +486,7 @@ describe('live MCP bridge', () => {
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
         },
         screenshots: { maxWidth: 2048, modes: ['perspective', 'top', 'front', 'side'] },
-        compiler: { available: false },
+        compiler: { available: false, cachedPlayReuse: true, aas: false },
         editor: { project: { gameDirectory: 'baseq3' } },
       });
 
@@ -588,7 +605,11 @@ describe('live MCP bridge', () => {
       expect((await readFile(artifactPath)).byteLength).toBe(4096);
 
       const played = await client.callTool({ name: 'map_play', arguments: { quality: 'fast', noclip: true } });
-      expect(played.structuredContent).toMatchObject({ launch: { launched: true, noclip: true } });
+      expect(played.structuredContent).toMatchObject({ launch: { launched: true, noclip: true }, status: { noclip: true } });
+      const compileRequests = socket.sent.filter(raw => JSON.parse(raw).type === 'map_compile').length;
+      const replayed = await client.callTool({ name: 'map_play', arguments: { useLastCompile: true } });
+      expect(replayed.structuredContent).toMatchObject({ compile: { reused: true, revision: 4 }, launch: { launched: true } });
+      expect(socket.sent.filter(raw => JSON.parse(raw).type === 'map_compile')).toHaveLength(compileRequests);
 
       const gameScreenshot = await client.callTool({ name: 'game_screenshot', arguments: {} });
       expect(gameScreenshot.content).toEqual(expect.arrayContaining([
@@ -603,7 +624,7 @@ describe('live MCP bridge', () => {
       const gameView = await client.callTool({
         name: 'game_set_view', arguments: { position: [128, 64, 96], yawDegrees: 90 },
       });
-      expect(gameView.structuredContent).toMatchObject({ state: 'preparing', position: [128, 64, 96], yawDegrees: 90 });
+      expect(gameView.structuredContent).toMatchObject({ state: 'running', noclip: true, position: [128, 64, 96], yawDegrees: 90 });
 
       const groups = await client.callTool({ name: 'map_groups', arguments: {} });
       expect(groups.structuredContent).toMatchObject({ revision: 4, groups: [] });

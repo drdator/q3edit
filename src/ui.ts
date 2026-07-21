@@ -92,7 +92,7 @@ export class UI {
   private readonly mcpActivity: McpActivityPanel;
   private gamePreviewStatus: GamePreviewStatus = {
     state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
-    launchedAt: null, runningAt: null, error: null, consoleTail: [],
+    noclipRequested: false, commandErrors: [], launchedAt: null, runningAt: null, error: null, consoleTail: [],
     renderer: null,
   };
 
@@ -2752,7 +2752,8 @@ export class UI {
     retainedBsp.set(bsp);
     this.gamePreviewLaunch = { mapName: safeMapName, bsp: retainedBsp, noclip, commands: structuredClone(commands) };
     this.updateGamePreviewStatus({
-      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName, noclip,
+      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName, noclip: false,
+      noclipRequested: noclip, commandErrors: [],
       launchedAt: new Date().toISOString(), runningAt: null, error: null, consoleTail: [],
       renderer: null,
     });
@@ -2836,9 +2837,15 @@ export class UI {
         this.updateGamePreviewStatus({ state: 'loading', message: String(message.message) });
       } else if (message?.type === 'q3edit-player:running') {
         dialog.classList.add('running');
-        status.textContent = `Running ${safeMapName}`;
+        const commandErrors = Array.isArray(message.commandErrors) ? message.commandErrors.map(String) : [];
+        if (noclip && message.noclip !== true && commandErrors.length === 0) {
+          commandErrors.push('Noclip was requested but the game did not confirm that it is enabled.');
+        }
+        status.textContent = commandErrors.length > 0 ? `Running ${safeMapName} with command errors` : `Running ${safeMapName}`;
         this.updateGamePreviewStatus({
-          state: 'running', message: `Running ${safeMapName}`, runningAt: new Date().toISOString(),
+          state: 'running', message: status.textContent, runningAt: new Date().toISOString(),
+          noclip: message.noclip === true,
+          commandErrors,
           renderer: message.renderer ?? null,
         });
         this.editor.statusMessage = `Running ${safeMapName} in browser ioquake3`;

@@ -37,7 +37,10 @@ export interface GamePreviewStatus {
   state: 'idle' | 'preparing' | 'loading' | 'running' | 'error' | 'closed';
   message: string;
   mapName: string | null;
+  /** True only after the running game has acknowledged that noclip is enabled. */
   noclip: boolean;
+  noclipRequested?: boolean;
+  commandErrors?: string[];
   launchedAt: string | null;
   runningAt: string | null;
   error: string | null;
@@ -103,6 +106,7 @@ export type BridgeToEditorMessage =
       fileName: string;
     }
   | { type: 'request_snapshot'; requestId: string }
+  | { type: 'history_action'; requestId: string; expectedRevision: number; action: 'undo' | 'redo' }
   | { type: 'texture_search'; requestId: string; query: string; limit: number }
   | { type: 'texture_preview'; requestId: string; name: string }
   | { type: 'texture_inspect'; requestId: string; name: string }
@@ -128,5 +132,5 @@ export type EditorToBridgeMessage =
   | { type: 'operation_result'; requestId: string; result: MapOperationResult; snapshot: LiveMapSnapshot }
   | { type: 'document_replaced'; requestId: string; snapshot: LiveMapSnapshot }
   | { type: 'snapshot'; requestId: string; snapshot: LiveMapSnapshot }
-  | { type: 'capability_result'; requestId: string; result: unknown }
+  | { type: 'capability_result'; requestId: string; result: unknown; snapshot?: LiveMapSnapshot }
   | { type: 'operation_error'; requestId: string; message: string; revision: number };

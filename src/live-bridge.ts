@@ -173,6 +173,7 @@ export class LiveMapBridge {
     private readonly controls: LiveBridgeEditorControls,
   ) {
     editor.subscribeDocumentChanges(change => {
+      this.compiledBsp = null;
       if (this.suppressDocumentSync || this.socket?.readyState !== WebSocket.OPEN) return;
       try {
         this.send({ type: 'document_changed', label: change.label, snapshot: this.snapshot() });
@@ -381,6 +382,50 @@ export class LiveMapBridge {
 
     if (message.type === 'request_snapshot') {
       this.send({ type: 'snapshot', requestId: message.requestId, snapshot: this.snapshot() });
+      return;
+    }
+
+    if (message.type === 'history_action') {
+      if (message.expectedRevision !== this.editor.documentRevision) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: `Revision conflict: expected ${message.expectedRevision}, current revision is ${this.editor.documentRevision}`,
+          revision: this.editor.documentRevision,
+        });
+        return;
+      }
+      const available = message.action === 'undo' ? this.editor.history.canUndo : this.editor.history.canRedo;
+      const label = message.action === 'undo' ? this.editor.history.undoLabel : this.editor.history.redoLabel;
+      if (!available) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: `Nothing is available to ${message.action}`,
+          revision: this.editor.documentRevision,
+        });
+        return;
+      }
+      this.suppressDocumentSync = true;
+      try {
+        if (message.action === 'undo') this.editor.undo();
+        else this.editor.redo();
+        this.compiledBsp = null;
+        const snapshot = this.snapshot();
+        this.send({
+          type: 'capability_result', requestId: message.requestId, snapshot,
+          result: {
+            action: message.action, label, revision: snapshot.revision,
+            canUndo: this.editor.history.canUndo, canRedo: this.editor.history.canRedo,
+            nextUndoLabel: this.editor.history.undoLabel, nextRedoLabel: this.editor.history.redoLabel,
+          },
+        });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      } finally {
+        this.suppressDocumentSync = false;
+      }
       return;
     }
 

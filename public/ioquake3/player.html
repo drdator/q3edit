@@ -85,6 +85,7 @@
       let captureAttempt = 0;
       let handledCaptureFailure = 0;
       let captureRequestedForPointerGesture = false;
+      const consoleLines = [];
 
       function reportCaptureFailure(error, attempt = captureAttempt) {
         if (attempt !== captureAttempt || document.pointerLockElement === canvas) return;
@@ -316,6 +317,7 @@
               ...(launch.noclip ? ['+set', 'sv_cheats', '1'] : []),
               '+set', 'com_basegame', assets.gameDir,
               '+devmap', launch.mapName,
+              ...((launch.noclip || (launch.commands || []).length > 0) ? ['+wait', '30'] : []),
               ...(launch.noclip ? ['+noclip'] : []),
               ...(launch.commands || []).flatMap(command => [`+${command.name}`, ...command.args]),
             ],
@@ -333,6 +335,8 @@
                 const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
                 send('q3edit-player:running', {
                   mapName: launch.mapName,
+                  noclip: launch.noclip && consoleLines.some(line => /\bnoclip\s+ON\b/i.test(line)),
+                  commandErrors: consoleLines.filter(line => /unknown command/i.test(line) && /\b(?:noclip|setviewpos|map_restart)\b/i.test(line)),
                   renderer: {
                     context: gl ? (gl instanceof WebGL2RenderingContext ? 'webgl2' : 'webgl') : 'unavailable',
                     width: canvas.width,
@@ -344,10 +348,12 @@
             }],
             print: (message) => {
               console.log(message);
+              consoleLines.push(String(message));
               send('q3edit-player:console', { stream: 'stdout', message: String(message) });
             },
             printErr: (message) => {
               console.error(message);
+              consoleLines.push(String(message));
               send('q3edit-player:console', { stream: 'stderr', message: String(message) });
             },
           });

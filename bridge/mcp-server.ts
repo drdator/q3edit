@@ -1397,6 +1397,116 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     }
   });
 
+  for (const action of ['undo', 'redo'] as const) {
+    server.registerTool(`map_${action}`, {
+      title: `${action === 'undo' ? 'Undo' : 'Redo'} the latest Q3Edit document change`,
+      description: `${action === 'undo' ? 'Undo' : 'Redo'} one normal editor history entry with revision protection. This works for MCP and manual editor changes and invalidates any cached compile.`,
+      inputSchema: {
+        ...sessionInput,
+        expectedRevision: z.number().int().nonnegative(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: action === 'undo', idempotentHint: false, openWorldHint: false },
+    }, async ({ sessionId, expectedRevision }) => {
+      try {
+        const resolved = session(sessionId);
+        return toolResult({ sessionId: resolved, ...(await hub.historyAction(action, expectedRevision, resolved) as Record<string, unknown>) });
+      } catch (error) {
+        return toolError(error);
+      }
+    });
+  }
+
+  server.registerTool('game_command', {
+    title: 'Run a safe compiled-preview command',
+    description: 'Relaunch the current compiled preview with a constrained command. Noclip waits for the game and fails unless the console confirms it is enabled; restart reloads the current BSP.',
+    inputSchema: { ...sessionInput, command: z.enum(['noclip', 'restart']) },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ sessionId, command }) => {
+    try {
+      const resolved = session(sessionId);
+      await hub.gameCommand(command, resolved);
+      const status = await hub.waitForGameReady(30_000, resolved);
+      const commandErrors = status.commandErrors ?? [];
+      if (command === 'noclip' && (!status.noclip || commandErrors.length > 0)) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: `Noclip was not enabled: ${commandErrors.join('; ') || 'no game acknowledgement'}` }],
+          structuredContent: { sessionId: resolved, ...status },
+        };
+      }
+      return toolResult({ sessionId: resolved, ...status });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('game_set_view', {
+    title: 'Position the compiled-preview player',
+    description: 'Relaunch the current BSP in verified noclip at an explicit position, a point entity, or a numbered player spawn. Supply yaw or a lookAt target; the call waits until the game is ready.',
+    inputSchema: {
+      ...sessionInput,
+      position: vec3.optional(),
+      ref: objectRef.optional().describe('Point-entity reference such as E12; uses its origin and angle'),
+      spawnIndex: z.number().int().nonnegative().optional().describe('Zero-based index in the current info_player_* entity list'),
+      yawDegrees: z.number().optional(),
+      lookAt: vec3.optional().describe('Calculate yaw toward this point; overrides yawDegrees'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ sessionId, position, ref, spawnIndex, yawDegrees, lookAt }) => {
+    try {
+      const resolved = session(sessionId);
+      if ([position, ref, spawnIndex === undefined ? undefined : spawnIndex].filter(value => value !== undefined).length !== 1) {
+        throw new Error('Provide exactly one of position, ref, or spawnIndex');
+      }
+      const entities = parseMapWithDiagnostics(hub.snapshot(resolved).mapText).document.entities;
+      let source: string;
+      let entityAngle: number | undefined;
+      let resolvedPosition: [number, number, number];
+      if (position) {
+        resolvedPosition = position;
+        source = 'position';
+      } else {
+        let entityIndex: number;
+        if (ref) {
+          const match = /^E(\d+)$/.exec(ref);
+          if (!match) throw new Error('game_set_view ref must identify a point entity such as E12');
+          entityIndex = Number(match[1]);
+          source = ref;
+        } else {
+          const spawns = entities
+            .map((entity, index) => ({ entity, index }))
+            .filter(({ entity }) => entity.classname.startsWith('info_player_') && entity.classname !== 'info_player_intermission');
+          if (spawnIndex! >= spawns.length) throw new Error(`spawnIndex ${spawnIndex} is outside the ${spawns.length} available player spawns`);
+          entityIndex = spawns[spawnIndex!].index;
+          source = `spawn ${spawnIndex} (${entities[entityIndex].classname}, E${entityIndex})`;
+        }
+        const entity = entities[entityIndex];
+        if (!entity) throw new Error(`Entity E${entityIndex} does not exist`);
+        const origin = entityOrigin(entity);
+        if (!origin) throw new Error(`Entity E${entityIndex} has no valid origin`);
+        resolvedPosition = origin;
+        const parsedAngle = Number(entity.properties.angle);
+        if (Number.isFinite(parsedAngle)) entityAngle = parsedAngle;
+      }
+      const resolvedYaw = lookAt
+        ? Math.atan2(lookAt[1] - resolvedPosition[1], lookAt[0] - resolvedPosition[0]) * 180 / Math.PI
+        : yawDegrees ?? entityAngle ?? 0;
+      await hub.setGameView(resolvedPosition, resolvedYaw * Math.PI / 180, resolved);
+      const status = await hub.waitForGameReady(30_000, resolved);
+      const commandErrors = status.commandErrors ?? [];
+      if (!status.noclip || commandErrors.length > 0) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: `The game view could not enter verified noclip: ${commandErrors.join('; ') || 'no game acknowledgement'}` }],
+          structuredContent: { sessionId: resolved, position: resolvedPosition, yawDegrees: resolvedYaw, source, ...status },
+        };
+      }
+      return toolResult({ sessionId: resolved, position: resolvedPosition, yawDegrees: resolvedYaw, source, ...status });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('editor_capture', {
     title: 'Capture a Q3Edit viewport',
     description: 'High-priority visual QA tool: capture a perspective or orthographic PNG, optionally framed to bounds or a named group with sky/tool geometry hidden.',
@@ -1497,7 +1607,14 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const editor = await hub.editorCapabilities(resolved);
       return toolResult({
         sessionId: resolved,
-        protocolVersion: 2,
+        protocolVersion: 3,
+        essentialTools: [
+          'map_status', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
+          'map_compile', 'map_play', 'game_command', 'game_set_view', 'game_screenshot',
+        ],
+        discovery: {
+          note: 'MCP clients cache tool inventories. Restart the bridge and reconnect the client after upgrading when an essential tool is absent.',
+        },
         operations: { version: 11, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
           persistent: true,
@@ -1556,6 +1673,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         compiler: {
           available: hub.compilerAvailable, qualities: ['fast', 'normal', 'full'],
           preflight: 'map_compile_preflight', compilerSafeInput: true, artifactExport: true,
+          cachedPlayReuse: true, aas: false,
         },
         editor,
       });
@@ -2059,26 +2177,42 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_play', {
     title: 'Compile and playtest the live map',
-    description: 'Compile the current map and launch the resulting BSP in Q3Edit’s browser ioquake3 preview. Noclip enables cheats and starts the noclip command for route inspection.',
+    description: 'Compile the current map and launch its BSP in Q3Edit’s browser ioquake3 preview. Set useLastCompile after map_compile or map_save_and_compile to reuse the current revision’s cached BSP. Noclip success is verified from the game console.',
     inputSchema: {
       ...sessionInput,
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
       noclip: z.boolean().optional().default(false),
+      useLastCompile: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ sessionId, quality, noclip }) => {
+  }, async ({ sessionId, quality, noclip, useLastCompile }) => {
     try {
       const resolved = session(sessionId);
-      const compile = await hub.compileMap(quality, resolved) as { success?: boolean; output?: string[] };
-      if (!compile.success) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: JSON.stringify(compile, null, 2) }],
-          structuredContent: sessionValue(resolved, compile),
-        };
+      let compile: Record<string, unknown>;
+      if (useLastCompile) {
+        compile = { reused: true, revision: hub.snapshot(resolved).revision };
+      } else {
+        compile = await hub.compileMap(quality, resolved) as Record<string, unknown>;
+        if (compile.success !== true) {
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: JSON.stringify(compile, null, 2) }],
+            structuredContent: sessionValue(resolved, compile),
+          };
+        }
       }
       const launch = await hub.playMap(noclip, resolved);
-      return toolResult({ sessionId: resolved, compile, launch }, `Compiled and launched editor session ${resolved} (${quality}${noclip ? ', noclip' : ''}).`);
+      const status = await hub.waitForGameReady(30_000, resolved);
+      const result = { sessionId: resolved, compile, launch, status };
+      const commandErrors = status.commandErrors ?? [];
+      if (noclip && (!status.noclip || commandErrors.length > 0)) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: `The BSP is running, but noclip was not enabled: ${commandErrors.join('; ') || 'no game acknowledgement'}` }],
+          structuredContent: result,
+        };
+      }
+      return toolResult(result, `${useLastCompile ? 'Reused the current compiled BSP and launched' : 'Compiled and launched'} editor session ${resolved} (${quality}${noclip ? ', verified noclip' : ''}).`);
     } catch (error) {
       return toolError(error);
     }
@@ -2537,78 +2671,6 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     try {
       const resolved = session(sessionId);
       return toolResult({ sessionId: resolved, ...(await hub.waitForGameReady(timeoutMs, resolved)) });
-    } catch (error) {
-      return toolError(error);
-    }
-  });
-
-  server.registerTool('game_command', {
-    title: 'Run a safe compiled-preview command',
-    description: 'Reliably relaunch the current compiled preview with a safe command. noclip enables cheats/noclip; restart reloads the current BSP.',
-    inputSchema: { ...sessionInput, command: z.enum(['noclip', 'restart']) },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ sessionId, command }) => {
-    try {
-      const resolved = session(sessionId);
-      return toolResult({ sessionId: resolved, ...(await hub.gameCommand(command, resolved)) });
-    } catch (error) {
-      return toolError(error);
-    }
-  });
-
-  server.registerTool('game_set_view', {
-    title: 'Position the compiled-preview player',
-    description: 'Relaunch the current BSP in noclip at an explicit position, a point entity, or a numbered player spawn. Supply yaw or a lookAt target, then call game_wait_ready before capturing.',
-    inputSchema: {
-      ...sessionInput,
-      position: vec3.optional(),
-      ref: objectRef.optional().describe('Point-entity reference such as E12; uses its origin and angle'),
-      spawnIndex: z.number().int().nonnegative().optional().describe('Zero-based index in the current info_player_* entity list'),
-      yawDegrees: z.number().optional(),
-      lookAt: vec3.optional().describe('Calculate yaw toward this point; overrides yawDegrees'),
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ sessionId, position, ref, spawnIndex, yawDegrees, lookAt }) => {
-    try {
-      const resolved = session(sessionId);
-      if ([position, ref, spawnIndex === undefined ? undefined : spawnIndex].filter(value => value !== undefined).length !== 1) {
-        throw new Error('Provide exactly one of position, ref, or spawnIndex');
-      }
-      const entities = parseMapWithDiagnostics(hub.snapshot(resolved).mapText).document.entities;
-      let source: string;
-      let entityAngle: number | undefined;
-      let resolvedPosition: [number, number, number];
-      if (position) {
-        resolvedPosition = position;
-        source = 'position';
-      } else {
-        let entityIndex: number;
-        if (ref) {
-          const match = /^E(\d+)$/.exec(ref);
-          if (!match) throw new Error('game_set_view ref must identify a point entity such as E12');
-          entityIndex = Number(match[1]);
-          source = ref;
-        } else {
-          const spawns = entities
-            .map((entity, index) => ({ entity, index }))
-            .filter(({ entity }) => entity.classname.startsWith('info_player_') && entity.classname !== 'info_player_intermission');
-          if (spawnIndex! >= spawns.length) throw new Error(`spawnIndex ${spawnIndex} is outside the ${spawns.length} available player spawns`);
-          entityIndex = spawns[spawnIndex!].index;
-          source = `spawn ${spawnIndex} (${entities[entityIndex].classname}, E${entityIndex})`;
-        }
-        const entity = entities[entityIndex];
-        if (!entity) throw new Error(`Entity E${entityIndex} does not exist`);
-        const origin = entityOrigin(entity);
-        if (!origin) throw new Error(`Entity E${entityIndex} has no valid origin`);
-        resolvedPosition = origin;
-        const parsedAngle = Number(entity.properties.angle);
-        if (Number.isFinite(parsedAngle)) entityAngle = parsedAngle;
-      }
-      const resolvedYaw = lookAt
-        ? Math.atan2(lookAt[1] - resolvedPosition[1], lookAt[0] - resolvedPosition[0]) * 180 / Math.PI
-        : yawDegrees ?? entityAngle ?? 0;
-      const status = await hub.setGameView(resolvedPosition, resolvedYaw * Math.PI / 180, resolved);
-      return toolResult({ sessionId: resolved, position: resolvedPosition, yawDegrees: resolvedYaw, source, ...status });
     } catch (error) {
       return toolError(error);
     }
