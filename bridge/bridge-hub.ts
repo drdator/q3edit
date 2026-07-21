@@ -185,6 +185,10 @@ export class BridgeHub {
     return await this.capabilityRequest(sessionId, { type: 'texture_preview', requestId: randomUUID(), name }) as { name: string; mimeType: string; data: string };
   }
 
+  async textureInspect(name: string, sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'texture_inspect', requestId: randomUUID(), name });
+  }
+
   async texturePreviews(names: string[], sessionId?: string): Promise<Array<{ name: string; mimeType: string; data: string }>> {
     const resolvedSessionId = this.resolveSessionId(sessionId);
     return Promise.all(names.map(name => this.texturePreview(name, resolvedSessionId)));

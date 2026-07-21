@@ -638,6 +638,20 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     }
   });
 
+  server.registerTool('texture_inspect', {
+    title: 'Inspect texture and shader semantics',
+    description: 'Return resolved image dimensions/source, complete parsed shader surfaceparms and q3map directives, stages and referenced images, skybox metadata, content/surface flags, transparency, emission, preview consistency, and compiler availability.',
+    inputSchema: { ...sessionInput, name: z.string().min(1) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, name }) => {
+    try {
+      const resolved = session(sessionId);
+      return toolResult(sessionValue(resolved, await hub.textureInspect(name, resolved)));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
   server.registerTool('texture_preview_many', {
     title: 'Preview several loaded textures',
     description: 'Return image previews for up to 12 exact previewable names from texture_search, useful for choosing a coherent palette in one call.',

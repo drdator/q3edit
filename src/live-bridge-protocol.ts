@@ -84,6 +84,7 @@ export type BridgeToEditorMessage =
   | { type: 'request_snapshot'; requestId: string }
   | { type: 'texture_search'; requestId: string; query: string; limit: number }
   | { type: 'texture_preview'; requestId: string; name: string }
+  | { type: 'texture_inspect'; requestId: string; name: string }
   | { type: 'entity_class_search'; requestId: string; query: string; classType?: 'point' | 'brush'; limit: number }
   | { type: 'entity_class_schema'; requestId: string; classname: string }
   | { type: 'editor_select'; requestId: string; refs: string[]; replace: boolean }

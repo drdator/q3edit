@@ -4,6 +4,36 @@ import type { TextureFiltering } from './display-policy';
 
 export type BlendMode = 'opaque' | 'add' | 'blend';
 
+export interface ShaderStageMetadata {
+  images: string[];
+  blendFunc: string[];
+}
+
+export interface ShaderMetadata {
+  name: string;
+  sourcePath: string;
+  editorImage: string | null;
+  previewImage: string | null;
+  surfaceParms: string[];
+  q3mapDirectives: Array<{ name: string; args: string[] }>;
+  sky: { outerBox: string; cloudHeight: string; innerBox: string } | null;
+  stages: ShaderStageMetadata[];
+  referencedImages: string[];
+  blendMode: BlendMode;
+  semantics: {
+    sky: boolean;
+    nodraw: boolean;
+    trigger: boolean;
+    transparent: boolean;
+    nonsolid: boolean;
+    emissive: boolean;
+    emission: number | null;
+    compileSafe: boolean;
+    contentFlags: number;
+    surfaceFlags: number;
+  };
+}
+
 export interface TextureInfo {
   glTexture: WebGLTexture;
   width: number;
@@ -13,8 +43,67 @@ export interface TextureInfo {
 const IMAGE_EXTENSION = /\.(tga|jpe?g|png|webp)$/i;
 const IMAGE_EXTENSIONS = ['.tga', '.jpg', '.jpeg', '.png', '.webp'] as const;
 
+const SURFACE_PARM_FLAGS: Record<string, { content?: number; surface?: number }> = {
+  sky: { surface: 0x00000004 }, noimpact: { surface: 0x00000010 }, nomarks: { surface: 0x00000020 },
+  nodraw: { surface: 0x00000080 }, nolightmap: { surface: 0x00000400 }, metalsteps: { surface: 0x00001000 },
+  nosteps: { surface: 0x00002000 }, nodlight: { surface: 0x00020000 },
+  areaportal: { content: 0x00008000 }, playerclip: { content: 0x00010000 }, monsterclip: { content: 0x00020000 },
+  clusterportal: { content: 0x00100000 }, donotenter: { content: 0x00200000 }, origin: { content: 0x01000000 },
+  detail: { content: 0x08000000 }, structural: { content: 0x10000000 }, trans: { content: 0x20000000 },
+  trigger: { content: 0x40000000 }, nodrop: { content: 0x80000000 },
+  lava: { content: 0x00000008 }, slime: { content: 0x00000010 }, water: { content: 0x00000020 }, fog: { content: 0x00000040 },
+};
+
+function shaderSemantics(surfaceParms: string[], directives: ShaderMetadata['q3mapDirectives']): ShaderMetadata['semantics'] {
+  const parms = new Set(surfaceParms);
+  let contentFlags = parms.has('nonsolid') ? 0 : 1;
+  let surfaceFlags = 0;
+  for (const parm of parms) {
+    contentFlags |= SURFACE_PARM_FLAGS[parm]?.content ?? 0;
+    surfaceFlags |= SURFACE_PARM_FLAGS[parm]?.surface ?? 0;
+  }
+  const surfaceLight = directives.find(directive => directive.name === 'q3map_surfacelight');
+  const emission = surfaceLight && Number.isFinite(Number(surfaceLight.args[0])) ? Number(surfaceLight.args[0]) : null;
+  return {
+    sky: parms.has('sky'), nodraw: parms.has('nodraw'), trigger: parms.has('trigger'),
+    transparent: parms.has('trans'), nonsolid: parms.has('nonsolid'),
+    emissive: emission !== null && emission > 0, emission,
+    compileSafe: true, contentFlags: contentFlags >>> 0, surfaceFlags: surfaceFlags >>> 0,
+  };
+}
+
 function normalizedImageName(name: string): string {
   return name.toLowerCase().replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function encodedImageDimensions(path: string, data: Uint8Array): { width: number; height: number } | null {
+  if (/\.png$/i.test(path) && data.length >= 24) {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+  if (/\.tga$/i.test(path) && data.length >= 16) {
+    return { width: data[12] | data[13] << 8, height: data[14] | data[15] << 8 };
+  }
+  if (/\.jpe?g$/i.test(path)) {
+    let offset = 2;
+    while (offset + 8 < data.length) {
+      if (data[offset] !== 0xff) { offset++; continue; }
+      const marker = data[offset + 1];
+      const length = data[offset + 2] << 8 | data[offset + 3];
+      if (length < 2) break;
+      if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb)) {
+        return { width: data[offset + 7] << 8 | data[offset + 8], height: data[offset + 5] << 8 | data[offset + 6] };
+      }
+      offset += 2 + length;
+    }
+  }
+  if (/\.webp$/i.test(path) && data.length >= 30 && String.fromCharCode(...data.slice(12, 16)) === 'VP8X') {
+    return {
+      width: 1 + data[24] + (data[25] << 8) + (data[26] << 16),
+      height: 1 + data[27] + (data[28] << 8) + (data[29] << 16),
+    };
+  }
+  return null;
 }
 
 export function textureImageCandidates(name: string): string[] {
@@ -49,6 +138,7 @@ export class TextureManager {
   // All declared shader names, including tool shaders with no preview image.
   private shaderNames = new Set<string>();
   private shaderSourcePaths = new Map<string, string>();
+  private shaderMetadata = new Map<string, ShaderMetadata>();
 
   // Callback when a texture finishes loading (triggers redraw)
   onTextureLoaded: (() => void) | null = null;
@@ -106,6 +196,11 @@ export class TextureManager {
         while (i < len && text[i] > ' ') i++;
         return text.substring(start, i);
       };
+      const readLineArgs = (): string[] => {
+        const start = i;
+        while (i < len && text[i] !== '\n' && text[i] !== '\r' && text[i] !== '}') i++;
+        return text.substring(start, i).replace(/\/\/.*$/, '').trim().split(/\s+/).filter(Boolean).map(value => value.toLowerCase());
+      };
 
       while (i < len) {
         const shaderName = readToken();
@@ -120,13 +215,26 @@ export class TextureManager {
         let hasTrans = false;
         let stageBlend: BlendMode | null = null;
         let depth = 1;
+        const surfaceParms = new Set<string>();
+        const q3mapDirectives: ShaderMetadata['q3mapDirectives'] = [];
+        const stages: ShaderStageMetadata[] = [];
+        let activeStage: ShaderStageMetadata | null = null;
+        let sky: ShaderMetadata['sky'] = null;
 
         while (i < len && depth > 0) {
           skipWhitespace();
           if (i >= len) break;
 
-          if (text[i] === '{') { depth++; i++; continue; }
-          if (text[i] === '}') { depth--; i++; continue; }
+          if (text[i] === '{') {
+            depth++;
+            if (depth === 2) { activeStage = { images: [], blendFunc: [] }; stages.push(activeStage); }
+            i++;
+            continue;
+          }
+          if (text[i] === '}') {
+            if (depth === 2) activeStage = null;
+            depth--; i++; continue;
+          }
 
           const token = readToken();
           const tokenLower = token.toLowerCase();
@@ -137,12 +245,19 @@ export class TextureManager {
             skipWhitespace();
             if (i < len && text[i] !== '{' && text[i] !== '}') {
               const parm = readToken().toLowerCase();
+              surfaceParms.add(parm);
               if (parm === 'trans') hasTrans = true;
             }
-          } else if (tokenLower === 'blendfunc' && depth === 2 && !stageBlend) {
-            skipWhitespace();
-            if (i < len && text[i] !== '{' && text[i] !== '}') {
-              const arg1 = readToken().toLowerCase();
+          } else if (tokenLower === 'skyparms' && depth === 1) {
+            const args = readLineArgs();
+            sky = { outerBox: args[0] ?? '-', cloudHeight: args[1] ?? '-', innerBox: args[2] ?? '-' };
+          } else if (tokenLower.startsWith('q3map_') && depth === 1) {
+            q3mapDirectives.push({ name: tokenLower, args: readLineArgs() });
+          } else if (tokenLower === 'blendfunc' && depth === 2) {
+            const args = readLineArgs();
+            activeStage?.blendFunc.push(...args);
+            if (!stageBlend && args.length > 0) {
+              const arg1 = args[0];
               if (arg1 === 'add') {
                 stageBlend = 'add';
               } else if (arg1 === 'blend') {
@@ -150,10 +265,8 @@ export class TextureManager {
               } else if (arg1 === 'filter') {
                 stageBlend = 'blend';
               } else if (arg1.startsWith('gl_')) {
-                // Explicit two-arg form: blendfunc GL_X GL_Y
-                skipWhitespace();
-                if (i < len && text[i] !== '{' && text[i] !== '}') {
-                  const arg2 = readToken().toLowerCase();
+                if (args[1]) {
+                  const arg2 = args[1];
                   stageBlend = (arg1 === 'gl_one' && arg2 === 'gl_one') ? 'add' : 'blend';
                 } else {
                   stageBlend = 'blend';
@@ -163,11 +276,15 @@ export class TextureManager {
                 stageBlend = 'blend';
               }
             }
-          } else if (tokenLower === 'map' && depth === 2 && !firstMapImage) {
+          } else if ((tokenLower === 'map' || tokenLower === 'clampmap') && depth === 2) {
             const val = readToken().toLowerCase();
-            if (val && val[0] !== '$' && val !== 'textures') {
-              firstMapImage = val;
-            }
+            if (val) activeStage?.images.push(val);
+            if (!firstMapImage && val && val[0] !== '$' && val !== 'textures') firstMapImage = val;
+          } else if (tokenLower === 'animmap' && depth === 2) {
+            const args = readLineArgs();
+            const images = args.slice(1);
+            activeStage?.images.push(...images);
+            if (!firstMapImage) firstMapImage = images.find(value => value[0] !== '$') ?? '';
           }
         }
 
@@ -189,6 +306,22 @@ export class TextureManager {
           this.shaderImages.set(shortKey, imagePath);
           this.shaderImages.set(key, imagePath);
         }
+        const referencedImages = [...new Set(stages.flatMap(stage => stage.images))];
+        const metadata: ShaderMetadata = {
+          name: shortKey,
+          sourcePath: path,
+          editorImage: editorImage || null,
+          previewImage: image ? image.replace(IMAGE_EXTENSION, '') : null,
+          surfaceParms: [...surfaceParms],
+          q3mapDirectives,
+          sky,
+          stages,
+          referencedImages,
+          blendMode: finalBlend,
+          semantics: shaderSemantics([...surfaceParms], q3mapDirectives),
+        };
+        this.shaderMetadata.set(shortKey, metadata);
+        this.shaderMetadata.set(key, metadata);
       }
     }
   }
@@ -439,10 +572,41 @@ export class TextureManager {
     return this.shaderSourcePaths.get(name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '')) ?? null;
   }
 
-  hasPreviewSource(name: string): boolean {
-    if (this.getTextureAsset(name)) return true;
+  getShaderMetadata(name: string): ShaderMetadata | null {
     const key = name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '');
-    return this.shaderImages.has(key) || this.shaderImages.has(`textures/${key}`);
+    const metadata = this.shaderMetadata.get(key) ?? this.shaderMetadata.get(`textures/${key}`);
+    return metadata ? structuredClone(metadata) : null;
+  }
+
+  inspectTexture(name: string): Record<string, unknown> {
+    const shader = this.getShaderMetadata(name);
+    const preview = this.findImageFile(name);
+    const asset = preview ? this.assets.get(preview[0]) : null;
+    const dimensions = preview ? encodedImageDimensions(preview[0], preview[1]) : null;
+    const skyOuter = shader?.sky?.outerBox;
+    const skyFaces = skyOuter && skyOuter !== '-'
+      ? ['rt', 'lf', 'bk', 'ft', 'up', 'dn'].map(face => {
+          const texture = `${skyOuter}_${face}`;
+          return { face, texture, available: this.findImageFile(texture) !== null };
+        })
+      : [];
+    return {
+      name,
+      found: this.hasTextureSource(name),
+      shader: shader !== null,
+      shaderMetadata: shader,
+      image: preview ? {
+        path: preview[0], archive: asset?.source.archiveName ?? null,
+        mimeType: imageMimeType(preview[0]), width: dimensions?.width ?? null, height: dimensions?.height ?? null,
+      } : null,
+      previewAvailable: preview !== null,
+      compilerAvailable: this.hasTextureSource(name),
+      skyPreview: skyFaces.length > 0 ? { complete: skyFaces.every(face => face.available), faces: skyFaces } : null,
+    };
+  }
+
+  hasPreviewSource(name: string): boolean {
+    return this.findImageFile(name) !== null;
   }
 
   hasTextureSource(name: string): boolean {

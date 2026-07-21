@@ -38,4 +38,44 @@ describe('texture image resolution', () => {
     expect(manager.hasTextureSource('common/agent_clip')).toBe(true);
     expect(manager.hasTextureSource('common/not_declared')).toBe(false);
   });
+
+  it('retains shader semantics and resolves preview availability through the actual image path', () => {
+    const tga = new Uint8Array(21);
+    tga[2] = 2; tga[12] = 1; tga[14] = 1; tga[16] = 24;
+    const packed = zipSync({
+      'scripts/sky.shader': strToU8(`textures/skies/agent_space
+{
+  qer_editorimage textures/skies/agent_preview.tga
+  surfaceparm sky
+  surfaceparm noimpact
+  q3map_surfacelight 250
+  skyparms env/agent 512 -
+  {
+    map textures/skies/clouds.tga
+    blendfunc add
+  }
+}`),
+      'textures/skies/agent_preview.tga': tga,
+    });
+    const gl = {
+      TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TEXTURE_MIN_FILTER: 4, TEXTURE_MAG_FILTER: 5,
+      LINEAR_MIPMAP_LINEAR: 6, LINEAR: 7, TEXTURE_WRAP_S: 8, TEXTURE_WRAP_T: 9, REPEAT: 10,
+      createTexture: () => ({}), bindTexture: () => {}, texImage2D: () => {}, generateMipmap: () => {},
+      texParameteri: () => {}, deleteTexture: () => {},
+    } as unknown as WebGL2RenderingContext;
+    const manager = new TextureManager(gl, new AssetIndex([{ name: 'sky.pk3', data: new Uint8Array(packed).buffer }]));
+
+    expect(manager.hasPreviewSource('skies/agent_space')).toBe(true);
+    expect(manager.getShaderMetadata('skies/agent_space')).toMatchObject({
+      surfaceParms: ['sky', 'noimpact'],
+      q3mapDirectives: [{ name: 'q3map_surfacelight', args: ['250'] }],
+      sky: { outerBox: 'env/agent', cloudHeight: '512', innerBox: '-' },
+      stages: [{ images: ['textures/skies/clouds.tga'], blendFunc: ['add'] }],
+      semantics: { sky: true, emissive: true, emission: 250, surfaceFlags: 20 },
+    });
+    expect(manager.inspectTexture('skies/agent_space')).toMatchObject({
+      found: true, shader: true, previewAvailable: true, compilerAvailable: true,
+      image: { path: 'textures/skies/agent_preview.tga', width: 1, height: 1 },
+    });
+  });
 });

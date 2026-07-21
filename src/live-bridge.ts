@@ -363,6 +363,7 @@ export class LiveMapBridge {
         .slice(0, message.limit)
         .map(name => {
           const asset = manager.getTextureAsset(name);
+          const metadata = manager.getShaderMetadata(name);
           return {
             name,
             archive: asset?.source.archiveName,
@@ -371,6 +372,8 @@ export class LiveMapBridge {
             shader: manager.isShader(name),
             shaderSourcePath: manager.getShaderSourcePath(name),
             previewAvailable: manager.hasPreviewSource(name),
+            semantics: metadata?.semantics ?? null,
+            surfaceParms: metadata?.surfaceParms ?? [],
           };
         });
       this.send({ type: 'capability_result', requestId: message.requestId, result: { query: message.query, matches } });
@@ -403,6 +406,22 @@ export class LiveMapBridge {
           type: 'operation_error', requestId: message.requestId,
           message: error instanceof Error ? error.message : String(error),
           revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'texture_inspect') {
+      try {
+        const manager = this.editor.textureManager;
+        if (!manager) throw new Error('Texture assets are still loading');
+        const inspection = manager.inspectTexture(message.name);
+        if (!(inspection as { found?: boolean }).found) throw new Error(`Texture or shader ${message.name} was not found`);
+        this.send({ type: 'capability_result', requestId: message.requestId, result: inspection });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
         });
       }
       return;

@@ -67,6 +67,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_query` finds entities, brushes, and patches by bounds, kind, classname, texture, or entity property.
 - `map_groups` lists persistent named groups and their current member references; `map_query` accepts a group name or ID.
 - `texture_search` searches image assets and declared shaders, including tool shaders without images. Results identify shaders and preview availability; `texture_preview_many` returns up to 12 images for palette comparison.
+- `texture_inspect` resolves one material into image dimensions/source, all parsed `surfaceparm` and `q3map_*` directives, stage images and blending, skybox faces, derived content/surface flags, emission, preview availability, and compiler validity. Search and preview use the same concrete image-resolution path.
 - `entity_class_search` searches loaded entity definitions and `entity_class_schema` returns typed properties, defaults, spawnflags, and required target relationships. Built-in schemas cover `worldspawn`, jump pads, and teleporters even when retail definitions omit their keys.
 - `editor_select` selects referenced objects in Q3Edit and `editor_frame_objects` selects and frames them in every viewport.
 - `editor_set_camera` positions the 3D camera using world coordinates and yaw/pitch in degrees.

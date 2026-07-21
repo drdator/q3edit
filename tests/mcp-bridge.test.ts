@@ -93,6 +93,11 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: { name: request.name, mimeType: 'image/png', data: 'aW1hZ2U=' },
       }));
+    } else if (request.type === 'texture_inspect') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { name: request.name, found: true, shader: true, previewAvailable: true, shaderMetadata: { surfaceParms: ['sky'] } },
+      }));
     } else if (request.type === 'entity_class_search') {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
@@ -260,6 +265,7 @@ describe('live MCP bridge', () => {
         'map_query',
         'texture_search',
         'texture_preview',
+        'texture_inspect',
         'texture_preview_many',
         'entity_class_search',
         'entity_class_schema',
@@ -384,6 +390,11 @@ describe('live MCP bridge', () => {
         name: 'texture_preview_many', arguments: { names: ['base_wall/metal', 'base_floor/stone'] },
       });
       expect((previews.content as Array<{ type: string }>).filter(item => item.type === 'image')).toHaveLength(2);
+
+      const textureInspection = await client.callTool({ name: 'texture_inspect', arguments: { name: 'skies/space' } });
+      expect(textureInspection.structuredContent).toMatchObject({
+        sessionId: 'editor-a', name: 'skies/space', shader: true, shaderMetadata: { surfaceParms: ['sky'] },
+      });
 
       const entityClasses = await client.callTool({ name: 'entity_class_search', arguments: { query: 'light' } });
       expect(entityClasses.structuredContent).toMatchObject({ matches: [{ classname: 'light' }] });
