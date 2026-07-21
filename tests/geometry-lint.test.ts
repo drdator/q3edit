@@ -51,4 +51,13 @@ describe('MCP geometry quality lint', () => {
     const suggestions = lintGeometry(editor.serializeMap()).issues.filter(issue => issue.code === 'likely-structural-detail');
     expect(suggestions).toEqual([expect.objectContaining({ refs: ['E0:B0'] })]);
   });
+
+  test('suppresses expected coplanar overlaps inside one generated path family', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [{
+      type: 'create_path', id: 'bent_corridor', kind: 'corridor',
+      points: [[0, 0, 0], [128, 0, 0], [128, 128, 0]], width: 64, thickness: 16,
+    }]);
+    expect(lintGeometry(editor.serializeMap()).issues.filter(issue => issue.code === 'coplanar-overlap')).toEqual([]);
+  });
 });

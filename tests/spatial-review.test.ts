@@ -89,4 +89,29 @@ describe('MCP spatial design review', () => {
       expect.objectContaining({ code: 'semantic-plan-disconnected', severity: 'warning' }),
     ]));
   });
+
+  test('links low-level generated geometry to planned areas and connections', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      {
+        type: 'create_area', id: 'court', purpose: 'central fight', shape: 'rectangular', center: [0, 0, 0],
+        bounds: { mins: [-128, -128, 0], maxs: [128, 128, 192] }, height: 192,
+      },
+      {
+        type: 'create_area', id: 'ledge', purpose: 'upper route', shape: 'rectangular', center: [384, 0, 96],
+        bounds: { mins: [320, -64, 96], maxs: [448, 64, 224] }, height: 128,
+      },
+      {
+        type: 'connect_areas', id: 'flank', fromArea: 'court', toArea: 'ledge', routeType: 'ramp', width: 96,
+      },
+      { type: 'create_box', mins: [-128, -128, -16], maxs: [128, 128, 0], areaId: 'court' },
+      {
+        type: 'create_path', id: 'flank_path', kind: 'corridor', points: [[128, 0, 0], [384, 0, 96]],
+        width: 96, thickness: 16, connectionId: 'flank',
+      },
+    ]);
+    expect(reviewSpatialDesign(editor.serializeMap()).metrics.semanticPlan).toMatchObject({
+      areaCount: 2, connectionCount: 1, realizedAreas: 1, realizedConnections: 1,
+    });
+  });
 });

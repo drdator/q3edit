@@ -3,7 +3,7 @@ import * as z from 'zod/v4';
 import type { BridgeHub } from './bridge-hub';
 import { inspectMapObjects } from './map-inspection';
 import { inspectMapGroups, queryMap, type MapQueryOptions } from './map-query';
-import type { MapDocumentRef, MapOperation } from '../src/map-operations';
+import { estimateConstructionPath, type CreatePathOperation, type MapDocumentRef, type MapOperation } from '../src/map-operations';
 import { parseMapWithDiagnostics } from '../src/mapfile';
 import {
   inspectSpatialPlan,
@@ -46,6 +46,8 @@ const creationMetadataSchema = {
   id: symbolicId.optional(),
   group: z.string().min(1).max(120).optional(),
   groupId: groupId.optional(),
+  areaId: symbolicId.optional().describe('Link created objects to an existing semantic area and mark it realized'),
+  connectionId: symbolicId.optional().describe('Link created objects to an existing semantic connection and mark it realized'),
 };
 const textureTransformSchema = z.object({
   fit: z.boolean().optional().describe('Fit one complete texture repeat to each targeted face before applying shift, scale, and rotation'),
@@ -370,7 +372,7 @@ const styleFindingSchema = z.object({
 });
 const styleMetricsSchema = z.object({
   paletteMaterials: z.number().int(), outOfPaletteMaterials: z.array(z.string()),
-  onGridBrushes: z.number().int(), offGridBrushes: z.number().int(), detailRatio: z.number().nullable(),
+  onGridBrushes: z.number().int(), offGridBrushes: z.number().int(), intentionalNonAxialBrushes: z.number().int(), detailRatio: z.number().nullable(),
   lightCount: z.number().int(), averageLightIntensity: z.number().nullable(),
 });
 const sampledDesignFindingSchema = z.object({
@@ -1139,6 +1141,8 @@ const compatibleMapOperationInput = z.object({
   targetname: z.string().optional(),
   group: z.string().optional(),
   groupId: z.string().optional(),
+  areaId: z.string().optional(),
+  connectionId: z.string().optional(),
 });
 
 const mapOperationBatchInputSchema = {
@@ -1493,7 +1497,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 10, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 11, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
           persistent: true,
           tools: ['map_spatial_plan_get', 'map_spatial_plan_preview'],
@@ -1507,7 +1511,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         },
         pathConstruction: {
           persistent: true,
-          tools: ['map_construction_paths_get'],
+          tools: ['map_construction_paths_get', 'map_path_estimate'],
           operation: 'create_path',
           kinds: ['corridor', 'wall', 'railing', 'pipe', 'beam', 'trim', 'stairs', 'supports'],
           curves: ['polyline', 'catmull-rom'],
@@ -1753,6 +1757,46 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const snapshot = hub.snapshot(resolved);
       const document = constructionPathsFromMapText(snapshot.mapText);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, document, summary: constructionPathSummary(document) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_path_estimate', {
+    title: 'Estimate path-generated geometry',
+    description: 'Estimate sampled points, segments, distributed stair/support/post points, total brush count, and approximate length before previewing or applying create_path.',
+    inputSchema: {
+      ...sessionInput,
+      kind: constructionPathKindSchema,
+      curve: z.enum(['polyline', 'catmull-rom']).optional(),
+      points: z.array(vec3).min(2).max(64),
+      width: z.number().positive(),
+      height: z.number().positive().optional(),
+      thickness: z.number().positive().optional(),
+      spacing: z.number().positive().optional(),
+      subdivisions: z.number().int().min(1).max(16).optional(),
+      sides: z.number().int().min(3).max(32).optional(),
+      join: z.enum(['overlap', 'bevel']).optional(),
+      bankDegrees: z.number().min(-180).max(180).optional(),
+      variation: z.object({
+        seed: z.number().int(), spacing: z.number().nonnegative().optional(), grid: z.number().positive().optional(),
+      }).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, ...path }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const operation = { type: 'create_path', id: 'estimate', ...path } as CreatePathOperation;
+      const estimate = estimateConstructionPath(operation);
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision, ...estimate,
+        recommendation: estimate.exceedsObjectLimit
+          ? 'Reduce Catmull-Rom subdivisions or increase spacing before previewing.'
+          : estimate.estimatedBrushCount > 64
+            ? 'This is a dense path; compare polyline and Catmull-Rom estimates before previewing.'
+            : 'The path is within the normal preview/apply size range.',
+      });
     } catch (error) {
       return toolError(error);
     }

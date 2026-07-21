@@ -79,6 +79,7 @@ export function reviewStyleBrief(mapText: string): {
   status: 'not-configured' | 'pass' | 'needs-attention';
   metrics: {
     paletteMaterials: number; outOfPaletteMaterials: string[]; onGridBrushes: number; offGridBrushes: number;
+    intentionalNonAxialBrushes: number;
     detailRatio: number | null; lightCount: number; averageLightIntensity: number | null;
   };
   issueCount: number;
@@ -88,7 +89,7 @@ export function reviewStyleBrief(mapText: string): {
   const entities = parseMapWithDiagnostics(mapText).document.entities;
   const palette = brief?.palette ?? [];
   const materialRefs = new Map<string, string[]>();
-  let onGridBrushes = 0; let offGridBrushes = 0;
+  let onGridBrushes = 0; let offGridBrushes = 0; let intentionalNonAxialBrushes = 0;
   let structuralBrushes = 0; let detailBrushes = 0;
   const issues: StyleFinding[] = [];
 
@@ -98,17 +99,24 @@ export function reviewStyleBrief(mapText: string): {
       const brushRef = `E${entityIndex}:B${brushIndex}`;
       if (brush.faces.some(face => (face.contentFlags & CONTENTS_DETAIL) !== 0)) detailBrushes++; else structuralBrushes++;
       if (brief?.modularGrid) {
-        const aligned = brush.faces.every(face => face.points.every(point => point.every(coordinate => {
-          const units = coordinate / brief.modularGrid!;
-          return Math.abs(units - Math.round(units)) < 0.001;
-        })));
-        if (aligned) onGridBrushes++;
+        const axisAligned = brush.faces.every(face => {
+          const absolute = face.plane.normal.map(Math.abs);
+          return absolute.filter(value => value > 0.9999).length === 1 && absolute.filter(value => value > 0.0001).length === 1;
+        });
+        if (!axisAligned) intentionalNonAxialBrushes++;
         else {
-          offGridBrushes++;
-          issues.push({
-            severity: 'info', code: 'style-grid-deviation', refs: [brushRef],
-            message: `${brushRef} does not follow the ${brief.modularGrid}-unit modular grid from the map style brief.`,
-          });
+          const aligned = brush.faces.every(face => face.points.every(point => point.every(coordinate => {
+            const units = coordinate / brief.modularGrid!;
+            return Math.abs(units - Math.round(units)) < 0.001;
+          })));
+          if (aligned) onGridBrushes++;
+          else {
+            offGridBrushes++;
+            issues.push({
+              severity: 'info', code: 'style-grid-deviation', refs: [brushRef],
+              message: `${brushRef} does not follow the ${brief.modularGrid}-unit modular grid from the map style brief.`,
+            });
+          }
         }
       }
       brush.faces.forEach((face, faceIndex) => {
@@ -178,7 +186,7 @@ export function reviewStyleBrief(mapText: string): {
     status: !brief ? 'not-configured' : issues.length > 0 ? 'needs-attention' : 'pass',
     metrics: {
       paletteMaterials: materialRefs.size, outOfPaletteMaterials: outOfPalette,
-      onGridBrushes, offGridBrushes, detailRatio,
+      onGridBrushes, offGridBrushes, intentionalNonAxialBrushes, detailRatio,
       lightCount: statistics.lighting.count, averageLightIntensity: averageLight,
     },
     issueCount: issues.length,

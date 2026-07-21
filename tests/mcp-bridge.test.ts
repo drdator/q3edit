@@ -305,6 +305,7 @@ describe('live MCP bridge', () => {
         'design_pattern_search',
         'map_spatial_plan_preview',
         'map_construction_paths_get',
+        'map_path_estimate',
         'map_spatial_review',
         'map_summary',
         'map_style_get',
@@ -450,7 +451,7 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 10, maxPerBatch: 128 },
+        operations: { version: 11, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
         pathConstruction: {
@@ -503,6 +504,17 @@ describe('live MCP bridge', () => {
           expect.stringContaining('ordinary editable grouped brushes'), expect.stringContaining('replaceTargets'),
           expect.stringContaining('per-segment width'),
         ]),
+      });
+
+      const pathEstimate = await client.callTool({
+        name: 'map_path_estimate',
+        arguments: {
+          kind: 'corridor', curve: 'catmull-rom',
+          points: [[0, 0, 0], [128, 0, 0], [256, 64, 32]], width: 96, subdivisions: 6,
+        },
+      });
+      expect(pathEstimate.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, sampledPointCount: 13, estimatedBrushCount: 23,
       });
       const reshapeSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'reshape_room' } });
       expect(reshapeSchema.structuredContent).toMatchObject({

@@ -259,11 +259,11 @@ reliable in real production maps.
 
 ### Semantic and generated-geometry feedback
 
-- [ ] Let generated geometry declare `areaId` or `connectionId` so spatial
+- [x] Let generated geometry declare `areaId` or `connectionId` so spatial
   review can connect the semantic plan to its physical realization.
-- [ ] Add a cheap path estimate call for sample, segment, and brush counts.
-- [ ] Suppress expected overlap warnings inside one construction-path family.
-- [ ] Treat intentional non-axial generated geometry separately from accidental
+- [x] Add a cheap path estimate call for sample, segment, and brush counts.
+- [x] Suppress expected overlap warnings inside one construction-path family.
+- [x] Treat intentional non-axial generated geometry separately from accidental
   modular-grid drift in style review.
 
 ### MCP context efficiency

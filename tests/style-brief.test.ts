@@ -51,4 +51,16 @@ describe('persistent MCP map style brief', () => {
     const review = reviewStyleBrief(emptyEditor().serializeMap());
     expect(review).toMatchObject({ brief: null, status: 'not-configured', issueCount: 0 });
   });
+
+  test('separates intentional non-axial geometry from modular-grid drift', () => {
+    const editor = emptyEditor();
+    editor.worldspawn.properties[MAP_STYLE_BRIEF_KEY] = serializeStyleBrief({ modularGrid: 16 });
+    applyMapOperations(editor, [{
+      type: 'create_path', id: 'diagonal', kind: 'beam',
+      points: [[0, 0, 64], [128, 96, 64]], width: 16, height: 16,
+    }]);
+    const review = reviewStyleBrief(editor.serializeMap());
+    expect(review.metrics).toMatchObject({ intentionalNonAxialBrushes: 1, offGridBrushes: 0 });
+    expect(review.issues.filter(issue => issue.code === 'style-grid-deviation')).toEqual([]);
+  });
 });

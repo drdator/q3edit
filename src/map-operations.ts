@@ -78,6 +78,8 @@ interface CreationMetadata {
   id?: string;
   group?: string;
   groupId?: string;
+  areaId?: string;
+  connectionId?: string;
 }
 
 export interface TextureTransform {
@@ -1216,6 +1218,64 @@ function variedPathValue(base: number, bound: number | undefined, seed: number, 
   return Math.round((base + pathVariationNoise(seed, index, channel) * bound) / grid) * grid;
 }
 
+export interface ConstructionPathEstimate {
+  curve: ConstructionPathCurve;
+  kind: ConstructionPathKind;
+  controlPointCount: number;
+  sampledPointCount: number;
+  segmentCount: number;
+  distributedPointCount: number | null;
+  estimatedBrushCount: number;
+  approximateLength: number;
+  exceedsObjectLimit: boolean;
+}
+
+export function estimateConstructionPath(operation: CreatePathOperation): ConstructionPathEstimate {
+  const curve = operation.curve ?? 'polyline';
+  const subdivisions = operation.subdivisions ?? 6;
+  const spacing = operation.spacing ?? (operation.kind === 'stairs' ? 16 : 96);
+  if (operation.points.length < 2 || operation.points.length > 64) throw new Error('Path estimate requires 2 to 64 control points');
+  if (!Number.isInteger(subdivisions) || subdivisions < 1 || subdivisions > 16) throw new Error('Path estimate subdivisions must be an integer from 1 to 16');
+  if (!Number.isFinite(spacing) || spacing <= 0) throw new Error('Path estimate spacing must be positive');
+  if ((operation.variation?.spacing ?? 0) >= spacing) throw new Error('Path estimate spacing variation must be smaller than base spacing');
+  const seed = operation.variation?.seed ?? 1;
+  const variationGrid = operation.variation?.grid ?? 1;
+  const spacingAt = (index: number) => variedPathValue(
+    spacing,
+    operation.variation?.spacing,
+    seed,
+    index,
+    2,
+    variationGrid,
+  );
+  const sampled = sampleConstructionPath(operation.points, curve, subdivisions);
+  const segmentCount = Math.max(0, sampled.length - 1);
+  const approximateLength = sampled.slice(0, -1).reduce((sum, point, index) => (
+    sum + Math.hypot(...sampled[index + 1].map((value, axis) => value - point[axis]))
+  ), 0);
+  const distributed = ['stairs', 'supports', 'railing'].includes(operation.kind)
+    ? resampleBySpacing(sampled, spacingAt)
+    : null;
+  let estimatedBrushCount = segmentCount;
+  if (operation.kind === 'stairs') estimatedBrushCount = Math.max(0, (distributed?.length ?? 1) - 1);
+  else if (operation.kind === 'supports') estimatedBrushCount = distributed?.length ?? 0;
+  else if (operation.kind === 'railing') estimatedBrushCount += distributed?.length ?? 0;
+  if (['corridor', 'wall', 'beam', 'trim'].includes(operation.kind) && sampled.length > 2) {
+    estimatedBrushCount += sampled.length - 2;
+  }
+  return {
+    curve,
+    kind: operation.kind,
+    controlPointCount: operation.points.length,
+    sampledPointCount: sampled.length,
+    segmentCount,
+    distributedPointCount: distributed?.length ?? null,
+    estimatedBrushCount,
+    approximateLength: Number(approximateLength.toFixed(3)),
+    exceedsObjectLimit: estimatedBrushCount > 256,
+  };
+}
+
 function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases: SymbolicReferences): ObjectHandle[] {
   if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(operation.id)) throw new Error('create_path id must be a stable identifier');
   if (operation.points.length < 2 || operation.points.length > 64) throw new Error('create_path points must contain 2 to 64 control points');
@@ -1313,7 +1373,11 @@ function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases
 
   if (brushes.length === 0 || brushes.length > 256) throw new Error(`create_path generated ${brushes.length} objects; adjust spacing/subdivisions to produce 1 through 256`);
   const handles = brushes.map(brush => ({ kind: 'brush' as const, entity, brush }));
-  const groupId = ensureGroup(editor, operation.group ?? `Path: ${operation.id}`, operation.groupId ?? spatialGroupId('connection', `path-${operation.id}`));
+  const groupId = ensureGroup(
+    editor,
+    operation.group ?? `Path: ${operation.id}`,
+    operation.groupId ?? spatialGroupId('connection', operation.connectionId ?? `path-${operation.id}`),
+  );
   for (const handle of handles) setResolvedGroup(resolveHandle(editor, handle), groupId);
   const bounds = {
     mins: [0, 1, 2].map(axis => Math.min(...brushes.map(brush => brush.mins[axis]))) as Vec3,
@@ -1794,12 +1858,36 @@ function recordCreated(
   aliases: SymbolicReferences,
   groupHandles = handles,
 ): void {
-  if (operation.groupId && !operation.group) throw new Error('groupId requires group');
+  if (operation.groupId && !operation.group && !operation.areaId && !operation.connectionId) throw new Error('groupId requires group unless areaId or connectionId supplies semantic grouping');
+  if (operation.areaId && operation.connectionId) throw new Error('Creation metadata accepts areaId or connectionId, not both');
   createdHandles.push(...handles);
   registerAlias(aliases, operation.id, handles);
-  if (!operation.group) return;
-  const groupId = ensureGroup(editor, operation.group, operation.groupId);
+  if (!operation.group && !operation.areaId && !operation.connectionId) return;
+  const plan = readSpatialPlan(editor.worldspawn.properties);
+  const semanticKind = operation.areaId ? 'area' : operation.connectionId ? 'connection' : null;
+  const semanticId = operation.areaId ?? operation.connectionId;
+  const semanticArea = operation.areaId ? plan.areas.find(area => area.id === operation.areaId) : undefined;
+  const semanticConnection = operation.connectionId ? plan.connections.find(connection => connection.id === operation.connectionId) : undefined;
+  const semantic = semanticArea ?? semanticConnection;
+  if (semanticId && !semantic) throw new Error(`${semanticKind} ${semanticId} does not exist in the spatial plan`);
+  const semanticGroupId = semanticKind && semanticId
+    ? operation.groupId ?? semantic?.groupId ?? spatialGroupId(semanticKind, semanticId)
+    : operation.groupId;
+  const existingGroup = semanticGroupId
+    ? listNamedGroups(editor.entities).find(group => group.id === semanticGroupId)
+    : undefined;
+  const groupName = operation.group ?? existingGroup?.name ?? `${semanticKind === 'area' ? 'Area' : 'Connection'}: ${semanticId}`;
+  const groupId = existingGroup?.id ?? ensureGroup(
+    editor,
+    groupName,
+    semanticGroupId,
+  );
   for (const handle of groupHandles) setResolvedGroup(resolveHandle(editor, handle), groupId);
+  if (semanticArea) {
+    editor.worldspawn.properties[SPATIAL_PLAN_KEY] = serializeSpatialPlan(upsertSpatialArea(plan, { ...semanticArea, groupId }));
+  } else if (semanticConnection) {
+    editor.worldspawn.properties[SPATIAL_PLAN_KEY] = serializeSpatialPlan(upsertSpatialConnection(plan, { ...semanticConnection, groupId }));
+  }
 }
 
 function generatedTargetName(editor: Editor, kind: 'jump' | 'teleport', id: string | undefined, sequence: number): string {
@@ -2151,7 +2239,7 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         replaced.forEach(target => deletedRefs.add(target.ref));
         const handles = applyCreatePath(editor, operation, aliases);
         if (replaced.length > 0) applyDeletion(editor, replaced);
-        recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
         changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
       } else if (operation.type === 'reshape_room') {
         const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'reshape_room');

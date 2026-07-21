@@ -3,6 +3,7 @@ import { parseMapWithDiagnostics } from '../src/mapfile';
 import { CONTENTS_DETAIL } from '../src/map-flags';
 import { vec3Cross, vec3Length, vec3Sub } from '../src/math';
 import { isGroupInfoEntity } from '../src/named-groups';
+import { readConstructionPaths } from '../src/construction-paths';
 
 export interface GeometryLintIssue {
   severity: 'warning' | 'info';
@@ -16,6 +17,7 @@ interface BrushEntry {
   brush: Brush;
   structural: boolean;
   worldspawn: boolean;
+  groupId?: string;
 }
 
 interface PlanarFace {
@@ -68,6 +70,8 @@ function overlapArea(first: PlanarFace, second: PlanarFace): number {
 
 export function lintGeometry(mapText: string): { issueCount: number; issues: GeometryLintIssue[] } {
   const entities = parseMapWithDiagnostics(mapText).document.entities;
+  const worldspawn = entities.find(entity => entity.classname === 'worldspawn');
+  const constructionPathGroups = new Set(readConstructionPaths(worldspawn?.properties ?? {}).paths.map(path => path.groupId));
   const brushes: BrushEntry[] = [];
   entities.forEach((entity, entityIndex) => {
     if (isGroupInfoEntity(entity)) return;
@@ -76,6 +80,7 @@ export function lintGeometry(mapText: string): { issueCount: number; issues: Geo
       brush,
       structural: !brush.faces.some(face => (face.contentFlags & CONTENTS_DETAIL) !== 0),
       worldspawn: entity.classname === 'worldspawn',
+      groupId: brush.editorGroupId,
     }));
   });
 
@@ -144,6 +149,7 @@ export function lintGeometry(mapText: string): { issueCount: number; issues: Geo
   }
 
   const planeGroups = new Map<string, PlanarFace[]>();
+  const groupByBrushRef = new Map(brushes.map(entry => [entry.ref, entry.groupId]));
   for (const face of planarFaces) {
     const key = `${face.axis}:${face.sign}:${face.distance}`;
     const group = planeGroups.get(key) ?? [];
@@ -153,6 +159,8 @@ export function lintGeometry(mapText: string): { issueCount: number; issues: Geo
     for (let second = first + 1; second < group.length; second++) {
       const a = group[first]; const b = group[second];
       if (a.brushRef === b.brushRef || duplicatePairs.has([a.brushRef, b.brushRef].sort().join('|'))) continue;
+      const aGroup = groupByBrushRef.get(a.brushRef); const bGroup = groupByBrushRef.get(b.brushRef);
+      if (aGroup && aGroup === bGroup && constructionPathGroups.has(aGroup)) continue;
       const area = overlapArea(a, b);
       if (area <= 0.01) continue;
       issues.push({

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
-import { applyMapOperations } from '../src/map-operations';
+import { applyMapOperations, estimateConstructionPath } from '../src/map-operations';
 import { parseMapWithDiagnostics } from '../src/mapfile';
 import { constructionPathSummary, readConstructionPaths } from '../src/construction-paths';
 
@@ -12,6 +12,21 @@ function emptyEditor(): Editor {
 }
 
 describe('MCP construction paths', () => {
+  test('estimates path sampling and generated brush counts before creation', () => {
+    const polyline = estimateConstructionPath({
+      type: 'create_path', id: 'estimate', kind: 'corridor', curve: 'polyline',
+      points: [[0, 0, 0], [128, 0, 0], [256, 64, 32]], width: 96,
+    });
+    const curved = estimateConstructionPath({
+      type: 'create_path', id: 'estimate', kind: 'corridor', curve: 'catmull-rom', subdivisions: 6,
+      points: [[0, 0, 0], [128, 0, 0], [256, 64, 32]], width: 96,
+    });
+    expect(polyline).toMatchObject({ sampledPointCount: 3, segmentCount: 2, estimatedBrushCount: 3 });
+    expect(curved.sampledPointCount).toBe(13);
+    expect(curved.estimatedBrushCount).toBe(23);
+    expect(curved.approximateLength).toBeGreaterThan(polyline.approximateLength);
+  });
+
   test('creates a curved corridor with a durable source-to-group relationship', () => {
     const editor = emptyEditor();
     const result = applyMapOperations(editor, [{
