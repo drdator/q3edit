@@ -58,6 +58,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_statistics` summarizes world bounds, structural/detail geometry, texture usage, approximate light influence, and spawn/item distribution and spacing.
+- `map_texture_review` measures brush-face projection density and reports stretched, over-tiled, suspiciously fitted, or inconsistent materials with exact face references and suggested `edit_faces` transforms.
 - `map_summary` is the token-efficient orientation call for iterative work: revision, file, bounds, geometry/detail totals, diagnostics, major entity classes, and spawn/item distribution without full object dumps.
 - `map_design_review` combines editor validation, gameplay placement lint, jump-pad results, approximate route reachability, and compact spatial context in one revision-consistent response. It reports pass/needs-attention/blocked plus categorized findings without pretending the heuristics form an objective numeric quality score.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
@@ -156,7 +157,7 @@ This cylinder fits the jump-pad artwork once on its top while leaving its sides 
 }
 ```
 
-Before choosing unfamiliar materials, use `texture_search`, `texture_inspect`, and `texture_preview_many` instead of guessing. After creating textured geometry, frame it and inspect it with `editor_screenshot`; use more than one angle when seams, caps, or side materials matter. Use `operation_schema` for the exact transform slots supported by a creation operation.
+Before choosing unfamiliar materials, use `texture_search`, `texture_inspect`, and `texture_preview_many` instead of guessing. After creating textured geometry, run `map_texture_review`, then frame implicated faces and inspect them with `editor_screenshot`; use more than one angle when seams, caps, or side materials matter. Use `operation_schema` for the exact transform slots supported by a creation operation.
 
 Large `map_apply` and `map_preview` batches can set `responseDetail: "compact"`. Reference and alias lists then return total counts, the first/last samples, and an explicit `truncated` flag instead of flooding the MCP response.
 
@@ -191,7 +192,7 @@ A useful authoring loop is:
 2. For complex geometry, call `map_preview` first; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.
-   Use `editor_layout_screenshot` for flow, symmetry, spacing, and route-layout decisions, and `map_design_review` for a combined structured quality pass.
+   Use `editor_layout_screenshot` for flow, symmetry, spacing, and route-layout decisions, `map_texture_review` for projection quality, and `map_design_review` for a combined structured quality pass.
 
 MCP tool lists are normally loaded when an agent session starts. Restart the Codex or Claude Code session after updating the bridge if a newly added tool is missing.
 

@@ -10,6 +10,7 @@ import { lintRoutes } from './route-lint';
 import { collectMapStatistics } from './map-statistics';
 import { compactMapSummary, reviewMap } from './design-review';
 import type { McpActivityLog } from './activity-log';
+import { reviewTextureQuality, textureNamesForReview, type TextureDimensions } from './texture-review';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -232,6 +233,24 @@ const activityLogOutputSchema = z.object({
     revisionBefore: z.number().int().nullable(), revisionAfter: z.number().int().nullable(), revisionDelta: z.number().int().nullable(),
     arguments: z.unknown(), result: z.unknown(),
   })),
+});
+const textureReviewIssueSchema = z.object({
+  severity: z.enum(['warning', 'info']),
+  code: z.enum(['low-texel-density', 'high-texel-density', 'anisotropic-texture', 'large-fitted-face', 'inconsistent-density']),
+  message: z.string(), refs: z.array(z.string()), texture: z.string(),
+  metrics: z.object({
+    texelsPerUnit: z.number(), minimumTexelsPerUnit: z.number(), maximumTexelsPerUnit: z.number(),
+    anisotropy: z.number(), repeats: z.tuple([z.number(), z.number()]), faceArea: z.number(), dimensionsVerified: z.boolean(),
+  }),
+  suggestedTransform: z.object({ fit: z.boolean().optional(), scale: z.tuple([z.number(), z.number()]).optional() }).optional(),
+});
+const textureReviewOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int(), model: z.string(), status: z.enum(['pass', 'needs-attention']),
+  summary: z.object({
+    facesReviewed: z.number().int(), materialsReviewed: z.number().int(), verifiedMaterials: z.number().int(), warningCount: z.number().int(),
+    density: z.object({ minimum: z.number(), maximum: z.number(), median: z.number() }).nullable(),
+  }),
+  issues: z.object({ count: z.number().int(), sample: z.array(textureReviewIssueSchema), truncated: z.boolean() }),
 });
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
@@ -647,7 +666,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
-      'Use fit for focal surfaces that should show one complete image, but preserve intentional tiling on large walls and floors. Inspect unfamiliar materials and verify textured geometry with editor_screenshot.',
+      'Use fit for focal surfaces that should show one complete image, but preserve intentional tiling on large walls and floors. Inspect unfamiliar materials, run map_texture_review, and verify textured geometry with editor_screenshot.',
     ].join(' '),
   });
   if (activityLog) {
@@ -838,6 +857,53 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, ...collectMapStatistics(snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_texture_review', {
+    title: 'Review texture projection quality',
+    description: 'Analyze visible brush faces for low or excessive texel density, anisotropic stretching, suspicious one-repeat fitting on large faces, and inconsistent density between uses of one material. Findings include exact face references, projection metrics, and suggested edit_faces transforms.',
+    inputSchema: {
+      ...sessionInput,
+      targetTexelsPerUnit: z.number().positive().optional().default(2),
+      minimumTexelsPerUnit: z.number().positive().optional().default(0.5),
+      maximumTexelsPerUnit: z.number().positive().optional().default(6),
+      maximumAnisotropy: z.number().min(1).optional().default(3),
+      largeFittedFaceArea: z.number().positive().optional().default(32768),
+      includeToolTextures: z.boolean().optional().default(false),
+      limit: z.number().int().min(1).max(500).optional().default(100),
+    },
+    outputSchema: textureReviewOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({
+    sessionId, targetTexelsPerUnit, minimumTexelsPerUnit, maximumTexelsPerUnit,
+    maximumAnisotropy, largeFittedFaceArea, includeToolTextures, limit,
+  }) => {
+    try {
+      if (minimumTexelsPerUnit >= maximumTexelsPerUnit) {
+        throw new Error('minimumTexelsPerUnit must be less than maximumTexelsPerUnit');
+      }
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const names = textureNamesForReview(snapshot.mapText, includeToolTextures);
+      const dimensions = new Map<string, TextureDimensions>();
+      await Promise.all(names.map(async name => {
+        try {
+          const inspection = await hub.textureInspect(name, resolved) as { image?: { width?: number | null; height?: number | null } | null };
+          const width = inspection.image?.width; const height = inspection.image?.height;
+          if (typeof width !== 'number' || typeof height !== 'number' || width <= 0 || height <= 0) return;
+          dimensions.set(name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, ''), { width, height, verified: true });
+        } catch { /* Projection review can fall back to 128×128 for unresolved shader-only materials. */ }
+      }));
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision,
+        ...reviewTextureQuality(snapshot.mapText, dimensions, {
+          targetTexelsPerUnit, minimumTexelsPerUnit, maximumTexelsPerUnit,
+          maximumAnisotropy, largeFittedFaceArea, includeToolTextures, limit,
+        }),
+      });
     } catch (error) {
       return toolError(error);
     }
