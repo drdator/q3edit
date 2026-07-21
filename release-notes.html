@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" class="landing-active">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Q3Edit release notes: new browser-based Quake III map editing features, workflow improvements, rendering fixes, and compatibility updates.">
+  <meta name="theme-color" content="#111311">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Q3Edit Release Notes">
+  <meta property="og:description" content="See what is new in Q3Edit, the browser-based Quake III Arena map editor.">
+  <meta property="og:url" content="https://q3edit.com/release-notes.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="/logo.svg">
+  <link rel="canonical" href="https://q3edit.com/release-notes.html">
+  <title>Q3Edit Release Notes — Quake III map editor updates</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body class="landing-active">
+  <main id="landing" class="release-notes-page">
+    <nav class="landing-nav" aria-label="Primary navigation">
+      <a class="landing-brand" href="/" aria-label="Q3Edit home">
+        <img class="landing-brand-mark" src="/logo.svg" alt="" width="22" height="22">
+        <span>Q3EDIT</span>
+      </a>
+      <div class="landing-nav-links">
+        <a class="landing-nav-link" href="/release-notes.html" aria-current="page">Release notes</a>
+        <a class="landing-nav-link" href="https://github.com/drdator/q3edit">GitHub <span aria-hidden="true">↗</span></a>
+        <a class="landing-nav-link" href="/?editor">Launch editor <span aria-hidden="true">→</span></a>
+      </div>
+    </nav>
+
+    <div class="release-notes-page-content">
+      <header class="release-notes-page-header">
+        <div class="landing-kicker"><span></span> Product updates</div>
+        <h1>Q3Edit release notes</h1>
+        <p class="landing-lede">New map-editing features, workflow refinements, rendering improvements, and Quake III compatibility fixes.</p>
+      </header>
+
+      <div class="release-notes-history">
+        <article class="release-notes-entry">
+          <span class="release-notes-entry-label">Latest release</span>
+          <h2>July 21, 2026 Update</h2>
+          <p class="release-notes-entry-summary">A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.</p>
+
+          <section>
+            <h3>Editing workflow</h3>
+            <ul>
+              <li>Edit shared entity properties across multiple selected entities from the Entity Inspector, including adding and removing keys for the whole selection.</li>
+              <li>Start marquee selections over brushes in locked groups while the locked geometry itself remains protected from selection and editing.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Workspace</h3>
+            <ul>
+              <li>Show or hide the right sidebar from the View menu or the top-right toolbar button, and drag its edge to choose a comfortable width.</li>
+              <li>Solo any sidebar panel to temporarily collapse the others, with sidebar visibility, width, and panel states remembered between sessions.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Rendering &amp; Quick Play</h3>
+            <ul>
+              <li>Dynamic-light preview now chooses up to 16 lights by their influence on the current view, keeping large and heavily lit maps accurate as you move around.</li>
+              <li>Quick Play now resolves mixed-case shader image paths correctly, preventing fitted textures such as jump pads from compiling at the wrong scale.</li>
+            </ul>
+          </section>
+        </article>
+
+        <article class="release-notes-entry">
+          <span class="release-notes-entry-label">Previous release</span>
+          <h2>July 2026 Update</h2>
+          <p class="release-notes-entry-summary">A major editor update with richer Quake III compatibility, modern entity and model workflows, advanced geometry tools, camera paths, project configuration, and a more dependable editing core.</p>
+
+          <section>
+            <h3>Entities &amp; models</h3>
+            <ul>
+              <li>Search game entity definitions while placing entities, then edit typed properties in the Entity Inspector.</li>
+              <li>Choose MD3 models and skins with textured, drag-to-rotate previews in both the browser and editor view.</li>
+              <li>Compile misc_model entities with Q3Map2-compatible origin, scale, yaw, pitch, and roll transforms.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Maps &amp; assets</h3>
+            <ul>
+              <li>Load, edit, and round-trip classic brushes and brushDef map formats with clearer parser diagnostics.</li>
+              <li>Manage an ordered PK3 asset stack with shader-aware texture lookup and JPEG image support.</li>
+              <li>Quick Play now keeps base-game assets separate and handles browser mouse capture more reliably.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Geometry &amp; terrain</h3>
+            <ul>
+              <li>Create precisely sized boxes, cylinders, cones, spheres, and pyramids with the Exact Primitive dialog.</li>
+              <li>Use expanded patch operations for rows, columns, subdivisions, caps, thickening, fitting, and alignment.</li>
+              <li>Sculpt, smooth, erode, stitch, and texture terrain with a dedicated inspector and brush controls.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Organization &amp; paths</h3>
+            <ul>
+              <li>Create persistent named groups, then select, hide, lock, and manage their members from the sidebar.</li>
+              <li>Build open or closed camera splines with timing, FOV, look targets, actions, scrubbing, and looping playback.</li>
+              <li>Generate smart camera paths and func_train paths directly from the editor.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>View &amp; customization</h3>
+            <ul>
+              <li>Switch renderer modes, texture filtering, display categories, and a tuned dynamic-light preview.</li>
+              <li>Customize shortcuts, themes, viewport layouts, and editor defaults in global Preferences.</li>
+              <li>Keep game paths, assets, compiler options, entity sources, and overrides in separate Project Settings.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Reliability &amp; diagnostics</h3>
+            <ul>
+              <li>Document revisions, unsaved-state tracking, centralized mutations, and consistent undo transactions protect edits.</li>
+              <li>Inspect map and entity diagnostics, find brushes by address, and run JSON brush macros as one undoable action.</li>
+              <li>Expanded regression coverage protects map round-tripping, geometry editing, assets, entities, and editor workflows.</li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </div>
+
+    <footer class="landing-footer">
+      <span>Q3Edit is an independent community project, not affiliated with id Software or ZeniMax.</span>
+      <span><a href="/">Home</a> · GPL-2.0 · <a href="https://github.com/drdator/q3edit">Source &amp; license</a></span>
+    </footer>
+  </main>
+</body>
+</html>
