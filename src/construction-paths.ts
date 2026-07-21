@@ -25,6 +25,7 @@ export interface ConstructionPathRecord {
   classification: 'detail' | 'structural';
   groupId: string;
   objectCount: number;
+  replacedObjectCount?: number;
   bounds: { mins: Vec3; maxs: Vec3 };
 }
 

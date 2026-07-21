@@ -136,9 +136,9 @@ item remains open because per-segment deterministic variation belongs to phase
 - [x] Taper a brush.
 - [x] Inset or extrude a face.
 - [x] Clip/slice corners and split brushes.
-- [ ] Turn a rectangular room into an octagonal or angled room.
+- [x] Turn a rectangular room into an octagonal or angled room.
 - [x] Add recesses and openings without rebuilding surrounding geometry.
-- [ ] Replace selected straight sections with angled or curved alternatives.
+- [x] Replace selected straight sections with angled or curved alternatives.
 - [x] Preserve or deliberately refit face materials during refinement.
 
 These operations are especially valuable for revising a safe blockout into a
@@ -151,9 +151,12 @@ any axis. They validate before commit and preserve materials, projections,
 compile flags, properties, and named groups unless an explicit fit is
 requested. Existing arbitrary `clip_brushes`, `hollow_brushes`, and
 `csg_subtract` cover slicing, shells, recesses, and openings, and now retain
-groups on replacement fragments. Whole room-shell conversion and automatic
-straight-section replacement remain open because they need semantic
-multi-brush handling rather than a misleading per-brush shortcut.
+groups on replacement fragments. `reshape_room` handles a complete selected
+room shell semantically, replacing it with ordinary grouped octagonal caps and
+walls while retaining representative role materials. `create_path` accepts
+`replaceTargets`, so a validated angled or curved path can atomically replace
+selected straight geometry and record the replacement count in its persistent
+path relationship.
 
 ### 6. Abstract design-pattern guidance
 

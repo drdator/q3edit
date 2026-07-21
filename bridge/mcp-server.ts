@@ -309,6 +309,7 @@ const constructionPathSchema = z.object({
   sides: z.number().int().min(3).max(32).optional(), join: z.enum(['overlap', 'bevel']),
   capEnds: z.boolean(), bankDegrees: z.number().min(-180).max(180), texture: z.string(),
   classification: z.enum(['detail', 'structural']), groupId: z.string(), objectCount: z.number().int().positive(),
+  replacedObjectCount: z.number().int().nonnegative().optional(),
   bounds: screenshotBounds,
 });
 const constructionPathsOutputSchema = z.object({
@@ -477,7 +478,7 @@ const styleBriefOutputSchema = z.object({
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
-  'create_wedge', 'create_tapered', 'create_stairs', 'create_brush', 'create_prefab', 'create_patch', 'create_area', 'connect_areas', 'create_path',
+  'create_wedge', 'create_tapered', 'create_stairs', 'create_brush', 'create_prefab', 'create_patch', 'create_area', 'connect_areas', 'create_path', 'reshape_room',
   'translate', 'rotate', 'mirror', 'clone', 'array', 'repeat_variation', 'set_texture', 'edit_faces', 'edit_patches', 'thicken_patch', 'set_brush_classification', 'clip_brushes',
   'hollow_brushes', 'csg_subtract', 'offset_faces', 'chamfer_brushes', 'taper_brushes', 'create_jump_pad', 'create_teleporter', 'delete',
   'assign_group', 'remove_from_group',
@@ -550,6 +551,15 @@ const mapOperationVariants = [
     textureTransform: textureTransformSchema.optional(),
     textureTransforms: capSideTextureTransformsSchema.optional(),
     classification: z.enum(['detail', 'structural']).optional(),
+  }),
+  z.object({
+    type: z.literal('reshape_room'),
+    ...creationMetadataSchema,
+    targets: z.array(operationRef).min(6),
+    shape: z.literal('octagonal'),
+    wallThickness: z.number().positive().optional(),
+    rotationDegrees: z.number().optional(),
+    textureMode: z.enum(['preserve', 'fit']).optional(),
   }),
   z.object({
     type: z.literal('create_primitive'),
@@ -700,6 +710,7 @@ const mapOperationVariants = [
     bankDegrees: z.number().min(-180).max(180).optional(),
     texture: z.string().min(1).optional(),
     classification: z.enum(['detail', 'structural']).optional(),
+    replaceTargets: z.array(operationRef).min(1).optional(),
   }),
   z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
   z.object({ type: z.literal('rotate'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']), angleDegrees: z.number() }),
@@ -909,6 +920,12 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'corridor, wall, beam, and trim create joined oriented boxes; railing adds spaced posts; pipe uses oriented cylinders; supports are distributed vertically; stairs follow resampled path points.',
     'Use map_preview first to inspect generated references, bounds, counts, and diagnostics. map_construction_paths_get returns the durable source-to-generated relationship after applying.',
     'Path brushes are closed compiler-safe solids, so their physical ends are always capped. join controls overlap versus four-sided beveled corner fillers; bankDegrees applies a constant roll.',
+    'replaceTargets atomically deletes selected straight source geometry after the replacement path validates, while preserving the durable path/group record.',
+  ],
+  reshape_room: [
+    'Replaces a complete selected rectangular room shell with an editable two-cap/eight-wall octagonal shell using its aggregate bounds.',
+    'The operation infers wall thickness when omitted and preserves representative floor, ceiling, and wall materials, projections, flags, properties, and common named group. textureMode=fit deliberately refits generated faces.',
+    'Select the complete uncomplicated room shell. Openings or extra embedded detail should be recreated after reshaping rather than passed as targets.',
   ],
   create_entity_array: ['Creates count entities at start + delta × index in one operation and one undo transaction.'],
   edit_faces: [
@@ -956,6 +973,7 @@ const compatibleMapOperationInput = z.object({
     'create_area',
     'connect_areas',
     'create_path',
+    'reshape_room',
     'translate',
     'rotate',
     'mirror',
@@ -988,6 +1006,7 @@ const compatibleMapOperationInput = z.object({
   unset: z.array(z.string()).optional(),
   target: operationRef.optional(),
   targets: z.array(compatibleTargetRef).optional(),
+  replaceTargets: z.array(compatibleTargetRef).optional(),
   parent: operationRef.optional(),
   mins: compatibleVec3.optional(),
   maxs: compatibleVec3.optional(),
@@ -1083,6 +1102,7 @@ const compatibleMapOperationInput = z.object({
   shift: z.array(z.number()).length(2).optional(),
   scale: z.array(z.number()).length(2).optional(),
   rotateDegrees: z.number().optional(),
+  rotationDegrees: z.number().optional(),
   fit: z.boolean().optional(),
   contentFlags: z.number().int().optional(),
   surfaceFlags: z.number().int().optional(),
@@ -1197,6 +1217,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Prefer create_tapered and native create_patch bevel, endcap, cylinder, arch, pipe, or ramp surfaces when spatial review shows excessive box and axis-aligned geometry.',
       'Use create_path for curved or segmented corridors, walls, railings, pipes, beams, trim, stairs, and supports. Preview complex paths first, then inspect their persistent source/group relationship with map_construction_paths_get.',
       'Refine blockout brushes with offset_faces, chamfer_brushes, taper_brushes, clip_brushes, hollow_brushes, and csg_subtract; preserve projections unless an intentional fit is requested.',
+      'Use reshape_room for a complete uncomplicated rectangular shell, and create_path.replaceTargets when selected straight geometry should become an angled or curved path in one validated transaction.',
       'Use design_pattern_search for abstract area/route constraints when a layout needs stronger composition. Adapt roles to the live map; never treat a pattern as fixed prefab geometry.',
       'Use repeat_variation for deliberate repeated rhythm: prefer short labeled sequences and small seeded bounds, preview generated collisions, and keep positions snapped to the modular grid.',
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
@@ -1317,7 +1338,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 8, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 9, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
           persistent: true,
           tools: ['map_spatial_plan_get', 'map_spatial_plan_preview'],
@@ -1339,9 +1360,10 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           maxGeneratedObjects: 256,
         },
         brushRefinement: {
-          operations: ['offset_faces', 'chamfer_brushes', 'taper_brushes', 'clip_brushes', 'hollow_brushes', 'csg_subtract'],
+          operations: ['offset_faces', 'chamfer_brushes', 'taper_brushes', 'clip_brushes', 'hollow_brushes', 'csg_subtract', 'reshape_room'],
           textureModes: ['preserve', 'fit'],
           groupPreserving: true,
+          atomicPathReplacement: true,
         },
         controlledVariation: {
           operation: 'repeat_variation', distributions: ['linear', 'radial', 'mirror'],

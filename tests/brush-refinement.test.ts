@@ -3,6 +3,7 @@ import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
 import { applyMapOperations } from '../src/map-operations';
 import { parseMapWithDiagnostics } from '../src/mapfile';
+import { readConstructionPaths } from '../src/construction-paths';
 
 function emptyEditor(): Editor {
   const editor = new Editor();
@@ -73,5 +74,45 @@ describe('MCP brush refinement operations', () => {
     ]);
     expect(editor.worldspawn.brushes.length).toBeGreaterThan(1);
     expect(editor.worldspawn.brushes.every(brush => brush.editorGroupId)).toBe(true);
+  });
+
+  test('reshapes a complete rectangular room into one grouped octagonal shell', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      {
+        type: 'create_room', id: 'room', group: 'Main chamber', mins: [-256, -192, 0], maxs: [256, 192, 256], wallThickness: 16,
+        textures: { walls: 'base_wall/metal', floor: 'base_floor/diamond', ceiling: 'base_ceiling/metal' },
+      },
+      { type: 'reshape_room', id: 'octagonal_room', targets: ['@room'], shape: 'octagonal', wallThickness: 16 },
+    ]);
+
+    expect(editor.worldspawn.brushes).toHaveLength(10);
+    expect(result.aliases['@room']).toEqual([]);
+    expect(result.aliases['@octagonal_room']).toHaveLength(10);
+    expect(new Set(editor.worldspawn.brushes.map(brush => brush.editorGroupId)).size).toBe(1);
+    expect(editor.worldspawn.brushes.flatMap(brush => brush.faces.map(face => face.texture))).toEqual(expect.arrayContaining([
+      'base_wall/metal', 'base_floor/diamond', 'base_ceiling/metal',
+    ]));
+    expect(parseMapWithDiagnostics(editor.serializeMap()).diagnostics).toEqual([]);
+  });
+
+  test('atomically replaces straight brushes with a durable curved path', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      { type: 'create_box', id: 'straight_a', mins: [0, -48, 0], maxs: [128, 48, 16] },
+      { type: 'create_box', id: 'straight_b', mins: [128, -48, 0], maxs: [256, 48, 16] },
+      {
+        type: 'create_path', id: 'curved_replacement', kind: 'corridor', curve: 'catmull-rom',
+        points: [[0, 0, 8], [96, -48, 16], [192, 48, 24], [256, 0, 32]], width: 96, thickness: 16,
+        replaceTargets: ['@straight_a', '@straight_b'],
+      },
+    ]);
+
+    const path = readConstructionPaths(editor.worldspawn.properties).paths[0];
+    expect(path).toMatchObject({ id: 'curved_replacement', replacedObjectCount: 2, objectCount: editor.worldspawn.brushes.length });
+    expect(result.aliases['@straight_a']).toEqual([]);
+    expect(result.aliases['@straight_b']).toEqual([]);
+    expect(result.aliases['@curved_replacement']).toHaveLength(editor.worldspawn.brushes.length);
+    expect(parseMapWithDiagnostics(editor.serializeMap()).diagnostics).toEqual([]);
   });
 });

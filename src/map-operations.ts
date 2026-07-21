@@ -313,6 +313,16 @@ export interface CreatePathOperation extends CreationMetadata {
   bankDegrees?: number;
   texture?: string;
   classification?: 'detail' | 'structural';
+  replaceTargets?: MapTargetRef[];
+}
+
+export interface ReshapeRoomOperation extends CreationMetadata {
+  type: 'reshape_room';
+  targets: MapTargetRef[];
+  shape: 'octagonal';
+  wallThickness?: number;
+  rotationDegrees?: number;
+  textureMode?: 'preserve' | 'fit';
 }
 
 export interface TranslateObjectsOperation {
@@ -499,6 +509,7 @@ export type MapOperation =
   | CreateAreaOperation
   | ConnectAreasOperation
   | CreatePathOperation
+  | ReshapeRoomOperation
   | TranslateObjectsOperation
   | RotateObjectsOperation
   | MirrorObjectsOperation
@@ -1272,7 +1283,7 @@ function applyCreatePath(editor: Editor, operation: CreatePathOperation, aliases
     sampledPointCount: sampled.length, width: operation.width, height: operation.height, thickness, spacing: operation.spacing,
     subdivisions, sides: operation.kind === 'pipe' ? sides : undefined, join: operation.join ?? 'overlap',
     capEnds: operation.capEnds ?? true, bankDegrees, texture, classification: operation.classification ?? (['wall', 'corridor', 'stairs'].includes(operation.kind) ? 'structural' : 'detail'),
-    groupId, objectCount: handles.length, bounds,
+    groupId, objectCount: handles.length, replacedObjectCount: operation.replaceTargets?.length, bounds,
   }));
   return handles;
 }
@@ -1317,6 +1328,73 @@ function applyConnectAreas(editor: Editor, operation: ConnectAreasOperation): Ob
     groupId,
   }));
   return handles;
+}
+
+function representativeBrush(targets: Array<ResolvedObject & { kind: 'brush' }>, role: 'floor' | 'ceiling' | 'wall'): Brush {
+  const zSize = (brush: Brush) => brush.maxs[2] - brush.mins[2];
+  if (role === 'floor') return [...targets].sort((a, b) => a.brush.maxs[2] - b.brush.maxs[2])[0].brush;
+  if (role === 'ceiling') return [...targets].sort((a, b) => b.brush.mins[2] - a.brush.mins[2])[0].brush;
+  return [...targets].sort((a, b) => zSize(b.brush) - zSize(a.brush))[0].brush;
+}
+
+function applyReshapeRoom(
+  editor: Editor,
+  operation: ReshapeRoomOperation,
+  targets: Array<ResolvedObject & { kind: 'brush' }>,
+): ObjectHandle[] {
+  if (targets.length < 6) throw new Error('reshape_room requires the complete room shell (at least six brushes)');
+  const entity = targets[0].entity;
+  if (targets.some(target => target.entity !== entity)) throw new Error('reshape_room targets must belong to one entity');
+  const unique = [...new Set(targets.map(target => target.brush))];
+  if (unique.length !== targets.length) throw new Error('reshape_room targets must be unique');
+  const mins = [0, 1, 2].map(axis => Math.min(...targets.map(target => target.brush.mins[axis]))) as Vec3;
+  const maxs = [0, 1, 2].map(axis => Math.max(...targets.map(target => target.brush.maxs[axis]))) as Vec3;
+  const inferredThickness = Math.min(...targets.flatMap(target => [0, 1, 2]
+    .map(axis => target.brush.maxs[axis] - target.brush.mins[axis]).filter(size => size > 0.1)));
+  const thickness = operation.wallThickness ?? inferredThickness;
+  if (!Number.isFinite(thickness) || thickness <= 0 || thickness * 2 >= Math.min(maxs[0] - mins[0], maxs[1] - mins[1], maxs[2] - mins[2])) {
+    throw new Error('reshape_room wallThickness must be positive and smaller than half the room dimensions');
+  }
+  const center: Vec3 = [(mins[0] + maxs[0]) / 2, (mins[1] + maxs[1]) / 2, (mins[2] + maxs[2]) / 2];
+  const angleOffset = (operation.rotationDegrees ?? 22.5) * Math.PI / 180;
+  if (!Number.isFinite(angleOffset)) throw new Error('reshape_room rotationDegrees must be finite');
+  const radiusX = (maxs[0] - mins[0] - thickness) / 2;
+  const radiusY = (maxs[1] - mins[1] - thickness) / 2;
+  const ring = Array.from({ length: 8 }, (_, index): Vec3 => {
+    const angle = angleOffset + index * Math.PI / 4;
+    return [center[0] + Math.cos(angle) * radiusX, center[1] + Math.sin(angle) * radiusY, center[2]];
+  });
+  const floorSource = representativeBrush(targets, 'floor');
+  const ceilingSource = representativeBrush(targets, 'ceiling');
+  const wallSource = representativeBrush(targets, 'wall');
+  const replacement: Brush[] = [];
+  const floor = createBrushPrimitive('cylinder', [mins[0], mins[1], mins[2]], [maxs[0], maxs[1], mins[2] + thickness], floorSource.faces[0].texture, 2, 8);
+  const ceiling = createBrushPrimitive('cylinder', [mins[0], mins[1], maxs[2] - thickness], [maxs[0], maxs[1], maxs[2]], ceilingSource.faces[0].texture, 2, 8);
+  rotateEditorBrush(editor, floor, center, 2, angleOffset);
+  rotateEditorBrush(editor, ceiling, center, 2, angleOffset);
+  replacement.push(floor, ceiling);
+  for (let index = 0; index < ring.length; index++) {
+    const start = [...ring[index]] as Vec3; const end = [...ring[(index + 1) % ring.length]] as Vec3;
+    start[2] = center[2]; end[2] = center[2];
+    replacement.push(createBoxBetween(editor, start, end, thickness, maxs[2] - mins[2] - thickness * 2, wallSource.faces[0].texture));
+  }
+  for (const brush of replacement) {
+    const roleSource = brush === floor ? floorSource : brush === ceiling ? ceilingSource : wallSource;
+    for (const face of brush.faces) {
+      applyFaceStyle(face, closestStyledFace(roleSource, face.plane.normal));
+      if (operation.textureMode === 'fit') fitFaceTexture(editor, face);
+    }
+    brush.editorGroupId = targets[0].brush.editorGroupId;
+    brush.properties = targets[0].brush.properties ? { ...targets[0].brush.properties } : undefined;
+    const validation = validateBrush(brush);
+    if (!validation.valid) throw new Error(`reshape_room produced invalid geometry: ${validation.issues.join('; ')}`);
+  }
+  const indices = targets.map(target => entity.brushes.indexOf(target.brush));
+  if (indices.some(index => index < 0)) throw new Error('A reshape_room target was replaced earlier in this batch');
+  const insertion = Math.min(...indices);
+  [...indices].sort((a, b) => b - a).forEach(index => entity.brushes.splice(index, 1));
+  entity.brushes.splice(insertion, 0, ...replacement);
+  return replacement.map(brush => ({ kind: 'brush' as const, entity, brush }));
 }
 
 function setObjectTexture(resolved: ResolvedObject, texture: string): void {
@@ -2027,9 +2105,17 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
         changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
       } else if (operation.type === 'create_path') {
+        const replaced = operation.replaceTargets ? resolveTargets(editor, operation.replaceTargets, aliases) : [];
+        replaced.forEach(target => deletedRefs.add(target.ref));
         const handles = applyCreatePath(editor, operation, aliases);
+        if (replaced.length > 0) applyDeletion(editor, replaced);
         recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
         changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
+      } else if (operation.type === 'reshape_room') {
+        const targets = requireBrushes(resolveTargets(editor, operation.targets, aliases), 'reshape_room');
+        targets.forEach(target => deletedRefs.add(target.ref));
+        const handles = applyReshapeRoom(editor, operation, targets);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'create_jump_pad' || operation.type === 'create_teleporter') {
         const created = createGameplayLink(editor, operation, ++gameplayLinkSequence);
         recordCreated(editor, operation, created.handles, createdHandles, aliases, created.groupHandles);

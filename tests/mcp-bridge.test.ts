@@ -436,11 +436,11 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 8, maxPerBatch: 128 },
+        operations: { version: 9, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
         pathConstruction: { persistent: true, operation: 'create_path', maxControlPoints: 64, maxGeneratedObjects: 256 },
-        brushRefinement: { groupPreserving: true, textureModes: ['preserve', 'fit'] },
+        brushRefinement: { groupPreserving: true, textureModes: ['preserve', 'fit'], atomicPathReplacement: true },
         controlledVariation: { operation: 'repeat_variation', seeded: true, gridSnapped: true, previewCollisionReporting: true },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
@@ -482,7 +482,12 @@ describe('live MCP bridge', () => {
       const pathSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_path' } });
       expect(pathSchema.structuredContent).toMatchObject({
         type: 'create_path', required: ['type', 'id', 'kind', 'points', 'width'],
-        notes: expect.arrayContaining([expect.stringContaining('ordinary editable grouped brushes')]),
+        notes: expect.arrayContaining([expect.stringContaining('ordinary editable grouped brushes'), expect.stringContaining('replaceTargets')]),
+      });
+      const reshapeSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'reshape_room' } });
+      expect(reshapeSchema.structuredContent).toMatchObject({
+        type: 'reshape_room', required: ['type', 'targets', 'shape'],
+        notes: expect.arrayContaining([expect.stringContaining('complete selected rectangular room shell')]),
       });
       const chamferSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'chamfer_brushes' } });
       expect(chamferSchema.structuredContent).toMatchObject({
