@@ -8,6 +8,7 @@ import { lintGameplay } from './gameplay-lint';
 import { analyzeJumpPad } from './jump-analysis';
 import { lintRoutes } from './route-lint';
 import { collectMapStatistics } from './map-statistics';
+import { compactMapSummary, reviewMap } from './design-review';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -126,6 +127,65 @@ const routeLintOutputSchema = z.object({
 const mapQueryOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), count: z.number().int().nonnegative(),
   matches: z.array(mapQueryMatchSchema),
+});
+const nearestNeighborSchema = z.object({ minimum: z.number(), average: z.number() }).nullable();
+const compactMapSummarySchema = z.object({
+  world: z.object({ bounds: nullableBounds, size: z.array(z.number()).length(3).nullable() }),
+  counts: z.object({
+    entities: z.number().int(), brushes: z.number().int(), patches: z.number().int(), terrain: z.number().int(), groups: z.number().int(),
+    structuralBrushes: z.number().int(), detailBrushes: z.number().int(), structuralPatches: z.number().int(), detailPatches: z.number().int(),
+    textures: z.number().int(), lights: z.number().int(), spawns: z.number().int(), items: z.number().int(),
+  }),
+  diagnostics: z.object({ errors: z.number().int(), warnings: z.number().int(), info: z.number().int() }),
+  entityClasses: z.object({
+    count: z.number().int(), sample: z.array(z.object({ classname: z.string(), count: z.number().int() })), truncated: z.boolean(),
+  }),
+  distributions: z.object({
+    spawnBounds: nullableBounds, itemBounds: nullableBounds,
+    spawnNearestNeighbor: nearestNeighborSchema, itemNearestNeighbor: nearestNeighborSchema,
+  }),
+});
+const sampledDesignFindingSchema = z.object({
+  count: z.number().int(),
+  sample: z.array(z.object({ source: z.enum(['validation', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
+  truncated: z.boolean(),
+});
+const designReviewOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int(), model: z.string(), detail: z.enum(['compact', 'full']),
+  status: z.enum(['pass', 'needs-attention', 'blocked']),
+  severityCounts: z.object({ errors: z.number().int(), warnings: z.number().int(), info: z.number().int() }),
+  findingCount: z.number().int(), findings: sampledDesignFindingSchema, map: compactMapSummarySchema,
+  validation: sampledDesignFindingSchema,
+  gameplay: z.object({
+    issueCount: z.number().int(),
+    issues: z.object({ count: z.number().int(), sample: z.array(gameplayLintIssueSchema), truncated: z.boolean() }),
+  }),
+  routes: z.object({
+    issueCount: z.number().int(),
+    issues: z.object({ count: z.number().int(), sample: z.array(routeLintIssueSchema), truncated: z.boolean() }),
+    jumpPads: z.object({
+      count: z.number().int(), truncated: z.boolean(),
+      sample: z.array(z.object({
+        triggerRef: z.string().nullable(), targetRef: z.string().nullable(),
+        clearance: z.object({ clear: z.boolean(), collisionCount: z.number().int() }),
+        landing: z.union([
+          z.object({ supported: z.literal(false) }),
+          z.object({ supported: z.literal(true), brushRef: z.string(), hullClear: z.boolean(), blockers: z.array(z.string()) }),
+        ]),
+        warnings: z.array(z.string()),
+      })),
+    }),
+    connectivity: z.object({
+      platformCount: z.number().int(), edgeCount: z.number().int(), reachablePlatformCount: z.number().int(),
+      spawnCount: z.number().int(), pickupCount: z.number().int(), reachablePickupCount: z.number().int(),
+      unreachablePickupRefs: z.array(z.string()),
+      edgeKinds: z.object({ walk: z.number().int(), jump: z.number().int(), 'jump-pad': z.number().int() }),
+    }),
+  }),
+});
+const mapSummaryOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int(), fileName: z.string(), activeMapPath: z.string().nullable(),
+  ...compactMapSummarySchema.shape,
 });
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
@@ -598,6 +658,49 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, ...collectMapStatistics(snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_summary', {
+    title: 'Get a compact map orientation summary',
+    description: 'Return a token-efficient revision snapshot with world bounds, object/detail counts, diagnostic totals, major entity classes, and spawn/item distribution. Use this between edit batches instead of dumping the full document.',
+    inputSchema: { ...sessionInput },
+    outputSchema: mapSummaryOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const status = hub.status(resolved);
+      const summary = compactMapSummary(snapshot.mapInfo, collectMapStatistics(snapshot.mapText));
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision, fileName: snapshot.fileName,
+        activeMapPath: status.activeMapPath, ...summary,
+      });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_design_review', {
+    title: 'Run a combined map design review',
+    description: 'Return one revision-consistent review combining editor validation, gameplay placement lint, jump-pad analysis, approximate route reachability, and compact spatial statistics. Compact mode caps repeated findings; focused lint tools remain available for deeper follow-up.',
+    inputSchema: {
+      ...sessionInput,
+      detail: z.enum(['compact', 'full']).optional().default('compact'),
+    },
+    outputSchema: designReviewOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, detail }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision,
+        ...reviewMap(snapshot.mapText, snapshot.mapInfo, snapshot.diagnostics, detail),
+      });
     } catch (error) {
       return toolError(error);
     }

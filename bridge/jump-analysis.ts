@@ -13,6 +13,35 @@ export interface JumpPadAnalysisInput {
   sampleCount?: number;
 }
 
+export interface JumpPadAnalysis {
+  model: string;
+  triggerRef: string | null;
+  targetRef: string | null;
+  targetMatches: number;
+  gravity: number;
+  triggerBounds: { mins: Vec3; maxs: Vec3 };
+  launchOrigin: Vec3;
+  apex: Vec3;
+  velocity: Vec3;
+  horizontalSpeed: number;
+  verticalSpeed: number;
+  timeToApex: number;
+  nominalFlightTime: number;
+  nominalLandingOrigin: Vec3;
+  landing: { supported: false } | {
+    supported: true;
+    brushRef: string;
+    time: number;
+    origin: Vec3;
+    feetPosition: Vec3;
+    hullClear: boolean;
+    blockers: string[];
+  };
+  clearance: { clear: boolean; collisions: Array<{ ref: string; firstTime: number; position: Vec3 }> };
+  trajectory: Array<{ time: number; position: Vec3 }>;
+  warnings: string[];
+}
+
 interface CollisionBrush {
   ref: string;
   brush: Brush;
@@ -78,7 +107,7 @@ function landingOnBrush(
   return overlapsX && overlapsY ? { time, origin: point } : null;
 }
 
-export function analyzeJumpPad(mapText: string, input: JumpPadAnalysisInput): Record<string, unknown> {
+export function analyzeJumpPad(mapText: string, input: JumpPadAnalysisInput): JumpPadAnalysis {
   const entities = parseMapWithDiagnostics(mapText).document.entities;
   let triggerBounds: { mins: Vec3; maxs: Vec3 };
   let apex: Vec3;
@@ -191,7 +220,7 @@ export function analyzeJumpPad(mapText: string, input: JumpPadAnalysisInput): Re
       brushRef: landing.candidate.ref,
       time: landing.landing.time,
       origin: landing.landing.origin,
-      feetPosition: [landing.landing.origin[0], landing.landing.origin[1], landing.candidate.brush.maxs[2]],
+      feetPosition: [landing.landing.origin[0], landing.landing.origin[1], landing.candidate.brush.maxs[2]] as Vec3,
       hullClear: landingBlockers.length === 0,
       blockers: landingBlockers,
     } : { supported: false },

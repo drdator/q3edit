@@ -5,6 +5,35 @@ import { CONTENTS_DETAIL } from '../src/map-flags';
 import type { Vec3 } from '../src/math';
 import { isGroupInfoEntity } from '../src/named-groups';
 
+export interface SpatialDistribution {
+  count: number;
+  bounds: { mins: Vec3; maxs: Vec3 } | null;
+  centroid: number[] | null;
+  byClass: Array<{ classname: string; count: number }>;
+  nearestNeighbor: { minimum: number; average: number } | null;
+  objects: Array<{ ref: string; classname: string; origin: Vec3 }>;
+}
+
+export interface MapStatistics {
+  worldBounds: { mins: Vec3; maxs: Vec3 } | null;
+  worldSize: number[] | null;
+  geometry: {
+    structuralBrushes: number; detailBrushes: number; structuralPatches: number; detailPatches: number;
+    totalBrushes: number; totalPatches: number;
+  };
+  textures: { uniqueCount: number; names: string[] };
+  lighting: {
+    count: number;
+    radius: { minimum: number; maximum: number; average: number } | null;
+    summedSphereVolume: number;
+    worldVolumeUpperBoundPercent: number | null;
+    note: string;
+    lights: Array<{ ref: string; origin: Vec3; intensity: number; radius: number }>;
+  };
+  spawns: SpatialDistribution;
+  items: SpatialDistribution;
+}
+
 function pointBounds(points: Vec3[]): { mins: Vec3; maxs: Vec3 } | null {
   if (points.length === 0) return null;
   return {
@@ -13,7 +42,7 @@ function pointBounds(points: Vec3[]): { mins: Vec3; maxs: Vec3 } | null {
   };
 }
 
-function distribution(points: Array<{ ref: string; classname: string; origin: Vec3 }>): Record<string, unknown> {
+function distribution(points: Array<{ ref: string; classname: string; origin: Vec3 }>): SpatialDistribution {
   const bounds = pointBounds(points.map(point => point.origin));
   const centroid = points.length > 0
     ? [0, 1, 2].map(axis => points.reduce((sum, point) => sum + point.origin[axis], 0) / points.length)
@@ -34,7 +63,7 @@ function distribution(points: Array<{ ref: string; classname: string; origin: Ve
   };
 }
 
-export function collectMapStatistics(mapText: string): Record<string, unknown> {
+export function collectMapStatistics(mapText: string): MapStatistics {
   const entities = parseMapWithDiagnostics(mapText).document.entities;
   const worldPoints: Vec3[] = [];
   let structuralBrushes = 0;

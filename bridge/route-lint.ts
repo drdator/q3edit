@@ -2,7 +2,7 @@ import { entityOrigin } from '../src/entity';
 import { parseMapWithDiagnostics } from '../src/mapfile';
 import type { Vec3 } from '../src/math';
 import { isGroupInfoEntity } from '../src/named-groups';
-import { analyzeJumpPad } from './jump-analysis';
+import { analyzeJumpPad, type JumpPadAnalysis } from './jump-analysis';
 
 interface Platform {
   ref: string;
@@ -16,6 +16,21 @@ export interface RouteLintIssue {
   code: 'invalid-jump-pad' | 'blocked-jump-pad' | 'unsupported-jump-landing' | 'blocked-jump-landing' | 'unreachable-pickup' | 'missing-spawn';
   message: string;
   refs: string[];
+}
+
+export interface RouteLintResult {
+  model: string;
+  issueCount: number;
+  issues: RouteLintIssue[];
+  jumpPads: JumpPadAnalysis[];
+  connectivity: {
+    platformCount: number;
+    edgeCount: number;
+    spawnPlatforms: Array<{ entityRef: string; platformRef: string }>;
+    reachablePlatformCount: number;
+    pickups: Array<{ entityRef: string; classname: string; platformRef: string | null; reachableFromSpawn: boolean }>;
+    edges: Array<{ from: string; to: string; kind: 'walk' | 'jump' | 'jump-pad' }>;
+  };
 }
 
 function horizontalGap(a: Platform, b: Platform): number {
@@ -40,7 +55,7 @@ function isPickup(classname: string): boolean {
   return /^(?:item|weapon|ammo|holdable)_/.test(classname);
 }
 
-export function lintRoutes(mapText: string): Record<string, unknown> {
+export function lintRoutes(mapText: string): RouteLintResult {
   const entities = parseMapWithDiagnostics(mapText).document.entities;
   const platforms: Platform[] = entities.flatMap((entity, entityIndex) => {
     if (entity.classname.startsWith('trigger_') || isGroupInfoEntity(entity)) return [];
@@ -65,15 +80,15 @@ export function lintRoutes(mapText: string): Record<string, unknown> {
   }
 
   const issues: RouteLintIssue[] = [];
-  const jumpPads: unknown[] = [];
+  const jumpPads: JumpPadAnalysis[] = [];
   entities.forEach((entity, entityIndex) => {
     if (entity.classname !== 'trigger_push') return;
     const triggerRef = `E${entityIndex}`;
     try {
       const analysis = analyzeJumpPad(mapText, { triggerRef, sampleCount: 32 });
       jumpPads.push(analysis);
-      const clearance = analysis.clearance as { clear: boolean; collisions: Array<{ ref: string }> };
-      const landing = analysis.landing as { supported: boolean; brushRef?: string; hullClear?: boolean; blockers?: string[] };
+      const clearance = analysis.clearance;
+      const landing = analysis.landing;
       if (!clearance.clear) issues.push({
         severity: 'error', code: 'blocked-jump-pad', refs: [triggerRef, ...clearance.collisions.map(collision => collision.ref)],
         message: `${triggerRef} player hull intersects geometry along its trajectory`,
@@ -86,8 +101,8 @@ export function lintRoutes(mapText: string): Record<string, unknown> {
         severity: 'error', code: 'blocked-jump-landing', refs: [triggerRef, landing.brushRef!, ...(landing.blockers ?? [])],
         message: `${triggerRef} landing does not have a clear standing player hull`,
       });
-      const launch = supportPlatform(platforms, analysis.launchOrigin as Vec3);
-      if (launch && landing.brushRef) connect(launch.ref, landing.brushRef, 'jump-pad', false);
+      const launch = supportPlatform(platforms, analysis.launchOrigin);
+      if (launch && landing.supported) connect(launch.ref, landing.brushRef, 'jump-pad', false);
     } catch (error) {
       issues.push({
         severity: 'error', code: 'invalid-jump-pad', refs: [triggerRef],

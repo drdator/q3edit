@@ -257,6 +257,8 @@ describe('live MCP bridge', () => {
         'operation_schema',
         'map_entities',
         'map_statistics',
+        'map_summary',
+        'map_design_review',
         'map_inspect',
         'map_validate',
         'map_gameplay_lint',
@@ -308,6 +310,21 @@ describe('live MCP bridge', () => {
       expect(statistics.structuredContent).toMatchObject({
         sessionId: 'editor-a', revision: 4,
         geometry: { totalBrushes: 0 }, lighting: { count: 0 }, spawns: { count: 0 }, items: { count: 0 },
+      });
+
+      const summary = await client.callTool({ name: 'map_summary', arguments: {} });
+      expect(summary.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, fileName: 'live.map', activeMapPath: null,
+        counts: { entities: 1, brushes: 0, structuralBrushes: 0, spawns: 0, items: 0 },
+        entityClasses: { count: 1, sample: [{ classname: 'worldspawn', count: 1 }], truncated: false },
+      });
+
+      const designReview = await client.callTool({ name: 'map_design_review', arguments: {} });
+      expect(designReview.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, detail: 'compact', status: 'needs-attention',
+        severityCounts: { errors: 0, warnings: 1, info: 0 },
+        findings: { count: 1, sample: [{ source: 'routes', code: 'missing-spawn' }], truncated: false },
+        routes: { connectivity: { spawnCount: 0, pickupCount: 0 } },
       });
 
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
