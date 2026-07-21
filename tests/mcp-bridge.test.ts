@@ -295,6 +295,8 @@ describe('live MCP bridge', () => {
         'map_statistics',
         'map_texture_review',
         'map_geometry_lint',
+        'map_spatial_plan_get',
+        'map_spatial_plan_preview',
         'map_spatial_review',
         'map_summary',
         'map_style_get',
@@ -340,7 +342,7 @@ describe('live MCP bridge', () => {
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'map_spatial_plan_preview', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
@@ -374,6 +376,26 @@ describe('live MCP bridge', () => {
         metrics: { geometry: { brushCount: 0, axisAlignedFaceRatio: null }, levels: { count: 0 } },
       });
 
+      const spatialPlan = await client.callTool({ name: 'map_spatial_plan_get', arguments: {} });
+      expect(spatialPlan.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4,
+        plan: { version: 1, areas: [], connections: [] }, inspection: { connectedComponents: [], issues: [] },
+      });
+      const spatialPreview = await client.callTool({
+        name: 'map_spatial_plan_preview', arguments: {
+          replace: true,
+          areas: [
+            { id: 'atrium', purpose: 'center', shape: 'radial', center: [0, 0, 0], radius: 128, height: 256 },
+            { id: 'upper', purpose: 'control', shape: 'rectangular', center: [320, 0, 96], radius: 96, height: 192 },
+          ],
+          connections: [{ id: 'upper_route', fromArea: 'atrium', toArea: 'upper', routeType: 'ramp', width: 96 }],
+        },
+      });
+      expect(spatialPreview.structuredContent).toMatchObject({
+        revision: 4, plan: { areas: [{ id: 'atrium' }, { id: 'upper' }], connections: [{ id: 'upper_route' }] },
+        inspection: { connectedComponents: [['atrium', 'upper']], routeTypes: { ramp: 1 } },
+      });
+
       const summary = await client.callTool({ name: 'map_summary', arguments: {} });
       expect(summary.structuredContent).toMatchObject({
         sessionId: 'editor-a', revision: 4, fileName: 'live.map', activeMapPath: null,
@@ -400,7 +422,8 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 3, maxPerBatch: 128 },
+        operations: { version: 4, maxPerBatch: 128 },
+        spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -427,6 +450,11 @@ describe('live MCP bridge', () => {
           expect.stringContaining('textureTransform applies to every created face'),
           expect.stringContaining('textureTransforms.top'),
         ]),
+      });
+      const areaSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_area' } });
+      expect(areaSchema.structuredContent).toMatchObject({
+        type: 'create_area', required: expect.arrayContaining(['type', 'id', 'purpose', 'shape', 'center', 'height']),
+        notes: expect.arrayContaining([expect.stringContaining('Persists a semantic area')]),
       });
       const boxJson = JSON.stringify((boxSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
       expect(boxJson).toContain('"textureTransform"');

@@ -55,22 +55,29 @@ and lets us measure whether later geometry tools actually produce better maps.
 
 ### 2. Semantic spaces and connections
 
-- [ ] Add `create_area` with purpose, center, bounds/radius, height, levels,
+- [x] Add `create_area` with purpose, center, bounds/radius, height, levels,
   shape language, openings, and landmark intent.
-- [ ] Support shapes such as rectangular, octagonal, radial, curved, terraced,
+- [x] Support shapes such as rectangular, octagonal, radial, curved, terraced,
   and irregular.
-- [ ] Add `connect_areas` with route type, width, vertical change, curvature,
+- [x] Add `connect_areas` with route type, width, vertical change, curvature,
   cover, visibility, and traversal intent.
-- [ ] Represent the area and route graph independently of generated brushes.
-- [ ] Let the implementation choose compiler-safe generic brushes and patches.
-- [ ] Return semantic relationships alongside generated object references.
-- [ ] Let spatial review evaluate the intended and realized area graph.
-- [ ] Support previewing the spatial plan before generating geometry.
+- [x] Represent the area and route graph independently of generated brushes.
+- [x] Let the implementation choose compiler-safe generic primitives appropriate
+  to the shape without introducing opaque prefab geometry.
+- [x] Return semantic relationships alongside generated object references.
+- [x] Let spatial review evaluate the intended and realized area graph.
+- [x] Support previewing the spatial plan before generating geometry.
 
 This gives agents a vocabulary closer to level design: “connect the atrium to
 the upper flank with a curved, partially enclosed route” instead of a long list
 of coordinates. It should happen before detailed geometry so composition drives
 construction rather than emerging accidentally from it.
+
+Implementation note: semantic plans persist as versioned worldspawn metadata.
+`map_spatial_plan_preview` validates a proposed graph without editing, while
+`create_area` and `connect_areas` default to plan-only changes. Optional floors,
+rectangular rooms, radial/octagonal floors, and straight or sloped connectors
+are ordinary named-group brushes and remain fully inspectable and editable.
 
 ### 3. Angled brush construction, curves, and patches
 

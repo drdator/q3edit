@@ -60,6 +60,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_statistics` summarizes world bounds, structural/detail geometry, texture usage, approximate light influence, and spawn/item distribution and spacing.
 - `map_texture_review` measures brush-face projection density and reports stretched, over-tiled, suspiciously fitted, or inconsistent materials with exact face references and suggested `edit_faces` transforms.
 - `map_geometry_lint` finds duplicate brushes, coplanar z-fighting candidates, thin brushes, sliver faces, compiler-grid coordinates, and small structural geometry that is probably detail. Its findings are also included in `map_design_review`.
+- `map_spatial_plan_get` returns persistent semantic areas and connections plus their bounds, height levels, route distribution, connected components, and consistency findings. `map_spatial_plan_preview` merges proposed areas/routes in memory so an agent can review layout intent without changing the document or generating brushes.
 - `map_spatial_review` measures box/axis alignment, walk-surface height bands, repeated brush proportions, approximate route branching/loops/dead ends, open-versus-enclosed rhythm, mirror symmetry, landmark and silhouette variation, and long flat walls. Every finding includes suggested corrective actions; these are design heuristics to guide screenshots and playtests, not an objective quality score.
 - `map_summary` is the token-efficient orientation call for iterative work: revision, file, bounds, geometry/detail totals, diagnostics, major entity classes, and spawn/item distribution without full object dumps.
 - `map_style_get`, `map_style_set`, and `map_style_review` keep a structured visual brief in worldspawn so theme, exact or folder-based texture palette, modular grid, texel-density target, lighting mood, detail density, and notes survive save/reload and different agent sessions. Guide palettes produce informational deviations; strict palettes produce warnings.
@@ -91,6 +92,8 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_open` opens a local `.map` file in the connected browser.
 - `map_save` writes the current browser document to the active path or a supplied path.
 - `map_save_and_compile` revision-checks, saves, and compiles in the common finalization workflow.
+
+`create_area` and `connect_areas` store spatial intent in worldspawn independently of brush geometry. An area records its purpose, shape language, center, bounds/radius, height levels, openings, and landmark intent. A connection records its endpoint areas, traversal type, width, vertical change, curvature intent, cover, visibility, and traversal role. Both can remain plan-only or optionally create ordinary grouped floor/room/connector brushes. The generated objects are not opaque: they remain queryable, editable, and removable through normal map operations.
 
 Declared shaders count as valid texture sources even when they intentionally have no image, so tool, trigger, clip, and sky shaders do not produce false missing-texture diagnostics.
 
@@ -195,8 +198,8 @@ Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as
 
 A useful authoring loop is:
 
-1. Call `map_status` and `map_style_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its visual brief, and available assets.
-2. For complex geometry, call `map_preview` first; then make one logical edit with `map_apply` and the same current revision.
+1. Call `map_status`, `map_style_get`, and `map_spatial_plan_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its design intent, and available assets.
+2. For a substantial layout, call `map_spatial_plan_preview` before committing areas and routes. For complex geometry, call `map_preview`; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.
    Use `editor_layout_screenshot` for flow, symmetry, spacing, and route-layout decisions, `map_spatial_review` for composition heuristics, `map_texture_review` for projection quality, and `map_design_review` for a combined structured quality pass.

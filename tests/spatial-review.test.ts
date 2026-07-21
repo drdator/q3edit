@@ -66,4 +66,27 @@ describe('MCP spatial design review', () => {
       expect.objectContaining({ code: 'long-flat-walls', refs: expect.any(Array) }),
     ]));
   });
+
+  test('compares the persistent semantic graph with realized grouped geometry', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      {
+        type: 'create_area', id: 'realized', purpose: 'entry', shape: 'rectangular', center: [0, 0, 0],
+        bounds: { mins: [-64, -64, 0], maxs: [64, 64, 128] }, height: 128, geometry: 'floor',
+      },
+      {
+        type: 'create_area', id: 'planned', purpose: 'future upper route', shape: 'radial', center: [512, 0, 128],
+        radius: 96, height: 192,
+      },
+    ]);
+
+    const result = reviewSpatialDesign(editor.serializeMap());
+
+    expect(result.metrics.semanticPlan).toMatchObject({
+      areaCount: 2, connectionCount: 0, componentCount: 2, realizedAreas: 1, realizedConnections: 0,
+    });
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'semantic-plan-disconnected', severity: 'warning' }),
+    ]));
+  });
 });

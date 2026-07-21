@@ -2,6 +2,7 @@ import type { Brush, BrushFace } from '../src/brush';
 import { parseMapWithDiagnostics } from '../src/mapfile';
 import type { Vec3 } from '../src/math';
 import { isGroupInfoEntity } from '../src/named-groups';
+import { inspectSpatialPlan, readSpatialPlan } from '../src/spatial-plan';
 import { lintRoutes } from './route-lint';
 
 export type SpatialReviewCode =
@@ -15,7 +16,9 @@ export type SpatialReviewCode =
   | 'excessive-symmetry'
   | 'weak-landmark-distribution'
   | 'flat-silhouette'
-  | 'long-flat-walls';
+  | 'long-flat-walls'
+  | 'semantic-plan-invalid'
+  | 'semantic-plan-disconnected';
 
 export interface SpatialReviewIssue {
   severity: 'warning' | 'info';
@@ -81,6 +84,14 @@ export interface SpatialReviewResult {
     landmarks: { candidateCount: number; occupiedQuadrants: number; refs: string[] };
     silhouette: { minimumTop: number | null; maximumTop: number | null; heightRange: number | null };
     longFlatWalls: { count: number; refs: string[] };
+    semanticPlan: {
+      areaCount: number;
+      connectionCount: number;
+      componentCount: number;
+      realizedAreas: number;
+      realizedConnections: number;
+      issueCount: number;
+    };
   };
   issueCount: number;
   issues: SpatialReviewIssue[];
@@ -175,6 +186,8 @@ function routeTopology(mapText: string, platformRefs: string[]): SpatialReviewRe
 
 export function reviewSpatialDesign(mapText: string): SpatialReviewResult {
   const entities = parseMapWithDiagnostics(mapText).document.entities;
+  const spatialPlan = readSpatialPlan(entities.find(entity => entity.classname === 'worldspawn')?.properties ?? {});
+  const planInspection = inspectSpatialPlan(spatialPlan);
   const entries: BrushEntry[] = [];
   entities.forEach((entity, entityIndex) => {
     if (isGroupInfoEntity(entity) || entity.classname.startsWith('trigger_')) return;
@@ -245,6 +258,11 @@ export function reviewSpatialDesign(mapText: string): SpatialReviewResult {
     const height = Math.max(...face.polygon.map(point => point[2])) - Math.min(...face.polygon.map(point => point[2]));
     return width >= 512 && height >= 128 && faceArea(face) >= 65536;
   }).map(({ ref }) => ref);
+  const realizedGroupIds = new Set(entities.flatMap(entity => [
+    entity.properties._q3edit_group_id,
+    ...entity.brushes.map(brush => brush.editorGroupId),
+    ...entity.patches.map(patch => patch.editorGroupId),
+  ]).filter((value): value is string => Boolean(value)));
 
   const metrics: SpatialReviewResult['metrics'] = {
     geometry: {
@@ -273,6 +291,14 @@ export function reviewSpatialDesign(mapText: string): SpatialReviewResult {
       heightRange: topValues.length > 0 ? rounded(Math.max(...topValues) - Math.min(...topValues), 1) : null,
     },
     longFlatWalls: { count: longWallRefs.length, refs: longWallRefs },
+    semanticPlan: {
+      areaCount: spatialPlan.areas.length,
+      connectionCount: spatialPlan.connections.length,
+      componentCount: planInspection.connectedComponents.length,
+      realizedAreas: spatialPlan.areas.filter(area => area.groupId && realizedGroupIds.has(area.groupId)).length,
+      realizedConnections: spatialPlan.connections.filter(connection => connection.groupId && realizedGroupIds.has(connection.groupId)).length,
+      issueCount: planInspection.issues.length,
+    },
   };
 
   const issues: SpatialReviewIssue[] = [];
@@ -331,6 +357,17 @@ export function reviewSpatialDesign(mapText: string): SpatialReviewResult {
     severity: 'info', code: 'long-flat-walls', refs: longWallRefs.slice(0, 16),
     message: `${longWallRefs.length} uninterrupted axis-aligned wall faces are at least 512 units wide and 128 units tall.`,
     suggestions: ['Articulate long walls with depth changes, openings, supports, or material rhythm.', 'Angle or curve selected wall sections where it supports navigation.'],
+  });
+  const invalidPlanIssues = planInspection.issues.filter(issue => issue.severity === 'error');
+  if (invalidPlanIssues.length > 0) add({
+    severity: 'warning', code: 'semantic-plan-invalid', refs: [],
+    message: `The persistent semantic plan has ${invalidPlanIssues.length} invalid relationship${invalidPlanIssues.length === 1 ? '' : 's'}.`,
+    suggestions: ['Inspect map_spatial_plan_get and repair duplicate or missing area references before generating more geometry.'],
+  });
+  if (spatialPlan.areas.length > 1 && planInspection.connectedComponents.length > 1) add({
+    severity: 'warning', code: 'semantic-plan-disconnected', refs: [],
+    message: `${spatialPlan.areas.length} planned areas form ${planInspection.connectedComponents.length} disconnected semantic components.`,
+    suggestions: ['Connect isolated areas with an intentional traversal route.', 'Remove areas that are no longer part of the intended layout.'],
   });
 
   return {

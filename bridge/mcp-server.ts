@@ -4,6 +4,15 @@ import type { BridgeHub } from './bridge-hub';
 import { inspectMapObjects } from './map-inspection';
 import { inspectMapGroups, queryMap, type MapQueryOptions } from './map-query';
 import type { MapDocumentRef, MapOperation } from '../src/map-operations';
+import { parseMapWithDiagnostics } from '../src/mapfile';
+import {
+  inspectSpatialPlan,
+  readSpatialPlan,
+  upsertSpatialArea,
+  upsertSpatialConnection,
+  type SpatialArea,
+  type SpatialConnection,
+} from '../src/spatial-plan';
 import { lintGameplay } from './gameplay-lint';
 import { analyzeJumpPad } from './jump-analysis';
 import { lintRoutes } from './route-lint';
@@ -99,7 +108,7 @@ const spatialReviewIssueSchema = z.object({
   code: z.enum([
     'axis-aligned-dominance', 'limited-height-variation', 'repeated-dimensions', 'straight-layout-dominance',
     'weak-route-branching', 'route-dead-ends', 'single-spatial-rhythm', 'excessive-symmetry',
-    'weak-landmark-distribution', 'flat-silhouette', 'long-flat-walls',
+    'weak-landmark-distribution', 'flat-silhouette', 'long-flat-walls', 'semantic-plan-invalid', 'semantic-plan-disconnected',
   ]),
   message: z.string(), refs: z.array(z.string()), suggestions: z.array(z.string()),
 });
@@ -126,6 +135,10 @@ const spatialReviewMetricsSchema = z.object({
   landmarks: z.object({ candidateCount: z.number().int(), occupiedQuadrants: z.number().int(), refs: z.array(z.string()) }),
   silhouette: z.object({ minimumTop: z.number().nullable(), maximumTop: z.number().nullable(), heightRange: z.number().nullable() }),
   longFlatWalls: z.object({ count: z.number().int(), refs: z.array(z.string()) }),
+  semanticPlan: z.object({
+    areaCount: z.number().int(), connectionCount: z.number().int(), componentCount: z.number().int(),
+    realizedAreas: z.number().int(), realizedConnections: z.number().int(), issueCount: z.number().int(),
+  }),
 });
 const jumpPadAnalysisSchema = z.object({
   model: z.string(),
@@ -249,6 +262,54 @@ const mapStyleBriefSchema = z.object({
   detailDensity: z.enum(['sparse', 'balanced', 'rich']).optional(),
   notes: z.string().max(4000).optional(),
 });
+const spatialAreaShapeSchema = z.enum(['rectangular', 'octagonal', 'radial', 'curved', 'terraced', 'irregular']);
+const spatialRouteTypeSchema = z.enum(['corridor', 'bridge', 'stairs', 'ramp', 'jump', 'teleporter', 'open']);
+const spatialOpeningSchema = z.object({
+  side: z.enum(['north', 'south', 'east', 'west', 'up', 'down']),
+  width: z.number().positive(), offset: z.number().optional(), note: z.string().max(500).optional(),
+});
+const spatialAreaSchema = z.object({
+  id: symbolicId, purpose: z.string().min(1).max(500), shape: spatialAreaShapeSchema, center: vec3,
+  bounds: screenshotBounds.optional(), radius: z.number().positive().optional(), height: z.number().positive(),
+  levels: z.array(z.number()).max(16), footprint: z.array(vec3).min(3).max(64).optional(),
+  openings: z.array(spatialOpeningSchema).max(32), landmarkIntent: z.string().max(1000).optional(), groupId: z.string().optional(),
+});
+const spatialConnectionSchema = z.object({
+  id: symbolicId, fromArea: symbolicId, toArea: symbolicId, routeType: spatialRouteTypeSchema,
+  width: z.number().positive(), verticalChange: z.number().optional(), curvature: z.number().min(-1).max(1).optional(),
+  cover: z.enum(['open', 'partial', 'enclosed']).optional(), visibility: z.enum(['hidden', 'glimpse', 'visible']).optional(),
+  traversalIntent: z.string().max(1000).optional(), groupId: z.string().optional(),
+});
+const spatialPlanIssueSchema = z.object({
+  severity: issueSeverity,
+  code: z.enum(['duplicate-area', 'duplicate-connection', 'missing-area', 'self-connection', 'overlapping-area', 'disconnected-area']),
+  message: z.string(), ids: z.array(z.string()),
+});
+const spatialPlanInspectionSchema = z.object({
+  bounds: nullableBounds, levels: z.array(z.number()),
+  routeTypes: z.object({
+    corridor: z.number().int(), bridge: z.number().int(), stairs: z.number().int(), ramp: z.number().int(),
+    jump: z.number().int(), teleporter: z.number().int(), open: z.number().int(),
+  }),
+  connectedComponents: z.array(z.array(z.string())), issues: z.array(spatialPlanIssueSchema),
+});
+const spatialPlanOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(),
+  plan: z.object({ version: z.literal(1), areas: z.array(spatialAreaSchema), connections: z.array(spatialConnectionSchema) }),
+  inspection: spatialPlanInspectionSchema,
+});
+const spatialAreaProposalSchema = z.object({
+  id: symbolicId, purpose: z.string().min(1).max(500), shape: spatialAreaShapeSchema, center: vec3,
+  bounds: screenshotBounds.optional(), radius: z.number().positive().optional(), height: z.number().positive(),
+  levels: z.array(z.number()).max(16).optional(), footprint: z.array(vec3).min(3).max(64).optional(),
+  openings: z.array(spatialOpeningSchema).max(32).optional(), landmarkIntent: z.string().max(1000).optional(),
+});
+const spatialConnectionProposalSchema = z.object({
+  id: symbolicId, fromArea: symbolicId, toArea: symbolicId, routeType: spatialRouteTypeSchema,
+  width: z.number().positive(), verticalChange: z.number().optional(), curvature: z.number().min(-1).max(1).optional(),
+  cover: z.enum(['open', 'partial', 'enclosed']).optional(), visibility: z.enum(['hidden', 'glimpse', 'visible']).optional(),
+  traversalIntent: z.string().max(1000).optional(),
+});
 const styleFindingSchema = z.object({
   severity: z.enum(['warning', 'info']),
   code: z.enum(['style-grid-deviation', 'style-palette-deviation', 'style-detail-density', 'style-lighting-mood', 'style-texture-density']),
@@ -369,7 +430,7 @@ const styleBriefOutputSchema = z.object({
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
-  'create_wedge', 'create_stairs', 'create_brush', 'create_prefab', 'translate', 'rotate', 'mirror', 'clone',
+  'create_wedge', 'create_stairs', 'create_brush', 'create_prefab', 'create_area', 'connect_areas', 'translate', 'rotate', 'mirror', 'clone',
   'array', 'set_texture', 'edit_faces', 'set_brush_classification', 'clip_brushes',
   'hollow_brushes', 'csg_subtract', 'create_jump_pad', 'create_teleporter', 'delete',
   'assign_group', 'remove_from_group',
@@ -514,6 +575,41 @@ const mapOperationVariants = [
     orientation: z.enum(['x', 'y']).optional(),
     classification: z.enum(['detail', 'structural']).optional(),
   }),
+  z.object({
+    type: z.literal('create_area'),
+    ...creationMetadataSchema,
+    id: symbolicId,
+    purpose: z.string().min(1).max(500),
+    shape: spatialAreaShapeSchema,
+    center: vec3,
+    bounds: screenshotBounds.optional(),
+    radius: z.number().positive().optional(),
+    height: z.number().positive(),
+    levels: z.array(z.number()).max(16).optional(),
+    footprint: z.array(vec3).min(3).max(64).optional(),
+    openings: z.array(spatialOpeningSchema).max(32).optional(),
+    landmarkIntent: z.string().max(1000).optional(),
+    geometry: z.enum(['none', 'floor', 'room']).optional(),
+    texture: z.string().min(1).optional(),
+    wallThickness: z.number().positive().optional(),
+  }),
+  z.object({
+    type: z.literal('connect_areas'),
+    ...creationMetadataSchema,
+    id: symbolicId,
+    fromArea: symbolicId,
+    toArea: symbolicId,
+    routeType: spatialRouteTypeSchema,
+    width: z.number().positive(),
+    verticalChange: z.number().optional(),
+    curvature: z.number().min(-1).max(1).optional(),
+    cover: z.enum(['open', 'partial', 'enclosed']).optional(),
+    visibility: z.enum(['hidden', 'glimpse', 'visible']).optional(),
+    traversalIntent: z.string().max(1000).optional(),
+    geometry: z.enum(['none', 'floor']).optional(),
+    thickness: z.number().positive().optional(),
+    texture: z.string().min(1).optional(),
+  }),
   z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
   z.object({ type: z.literal('rotate'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']), angleDegrees: z.number() }),
   z.object({ type: z.literal('mirror'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']) }),
@@ -630,6 +726,16 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'Prefabs default to detail classification. Set classification to structural only when the module must seal the world or control visibility.',
     'jump_pad_base fits the focal material once on its top. Pillars and door frames preserve natural architectural tiling.',
   ],
+  create_area: [
+    'Persists a semantic area in worldspawn independently of generated geometry. id remains stable across later MCP sessions.',
+    'Provide bounds, a positive radius, or at least three footprint points. levels are absolute world Z values.',
+    'geometry defaults to none for plan-first work. floor creates editable grouped box/cylinder floors; room currently requires rectangular shape.',
+  ],
+  connect_areas: [
+    'Both area ids must already exist, including areas created earlier in the same map_apply batch.',
+    'Persists route intent independently of geometry. geometry=floor creates one editable grouped straight connector that may slope between area centers.',
+    'curvature records normalized design intent from -1 to 1; curved realization is handled by later path construction rather than hidden geometry.',
+  ],
   create_entity_array: ['Creates count entities at start + delta × index in one operation and one undo transaction.'],
   edit_faces: [
     'Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.',
@@ -654,6 +760,8 @@ const compatibleMapOperationInput = z.object({
     'create_stairs',
     'create_brush',
     'create_prefab',
+    'create_area',
+    'connect_areas',
     'translate',
     'rotate',
     'mirror',
@@ -716,6 +824,27 @@ const compatibleMapOperationInput = z.object({
   }).optional(),
   primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'pyramid']).optional(),
   prefab: z.enum(['pillar', 'door_frame', 'jump_pad_base']).optional(),
+  purpose: z.string().optional(),
+  shape: spatialAreaShapeSchema.optional(),
+  bounds: z.object({ mins: compatibleVec3, maxs: compatibleVec3 }).optional(),
+  radius: z.number().optional(),
+  height: z.number().optional(),
+  levels: z.array(z.number()).optional(),
+  footprint: z.array(compatibleVec3).optional(),
+  openings: z.array(z.object({
+    side: z.enum(['north', 'south', 'east', 'west', 'up', 'down']), width: z.number(), offset: z.number().optional(), note: z.string().optional(),
+  })).optional(),
+  landmarkIntent: z.string().optional(),
+  geometry: z.enum(['none', 'floor', 'room']).optional(),
+  fromArea: symbolicId.optional(),
+  toArea: symbolicId.optional(),
+  routeType: spatialRouteTypeSchema.optional(),
+  width: z.number().optional(),
+  verticalChange: z.number().optional(),
+  curvature: z.number().optional(),
+  cover: z.enum(['open', 'partial', 'enclosed']).optional(),
+  visibility: z.enum(['hidden', 'glimpse', 'visible']).optional(),
+  traversalIntent: z.string().optional(),
   orientation: z.enum(['x', 'y']).optional(),
   axis: z.enum(['x', 'y', 'z']).optional(),
   sides: z.number().int().optional(),
@@ -779,6 +908,11 @@ function validatedMapOperations(operations: unknown[]): MapOperation[] {
   });
 }
 
+function spatialPlanFromMapText(mapText: string) {
+  const worldspawn = parseMapWithDiagnostics(mapText).document.entities.find(entity => entity.classname === 'worldspawn');
+  return readSpatialPlan(worldspawn?.properties ?? {});
+}
+
 function compactRefs(refs: string[]): { count: number; refs: string[]; truncated: boolean } {
   if (refs.length <= 8) return { count: refs.length, refs, truncated: false };
   return { count: refs.length, refs: [...refs.slice(0, 4), ...refs.slice(-4)], truncated: true };
@@ -810,6 +944,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Call editor_sessions first when more than one Q3Edit browser may be open, then pass sessionId or select one with editor_session_select.',
       'Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data.',
       'Call map_style_get before substantial authoring and follow its persistent palette, grid, density, lighting, and visual notes when configured.',
+      'For substantial layouts, call map_spatial_plan_get and preview semantic areas and connections before generating detailed geometry. Use create_area and connect_areas to keep spatial intent persistent and inspectable.',
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
@@ -928,7 +1063,13 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 3, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 4, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        spatialPlanning: {
+          persistent: true,
+          tools: ['map_spatial_plan_get', 'map_spatial_plan_preview'],
+          operations: ['create_area', 'connect_areas'],
+          geometryIndependent: true,
+        },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -1069,6 +1210,49 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
       return toolResult({ sessionId: resolved, revision: snapshot.revision, ...lintGeometry(snapshot.mapText) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_spatial_plan_get', {
+    title: 'Get the persistent semantic spatial plan',
+    description: 'Return semantic areas and connections stored in worldspawn independently of generated geometry, together with plan bounds, levels, route-type counts, connected components, and consistency findings.',
+    inputSchema: { ...sessionInput },
+    outputSchema: spatialPlanOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const plan = spatialPlanFromMapText(snapshot.mapText);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, plan, inspection: inspectSpatialPlan(plan) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_spatial_plan_preview', {
+    title: 'Preview semantic areas and routes without editing',
+    description: 'Merge proposed areas and connections into the current semantic plan in memory and return bounds, height levels, route distribution, connected components, overlap, missing-link, and isolation findings. This does not generate brushes or change the document.',
+    inputSchema: {
+      ...sessionInput,
+      replace: z.boolean().optional().default(false).describe('Preview only the proposed plan instead of merging it with the current persisted plan'),
+      areas: z.array(spatialAreaProposalSchema).max(128).optional().default([]),
+      connections: z.array(spatialConnectionProposalSchema).max(256).optional().default([]),
+    },
+    outputSchema: spatialPlanOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, replace, areas, connections }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      let plan = replace ? { version: 1 as const, areas: [], connections: [] } : spatialPlanFromMapText(snapshot.mapText);
+      for (const area of areas) plan = upsertSpatialArea(plan, {
+        ...area, levels: area.levels ?? [area.bounds?.mins[2] ?? area.center[2]], openings: area.openings ?? [],
+      } as SpatialArea);
+      for (const connection of connections) plan = upsertSpatialConnection(plan, connection as SpatialConnection);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, plan, inspection: inspectSpatialPlan(plan) });
     } catch (error) {
       return toolError(error);
     }

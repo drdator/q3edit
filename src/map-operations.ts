@@ -32,6 +32,16 @@ import {
   isGroupInfoEntity,
   listNamedGroups,
 } from './named-groups';
+import {
+  SPATIAL_PLAN_KEY,
+  readSpatialPlan,
+  serializeSpatialPlan,
+  upsertSpatialArea,
+  upsertSpatialConnection,
+  type SpatialAreaShape,
+  type SpatialOpening,
+  type SpatialRouteType,
+} from './spatial-plan';
 
 export type MapObjectRef = `E${number}` | `E${number}:B${number}` | `E${number}:P${number}`;
 export type MapFaceRef = `E${number}:B${number}:F${number}`;
@@ -184,6 +194,41 @@ export interface CreatePrefabOperation extends CreationMetadata {
   classification?: 'detail' | 'structural';
 }
 
+export interface CreateAreaOperation extends CreationMetadata {
+  type: 'create_area';
+  id: string;
+  purpose: string;
+  shape: SpatialAreaShape;
+  center: Vec3;
+  bounds?: { mins: Vec3; maxs: Vec3 };
+  radius?: number;
+  height: number;
+  levels?: number[];
+  footprint?: Vec3[];
+  openings?: SpatialOpening[];
+  landmarkIntent?: string;
+  geometry?: 'none' | 'floor' | 'room';
+  texture?: string;
+  wallThickness?: number;
+}
+
+export interface ConnectAreasOperation extends CreationMetadata {
+  type: 'connect_areas';
+  id: string;
+  fromArea: string;
+  toArea: string;
+  routeType: SpatialRouteType;
+  width: number;
+  verticalChange?: number;
+  curvature?: number;
+  cover?: 'open' | 'partial' | 'enclosed';
+  visibility?: 'hidden' | 'glimpse' | 'visible';
+  traversalIntent?: string;
+  geometry?: 'none' | 'floor';
+  thickness?: number;
+  texture?: string;
+}
+
 export interface TranslateObjectsOperation {
   type: 'translate';
   targets: MapTargetRef[];
@@ -315,6 +360,8 @@ export type MapOperation =
   | CreateStairsOperation
   | CreateBrushOperation
   | CreatePrefabOperation
+  | CreateAreaOperation
+  | ConnectAreasOperation
   | TranslateObjectsOperation
   | RotateObjectsOperation
   | MirrorObjectsOperation
@@ -720,6 +767,148 @@ function applyCreateRoom(editor: Editor, operation: CreateRoomOperation, aliases
     );
     return { kind: 'brush' as const, entity, brush };
   });
+}
+
+function spatialGroupId(kind: 'area' | 'connection', id: string): string {
+  return `spatial-${kind}-${id.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')}`.slice(0, 128);
+}
+
+function areaBounds(operation: CreateAreaOperation): { mins: Vec3; maxs: Vec3 } {
+  if (operation.bounds) {
+    assertBounds(operation.bounds.mins, operation.bounds.maxs);
+    return { mins: [...operation.bounds.mins] as Vec3, maxs: [...operation.bounds.maxs] as Vec3 };
+  }
+  if (operation.footprint && operation.footprint.length >= 3) {
+    operation.footprint.forEach((point, index) => assertVector(`footprint point ${index + 1}`, point));
+    return {
+      mins: [
+        Math.min(...operation.footprint.map(point => point[0])),
+        Math.min(...operation.footprint.map(point => point[1])),
+        operation.center[2],
+      ],
+      maxs: [
+        Math.max(...operation.footprint.map(point => point[0])),
+        Math.max(...operation.footprint.map(point => point[1])),
+        operation.center[2] + operation.height,
+      ],
+    };
+  }
+  if (!Number.isFinite(operation.radius) || (operation.radius ?? 0) <= 0) {
+    throw new Error('create_area requires bounds, a footprint with at least three points, or a positive radius');
+  }
+  const radius = operation.radius!;
+  return {
+    mins: [operation.center[0] - radius, operation.center[1] - radius, operation.center[2]],
+    maxs: [operation.center[0] + radius, operation.center[1] + radius, operation.center[2] + operation.height],
+  };
+}
+
+function applyCreateArea(editor: Editor, operation: CreateAreaOperation, aliases: SymbolicReferences): ObjectHandle[] {
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(operation.id)) throw new Error('create_area id must be a stable identifier');
+  if (!operation.purpose.trim()) throw new Error('create_area purpose must not be empty');
+  assertVector('center', operation.center);
+  if (!Number.isFinite(operation.height) || operation.height <= 0) throw new Error('create_area height must be positive');
+  const bounds = areaBounds(operation);
+  const levels = [...new Set(operation.levels?.length ? operation.levels : [bounds.mins[2]])].sort((a, b) => a - b);
+  if (!levels.every(Number.isFinite)) throw new Error('create_area levels must contain finite absolute world Z values');
+  for (const opening of operation.openings ?? []) {
+    if (!Number.isFinite(opening.width) || opening.width <= 0) throw new Error('create_area opening widths must be positive');
+  }
+
+  const handles: ObjectHandle[] = [];
+  const texture = operation.texture ?? 'common/caulk';
+  if ((operation.geometry ?? 'none') === 'room') {
+    if (operation.shape !== 'rectangular') throw new Error('room geometry currently requires a rectangular semantic area; use floor or none for other shapes');
+    handles.push(...applyCreateRoom(editor, {
+      type: 'create_room', mins: bounds.mins, maxs: bounds.maxs,
+      wallThickness: operation.wallThickness, textures: { walls: texture, floor: texture, ceiling: texture },
+    }, aliases));
+  } else if (operation.geometry === 'floor') {
+    const thickness = operation.wallThickness ?? 16;
+    if (!Number.isFinite(thickness) || thickness <= 0) throw new Error('create_area floor thickness must be positive');
+    for (const level of levels) {
+      const mins: Vec3 = [bounds.mins[0], bounds.mins[1], level - thickness];
+      const maxs: Vec3 = [bounds.maxs[0], bounds.maxs[1], level];
+      const brush = ['octagonal', 'radial', 'curved'].includes(operation.shape)
+        ? createBrushPrimitive('cylinder', mins, maxs, texture, 2, operation.shape === 'octagonal' ? 8 : 16)
+        : createBoxBrush(mins, maxs, texture);
+      editor.worldspawn.brushes.push(brush);
+      handles.push({ kind: 'brush', entity: editor.worldspawn, brush });
+    }
+  }
+
+  let groupId: string | undefined;
+  if (handles.length > 0) {
+    groupId = ensureGroup(editor, operation.group ?? `Area: ${operation.id}`, operation.groupId ?? spatialGroupId('area', operation.id));
+    for (const handle of handles) setResolvedGroup(resolveHandle(editor, handle), groupId);
+  }
+  const current = readSpatialPlan(editor.worldspawn.properties);
+  editor.worldspawn.properties[SPATIAL_PLAN_KEY] = serializeSpatialPlan(upsertSpatialArea(current, {
+    id: operation.id,
+    purpose: operation.purpose.trim(),
+    shape: operation.shape,
+    center: [...operation.center] as Vec3,
+    bounds,
+    radius: operation.radius,
+    height: operation.height,
+    levels,
+    footprint: operation.footprint?.map(point => [...point] as Vec3),
+    openings: operation.openings?.map(opening => ({ ...opening })) ?? [],
+    landmarkIntent: operation.landmarkIntent?.trim() || undefined,
+    groupId,
+  }));
+  return handles;
+}
+
+function applyConnectAreas(editor: Editor, operation: ConnectAreasOperation): ObjectHandle[] {
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(operation.id)) throw new Error('connect_areas id must be a stable identifier');
+  if (!Number.isFinite(operation.width) || operation.width <= 0) throw new Error('connect_areas width must be positive');
+  const current = readSpatialPlan(editor.worldspawn.properties);
+  const from = current.areas.find(area => area.id === operation.fromArea);
+  const to = current.areas.find(area => area.id === operation.toArea);
+  if (!from || !to) throw new Error(`connect_areas requires existing areas; missing ${[!from && operation.fromArea, !to && operation.toArea].filter(Boolean).join(', ')}`);
+  if (from.id === to.id) throw new Error('connect_areas cannot connect an area to itself');
+
+  const handles: ObjectHandle[] = [];
+  if (operation.geometry === 'floor') {
+    const thickness = operation.thickness ?? 16;
+    if (!Number.isFinite(thickness) || thickness <= 0) throw new Error('connect_areas thickness must be positive');
+    const start = [...from.center] as Vec3;
+    const end = [...to.center] as Vec3;
+    if (operation.verticalChange !== undefined) end[2] = start[2] + operation.verticalChange;
+    const delta = end.map((value, axis) => value - start[axis]) as Vec3;
+    const horizontalLength = Math.hypot(delta[0], delta[1]);
+    const length = Math.hypot(...delta);
+    if (length < 1) throw new Error('connect_areas geometry requires distinct area centers');
+    const brush = createBoxBrush([-length / 2, -operation.width / 2, -thickness / 2], [length / 2, operation.width / 2, thickness / 2], operation.texture ?? 'common/caulk');
+    const pitch = -Math.atan2(delta[2], Math.max(0.0001, horizontalLength));
+    const yaw = Math.atan2(delta[1], delta[0]);
+    rotateEditorBrush(editor, brush, [0, 0, 0], 1, pitch);
+    rotateEditorBrush(editor, brush, [0, 0, 0], 2, yaw);
+    translateEditorBrush(editor, brush, start.map((value, axis) => (value + end[axis]) / 2) as Vec3);
+    editor.worldspawn.brushes.push(brush);
+    handles.push({ kind: 'brush', entity: editor.worldspawn, brush });
+  }
+
+  let groupId: string | undefined;
+  if (handles.length > 0) {
+    groupId = ensureGroup(editor, operation.group ?? `Connection: ${operation.id}`, operation.groupId ?? spatialGroupId('connection', operation.id));
+    for (const handle of handles) setResolvedGroup(resolveHandle(editor, handle), groupId);
+  }
+  editor.worldspawn.properties[SPATIAL_PLAN_KEY] = serializeSpatialPlan(upsertSpatialConnection(current, {
+    id: operation.id,
+    fromArea: operation.fromArea,
+    toArea: operation.toArea,
+    routeType: operation.routeType,
+    width: operation.width,
+    verticalChange: operation.verticalChange,
+    curvature: operation.curvature,
+    cover: operation.cover,
+    visibility: operation.visibility,
+    traversalIntent: operation.traversalIntent?.trim() || undefined,
+    groupId,
+  }));
+  return handles;
 }
 
 function setObjectTexture(resolved: ResolvedObject, texture: string): void {
@@ -1165,6 +1354,14 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handles = addPrefab(editor, entity, operation);
         recordCreated(editor, operation, handles, createdHandles, aliases);
+      } else if (operation.type === 'create_area') {
+        const handles = applyCreateArea(editor, operation, aliases);
+        recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
+        changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
+      } else if (operation.type === 'connect_areas') {
+        const handles = applyConnectAreas(editor, operation);
+        recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
+        changedHandles.add({ kind: 'entity', entity: editor.worldspawn });
       } else if (operation.type === 'create_jump_pad' || operation.type === 'create_teleporter') {
         const created = createGameplayLink(editor, operation, ++gameplayLinkSequence);
         recordCreated(editor, operation, created.handles, createdHandles, aliases, created.groupHandles);
