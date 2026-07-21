@@ -1,7 +1,7 @@
 import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from './diagnostics';
 import { Editor, type SelectionItem } from './editor';
 import type { Vec3 } from './math';
-import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, LiveMapSnapshot, ScreenshotBounds } from './live-bridge-protocol';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, ScreenshotBounds } from './live-bridge-protocol';
 import { applyMapOperations } from './map-operations';
 import { getEntityClassRegistry } from './entity-definitions';
 import { collectCompileModelFiles, compileMap } from './q3map';
@@ -26,7 +26,11 @@ export interface LiveBridgeEditorControls {
   frameBounds(bounds: ScreenshotBounds): void;
   captureScreenshot(mode: NonNullable<EditorScreenshotOptions['mode']>, width?: number, height?: number, xray?: boolean): { mimeType: string; data: string; width: number; height: number };
   launchBspPreview(mapName: string, bsp: Uint8Array, noclip: boolean): void;
-  captureBspPreview(): { mimeType: string; data: string; width: number; height: number };
+  gameStatus(): GamePreviewStatus;
+  waitForGameReady(timeoutMs: number): Promise<GamePreviewStatus>;
+  gameCommand(command: 'noclip' | 'restart'): GamePreviewStatus;
+  setGameView(position: Vec3, yaw: number): GamePreviewStatus;
+  captureBspPreview(): GameScreenshot;
 }
 
 function intersectsBounds(a: ScreenshotBounds, b: ScreenshotBounds): boolean {
@@ -663,6 +667,50 @@ export class LiveMapBridge {
           type: 'capability_result', requestId: message.requestId,
           result: { launched: true, mapName, revision: this.editor.documentRevision, noclip: message.noclip },
         });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'game_status') {
+      this.send({ type: 'capability_result', requestId: message.requestId, result: this.controls.gameStatus() });
+      return;
+    }
+
+    if (message.type === 'game_wait_ready') {
+      try {
+        const status = await this.controls.waitForGameReady(message.timeoutMs);
+        this.send({ type: 'capability_result', requestId: message.requestId, result: status });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'game_command') {
+      try {
+        const status = this.controls.gameCommand(message.command);
+        this.send({ type: 'capability_result', requestId: message.requestId, result: status });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'game_set_view') {
+      try {
+        const status = this.controls.setGameView(message.position, message.yaw);
+        this.send({ type: 'capability_result', requestId: message.requestId, result: status });
       } catch (error) {
         this.send({
           type: 'operation_error', requestId: message.requestId,

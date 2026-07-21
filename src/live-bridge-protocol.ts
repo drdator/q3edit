@@ -30,6 +30,27 @@ export interface EditorScreenshotOptions {
   xray?: boolean;
 }
 
+export interface GamePreviewStatus {
+  state: 'idle' | 'preparing' | 'loading' | 'running' | 'error' | 'closed';
+  message: string;
+  mapName: string | null;
+  noclip: boolean;
+  launchedAt: string | null;
+  runningAt: string | null;
+  error: string | null;
+  consoleTail: string[];
+}
+
+export interface GameScreenshot {
+  mimeType: string;
+  data: string;
+  width: number;
+  height: number;
+  blackFrame: boolean;
+  meanLuminance: number;
+  status: GamePreviewStatus;
+}
+
 export type BridgeToEditorMessage =
   | {
       type: 'apply_operations';
@@ -72,6 +93,10 @@ export type BridgeToEditorMessage =
   | { type: 'editor_capabilities'; requestId: string }
   | { type: 'map_compile'; requestId: string; quality: 'fast' | 'normal' | 'full' }
   | { type: 'map_play'; requestId: string; noclip: boolean }
+  | { type: 'game_status'; requestId: string }
+  | { type: 'game_wait_ready'; requestId: string; timeoutMs: number }
+  | { type: 'game_command'; requestId: string; command: 'noclip' | 'restart' }
+  | { type: 'game_set_view'; requestId: string; position: Vec3; yaw: number }
   | { type: 'game_screenshot'; requestId: string }
   | { type: 'mark_saved'; revision: number };
 

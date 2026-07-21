@@ -29,6 +29,7 @@ import {
 } from './sidebar-layout';
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import 'virtual:phosphor-icons.css';
+import type { GamePreviewStatus, GameScreenshot } from './live-bridge-protocol';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -56,6 +57,13 @@ const COMMON_TEXTURES = [
   'skies/earthsky01',
 ];
 
+interface GamePreviewLaunch {
+  mapName: string;
+  bsp: Uint8Array;
+  noclip: boolean;
+  commands: Array<{ name: 'setviewpos' | 'map_restart'; args: string[] }>;
+}
+
 export class UI {
   editor: Editor;
   private openMenu: HTMLElement | null = null;
@@ -77,6 +85,13 @@ export class UI {
   private cameraPanelSignature = '';
   private soloedPanelId: string | null = null;
   private preSoloPanelStates: PanelCollapseState | null = null;
+  private gamePreviewLaunch: GamePreviewLaunch | null = null;
+  private gamePreviewClose: ((markClosed?: boolean) => void) | null = null;
+  private gamePreviewListeners = new Set<() => void>();
+  private gamePreviewStatus: GamePreviewStatus = {
+    state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
+    launchedAt: null, runningAt: null, error: null, consoleTail: [],
+  };
 
   constructor(editor: Editor) {
     this.editor = editor;
@@ -2649,12 +2664,73 @@ export class UI {
     if (autoPlay) compileBtn.click();
   }
 
-  openBspPreview(mapName: string, bsp: Uint8Array, noclip = false): void {
-    document.getElementById('game-preview-overlay')?.remove();
+  private updateGamePreviewStatus(update: Partial<GamePreviewStatus>): void {
+    this.gamePreviewStatus = { ...this.gamePreviewStatus, ...update };
+    for (const listener of this.gamePreviewListeners) listener();
+  }
+
+  getGamePreviewStatus(): GamePreviewStatus {
+    return structuredClone(this.gamePreviewStatus);
+  }
+
+  waitForGamePreview(timeoutMs: number): Promise<GamePreviewStatus> {
+    if (this.gamePreviewStatus.state === 'running') return Promise.resolve(this.getGamePreviewStatus());
+    if (!this.gamePreviewLaunch || this.gamePreviewStatus.state === 'idle' || this.gamePreviewStatus.state === 'closed') {
+      return Promise.reject(new Error('No compiled BSP preview is starting or running; call map_play first'));
+    }
+    if (this.gamePreviewStatus.state === 'error') return Promise.reject(new Error(this.gamePreviewStatus.error ?? this.gamePreviewStatus.message));
+    return new Promise((resolve, reject) => {
+      const finish = () => {
+        if (this.gamePreviewStatus.state === 'running') {
+          cleanup(); resolve(this.getGamePreviewStatus());
+        } else if (this.gamePreviewStatus.state === 'error' || this.gamePreviewStatus.state === 'closed') {
+          cleanup(); reject(new Error(this.gamePreviewStatus.error ?? this.gamePreviewStatus.message));
+        }
+      };
+      const timer = window.setTimeout(() => {
+        cleanup(); reject(new Error(`Game preview did not become ready within ${timeoutMs} ms; current state is ${this.gamePreviewStatus.state}: ${this.gamePreviewStatus.message}`));
+      }, timeoutMs);
+      const cleanup = () => { window.clearTimeout(timer); this.gamePreviewListeners.delete(finish); };
+      this.gamePreviewListeners.add(finish);
+    });
+  }
+
+  runGamePreviewCommand(command: 'noclip' | 'restart'): GamePreviewStatus {
+    const launch = this.gamePreviewLaunch;
+    if (!launch) throw new Error('No compiled BSP preview is available; call map_play first');
+    this.openBspPreview(launch.mapName, launch.bsp, command === 'noclip' ? true : launch.noclip, launch.commands);
+    return this.getGamePreviewStatus();
+  }
+
+  setGamePreviewView(position: [number, number, number], yaw: number): GamePreviewStatus {
+    const launch = this.gamePreviewLaunch;
+    if (!launch) throw new Error('No compiled BSP preview is available; call map_play first');
+    const command = {
+      name: 'setviewpos' as const,
+      args: [...position.map(value => String(value)), String(yaw * 180 / Math.PI)],
+    };
+    this.openBspPreview(launch.mapName, launch.bsp, true, [command]);
+    return this.getGamePreviewStatus();
+  }
+
+  openBspPreview(
+    mapName: string,
+    bsp: Uint8Array,
+    noclip = false,
+    commands: GamePreviewLaunch['commands'] = [],
+  ): void {
+    this.gamePreviewClose?.(false);
 
     const safeMapName = mapName.replace(/[^a-zA-Z0-9_-]/g, '') || 'compile';
     const bspCopy = new Uint8Array(bsp.byteLength);
     bspCopy.set(bsp);
+    const retainedBsp = new Uint8Array(bsp.byteLength);
+    retainedBsp.set(bsp);
+    this.gamePreviewLaunch = { mapName: safeMapName, bsp: retainedBsp, noclip, commands: structuredClone(commands) };
+    this.updateGamePreviewStatus({
+      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName, noclip,
+      launchedAt: new Date().toISOString(), runningAt: null, error: null, consoleTail: [],
+    });
 
     const overlay = document.createElement('div');
     overlay.id = 'game-preview-overlay';
@@ -2728,13 +2804,19 @@ export class UI {
           mapName: safeMapName,
           bsp: bspCopy.buffer,
           noclip,
+          commands,
         }, window.location.origin, [bspCopy.buffer]);
       } else if (message?.type === 'q3edit-player:status') {
         status.textContent = message.message;
+        this.updateGamePreviewStatus({ state: 'loading', message: String(message.message) });
       } else if (message?.type === 'q3edit-player:running') {
         dialog.classList.add('running');
         status.textContent = `Running ${safeMapName}`;
+        this.updateGamePreviewStatus({ state: 'running', message: `Running ${safeMapName}`, runningAt: new Date().toISOString() });
         this.editor.statusMessage = `Running ${safeMapName} in browser ioquake3`;
+      } else if (message?.type === 'q3edit-player:console') {
+        const line = String(message.message ?? '').trim();
+        if (line) this.updateGamePreviewStatus({ consoleTail: [...this.gamePreviewStatus.consoleTail, line].slice(-80) });
       } else if (message?.type === 'q3edit-player:capture') {
         const captured = message.captured === true;
         dialog.classList.toggle('captured', captured);
@@ -2745,16 +2827,20 @@ export class UI {
       } else if (message?.type === 'q3edit-player:error') {
         dialog.classList.add('error');
         status.textContent = `Could not start: ${message.message}`;
+        this.updateGamePreviewStatus({ state: 'error', message: String(message.message), error: String(message.message) });
         this.editor.statusMessage = `ioquake3 failed: ${message.message}`;
       }
     };
 
-    const close = () => {
+    const close = (markClosed = true) => {
       window.removeEventListener('message', onMessage);
       frame.src = 'about:blank';
       overlay.remove();
+      if (this.gamePreviewClose === close) this.gamePreviewClose = null;
+      if (markClosed) this.updateGamePreviewStatus({ state: 'closed', message: `Closed ${safeMapName}` });
     };
-    closeBtn.onclick = close;
+    this.gamePreviewClose = close;
+    closeBtn.onclick = () => close();
 
     window.addEventListener('message', onMessage);
     overlay.addEventListener('keydown', (event) => {
@@ -2771,14 +2857,28 @@ export class UI {
     closeBtn.focus();
   }
 
-  captureBspPreview(): { mimeType: string; data: string; width: number; height: number } {
+  captureBspPreview(): GameScreenshot {
     const frame = document.querySelector<HTMLIFrameElement>('.game-preview-frame');
     const canvas = frame?.contentDocument?.querySelector<HTMLCanvasElement>('#canvas');
     if (!canvas || canvas.width < 1 || canvas.height < 1) throw new Error('No running compiled BSP preview is available');
+    const sample = document.createElement('canvas');
+    sample.width = Math.min(canvas.width, 128);
+    sample.height = Math.min(canvas.height, 128);
+    const context = sample.getContext('2d', { willReadFrequently: true })!;
+    context.drawImage(canvas, 0, 0, sample.width, sample.height);
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+    let luminance = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      luminance += pixels[index] * 0.2126 + pixels[index + 1] * 0.7152 + pixels[index + 2] * 0.0722;
+    }
+    const meanLuminance = pixels.length > 0 ? luminance / (pixels.length / 4) : 0;
     const dataUrl = canvas.toDataURL('image/png');
     return {
       mimeType: 'image/png', data: dataUrl.slice(dataUrl.indexOf(',') + 1),
       width: canvas.width, height: canvas.height,
+      blackFrame: meanLuminance < 1,
+      meanLuminance,
+      status: this.getGamePreviewStatus(),
     };
   }
 

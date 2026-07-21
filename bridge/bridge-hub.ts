@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { WebSocket } from 'ws';
-import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, LiveMapSnapshot } from '../src/live-bridge-protocol';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot } from '../src/live-bridge-protocol';
 import type { MapOperation, MapOperationResult } from '../src/map-operations';
 
 interface PendingRequest {
@@ -228,10 +228,26 @@ export class BridgeHub {
     return this.capabilityRequest(sessionId, { type: 'map_play', requestId: randomUUID(), noclip });
   }
 
-  async gameScreenshot(sessionId?: string): Promise<{ mimeType: string; data: string; width: number; height: number }> {
-    return await this.capabilityRequest(sessionId, { type: 'game_screenshot', requestId: randomUUID() }) as {
-      mimeType: string; data: string; width: number; height: number;
-    };
+  async gameStatus(sessionId?: string): Promise<GamePreviewStatus> {
+    return await this.capabilityRequest(sessionId, { type: 'game_status', requestId: randomUUID() }) as GamePreviewStatus;
+  }
+
+  async waitForGameReady(timeoutMs: number, sessionId?: string): Promise<GamePreviewStatus> {
+    return await this.capabilityRequest(sessionId, {
+      type: 'game_wait_ready', requestId: randomUUID(), timeoutMs,
+    }, timeoutMs + 5_000) as GamePreviewStatus;
+  }
+
+  async gameCommand(command: 'noclip' | 'restart', sessionId?: string): Promise<GamePreviewStatus> {
+    return await this.capabilityRequest(sessionId, { type: 'game_command', requestId: randomUUID(), command }) as GamePreviewStatus;
+  }
+
+  async setGameView(position: [number, number, number], yaw: number, sessionId?: string): Promise<GamePreviewStatus> {
+    return await this.capabilityRequest(sessionId, { type: 'game_set_view', requestId: randomUUID(), position, yaw }) as GamePreviewStatus;
+  }
+
+  async gameScreenshot(sessionId?: string): Promise<GameScreenshot> {
+    return await this.capabilityRequest(sessionId, { type: 'game_screenshot', requestId: randomUUID() }) as GameScreenshot;
   }
 
   async saveMap(path?: string, sessionId?: string): Promise<{ path: string; revision: number }> {

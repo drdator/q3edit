@@ -140,7 +140,20 @@ class FakeEditorSocket extends EventEmitter {
     } else if (request.type === 'game_screenshot') {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
-        result: { mimeType: 'image/png', data: 'Z2FtZQ==', width: 1280, height: 720 },
+        result: {
+          mimeType: 'image/png', data: 'Z2FtZQ==', width: 1280, height: 720,
+          blackFrame: false, meanLuminance: 42,
+          status: { state: 'running', message: 'Running live', mapName: 'live', noclip: true, launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [] },
+        },
+      }));
+    } else if (request.type === 'game_status' || request.type === 'game_wait_ready' || request.type === 'game_command' || request.type === 'game_set_view') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: {
+          state: request.type === 'game_command' || request.type === 'game_set_view' ? 'preparing' : 'running',
+          message: 'Running live', mapName: 'live', noclip: true,
+          launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [],
+        },
       }));
     }
   }
@@ -256,6 +269,10 @@ describe('live MCP bridge', () => {
         'editor_look_at',
         'editor_screenshot',
         'game_screenshot',
+        'game_status',
+        'game_wait_ready',
+        'game_command',
+        'game_set_view',
         'map_preview',
         'map_create_jump_pad',
         'map_create_teleporter',
@@ -321,6 +338,16 @@ describe('live MCP bridge', () => {
       expect(gameScreenshot.content).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: 'image', data: 'Z2FtZQ==' }),
       ]));
+      expect(gameScreenshot.structuredContent).toMatchObject({ blackFrame: false, meanLuminance: 42, status: { state: 'running' } });
+
+      const gameStatus = await client.callTool({ name: 'game_status', arguments: {} });
+      expect(gameStatus.structuredContent).toMatchObject({ sessionId: 'editor-a', state: 'running', mapName: 'live' });
+      const gameReady = await client.callTool({ name: 'game_wait_ready', arguments: { timeoutMs: 5000 } });
+      expect(gameReady.structuredContent).toMatchObject({ state: 'running' });
+      const gameView = await client.callTool({
+        name: 'game_set_view', arguments: { position: [128, 64, 96], yawDegrees: 90 },
+      });
+      expect(gameView.structuredContent).toMatchObject({ state: 'preparing', position: [128, 64, 96], yawDegrees: 90 });
 
       const groups = await client.callTool({ name: 'map_groups', arguments: {} });
       expect(groups.structuredContent).toMatchObject({ revision: 4, groups: [] });

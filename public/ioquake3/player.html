@@ -310,6 +310,7 @@
               '+set', 'com_basegame', assets.gameDir,
               '+devmap', launch.mapName,
               ...(launch.noclip ? ['+noclip'] : []),
+              ...(launch.commands || []).flatMap(command => [`+${command.name}`, ...command.args]),
             ],
             locateFile: (file) => new URL(file, import.meta.url).href,
             preRun: [(module) => {
@@ -325,8 +326,14 @@
                 send('q3edit-player:running', { mapName: launch.mapName });
               }, 300);
             }],
-            print: (message) => console.log(message),
-            printErr: (message) => console.error(message),
+            print: (message) => {
+              console.log(message);
+              send('q3edit-player:console', { stream: 'stdout', message: String(message) });
+            },
+            printErr: (message) => {
+              console.error(message);
+              send('q3edit-player:console', { stream: 'stderr', message: String(message) });
+            },
           });
         } catch (error) {
           fail(error);
@@ -343,7 +350,11 @@
           fail(new Error('The compiled BSP data was not provided'));
           return;
         }
-        void start({ mapName, bsp });
+        const commands = Array.isArray(event.data.commands) ? event.data.commands.filter(command =>
+          command && ['setviewpos', 'map_restart'].includes(command.name) &&
+          Array.isArray(command.args) && command.args.every(argument => typeof argument === 'string')
+        ) : [];
+        void start({ mapName, bsp, noclip: event.data.noclip === true, commands });
       });
 
       window.addEventListener('error', (event) => fail(event.error ?? event.message));

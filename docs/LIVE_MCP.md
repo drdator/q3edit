@@ -62,6 +62,8 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_analyze_jump_pad` mirrors Quake III's `AimAtTarget` math for an existing `trigger_push` or proposed trigger bounds/apex. It reports velocity, timing, nominal landing, the first plausible landing surface, and approximate player-hull obstructions. The linked `target_position` is the trajectory apex, not its landing point.
 - `map_compile` runs the live map through q3map at fast, normal, or full quality. Warnings and errors are structured by severity and linked to implicated references when texture names or entity origins make that possible.
 - `map_play` compiles and launches the current revision in browser ioquake3, with optional noclip. `game_screenshot` captures the running compiled/lightmapped view.
+- `game_status` reports whether the preview is idle, preparing, loading, running, closed, or failed, together with the current map, timestamps, last error, and recent engine console output. `game_wait_ready` blocks until it is safe to inspect the rendered frame.
+- `game_command` safely enables noclip or restarts the current compiled preview. `game_set_view` relaunches in noclip at an exact position/yaw. `game_screenshot` reports sampled luminance and flags effectively black frames instead of silently returning an unusable image.
 - `map_query` finds entities, brushes, and patches by bounds, kind, classname, texture, or entity property.
 - `map_groups` lists persistent named groups and their current member references; `map_query` accepts a group name or ID.
 - `texture_search` searches image assets and declared shaders, including tool shaders without images. Results identify shaders and preview availability; `texture_preview_many` returns up to 12 images for palette comparison.

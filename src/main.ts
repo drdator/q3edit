@@ -82,6 +82,10 @@ async function init() {
       return vp3D.capturePng(width, height, xray);
     },
     launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
+    gameStatus: () => ui.getGamePreviewStatus(),
+    waitForGameReady: timeoutMs => ui.waitForGamePreview(timeoutMs),
+    gameCommand: command => ui.runGamePreviewCommand(command),
+    setGameView: (position, yaw) => ui.setGamePreviewView(position, yaw),
     captureBspPreview: () => ui.captureBspPreview(),
   });
 

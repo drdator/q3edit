@@ -815,20 +815,86 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('game_screenshot', {
     title: 'Capture the compiled BSP playtest',
-    description: 'Return a PNG from the currently running browser ioquake3 preview started by map_play.',
+    description: 'Return a PNG from the browser ioquake3 preview with current lifecycle state, sampled mean luminance, and explicit black-frame detection. Call game_wait_ready first.',
     inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
       const resolved = session(sessionId);
       const screenshot = await hub.gameScreenshot(resolved);
+      const warning = screenshot.blackFrame
+        ? ` Warning: the captured frame is effectively black (mean luminance ${screenshot.meanLuminance.toFixed(2)}); inspect game_status for loading or renderer errors.`
+        : '';
       return {
         content: [
-          { type: 'text' as const, text: `Compiled BSP preview · ${screenshot.width} × ${screenshot.height}` },
+          { type: 'text' as const, text: `Compiled BSP preview · ${screenshot.width} × ${screenshot.height}.${warning}` },
           { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
         ],
-        structuredContent: { sessionId: resolved, mimeType: screenshot.mimeType, width: screenshot.width, height: screenshot.height },
+        structuredContent: {
+          sessionId: resolved, mimeType: screenshot.mimeType, width: screenshot.width, height: screenshot.height,
+          blackFrame: screenshot.blackFrame, meanLuminance: screenshot.meanLuminance, status: screenshot.status,
+        },
       };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('game_status', {
+    title: 'Inspect compiled BSP preview status',
+    description: 'Return ioquake3 lifecycle state, current map, noclip state, timestamps, last error, and recent stdout/stderr lines.',
+    inputSchema: { ...sessionInput },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      return toolResult({ sessionId: resolved, ...(await hub.gameStatus(resolved)) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('game_wait_ready', {
+    title: 'Wait for compiled BSP preview readiness',
+    description: 'Wait until the ioquake3 preview reports running, fails, closes, or reaches the timeout. Use before game_screenshot.',
+    inputSchema: {
+      ...sessionInput,
+      timeoutMs: z.number().int().min(100).max(120_000).optional().default(30_000),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, timeoutMs }) => {
+    try {
+      const resolved = session(sessionId);
+      return toolResult({ sessionId: resolved, ...(await hub.waitForGameReady(timeoutMs, resolved)) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('game_command', {
+    title: 'Run a safe compiled-preview command',
+    description: 'Reliably relaunch the current compiled preview with a safe command. noclip enables cheats/noclip; restart reloads the current BSP.',
+    inputSchema: { ...sessionInput, command: z.enum(['noclip', 'restart']) },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, command }) => {
+    try {
+      const resolved = session(sessionId);
+      return toolResult({ sessionId: resolved, ...(await hub.gameCommand(command, resolved)) });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('game_set_view', {
+    title: 'Position the compiled-preview player',
+    description: 'Relaunch the current BSP in noclip at a world-space position and yaw. Follow with game_wait_ready before capturing a screenshot.',
+    inputSchema: { ...sessionInput, position: vec3, yawDegrees: z.number() },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, position, yawDegrees }) => {
+    try {
+      const resolved = session(sessionId);
+      const status = await hub.setGameView(position, yawDegrees * Math.PI / 180, resolved);
+      return toolResult({ sessionId: resolved, position, yawDegrees, ...status });
     } catch (error) {
       return toolError(error);
     }
