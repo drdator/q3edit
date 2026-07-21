@@ -60,6 +60,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_validate` returns current editor diagnostics.
 - `map_gameplay_lint` reports approximate embedded-entity, spawn-clearance, and pickup-support problems with implicated references.
 - `map_analyze_jump_pad` mirrors Quake III's `AimAtTarget` math for an existing `trigger_push` or proposed trigger bounds/apex. It reports velocity, timing, nominal landing, the first plausible landing surface, and approximate player-hull obstructions. The linked `target_position` is the trajectory apex, not its landing point.
+- `map_route_lint` analyzes every jump pad, including sampled trajectories and standing clearance at landing, and builds an approximate directed platform graph from player spawns to pickups. Its walk/jump thresholds are authoring heuristics rather than AAS or engine playtest proof.
 - `map_compile` runs the live map through q3map at fast, normal, or full quality. Warnings and errors are structured by severity and linked to implicated references when texture names or entity origins make that possible.
 - `map_play` compiles and launches the current revision in browser ioquake3, with optional noclip. `game_screenshot` captures the running compiled/lightmapped view.
 - `game_status` reports whether the preview is idle, preparing, loading, running, closed, or failed, together with the current map, timestamps, last error, and recent engine console output. `game_wait_ready` blocks until it is safe to inspect the rendered frame.
@@ -74,7 +75,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `editor_look_at` positions the camera and calculates the yaw/pitch needed to face a target point.
 - `editor_screenshot` returns a PNG from the perspective, top, front, or side viewport. It can frame world bounds or a named group and temporarily hide named groups, entity markers, tool/sky brushes, or objects outside section bounds. Perspective captures can use a depth-free wireframe x-ray mode. All visibility changes are restored after capture and do not dirty the map.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
-- `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, and diagnostics without changing the document.
+- `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, diagnostics, and added/resolved gameplay-lint findings without changing the document.
 - `map_create_jump_pad` and `map_create_teleporter` create complete, correctly linked trigger/destination pairs and persistently group them for later edits.
 - `map_new` replaces the targeted editor with an empty or starter document using revision protection. It can preserve existing worldspawn keys and apply explicit worldspawn properties without enumerating starter objects.
 - `map_open` opens a local `.map` file in the connected browser.

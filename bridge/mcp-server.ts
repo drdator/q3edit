@@ -6,6 +6,7 @@ import { inspectMapGroups, queryMap, type MapQueryOptions } from './map-query';
 import type { MapDocumentRef, MapOperation } from '../src/map-operations';
 import { lintGameplay } from './gameplay-lint';
 import { analyzeJumpPad } from './jump-analysis';
+import { lintRoutes } from './route-lint';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -499,14 +500,30 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       maxs: vec3.optional(),
       apex: vec3.optional().describe('The target_position is the trajectory apex, not the landing point'),
       gravity: z.number().positive().optional().describe('Defaults to worldspawn gravity or Quake III default 800'),
+      sampleCount: z.number().int().min(4).max(128).optional().default(32),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, triggerRef, mins, maxs, apex, gravity }) => {
+  }, async ({ sessionId, triggerRef, mins, maxs, apex, gravity, sampleCount }) => {
     try {
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
-      const analysis = analyzeJumpPad(snapshot.mapText, { triggerRef, mins, maxs, apex, gravity });
+      const analysis = analyzeJumpPad(snapshot.mapText, { triggerRef, mins, maxs, apex, gravity, sampleCount });
       return toolResult({ sessionId: resolved, revision: snapshot.revision, ...analysis });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_route_lint', {
+    title: 'Lint jump pads and approximate gameplay routes',
+    description: 'Analyze every trigger_push trajectory and landing, then build a conservative platform graph connecting spawns, pickups, ordinary walk/jump transitions, and directed jump-pad routes. Results are editor heuristics, not AAS or engine playtest proof.',
+    inputSchema: { ...sessionInput },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...lintRoutes(snapshot.mapText) });
     } catch (error) {
       return toolError(error);
     }
@@ -938,7 +955,25 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   }, async ({ sessionId, expectedRevision, label, operations }) => {
     try {
       const resolved = session(sessionId);
-      return toolResult(sessionValue(resolved, await hub.previewOperations(expectedRevision, label, validatedMapOperations(operations), resolved)));
+      const beforeSnapshot = hub.snapshot(resolved);
+      const beforeGameplay = lintGameplay(beforeSnapshot.mapText);
+      const preview = await hub.previewOperations(expectedRevision, label, validatedMapOperations(operations), resolved) as Record<string, unknown>;
+      const previewMapText = typeof preview.mapText === 'string' ? preview.mapText : beforeSnapshot.mapText;
+      const afterGameplay = lintGameplay(previewMapText);
+      const issueKey = (issue: { code: string; message: string; refs: string[] }) => JSON.stringify([issue.code, issue.message, issue.refs]);
+      const beforeKeys = new Set(beforeGameplay.map(issueKey));
+      const afterKeys = new Set(afterGameplay.map(issueKey));
+      const safePreview = { ...preview };
+      delete safePreview.mapText;
+      return toolResult(sessionValue(resolved, {
+        ...safePreview,
+        gameplayLint: {
+          beforeCount: beforeGameplay.length,
+          afterCount: afterGameplay.length,
+          added: afterGameplay.filter(issue => !beforeKeys.has(issueKey(issue))),
+          resolved: beforeGameplay.filter(issue => !afterKeys.has(issueKey(issue))),
+        },
+      }));
     } catch (error) {
       return toolError(error);
     }

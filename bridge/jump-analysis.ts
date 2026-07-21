@@ -10,6 +10,7 @@ export interface JumpPadAnalysisInput {
   maxs?: Vec3;
   apex?: Vec3;
   gravity?: number;
+  sampleCount?: number;
 }
 
 interface CollisionBrush {
@@ -154,10 +155,22 @@ export function analyzeJumpPad(mapText: string, input: JumpPadAnalysisInput): Re
   }
 
   const nominalLandingOrigin = trajectoryPoint(launchOrigin, velocity, gravity, nominalFlightTime);
+  const sampleCount = Math.max(4, Math.min(128, Math.round(input.sampleCount ?? 32)));
+  const trajectory = Array.from({ length: sampleCount + 1 }, (_, index) => {
+    const time = analysisEndTime * index / sampleCount;
+    return { time, position: trajectoryPoint(launchOrigin, velocity, gravity, time) };
+  });
+  const landingBlockers = landing ? collisionBrushes.filter(candidate =>
+    candidate.ref !== landing.candidate.ref && !launchBrushes.has(candidate.ref) &&
+    playerHullIntersectsBrush([
+      landing.landing.origin[0], landing.landing.origin[1], landing.landing.origin[2] + 0.25,
+    ], candidate.brush)
+  ).map(candidate => candidate.ref) : [];
   const warnings: string[] = [];
   if (targetMatches > 1) warnings.push(`The target name resolves to ${targetMatches} entities; Quake III may choose any of them`);
   if (!landing) warnings.push('No plausible landing surface was found on the descending trajectory');
   if (collisionMap.size > 0) warnings.push(`The approximate player hull intersects ${collisionMap.size} brush${collisionMap.size === 1 ? '' : 'es'} before landing`);
+  if (landingBlockers.length > 0) warnings.push(`The standing player hull at landing overlaps ${landingBlockers.length} brush${landingBlockers.length === 1 ? '' : 'es'}`);
   return {
     model: 'Quake III AimAtTarget with an approximate 30×30×56 player hull',
     triggerRef,
@@ -179,8 +192,11 @@ export function analyzeJumpPad(mapText: string, input: JumpPadAnalysisInput): Re
       time: landing.landing.time,
       origin: landing.landing.origin,
       feetPosition: [landing.landing.origin[0], landing.landing.origin[1], landing.candidate.brush.maxs[2]],
+      hullClear: landingBlockers.length === 0,
+      blockers: landingBlockers,
     } : { supported: false },
     clearance: { clear: collisionMap.size === 0, collisions: [...collisionMap.values()] },
+    trajectory,
     warnings,
   };
 }

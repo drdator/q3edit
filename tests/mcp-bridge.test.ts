@@ -73,6 +73,7 @@ class FakeEditorSocket extends EventEmitter {
           revision: request.expectedRevision, operationCount: request.operations.length,
           created: ['E0:B0'], changed: [], aliases: {},
           objects: [{ ref: 'E0:B0', kind: 'brush', bounds: { mins: [0, 0, 0], maxs: [64, 64, 64] } }],
+          mapText: '// live map\n',
           diagnostics: [],
         },
       }));
@@ -259,6 +260,7 @@ describe('live MCP bridge', () => {
         'map_validate',
         'map_gameplay_lint',
         'map_analyze_jump_pad',
+        'map_route_lint',
         'map_compile',
         'map_play',
         'map_groups',
@@ -334,6 +336,9 @@ describe('live MCP bridge', () => {
         landing: { supported: false }, clearance: { clear: true },
       });
 
+      const routes = await client.callTool({ name: 'map_route_lint', arguments: {} });
+      expect(routes.structuredContent).toMatchObject({ sessionId: 'editor-a', revision: 4 });
+
       const compiled = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast' } });
       expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
 
@@ -367,7 +372,9 @@ describe('live MCP bridge', () => {
       });
       expect(previewed.structuredContent).toMatchObject({
         revision: 4, created: ['E0:B0'], objects: [{ bounds: { mins: [0, 0, 0], maxs: [64, 64, 64] } }],
+        gameplayLint: { beforeCount: 0, afterCount: 0, added: [], resolved: [] },
       });
+      expect((previewed.structuredContent as Record<string, unknown>).mapText).toBeUndefined();
 
       const jumpPad = await client.callTool({
         name: 'map_create_jump_pad',

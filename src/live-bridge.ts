@@ -271,6 +271,7 @@ export class LiveMapBridge {
             changed: result.changed,
             aliases: result.aliases,
             objects,
+            mapText: preview.serializeMap(),
             mapInfo: collectMapInfo(preview, diagnostics),
             diagnostics,
           },
