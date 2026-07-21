@@ -175,7 +175,7 @@ export function reviewStyleBrief(mapText: string): {
 
   return {
     brief,
-    status: !brief ? 'not-configured' : issues.some(issue => issue.severity === 'warning') ? 'needs-attention' : 'pass',
+    status: !brief ? 'not-configured' : issues.length > 0 ? 'needs-attention' : 'pass',
     metrics: {
       paletteMaterials: materialRefs.size, outOfPaletteMaterials: outOfPalette,
       onGridBrushes, offGridBrushes, detailRatio,
