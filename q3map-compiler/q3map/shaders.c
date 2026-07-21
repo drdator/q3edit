@@ -25,6 +25,7 @@ Q3Edit modifications:
 - 2026-03-23: enabled portable JPEG loading for the WebAssembly build.
 - 2026-07-18: made the shader-file list grow dynamically for larger game data sets.
 - 2026-07-19: detect explicitly named JPEG shader images before decoding.
+- 2026-07-21: resolve staged shader images case-insensitively in the WebAssembly filesystem.
 */
 
 #include <string.h>
@@ -125,38 +126,65 @@ LoadShaderImage
 ===============
 */
 
-byte* LoadImageFile(char *filename, qboolean *bTGA)
+static byte* LoadImagePath(const char *filename)
 {
   byte *buffer = NULL;
-  const char *extension;
-  int nLen = 0;
-  *bTGA = qtrue;
+  char lowerFilename[1024];
+
   if (FileExists(filename))
   {
-    LoadFileBlock(filename, &buffer);
+    LoadFileBlock((char *) filename, &buffer);
   }
 #ifdef _WIN32
   else
   {
-    PakLoadAnyFile(filename, &buffer);
+    PakLoadAnyFile((char *) filename, &buffer);
   }
 #endif
-  if ( buffer == NULL)
+
+  /* AssetIndex stages virtual game paths in normalized lowercase. Shader
+     scripts from the retail PK3s are not consistent about casing, so an
+     exact POSIX lookup can otherwise miss a present image and leave q3map
+     using its 64x64 fallback dimensions. */
+  if (buffer == NULL && strlen(filename) < sizeof(lowerFilename))
   {
-    nLen = strlen(filename);
-    filename[nLen-3] = 'j';
-    filename[nLen-2] = 'p';
-    filename[nLen-1] = 'g';
-    if (FileExists(filename))
+    strcpy(lowerFilename, filename);
+    strlower(lowerFilename);
+    if (strcmp(lowerFilename, filename) && FileExists(lowerFilename))
     {
-      LoadFileBlock(filename, &buffer);
+      LoadFileBlock(lowerFilename, &buffer);
     }
 #ifdef _WIN32
-    else
+    else if (strcmp(lowerFilename, filename))
     {
-      PakLoadAnyFile(filename, &buffer);
+      PakLoadAnyFile(lowerFilename, &buffer);
     }
 #endif
+  }
+
+  return buffer;
+}
+
+byte* LoadImageFile(char *filename, qboolean *bTGA)
+{
+  byte *buffer;
+  const char *extension;
+  char *mutableExtension;
+
+  *bTGA = qtrue;
+  buffer = LoadImagePath(filename);
+  if (buffer == NULL)
+  {
+    mutableExtension = strrchr(filename, '.');
+    if (mutableExtension != NULL)
+    {
+      strcpy(mutableExtension, ".jpg");
+    }
+    else
+    {
+      strcat(filename, ".jpg");
+    }
+    buffer = LoadImagePath(filename);
   }
   if ( buffer )
   {
