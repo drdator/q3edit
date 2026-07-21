@@ -321,6 +321,7 @@ describe('live MCP bridge', () => {
         'editor_look_at',
         'editor_screenshot',
         'editor_layout_screenshot',
+        'editor_review_bundle',
         'game_screenshot',
         'game_status',
         'game_wait_ready',
@@ -560,6 +561,20 @@ describe('live MCP bridge', () => {
       expect(JSON.parse(screenshotRequests[screenshotRequests.length - 1])).toMatchObject({
         mode: 'front', hideToolBrushes: true, hideSkyBrushes: true,
         showEntityLabels: true, showCoordinates: true, layoutOverlay: true,
+      });
+
+      const reviewBundle = await client.callTool({
+        name: 'editor_review_bundle',
+        arguments: { views: ['perspective', 'top', 'side'], frameGroup: 'reactor', width: 800, height: 600 },
+      });
+      expect((reviewBundle.content as Array<{ type: string }>).filter(item => item.type === 'image')).toHaveLength(3);
+      expect(reviewBundle.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 5, frameBounds: null, frameGroup: 'reactor',
+        views: [
+          { mode: 'perspective', width: 800, height: 600 },
+          { mode: 'top', width: 800, height: 600, gridSize: 16, majorGridSize: 128 },
+          { mode: 'side', width: 800, height: 600, axisLabels: ['Y', 'Z'] },
+        ],
       });
 
       const applied = await client.callTool({

@@ -270,6 +270,15 @@ const layoutScreenshotOutputSchema = z.object({
   gridSize: z.number().positive(), majorGridSize: z.number().positive(),
   axisLabels: z.tuple([z.string(), z.string()]), worldUnitsPerPixel: z.number().positive(),
 });
+const reviewBundleOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int(), frameBounds: nullableBounds, frameGroup: z.string().nullable(),
+  views: z.array(z.object({
+    mode: z.enum(['perspective', 'top', 'front', 'side']), mimeType: z.literal('image/png'),
+    width: z.number().int(), height: z.number().int(),
+    gridSize: z.number().optional(), majorGridSize: z.number().optional(),
+    axisLabels: z.tuple([z.string(), z.string()]).optional(), worldUnitsPerPixel: z.number().optional(),
+  })),
+});
 const activityLogOutputSchema = z.object({
   enabled: z.boolean(), filePath: z.string().nullable(), mcpSessionId: z.string().nullable(), count: z.number().int(),
   entries: z.array(z.object({
@@ -722,6 +731,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
       'Use fit for focal surfaces that should show one complete image, but preserve intentional tiling on large walls and floors. Inspect unfamiliar materials, run map_texture_review, and verify textured geometry with editor_screenshot.',
+      'After a major edit, use editor_review_bundle for consistently framed perspective and orthographic visual review.',
     ].join(' '),
   });
   if (activityLog) {
@@ -1558,6 +1568,62 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           mode: options.mode, frameBounds: frameBounds ?? null,
           gridSize: screenshot.gridSize, majorGridSize: screenshot.majorGridSize,
           axisLabels: screenshot.axisLabels, worldUnitsPerPixel: screenshot.worldUnitsPerPixel,
+        },
+      };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_review_bundle', {
+    title: 'Capture a multi-angle map review bundle',
+    description: 'Capture several consistently framed editor views in one call. The default bundle contains perspective, top, front, and side PNGs; orthographic views include layout grid/scale metadata. Use after major edits to review appearance and spatial structure without four tool round trips.',
+    inputSchema: {
+      ...sessionInput,
+      views: z.array(z.enum(['perspective', 'top', 'front', 'side'])).min(1).max(4)
+        .optional().default(['perspective', 'top', 'front', 'side']),
+      width: z.number().int().min(320).max(1600).optional().default(960),
+      height: z.number().int().min(240).max(1200).optional().default(720),
+      frameBounds: screenshotBounds.optional(),
+      frameGroup: z.string().min(1).optional(),
+      sectionBounds: screenshotBounds.optional(),
+      hideGroups: z.array(z.string().min(1)).max(64).optional(),
+      hideToolBrushes: z.boolean().optional().default(true),
+      hideSkyBrushes: z.boolean().optional().default(true),
+      hideEntityMarkers: z.boolean().optional().default(false),
+      showEntityLabels: z.boolean().optional().default(true),
+      showCoordinates: z.boolean().optional().default(true),
+    },
+    outputSchema: reviewBundleOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, views, width, height, frameBounds: requestedBounds, frameGroup, ...visibility }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const frameBounds = requestedBounds ?? (frameGroup ? undefined : collectMapStatistics(snapshot.mapText).worldBounds ?? undefined);
+      const captures: Array<{
+        mode: 'perspective' | 'top' | 'front' | 'side'; mimeType: string; data: string; width: number; height: number;
+        gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
+      }> = [];
+      for (const mode of [...new Set(views)]) {
+        const layout = mode !== 'perspective';
+        const screenshot = await hub.screenshot({
+          ...visibility, mode, width, height, frameBounds, frameGroup,
+          layoutOverlay: layout,
+          showEntityLabels: layout ? visibility.showEntityLabels : false,
+          showCoordinates: layout ? visibility.showCoordinates : false,
+        }, resolved);
+        captures.push({ mode, ...screenshot });
+      }
+      return {
+        content: captures.flatMap(capture => [
+          { type: 'text' as const, text: `Q3Edit ${capture.mode} review · ${capture.width} × ${capture.height}` },
+          { type: 'image' as const, data: capture.data, mimeType: capture.mimeType },
+        ]),
+        structuredContent: {
+          sessionId: resolved, revision: snapshot.revision,
+          frameBounds: frameBounds ?? null, frameGroup: frameGroup ?? null,
+          views: captures.map(({ data: _data, ...capture }) => capture),
         },
       };
     } catch (error) {
