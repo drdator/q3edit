@@ -280,6 +280,29 @@ now completes BSP, VIS, and LIGHT with both patches intact.
 - [x] Keep per-tool descriptions focused on each tool's unique purpose, inputs,
   and failure modes.
 
+### Iteration-loop reliability follow-up
+
+- [x] Advertise essential tools and document MCP client tool-inventory caching.
+- [x] Move verified game view/control tools into the early discovery set.
+- [x] Reuse the current revision's compiled BSP when explicitly requested.
+- [x] Add revision-checked MCP undo and redo using normal editor history.
+- [x] Add summary and issues-only route review responses.
+- [x] Keep informational style guidance from downgrading overall status.
+- [x] Exclude enclosing sky and hard tool brushes from composition heuristics.
+- [x] Reuse named groups consistently inside one atomic batch.
+- [x] Add tokenized texture search and separate compiler/editor/runtime shader
+  compatibility states.
+- [x] Expand built-in stock entity schemas, including `trigger_hurt`, doors,
+  common targets, models, and one-shot/startup triggers.
+- [x] Resolve likely refs for `noshader` diagnostics and add
+  `diagnostic_explain` with actionable repair templates.
+- [ ] Add bot AAS generation through a bundled BSPC-compatible compiler.
+
+Implementation note: AAS remains separate because q3map does not generate bot
+navigation data. Completing it requires porting and validating a BSPC/AAS
+toolchain in WebAssembly, then adding staged diagnostics and artifact export
+similar to BSP/VIS/LIGHT.
+
 ## Success criteria
 
 - Agents routinely create angled, curved, layered, and vertically varied maps.

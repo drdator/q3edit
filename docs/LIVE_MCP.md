@@ -72,18 +72,18 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_validate` returns current editor diagnostics.
 - `map_gameplay_lint` reports approximate embedded-entity, spawn-clearance, and pickup-support problems with implicated references.
 - `map_analyze_jump_pad` mirrors Quake III's `AimAtTarget` math for an existing `trigger_push` or proposed trigger bounds/apex. It reports velocity, timing, nominal landing, the first plausible landing surface, and approximate player-hull obstructions. The linked `target_position` is the trajectory apex, not its landing point.
-- `map_route_lint` analyzes every jump pad, including sampled trajectories and standing clearance at landing, and builds an approximate directed platform graph from player spawns to pickups. Its walk/jump thresholds are authoring heuristics rather than AAS or engine playtest proof.
+- `map_route_lint` analyzes every jump pad, including sampled trajectories and standing clearance at landing, and builds an approximate directed platform graph from player spawns to pickups. It defaults to a sampled `summary`; use `issuesOnly` for the cheapest iteration signal and `full` only when exact trajectories and connectivity edges are needed. Its walk/jump thresholds are authoring heuristics rather than AAS or engine playtest proof.
 - `map_compile_preflight` validates the exact compiler-safe input and reports source/compiled line sizes, parser diagnostics, unsupported constructs, and every editor-only entity, brush, patch, or group record sanitized with its object reference.
 - `map_compile` runs the live map through q3map at fast, normal, or full quality. Warnings and errors are structured by severity and linked to implicated references when texture names or entity origins make that possible. Pass `artifactPath` to atomically write the compiled BSP to a local path; `map_save_and_compile` supports the same option.
 - Compile results report BSP, VIS, and LIGHT status independently. WASM memory failures are classified as `compiler-memory` and include the active pass, so a LIGHT failure is distinguishable from a BSP/VIS failure that prevents any playable artifact.
 - The bundled q3map WebAssembly compiler reserves an 8 MiB stack for legacy per-surface lightmap scratch data. Patch-shadow trace state is initialized consistently across lightmap, light-grid, vertex, and triangle-soup lighting, preventing patch-heavy maps from failing nondeterministically during LIGHT.
-- `map_play` compiles and launches the current revision in browser ioquake3, with optional noclip. `game_screenshot` captures the running compiled/lightmapped view.
+- `map_play` compiles and launches the current revision in browser ioquake3, with optional verified noclip. After `map_compile` or `map_save_and_compile`, pass `useLastCompile: true` to launch the cached BSP for the unchanged revision without compiling again. `game_screenshot` captures the running compiled/lightmapped view.
 - `game_status` reports whether the preview is idle, preparing, loading, running, closed, or failed, together with the current map, timestamps, last error, and recent engine console output. `game_wait_ready` blocks until it is safe to inspect the rendered frame.
-- `game_command` safely enables noclip or restarts the current compiled preview. `game_set_view` relaunches in noclip at an exact position, point-entity reference, or numbered player spawn and accepts yaw or a look-at target. `game_screenshot` reports sampled luminance and flags effectively black frames instead of silently returning an unusable image.
+- `game_command` safely enables noclip or restarts the current compiled preview. Noclip waits until ioquake3 is running and fails unless the game console confirms it is enabled. `game_set_view` is early in the tool list, relaunches in verified noclip at an exact position, point-entity reference, or numbered player spawn, and accepts yaw or a look-at target. `game_screenshot` reports sampled luminance and flags effectively black frames instead of silently returning an unusable image.
 - `map_query` looks up exact `refs` directly or filters entities, brushes, faces, and patches by bounds, kind, classname, texture, entity property, or persistent group.
 - `map_groups` lists persistent named groups and their current member references; `map_query` accepts a group name or ID.
-- `texture_search` searches image assets and declared shaders, including tool shaders without images. Results identify shaders and preview availability; `texture_preview_many` returns up to 12 images for palette comparison.
-- `texture_inspect` resolves one material into image dimensions/source, all parsed `surfaceparm` and `q3map_*` directives, stage images and blending, skybox faces, derived content/surface flags, emission, preview availability, and compiler validity. Search and preview use the same concrete image-resolution path.
+- `texture_search` performs ranked token matching across names and shader semantics, so queries such as `space sky` and `jump pad` work without exact substrings. It includes tool shaders without images and returns compatibility summaries; `texture_preview_many` returns up to 12 images for palette comparison.
+- `texture_inspect` resolves one material into image dimensions/source, all parsed `surfaceparm` and `q3map_*` directives, stage images and blending, skybox faces, derived content/surface flags, emission, and separate parser/compiler-safe, editor-previewable, expected-invisible, and ioquake3/WebGL-renderable states. Search and preview use the same concrete image-resolution path.
 - `entity_class_search` searches loaded entity definitions and `entity_class_schema` returns typed properties, defaults, spawnflags, and required target relationships. Built-in schemas cover `worldspawn`, jump pads, and teleporters even when retail definitions omit their keys.
 - `editor_select` selects referenced objects in Q3Edit and `editor_frame_objects` selects and frames them in every viewport.
 - `editor_set_camera` positions the 3D camera using world coordinates and yaw/pitch in degrees.
@@ -92,6 +92,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `editor_layout_screenshot` is the preferred spatial-design view. It defaults to a top-down whole-map overview with sky/tool brushes hidden, entity labels enabled, and an embedded axis/grid/world-unit scale legend. Front and side projections, sections, groups, and explicit bounds are also supported.
 - `editor_review_bundle` returns a consistently framed perspective plus top/front/side layout images in one call by default. Use it after substantial geometry or art passes; select fewer views when only one projection matters.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
+- `map_undo` and `map_redo` operate on normal Q3Edit history entries with revision protection. They work across MCP and manual editor changes and invalidate stale compiled BSPs.
 - `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, diagnostics, and collisions without changing the document. Its optional `reviews` list compares gameplay, routes, geometry, textures, style, and spatial quality before and after the preview.
 - `map_create_jump_pad` and `map_create_teleporter` create complete, correctly linked trigger/destination pairs and persistently group them for later edits.
 - `map_new` replaces the targeted editor with an empty or starter document using revision protection. It can preserve existing worldspawn keys and apply explicit worldspawn properties without enumerating starter objects.
@@ -105,6 +106,17 @@ Clients with constrained tool discovery should use the early-listed
 remain available for compatibility. The shared authoring workflow is exposed
 as the `q3edit://agent-workflow` MCP resource instead of being repeated in
 every tool description.
+
+MCP clients commonly cache their tool inventory. After updating Q3Edit, restart
+`npm run bridge` and reconnect or restart the MCP client if `editor_capture`,
+`editor_review`, `game_set_view`, `map_undo`, or another capability advertised
+by `map_capabilities.essentialTools` is absent.
+
+`diagnostic_explain` accepts a compiler warning or design-review finding,
+resolves likely source references when possible, classifies its practical
+impact, and suggests focused inspection tools plus concrete `map_preview`
+operation templates. Use it when a warning such as `noshader` does not identify
+an object directly.
 
 Compile, quick-play, and region-compile workflows serialize a compiler-safe
 view of the document. Editor-only `_q3edit_*` semantic metadata, named-group

@@ -344,7 +344,7 @@
                     preserveDrawingBuffer: gl?.getContextAttributes()?.preserveDrawingBuffer === true,
                   },
                 });
-              }, 300);
+              }, launch.noclip || (launch.commands || []).length > 0 ? 1500 : 300);
             }],
             print: (message) => {
               console.log(message);
