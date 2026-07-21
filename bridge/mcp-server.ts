@@ -357,6 +357,10 @@ function compactRefs(refs: string[]): { count: number; refs: string[]; truncated
   return { count: refs.length, refs: [...refs.slice(0, 4), ...refs.slice(-4)], truncated: true };
 }
 
+function compactItems<T>(items: T[]): { count: number; sample: T[]; truncated: boolean } {
+  return { count: items.length, sample: items.slice(0, 8), truncated: items.length > 8 };
+}
+
 function compactApplyResult(result: {
   revision: number; operationCount: number; summary: string; created: string[]; changed: string[]; aliases: Record<string, string[]>;
 }): Record<string, unknown> {
@@ -1048,7 +1052,12 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
             summary: `${previewResult.operationCount} operation preview`, created, changed, aliases,
           }),
           objects: { count: objects.length, sample: objects.slice(0, 8), truncated: objects.length > 8 },
-          mapInfo: previewResult.mapInfo, diagnostics: previewResult.diagnostics, gameplayLint,
+          mapInfo: previewResult.mapInfo,
+          diagnostics: Array.isArray(previewResult.diagnostics) ? compactItems(previewResult.diagnostics) : previewResult.diagnostics,
+          gameplayLint: {
+            beforeCount: gameplayLint.beforeCount, afterCount: gameplayLint.afterCount,
+            added: compactItems(gameplayLint.added), resolved: compactItems(gameplayLint.resolved),
+          },
         }));
       }
       return toolResult(sessionValue(resolved, previewResult));

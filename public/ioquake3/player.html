@@ -73,6 +73,13 @@
       const OPENARENA_KEY = 'openarena-enabled';
       const loading = document.getElementById('loading');
       const canvas = document.getElementById('canvas');
+      const nativeGetContext = canvas.getContext.bind(canvas);
+      canvas.getContext = (contextType, attributes) => nativeGetContext(
+        contextType,
+        contextType === 'webgl' || contextType === 'webgl2'
+          ? { ...(attributes || {}), preserveDrawingBuffer: true }
+          : attributes,
+      );
       let started = false;
       let capturePending = false;
       let captureAttempt = 0;
@@ -323,7 +330,16 @@
             postRun: [() => {
               window.setTimeout(() => {
                 loading.hidden = true;
-                send('q3edit-player:running', { mapName: launch.mapName });
+                const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+                send('q3edit-player:running', {
+                  mapName: launch.mapName,
+                  renderer: {
+                    context: gl ? (gl instanceof WebGL2RenderingContext ? 'webgl2' : 'webgl') : 'unavailable',
+                    width: canvas.width,
+                    height: canvas.height,
+                    preserveDrawingBuffer: gl?.getContextAttributes()?.preserveDrawingBuffer === true,
+                  },
+                });
               }, 300);
             }],
             print: (message) => {

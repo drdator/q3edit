@@ -91,6 +91,7 @@ export class UI {
   private gamePreviewStatus: GamePreviewStatus = {
     state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
     launchedAt: null, runningAt: null, error: null, consoleTail: [],
+    renderer: null,
   };
 
   constructor(editor: Editor) {
@@ -2730,6 +2731,7 @@ export class UI {
     this.updateGamePreviewStatus({
       state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName, noclip,
       launchedAt: new Date().toISOString(), runningAt: null, error: null, consoleTail: [],
+      renderer: null,
     });
 
     const overlay = document.createElement('div');
@@ -2812,7 +2814,10 @@ export class UI {
       } else if (message?.type === 'q3edit-player:running') {
         dialog.classList.add('running');
         status.textContent = `Running ${safeMapName}`;
-        this.updateGamePreviewStatus({ state: 'running', message: `Running ${safeMapName}`, runningAt: new Date().toISOString() });
+        this.updateGamePreviewStatus({
+          state: 'running', message: `Running ${safeMapName}`, runningAt: new Date().toISOString(),
+          renderer: message.renderer ?? null,
+        });
         this.editor.statusMessage = `Running ${safeMapName} in browser ioquake3`;
       } else if (message?.type === 'q3edit-player:console') {
         const line = String(message.message ?? '').trim();

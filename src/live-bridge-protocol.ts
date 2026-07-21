@@ -39,6 +39,7 @@ export interface GamePreviewStatus {
   runningAt: string | null;
   error: string | null;
   consoleTail: string[];
+  renderer: { context: string; width: number; height: number; preserveDrawingBuffer: boolean } | null;
 }
 
 export interface GameScreenshot {

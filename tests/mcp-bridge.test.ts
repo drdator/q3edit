@@ -376,11 +376,18 @@ describe('live MCP bridge', () => {
         arguments: {
           expectedRevision: 4, label: 'MCP: Preview box',
           operations: [{ type: 'create_box', mins: [0, 0, 0], maxs: [64, 64, 64] }],
+          responseDetail: 'compact',
         },
       });
       expect(previewed.structuredContent).toMatchObject({
-        revision: 4, created: ['E0:B0'], objects: [{ bounds: { mins: [0, 0, 0], maxs: [64, 64, 64] } }],
-        gameplayLint: { beforeCount: 0, afterCount: 0, added: [], resolved: [] },
+        revision: 4,
+        created: { count: 1, refs: ['E0:B0'], truncated: false },
+        objects: { count: 1, sample: [{ bounds: { mins: [0, 0, 0], maxs: [64, 64, 64] } }], truncated: false },
+        gameplayLint: {
+          beforeCount: 0, afterCount: 0,
+          added: { count: 0, sample: [], truncated: false },
+          resolved: { count: 0, sample: [], truncated: false },
+        },
       });
       expect((previewed.structuredContent as Record<string, unknown>).mapText).toBeUndefined();
 

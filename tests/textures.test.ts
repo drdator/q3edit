@@ -19,6 +19,7 @@ describe('texture image resolution', () => {
     expect(imageMimeType('texture.PNG')).toBe('image/png');
     expect(imageMimeType('texture.webp')).toBe('image/webp');
     expect(imageMimeType('texture.jpg')).toBe('image/jpeg');
+    expect(imageMimeType('texture.tga')).toBe('image/x-tga');
   });
 
   it('accepts declared tool shaders without preview images as valid texture sources', () => {

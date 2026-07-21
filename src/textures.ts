@@ -120,6 +120,7 @@ export function textureImageCandidates(name: string): string[] {
 export function imageMimeType(path: string): string {
   if (/\.png$/i.test(path)) return 'image/png';
   if (/\.webp$/i.test(path)) return 'image/webp';
+  if (/\.tga$/i.test(path)) return 'image/x-tga';
   return 'image/jpeg';
 }
 
