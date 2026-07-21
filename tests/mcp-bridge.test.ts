@@ -422,8 +422,9 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 4, maxPerBatch: 128 },
+        operations: { version: 5, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
+        curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -455,6 +456,11 @@ describe('live MCP bridge', () => {
       expect(areaSchema.structuredContent).toMatchObject({
         type: 'create_area', required: expect.arrayContaining(['type', 'id', 'purpose', 'shape', 'center', 'height']),
         notes: expect.arrayContaining([expect.stringContaining('Persists a semantic area')]),
+      });
+      const patchSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_patch' } });
+      expect(patchSchema.structuredContent).toMatchObject({
+        type: 'create_patch', required: ['type', 'preset', 'mins', 'maxs'],
+        notes: expect.arrayContaining([expect.stringContaining('native editable patchDef2')]),
       });
       const boxJson = JSON.stringify((boxSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
       expect(boxJson).toContain('"textureTransform"');

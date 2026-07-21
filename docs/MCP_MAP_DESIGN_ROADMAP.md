@@ -81,21 +81,28 @@ are ordinary named-group brushes and remain fully inspectable and editable.
 
 ### 3. Angled brush construction, curves, and patches
 
-- [ ] Make arbitrary plane-based brush construction easy to validate and use.
-- [ ] Add reliable wedge, trapezoid, tapered, and octagonal brush operations.
-- [ ] Add `create_patch_bevel`.
-- [ ] Add `create_patch_endcap`.
-- [ ] Add `create_patch_cylinder`.
-- [ ] Add `create_patch_arch`.
-- [ ] Add `create_patch_pipe`.
-- [ ] Add `create_patch_ramp`.
-- [ ] Add `thicken_patch`.
-- [ ] Add `fit_patch_texture` and predictable texture controls.
-- [ ] Support stable aliases, groups, preview, and atomic application.
-- [ ] Add geometry/compiler validation for generated brushes and patches.
+- [x] Make arbitrary plane-based brush construction easy to validate and use.
+- [x] Add reliable wedge, trapezoid, tapered, and octagonal brush operations.
+- [x] Add a bevel preset to `create_patch`.
+- [x] Add an endcap preset to `create_patch`.
+- [x] Add a cylinder preset to `create_patch`.
+- [x] Add an arch preset to `create_patch`.
+- [x] Add a pipe preset to `create_patch`.
+- [x] Add a ramp preset to `create_patch`.
+- [x] Add `thicken_patch`.
+- [x] Add patch fit/natural UV modes and predictable texture controls.
+- [x] Support stable aliases, groups, preview, and atomic application.
+- [x] Add geometry/compiler validation for generated brushes and patches.
 
 Generic angled brushes and patches provide the direct escape from box-only
 architecture while remaining inspectable, editable, and native to Quake 3.
+
+Implementation note: `create_tapered` covers symmetric tapers and offset
+trapezoids; an eight-sided `create_primitive` supplies octagonal brushes.
+`create_patch` exposes six native patchDef2 presets, while `edit_patches` and
+`thicken_patch` provide UV/subdivision editing and solid-looking patch shells.
+All generated control grids are checked before commit and remain ordinary map
+objects rather than hidden modules.
 
 ### 4. Path-based construction
 

@@ -10,7 +10,7 @@ import {
   type Brush,
   type BrushFace,
 } from './brush';
-import { createBrushPrimitive, createWedgeBrush, type BrushPrimitive, type WedgeDirection } from './brush-primitives';
+import { createBrushPrimitive, createTaperedBrush, createWedgeBrush, type BrushPrimitive, type WedgeDirection } from './brush-primitives';
 import type { Editor } from './editor';
 import { cloneEntity, createEntity, type Entity } from './entity';
 import {
@@ -22,7 +22,20 @@ import {
   translateEditorEntity,
 } from './editor-transforms';
 import { vec3Dot, type Vec3 } from './math';
-import { clonePatch, mirrorPatch, rotatePatch, translatePatch, type Patch } from './patch';
+import {
+  clonePatch,
+  createArchPatch,
+  createBevelPatch,
+  createCylinderPatch,
+  createEndcapPatch,
+  createRampPatch,
+  mirrorPatch,
+  rotatePatch,
+  tessellatePatch,
+  translatePatch,
+  type Patch,
+} from './patch';
+import { fitPatchUV, naturalizePatchUV, thickenPatch, transformPatchUV } from './patch-operations';
 import { CONTENTS_DETAIL, CONTENTS_STRUCTURAL } from './map-flags';
 import { hollowBrush, subtractBrush } from './csg';
 import {
@@ -154,6 +167,17 @@ export interface CreateWedgeOperation extends CreationMetadata {
   direction?: WedgeDirection;
 }
 
+export interface CreateTaperedOperation extends CreationMetadata {
+  type: 'create_tapered';
+  parent?: MapTargetRef;
+  mins: Vec3;
+  maxs: Vec3;
+  texture?: string;
+  textureTransform?: TextureTransform;
+  topScale?: [number, number];
+  topOffset?: [number, number];
+}
+
 export interface CreateStairsOperation extends CreationMetadata {
   type: 'create_stairs';
   parent?: MapTargetRef;
@@ -192,6 +216,37 @@ export interface CreatePrefabOperation extends CreationMetadata {
   };
   orientation?: 'x' | 'y';
   classification?: 'detail' | 'structural';
+}
+
+export interface CreatePatchOperation extends CreationMetadata {
+  type: 'create_patch';
+  parent?: MapTargetRef;
+  preset: 'bevel' | 'endcap' | 'cylinder' | 'arch' | 'pipe' | 'ramp';
+  mins: Vec3;
+  maxs: Vec3;
+  texture?: string;
+  axis?: MapAxis;
+  direction?: WedgeDirection;
+  subdivisions?: number;
+  textureMode?: 'natural' | 'fit';
+}
+
+export interface EditPatchesOperation {
+  type: 'edit_patches';
+  targets: MapTargetRef[];
+  texture?: string;
+  textureMode?: 'natural' | 'fit';
+  shift?: [number, number];
+  scale?: [number, number];
+  rotateDegrees?: number;
+  subdivisions?: number;
+}
+
+export interface ThickenPatchOperation extends CreationMetadata {
+  type: 'thicken_patch';
+  targets: MapTargetRef[];
+  amount: number;
+  caps?: boolean;
 }
 
 export interface CreateAreaOperation extends CreationMetadata {
@@ -357,9 +412,13 @@ export type MapOperation =
   | CreateRoomOperation
   | CreatePrimitiveOperation
   | CreateWedgeOperation
+  | CreateTaperedOperation
   | CreateStairsOperation
   | CreateBrushOperation
   | CreatePrefabOperation
+  | CreatePatchOperation
+  | EditPatchesOperation
+  | ThickenPatchOperation
   | CreateAreaOperation
   | ConnectAreasOperation
   | TranslateObjectsOperation
@@ -600,6 +659,119 @@ function addWedge(editor: Editor, entity: Entity, operation: CreateWedgeOperatio
   applyBrushTextureTransform(editor, brush, operation.textureTransform);
   entity.brushes.push(brush);
   return brush;
+}
+
+function addTapered(editor: Editor, entity: Entity, operation: CreateTaperedOperation): Brush {
+  assertBounds(operation.mins, operation.maxs);
+  const brush = createTaperedBrush(
+    operation.mins, operation.maxs, operation.texture ?? 'common/caulk',
+    operation.topScale, operation.topOffset,
+  );
+  applyBrushTextureTransform(editor, brush, operation.textureTransform);
+  entity.brushes.push(brush);
+  return brush;
+}
+
+function patchCenterFromBounds(mins: Vec3, maxs: Vec3): Vec3 {
+  return maxs.map((value, axis) => (value + mins[axis]) / 2) as Vec3;
+}
+
+function orientPatchExtrusion(patch: Patch, center: Vec3, nativeAxis: MapAxis, axis: MapAxis): void {
+  if (nativeAxis === axis) return;
+  if (nativeAxis === 'z' && axis === 'x') rotatePatch(patch, center, 1, Math.PI / 2);
+  else if (nativeAxis === 'z' && axis === 'y') rotatePatch(patch, center, 0, -Math.PI / 2);
+  else if (nativeAxis === 'y' && axis === 'x') rotatePatch(patch, center, 2, -Math.PI / 2);
+  else if (nativeAxis === 'y' && axis === 'z') rotatePatch(patch, center, 0, Math.PI / 2);
+  else throw new Error(`Unsupported patch orientation ${nativeAxis} to ${axis}`);
+}
+
+function validateGeneratedPatch(patch: Patch): void {
+  if (patch.width < 3 || patch.height < 3 || patch.width > 31 || patch.height > 31 || patch.width % 2 === 0 || patch.height % 2 === 0) {
+    throw new Error(`Patch control grid must use odd dimensions from 3 through 31; got ${patch.width}x${patch.height}`);
+  }
+  if (patch.ctrl.length !== patch.height || patch.ctrl.some(row => row.length !== patch.width)) throw new Error('Patch control grid is not rectangular');
+  if (patch.ctrl.some(row => row.some(point => ![...point.xyz, ...point.uv].every(Number.isFinite)))) throw new Error('Patch control points and UVs must be finite');
+  if (![...patch.mins, ...patch.maxs].every(Number.isFinite) || patch.tessVerts.length === 0 || patch.tessIndices.length === 0) {
+    throw new Error('Patch did not produce finite tessellated geometry');
+  }
+}
+
+function addPatch(editor: Editor, entity: Entity, operation: CreatePatchOperation): Patch {
+  assertBounds(operation.mins, operation.maxs);
+  const texture = operation.texture ?? 'common/caulk';
+  const creators = {
+    bevel: createBevelPatch,
+    endcap: createEndcapPatch,
+    cylinder: createCylinderPatch,
+    arch: createArchPatch,
+    pipe: createCylinderPatch,
+    ramp: createRampPatch,
+  } as const;
+  const patch = creators[operation.preset](operation.mins, operation.maxs, texture);
+  const center = patchCenterFromBounds(operation.mins, operation.maxs);
+  if (operation.preset === 'arch') orientPatchExtrusion(patch, center, 'y', operation.axis ?? 'y');
+  else if (operation.preset !== 'ramp') orientPatchExtrusion(patch, center, 'z', operation.axis ?? 'z');
+  if (operation.preset === 'ramp') {
+    const rotation = { 'x+': 0, 'y+': Math.PI / 2, 'x-': Math.PI, 'y-': -Math.PI / 2 }[operation.direction ?? 'x+'];
+    if (rotation) rotatePatch(patch, center, 2, rotation);
+  }
+  if (operation.subdivisions !== undefined) {
+    if (!Number.isInteger(operation.subdivisions) || operation.subdivisions < 1 || operation.subdivisions > 24) {
+      throw new Error('Patch subdivisions must be an integer from 1 to 24');
+    }
+    patch.subdivisions = operation.subdivisions; tessellatePatch(patch);
+  }
+  if (operation.textureMode === 'fit') fitPatchUV(patch);
+  else if (operation.textureMode === 'natural') naturalizePatchUV(patch);
+  validateGeneratedPatch(patch);
+  entity.patches.push(patch);
+  return patch;
+}
+
+function resolvedPatches(targets: ResolvedObject[], operation: string): Array<{ entity: Entity; patch: Patch }> {
+  const patches: Array<{ entity: Entity; patch: Patch }> = [];
+  const seen = new Set<Patch>();
+  for (const target of targets) {
+    const candidates = target.kind === 'entity' ? target.entity.patches : target.kind === 'patch' ? [target.patch] : null;
+    if (!candidates) throw new Error(`${target.ref} is a brush; ${operation} requires patch references or patch-owning entities`);
+    for (const patch of candidates) if (!seen.has(patch)) { seen.add(patch); patches.push({ entity: target.entity, patch }); }
+  }
+  if (patches.length === 0) throw new Error(`${operation} did not resolve any patches`);
+  return patches;
+}
+
+function applyEditPatches(operation: EditPatchesOperation, patches: Array<{ entity: Entity; patch: Patch }>): void {
+  if (operation.texture !== undefined && !operation.texture.trim()) throw new Error('Patch texture must not be empty');
+  if (operation.scale && (!operation.scale.every(value => Number.isFinite(value) && value > 0))) throw new Error('Patch UV scale must contain positive finite values');
+  if (operation.shift && !operation.shift.every(Number.isFinite)) throw new Error('Patch UV shift must contain finite values');
+  if (operation.rotateDegrees !== undefined && !Number.isFinite(operation.rotateDegrees)) throw new Error('Patch UV rotation must be finite');
+  if (operation.subdivisions !== undefined && (!Number.isInteger(operation.subdivisions) || operation.subdivisions < 1 || operation.subdivisions > 24)) {
+    throw new Error('Patch subdivisions must be an integer from 1 to 24');
+  }
+  for (const { patch } of patches) {
+    if (operation.texture !== undefined) patch.texture = operation.texture;
+    if (operation.textureMode === 'fit') fitPatchUV(patch);
+    else if (operation.textureMode === 'natural') naturalizePatchUV(patch);
+    if (operation.shift || operation.scale || operation.rotateDegrees !== undefined) {
+      transformPatchUV(patch, operation.shift ?? [0, 0], operation.scale ?? [1, 1], operation.rotateDegrees ?? 0);
+    }
+    if (operation.subdivisions !== undefined) { patch.subdivisions = operation.subdivisions; tessellatePatch(patch); }
+    validateGeneratedPatch(patch);
+  }
+}
+
+function applyThickenPatches(operation: ThickenPatchOperation, patches: Array<{ entity: Entity; patch: Patch }>): ObjectHandle[] {
+  if (!Number.isFinite(operation.amount) || operation.amount <= 0) throw new Error('thicken_patch amount must be positive');
+  const handles: ObjectHandle[] = [];
+  for (const { entity, patch } of patches) {
+    const index = entity.patches.indexOf(patch);
+    if (index < 0) throw new Error('A patch was replaced earlier in this batch');
+    const replacements = thickenPatch(patch, operation.amount, operation.caps ?? true);
+    replacements.forEach(replacement => { replacement.editorGroupId = patch.editorGroupId; validateGeneratedPatch(replacement); });
+    entity.patches.splice(index, 1, ...replacements);
+    handles.push(...replacements.map(replacement => ({ kind: 'patch' as const, entity, patch: replacement })));
+  }
+  return handles;
 }
 
 function addStairs(editor: Editor, entity: Entity, operation: CreateStairsOperation): ObjectHandle[] {
@@ -1342,6 +1514,10 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handle: ObjectHandle = { kind: 'brush', entity, brush: addWedge(editor, entity, operation) };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
+      } else if (operation.type === 'create_tapered') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handle: ObjectHandle = { kind: 'brush', entity, brush: addTapered(editor, entity, operation) };
+        recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_stairs') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handles = addStairs(editor, entity, operation);
@@ -1354,6 +1530,10 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handles = addPrefab(editor, entity, operation);
         recordCreated(editor, operation, handles, createdHandles, aliases);
+      } else if (operation.type === 'create_patch') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handle: ObjectHandle = { kind: 'patch', entity, patch: addPatch(editor, entity, operation) };
+        recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_area') {
         const handles = applyCreateArea(editor, operation, aliases);
         recordCreated(editor, { id: operation.id }, handles, createdHandles, aliases);
@@ -1405,6 +1585,14 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           editFace(editor, resolved.face, operation);
           changedFaceRefs.add(resolved.ref);
         }
+      } else if (operation.type === 'edit_patches') {
+        const patches = resolvedPatches(resolveTargets(editor, operation.targets, aliases), 'edit_patches');
+        applyEditPatches(operation, patches);
+        patches.forEach(({ entity, patch }) => changedHandles.add({ kind: 'patch', entity, patch }));
+      } else if (operation.type === 'thicken_patch') {
+        const patches = resolvedPatches(resolveTargets(editor, operation.targets, aliases), 'thicken_patch');
+        const handles = applyThickenPatches(operation, patches);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'set_brush_classification') {
         const targets = resolveTargets(editor, operation.targets, aliases);
         const brushes = classifyBrushes(targets, operation.classification);

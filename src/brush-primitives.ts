@@ -111,6 +111,40 @@ export function createWedgeBrush(mins: Vec3, maxs: Vec3, texture: string, direct
   ], texture);
 }
 
+/** Create a convex box-like brush whose top rectangle may be scaled and offset. */
+export function createTaperedBrush(
+  mins: Vec3,
+  maxs: Vec3,
+  texture: string,
+  topScale: [number, number] = [0.75, 0.75],
+  topOffset: [number, number] = [0, 0],
+): Brush {
+  validateBrushPrimitiveParameters('box', mins, maxs, 2, 4);
+  if (!topScale.every(value => Number.isFinite(value) && value > 0 && value <= 4)) {
+    throw new Error('Tapered brush topScale values must be greater than zero and at most 4');
+  }
+  if (!topOffset.every(Number.isFinite)) throw new Error('Tapered brush topOffset values must be finite');
+  const centerX = (mins[0] + maxs[0]) / 2 + topOffset[0];
+  const centerY = (mins[1] + maxs[1]) / 2 + topOffset[1];
+  const halfX = (maxs[0] - mins[0]) / 2 * topScale[0];
+  const halfY = (maxs[1] - mins[1]) / 2 * topScale[1];
+  const bottom: Vec3[] = [
+    [mins[0], mins[1], mins[2]], [maxs[0], mins[1], mins[2]],
+    [maxs[0], maxs[1], mins[2]], [mins[0], maxs[1], mins[2]],
+  ];
+  const top: Vec3[] = [
+    [centerX - halfX, centerY - halfY, maxs[2]], [centerX + halfX, centerY - halfY, maxs[2]],
+    [centerX + halfX, centerY + halfY, maxs[2]], [centerX - halfX, centerY + halfY, maxs[2]],
+  ];
+  return createBrushFromPolygons([
+    [...bottom].reverse(), top,
+    [bottom[0], bottom[1], top[1], top[0]],
+    [bottom[1], bottom[2], top[2], top[1]],
+    [bottom[2], bottom[3], top[3], top[2]],
+    [bottom[3], bottom[0], top[0], top[3]],
+  ], texture);
+}
+
 function makeAxisPoint(axis: number, axisValue: number, uAxis: number, uValue: number, vAxis: number, vValue: number): Vec3 {
   const point: Vec3 = [0, 0, 0];
   point[axis] = axisValue;

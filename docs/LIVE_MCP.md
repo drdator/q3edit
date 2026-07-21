@@ -107,9 +107,14 @@ Initial `map_apply` operations are:
 - `create_room`
 - `create_primitive` (`box`, `cylinder`, `cone`, `sphere`, or `pyramid`)
 - `create_wedge`
+- `create_tapered` for convex tapered or asymmetrically offset trapezoid brushes
 - `create_stairs`
 - `create_brush` from arbitrary convex face planes
 - `create_prefab` for textured, modular `pillar`, `door_frame`, and `jump_pad_base` assemblies
+- `create_patch` for native editable bevel, endcap, cylinder, arch, pipe, and ramp patchDef2 surfaces
+- `edit_patches` for material, natural/fit UVs, relative UV transforms, and subdivisions
+- `thicken_patch` for offset front/back surfaces with optional caps
+- `create_area` and `connect_areas` for persistent semantic plans with optional transparent geometry
 - `create_jump_pad` and `create_teleporter` as composable, wired gameplay operations
 - `translate`
 - `rotate`
@@ -130,6 +135,8 @@ Creation operations accept `group` and an optional stable `groupId`. The created
 `create_prefab` requires a discovered fallback `texture`, accepts role materials through `textures.primary`, `accent`, `focal`, `sides`, and `bottom`, and returns the whole assembly under its symbolic ID. Prefabs default to detail geometry. Pillars and door frames preserve architectural tiling; jump-pad bases automatically fit the focal material once on the top cap. Use `classification: "structural"` only when the module must seal the world or control visibility.
 
 `create_box` and `create_primitive` accept semantic `textures.top`, `textures.bottom`, and `textures.sides` slots. For non-box primitives, top/bottom are the positive/negative caps along `axis`. `create_stairs` accepts `textures.treads`, `textures.risers`, `textures.sides`, and `textures.underside`; unspecified slots fall back to `texture`.
+
+`create_patch` produces ordinary patchDef2 control grids and validates their dimensions, finite coordinates/UVs, bounds, and tessellation before committing. `axis` selects the extrusion axis for cylindrical/cap surfaces and arches; `direction` orients ramps. `textureMode: "fit"` maps one repeat over the grid, while `"natural"` derives world-scale UVs. `edit_patches` applies fit/natural mapping before relative shift, scale, and rotation. Thickening replaces a source with grouped editable patch surfaces and can expose the result through one symbolic alias.
 
 ## Texture projection quality
 
