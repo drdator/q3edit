@@ -6,6 +6,7 @@ import {
   computeBrushGeometry,
   createBoxBrush,
   createFace,
+  scaleBrushFaces,
   textureAxisFromPlane,
   validateBrush,
   type Brush,
@@ -32,6 +33,7 @@ import {
   createRampPatch,
   mirrorPatch,
   rotatePatch,
+  scalePatchControlPoints,
   tessellatePatch,
   translatePatch,
   type Patch,
@@ -347,6 +349,24 @@ export interface ArrayObjectsOperation extends CreationMetadata {
   delta: Vec3;
 }
 
+export interface RepeatVariationOperation extends CreationMetadata {
+  type: 'repeat_variation';
+  targets: MapTargetRef[];
+  copies: number;
+  distribution?: 'linear' | 'radial' | 'mirror';
+  delta?: Vec3;
+  stepSequence?: Vec3[];
+  center?: Vec3;
+  axis?: MapAxis;
+  angleStepDegrees?: number;
+  rotationSequence?: number[];
+  scaleSequence?: Vec3[];
+  materialSequence?: Array<{ texture: string; role?: string }>;
+  seed?: number;
+  variation?: { position?: Vec3; rotationDegrees?: number; scale?: Vec3 };
+  grid?: number;
+}
+
 export interface SetTextureOperation {
   type: 'set_texture';
   targets: MapTargetRef[];
@@ -484,6 +504,7 @@ export type MapOperation =
   | MirrorObjectsOperation
   | CloneObjectsOperation
   | ArrayObjectsOperation
+  | RepeatVariationOperation
   | SetTextureOperation
   | EditFacesOperation
   | SetBrushClassificationOperation
@@ -1762,6 +1783,118 @@ function cloneResolved(editor: Editor, target: ResolvedObject, delta: Vec3): Obj
   return { kind: 'patch', entity: target.entity, patch };
 }
 
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6D2B79F5;
+    let value = state;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function handleCenter(handle: ObjectHandle): Vec3 {
+  const bounds = handle.kind === 'brush' ? handle.brush : handle.kind === 'patch' ? handle.patch : null;
+  if (!bounds) throw new Error('repeat_variation supports brush and patch targets, not whole entities');
+  return bounds.maxs.map((value, axis) => (value + bounds.mins[axis]) / 2) as Vec3;
+}
+
+function scaleHandle(handle: ObjectHandle, center: Vec3, scale: Vec3): void {
+  if (handle.kind === 'brush') {
+    const points = handle.brush.faces.map(face => face.points.map(point => [...point] as Vec3) as [Vec3, Vec3, Vec3]);
+    scaleBrushFaces(handle.brush, points, center, scale);
+  } else if (handle.kind === 'patch') {
+    const controlPoints = handle.patch.ctrl.map(row => row.map(point => ({ xyz: [...point.xyz] as Vec3, uv: [...point.uv] as [number, number] })));
+    scalePatchControlPoints(handle.patch, controlPoints, center, scale);
+  } else throw new Error('repeat_variation supports brush and patch targets, not whole entities');
+}
+
+function translateHandle(editor: Editor, handle: ObjectHandle, delta: Vec3): void {
+  if (handle.kind === 'brush') translateEditorBrush(editor, handle.brush, delta);
+  else if (handle.kind === 'patch') translatePatch(handle.patch, delta);
+  else throw new Error('repeat_variation supports brush and patch targets, not whole entities');
+}
+
+function rotateHandle(editor: Editor, handle: ObjectHandle, center: Vec3, axis: number, radians: number): void {
+  if (handle.kind === 'brush') rotateEditorBrush(editor, handle.brush, center, axis, radians);
+  else if (handle.kind === 'patch') rotatePatch(handle.patch, center, axis, radians);
+  else throw new Error('repeat_variation supports brush and patch targets, not whole entities');
+}
+
+function mirrorHandle(editor: Editor, handle: ObjectHandle, center: Vec3, axis: number): void {
+  if (handle.kind === 'brush') mirrorEditorBrush(editor, handle.brush, center, axis);
+  else if (handle.kind === 'patch') mirrorPatch(handle.patch, center, axis);
+  else throw new Error('repeat_variation supports brush and patch targets, not whole entities');
+}
+
+function applyRepeatVariation(editor: Editor, operation: RepeatVariationOperation, aliases: SymbolicReferences): ObjectHandle[] {
+  if (!Number.isInteger(operation.copies) || operation.copies < 1 || operation.copies > 64) throw new Error('repeat_variation copies must be an integer from 1 to 64');
+  const distribution = operation.distribution ?? 'linear';
+  if (distribution === 'mirror' && operation.copies !== 1) throw new Error('repeat_variation mirror distribution creates exactly one copy');
+  if ((distribution === 'radial' || distribution === 'mirror') && !operation.center) throw new Error(`${distribution} distribution requires center`);
+  if (operation.center) assertVector('center', operation.center);
+  const delta = operation.delta ?? [0, 0, 0]; assertVector('delta', delta);
+  operation.stepSequence?.forEach((step, index) => assertVector(`stepSequence ${index + 1}`, step));
+  if (operation.stepSequence?.length === 0) throw new Error('stepSequence must not be empty');
+  if (operation.rotationSequence?.some(value => !Number.isFinite(value))) throw new Error('rotationSequence must contain finite degrees');
+  if (operation.scaleSequence?.some(scale => scale.length !== 3 || scale.some(value => !Number.isFinite(value) || value <= 0 || value > 4))) throw new Error('scaleSequence must contain positive three-axis scales no greater than 4');
+  if (operation.materialSequence?.some(item => !item.texture.trim())) throw new Error('materialSequence textures must not be empty');
+  if (operation.materialSequence?.length === 0) throw new Error('materialSequence must not be empty');
+  const grid = operation.grid ?? 1;
+  if (!Number.isFinite(grid) || grid <= 0) throw new Error('repeat_variation grid must be positive');
+  const variation = operation.variation;
+  if (variation?.position) assertVector('variation.position', variation.position);
+  if (variation?.scale) assertVector('variation.scale', variation.scale);
+  if (variation?.position?.some(value => value < 0) || variation?.scale?.some(value => value < 0)) throw new Error('variation bounds must be non-negative');
+  if (variation?.scale?.some(value => value > 0.95)) throw new Error('variation.scale must stay within the safe 0 through 0.95 fractional range');
+  if (variation?.rotationDegrees !== undefined && (!Number.isFinite(variation.rotationDegrees) || variation.rotationDegrees < 0 || variation.rotationDegrees > 180)) throw new Error('variation.rotationDegrees must be between 0 and 180');
+  const sources = resolveTargets(editor, operation.targets, aliases);
+  if (sources.some(source => source.kind === 'entity')) throw new Error('repeat_variation targets must be brushes or patches');
+  const random = seededRandom(operation.seed ?? 1);
+  const axis = axisIndex(operation.axis ?? 'z');
+  const handles: ObjectHandle[] = [];
+  let cumulative: Vec3 = [0, 0, 0];
+  for (let copy = 1; copy <= operation.copies; copy++) {
+    if (distribution === 'linear') {
+      const step = operation.stepSequence?.[(copy - 1) % operation.stepSequence.length] ?? delta;
+      cumulative = cumulative.map((value, dimension) => value + step[dimension]) as Vec3;
+    }
+    for (const source of sources) {
+      const handle = cloneResolved(editor, source, [0, 0, 0]);
+      if (distribution === 'linear') translateHandle(editor, handle, cumulative);
+      else if (distribution === 'radial') {
+        const angle = (operation.angleStepDegrees ?? 360 / (operation.copies + 1)) * copy * Math.PI / 180;
+        rotateHandle(editor, handle, operation.center!, axis, angle);
+      } else mirrorHandle(editor, handle, operation.center!, axis);
+
+      const center = handleCenter(handle);
+      const sequenceScale = operation.scaleSequence?.[(copy - 1) % operation.scaleSequence.length] ?? [1, 1, 1];
+      const scale = sequenceScale.map((value, dimension) => {
+        const bound = variation?.scale?.[dimension] ?? 0;
+        return value * (1 + (random() * 2 - 1) * bound);
+      }) as Vec3;
+      if (scale.some(value => value <= 0.05 || value > 4)) throw new Error('repeat_variation generated scale outside the safe 0.05 through 4 range');
+      if (scale.some(value => Math.abs(value - 1) > 1e-6)) scaleHandle(handle, center, scale);
+
+      const sequenceRotation = operation.rotationSequence?.[(copy - 1) % operation.rotationSequence.length] ?? 0;
+      const rotation = sequenceRotation + (random() * 2 - 1) * (variation?.rotationDegrees ?? 0);
+      if (rotation) rotateHandle(editor, handle, handleCenter(handle), axis, rotation * Math.PI / 180);
+
+      const position = [0, 1, 2].map(dimension => {
+        const bound = variation?.position?.[dimension] ?? 0;
+        return Math.round(((random() * 2 - 1) * bound) / grid) * grid;
+      }) as Vec3;
+      if (position.some(Boolean)) translateHandle(editor, handle, position);
+
+      const material = operation.materialSequence?.[(copy - 1) % operation.materialSequence.length];
+      if (material) setObjectTexture(resolveHandle(editor, handle), material.texture);
+      handles.push(handle);
+    }
+  }
+  return handles;
+}
+
 function applyDeletion(editor: Editor, resolved: ResolvedObject[]): void {
   if (resolved.some(item => item.kind === 'entity' && item.entity === editor.entities[0])) throw new Error('Worldspawn cannot be deleted');
 
@@ -1928,6 +2061,9 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
           const delta: Vec3 = operation.delta.map(value => value * copy) as Vec3;
           handles.push(...sources.map(target => cloneResolved(editor, target, delta)));
         }
+        recordCreated(editor, operation, handles, createdHandles, aliases);
+      } else if (operation.type === 'repeat_variation') {
+        const handles = applyRepeatVariation(editor, operation, aliases);
         recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'set_texture') {
         for (const target of resolveTargets(editor, operation.targets, aliases)) {

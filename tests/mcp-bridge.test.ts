@@ -436,11 +436,12 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 7, maxPerBatch: 128 },
+        operations: { version: 8, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },
         pathConstruction: { persistent: true, operation: 'create_path', maxControlPoints: 64, maxGeneratedObjects: 256 },
         brushRefinement: { groupPreserving: true, textureModes: ['preserve', 'fit'] },
+        controlledVariation: { operation: 'repeat_variation', seeded: true, gridSnapped: true, previewCollisionReporting: true },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -492,6 +493,11 @@ describe('live MCP bridge', () => {
       expect(offsetSchema.structuredContent).toMatchObject({
         type: 'offset_faces', required: ['type', 'targets', 'distance'],
         notes: expect.arrayContaining([expect.stringContaining('extrude outward')]),
+      });
+      const variationSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'repeat_variation' } });
+      expect(variationSchema.structuredContent).toMatchObject({
+        type: 'repeat_variation', required: ['type', 'targets', 'copies'],
+        notes: expect.arrayContaining([expect.stringContaining('bounded, reproducible')]),
       });
       const boxJson = JSON.stringify((boxSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
       expect(boxJson).toContain('"textureTransform"');
@@ -568,6 +574,7 @@ describe('live MCP bridge', () => {
           added: { count: 0, sample: [], truncated: false },
           resolved: { count: 0, sample: [], truncated: false },
         },
+        generatedCollisions: { count: 0, sample: [], truncated: false },
       });
       expect((previewed.structuredContent as Record<string, unknown>).mapText).toBeUndefined();
 

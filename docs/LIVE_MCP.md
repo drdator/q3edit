@@ -124,6 +124,7 @@ Initial `map_apply` operations are:
 - `mirror`
 - `clone`
 - `array`
+- `repeat_variation` for deterministic linear, radial, or mirrored repetitions with bounded seeded variation
 - `set_texture`
 - `edit_faces` for per-face texture, shift, scale, rotation, fit, and compile flags
 - `set_brush_classification` (`detail` or `structural`)
@@ -149,6 +150,8 @@ Creation operations accept `group` and an optional stable `groupId`. The created
 Brush refinement operations work on existing geometry. `offset_faces` moves selected planes along their outward normals; positive distances extrude and negative distances inset. `chamfer_brushes` clips any subset of the four cross-section corners around X, Y, or Z, and beveling all four turns a rectangular solid into an octagonal one. `taper_brushes` refines axis-aligned six-face boxes along any axis with a scaled and optionally offset positive end. These operations preserve face materials, projections, compile flags, brush properties, and named groups by default. Set `textureMode: "fit"` only when the moved or newly created faces should intentionally receive a fresh fit. Existing `clip_brushes`, `hollow_brushes`, and `csg_subtract` now also preserve group membership on replacement fragments.
 
 `design_pattern_search` is a planning aid rather than a prefab catalog. Search by intent such as `vertical route`, `flank`, `risk reward`, or `compression release`, optionally with a small/medium/large scale. Each result describes semantic area roles and connection constraints suitable for adapting into `create_area` and `connect_areas`, then recommends how to realize only the necessary geometry. The catalog deliberately omits coordinates and brushwork: agents must adapt proportions, levels, visibility, cover, and variations to the live bounds, style brief, route graph, and gameplay needs.
+
+`repeat_variation` clones brush or patch targets with deliberate, reproducible rhythm. Linear distributions accept a cumulative cycling `stepSequence`; radial distributions rotate copies around a center; mirror creates one reflected copy. Cycling `rotationSequence`, `scaleSequence`, and labeled `materialSequence` values support alternating or role-based composition. Optional seeded variation bounds position, rotation, and fractional scale independently. Position offsets are snapped to `grid` (one map unit by default), scale deviation is capped below 100%, and identical inputs plus seed produce identical geometry. Always call `map_preview` first: in addition to normal compiler/editor diagnostics, it returns `generatedCollisions` for AABB overlaps involving created brushes or patches. Treat overlaps as review candidates because some architectural intersections are intentional.
 
 ## Texture projection quality
 
@@ -218,7 +221,7 @@ Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as
 A useful authoring loop is:
 
 1. Call `map_status`, `map_style_get`, `map_spatial_plan_get`, and `map_construction_paths_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its design intent, generated path sources, and available assets.
-2. If the composition is weak or underspecified, call `design_pattern_search` and adapt one useful pattern rather than combining many. For a substantial layout, call `map_spatial_plan_preview` before committing areas and routes. Use `create_path` when a route or repeated architectural element should follow a curve or segmented line. For complex geometry, call `map_preview`; then make one logical edit with `map_apply` and the same current revision.
+2. If the composition is weak or underspecified, call `design_pattern_search` and adapt one useful pattern rather than combining many. For a substantial layout, call `map_spatial_plan_preview` before committing areas and routes. Use `create_path` when a route or repeated architectural element should follow a curve or segmented line, and `repeat_variation` for short deliberate rhythms rather than hand-authored clone batches. For complex or varied geometry, call `map_preview` and review collisions; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.
    Use `editor_layout_screenshot` for flow, symmetry, spacing, and route-layout decisions, `map_spatial_review` for composition heuristics, `map_texture_review` for projection quality, and `map_design_review` for a combined structured quality pass.

@@ -478,7 +478,7 @@ const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
   'create_wedge', 'create_tapered', 'create_stairs', 'create_brush', 'create_prefab', 'create_patch', 'create_area', 'connect_areas', 'create_path',
-  'translate', 'rotate', 'mirror', 'clone', 'array', 'set_texture', 'edit_faces', 'edit_patches', 'thicken_patch', 'set_brush_classification', 'clip_brushes',
+  'translate', 'rotate', 'mirror', 'clone', 'array', 'repeat_variation', 'set_texture', 'edit_faces', 'edit_patches', 'thicken_patch', 'set_brush_classification', 'clip_brushes',
   'hollow_brushes', 'csg_subtract', 'offset_faces', 'chamfer_brushes', 'taper_brushes', 'create_jump_pad', 'create_teleporter', 'delete',
   'assign_group', 'remove_from_group',
 ] as const;
@@ -706,6 +706,24 @@ const mapOperationVariants = [
   z.object({ type: z.literal('mirror'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']) }),
   z.object({ type: z.literal('clone'), ...creationMetadataSchema, targets: z.array(operationRef).min(1), delta: vec3.optional() }),
   z.object({ type: z.literal('array'), ...creationMetadataSchema, targets: z.array(operationRef).min(1), copies: z.number().int().min(1).max(64), delta: vec3 }),
+  z.object({
+    type: z.literal('repeat_variation'),
+    ...creationMetadataSchema,
+    targets: z.array(operationRef).min(1), copies: z.number().int().min(1).max(64),
+    distribution: z.enum(['linear', 'radial', 'mirror']).optional(),
+    delta: vec3.optional(), stepSequence: z.array(vec3).min(1).max(32).optional(),
+    center: vec3.optional(), axis: z.enum(['x', 'y', 'z']).optional(), angleStepDegrees: z.number().optional(),
+    rotationSequence: z.array(z.number()).min(1).max(32).optional(),
+    scaleSequence: z.array(vec3).min(1).max(32).optional(),
+    materialSequence: z.array(z.object({ texture: z.string().min(1), role: z.string().min(1).max(120).optional() })).min(1).max(32).optional(),
+    seed: z.number().int().optional(),
+    variation: z.object({
+      position: vec3.refine(value => value.every(component => component >= 0), 'position bounds must be non-negative').optional(),
+      rotationDegrees: z.number().min(0).max(180).optional(),
+      scale: vec3.refine(value => value.every(component => component >= 0 && component <= 0.95), 'scale bounds must be from 0 through 0.95').optional(),
+    }).optional(),
+    grid: z.number().positive().optional(),
+  }),
   z.object({ type: z.literal('set_texture'), targets: z.array(operationRef).min(1), texture: z.string().min(1) }),
   z.object({
     type: z.literal('edit_faces'),
@@ -909,6 +927,11 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'Replaces selected axis-aligned six-face boxes with tapered convex brushes along axis while preserving the closest semantic face materials, flags, projections, properties, and group.',
     'endScale controls the two transverse dimensions at the positive end; endOffset shifts that end. textureMode=fit deliberately refits every replacement face.',
   ],
+  repeat_variation: [
+    'Clones brush or patch targets using linear, radial, or mirrored distribution. stepSequence is cumulative and cycles; rotation, scale, and labeled material sequences cycle by copy index.',
+    'Seeded variation is bounded, reproducible, and position-snapped to grid (default 1 map unit). Variation scale values are maximum fractional deviations, so 0.1 means ±10%.',
+    'Use map_preview before applying: it returns every generated bound plus generatedCollisions and normal geometry diagnostics. Keep variation small enough to preserve intentional rhythm and compiler-safe scale.',
+  ],
   assign_group: ['The group name reuses an existing case-insensitive match or creates a persistent named group.'],
 };
 
@@ -938,6 +961,7 @@ const compatibleMapOperationInput = z.object({
     'mirror',
     'clone',
     'array',
+    'repeat_variation',
     'set_texture',
     'edit_faces',
     'edit_patches',
@@ -1046,6 +1070,15 @@ const compatibleMapOperationInput = z.object({
   center: compatibleVec3.optional(),
   angleDegrees: z.number().optional(),
   copies: z.number().int().optional(),
+  distribution: z.enum(['linear', 'radial', 'mirror']).optional(),
+  stepSequence: z.array(compatibleVec3).optional(),
+  angleStepDegrees: z.number().optional(),
+  rotationSequence: z.array(z.number()).optional(),
+  scaleSequence: z.array(compatibleVec3).optional(),
+  materialSequence: z.array(z.object({ texture: z.string(), role: z.string().optional() })).optional(),
+  seed: z.number().int().optional(),
+  variation: z.object({ position: compatibleVec3.optional(), rotationDegrees: z.number().optional(), scale: compatibleVec3.optional() }).optional(),
+  grid: z.number().optional(),
   delta: compatibleVec3.optional(),
   shift: z.array(z.number()).length(2).optional(),
   scale: z.array(z.number()).length(2).optional(),
@@ -1121,6 +1154,23 @@ function compactItems<T>(items: T[]): { count: number; sample: T[]; truncated: b
   return { count: items.length, sample: items.slice(0, 8), truncated: items.length > 8 };
 }
 
+function generatedCollisionReport(mapText: string, createdRefs: string[]): { count: number; sample: Array<{ a: string; b: string; overlap: [number, number, number] }>; truncated: boolean } {
+  const entities = parseMapWithDiagnostics(mapText).document.entities;
+  const objects = entities.flatMap((entity, entityIndex) => [
+    ...entity.brushes.map((brush, index) => ({ ref: `E${entityIndex}:B${index}`, mins: brush.mins, maxs: brush.maxs })),
+    ...entity.patches.map((patch, index) => ({ ref: `E${entityIndex}:P${index}`, mins: patch.mins, maxs: patch.maxs })),
+  ]);
+  const created = new Set(createdRefs.filter(ref => /:([BP])\d+$/.test(ref)));
+  const collisions: Array<{ a: string; b: string; overlap: [number, number, number] }> = [];
+  for (let first = 0; first < objects.length; first++) for (let second = first + 1; second < objects.length; second++) {
+    const a = objects[first]; const b = objects[second];
+    if (!created.has(a.ref) && !created.has(b.ref)) continue;
+    const overlap = [0, 1, 2].map(axis => Math.min(a.maxs[axis], b.maxs[axis]) - Math.max(a.mins[axis], b.mins[axis])) as [number, number, number];
+    if (overlap.every(value => value > 0.1)) collisions.push({ a: a.ref, b: b.ref, overlap });
+  }
+  return { count: collisions.length, sample: collisions.slice(0, 32), truncated: collisions.length > 32 };
+}
+
 function compactApplyResult(result: {
   revision: number; operationCount: number; summary: string; created: string[]; changed: string[]; aliases: Record<string, string[]>;
 }): Record<string, unknown> {
@@ -1148,6 +1198,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       'Use create_path for curved or segmented corridors, walls, railings, pipes, beams, trim, stairs, and supports. Preview complex paths first, then inspect their persistent source/group relationship with map_construction_paths_get.',
       'Refine blockout brushes with offset_faces, chamfer_brushes, taper_brushes, clip_brushes, hollow_brushes, and csg_subtract; preserve projections unless an intentional fit is requested.',
       'Use design_pattern_search for abstract area/route constraints when a layout needs stronger composition. Adapt roles to the live map; never treat a pattern as fixed prefab geometry.',
+      'Use repeat_variation for deliberate repeated rhythm: prefer short labeled sequences and small seeded bounds, preview generated collisions, and keep positions snapped to the modular grid.',
       'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
       'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
       'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
@@ -1266,7 +1317,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 7, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 8, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
           persistent: true,
           tools: ['map_spatial_plan_get', 'map_spatial_plan_preview'],
@@ -1291,6 +1342,11 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           operations: ['offset_faces', 'chamfer_brushes', 'taper_brushes', 'clip_brushes', 'hollow_brushes', 'csg_subtract'],
           textureModes: ['preserve', 'fit'],
           groupPreserving: true,
+        },
+        controlledVariation: {
+          operation: 'repeat_variation', distributions: ['linear', 'radial', 'mirror'],
+          sequences: ['step', 'rotation', 'scale', 'material'], seeded: true, gridSnapped: true,
+          previewCollisionReporting: true,
         },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
@@ -2295,6 +2351,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const previewResult: Record<string, unknown> = {
         ...safePreview,
         gameplayLint,
+        generatedCollisions: generatedCollisionReport(previewMapText, Array.isArray(preview.created) ? preview.created as string[] : []),
       };
       if (responseDetail === 'compact') {
         const created = Array.isArray(previewResult.created) ? previewResult.created as string[] : [];
@@ -2314,6 +2371,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
             beforeCount: gameplayLint.beforeCount, afterCount: gameplayLint.afterCount,
             added: compactItems(gameplayLint.added), resolved: compactItems(gameplayLint.resolved),
           },
+          generatedCollisions: previewResult.generatedCollisions,
         }));
       }
       return toolResult(sessionValue(resolved, previewResult));

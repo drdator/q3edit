@@ -186,16 +186,27 @@ fragments.
 
 ### 7. Controlled variation
 
-- [ ] Add alternating and role-based material sequences.
-- [ ] Add deterministic size, spacing, and rotation sequences.
-- [ ] Add mirror and radial distribution helpers.
-- [ ] Add bounded position, scale, and orientation variation with a seed.
-- [ ] Add parameterized variation rules for repeated generated geometry.
-- [ ] Preview the generated result and report collisions or invalid geometry.
-- [ ] Discourage unbounded randomness and preserve grid/compiler constraints.
+- [x] Add alternating and role-based material sequences.
+- [x] Add deterministic size, spacing, and rotation sequences.
+- [x] Add mirror and radial distribution helpers.
+- [x] Add bounded position, scale, and orientation variation with a seed.
+- [x] Add parameterized variation rules for repeated generated geometry.
+- [x] Preview the generated result and report collisions or invalid geometry.
+- [x] Discourage unbounded randomness and preserve grid/compiler constraints.
 
 Controlled variation should break visible repetition while retaining deliberate
 rhythm and making results reproducible.
+
+Implementation note: `repeat_variation` clones ordinary brush or patch targets
+with linear, radial, or mirror distribution. Cumulative step sequences and
+cycling rotation, scale, and labeled material roles are deterministic. Optional
+position, orientation, and fractional-scale variation uses a stable integer
+seed; position offsets snap to an explicit grid, unsafe scale ranges are
+rejected, and the normal geometry validation still runs. `map_preview` now
+adds a bounded `generatedCollisions` report for overlaps involving created
+geometry, alongside its existing generated bounds and diagnostics. The server
+instructions explicitly favor short sequences and small bounded variation over
+unstructured randomness.
 
 ## Agent workflow after implementation
 
