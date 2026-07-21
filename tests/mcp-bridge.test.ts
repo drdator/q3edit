@@ -8,6 +8,7 @@ import type { WebSocket } from 'ws';
 import { afterEach, describe, expect, test } from 'vitest';
 import { BridgeHub } from '../bridge/bridge-hub';
 import { createQ3EditMcpServer } from '../bridge/mcp-server';
+import { McpActivityLog } from '../bridge/activity-log';
 import type { EditorToBridgeMessage, LiveMapSnapshot } from '../src/live-bridge-protocol';
 
 function snapshot(revision = 4): LiveMapSnapshot {
@@ -258,6 +259,7 @@ describe('live MCP bridge', () => {
       const tools = await client.listTools();
       expect(tools.tools.map(tool => tool.name)).toEqual([
         'editor_sessions',
+        'activity_log',
         'editor_session_select',
         'map_status',
         'map_capabilities',
@@ -573,6 +575,36 @@ describe('live MCP bridge', () => {
       expect(fresh.structuredContent).toMatchObject({
         sessionId: 'editor-a', fileName: 'agent-arena.map', revision: 9,
       });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  test('records an append-only per-MCP-session activity transcript', async () => {
+    const { hub } = connectedHub();
+    const directory = await mkdtemp(join(tmpdir(), 'q3edit-mcp-log-test-'));
+    temporaryDirectories.push(directory);
+    const activityLog = new McpActivityLog(directory, 'mcp-test-session');
+    const server = createQ3EditMcpServer(hub, activityLog);
+    const client = new Client({ name: 'q3edit-log-test', version: '0.1.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    try {
+      await client.callTool({ name: 'map_status', arguments: { sessionId: 'editor-a' } });
+      const transcript = await client.callTool({ name: 'activity_log', arguments: { limit: 10 } });
+      expect(transcript.structuredContent).toMatchObject({
+        enabled: true, filePath: activityLog.filePath, mcpSessionId: 'mcp-test-session', count: 1,
+        entries: [{
+          tool: 'map_status', editorSessionId: 'editor-a', status: 'success',
+          revisionBefore: 4, revisionAfter: 4, revisionDelta: 0,
+        }],
+      });
+      const lines = (await readFile(activityLog.filePath, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+      expect(lines).toHaveLength(2);
+      expect(lines.map(line => line.tool)).toEqual(['map_status', 'activity_log']);
     } finally {
       await client.close();
       await server.close();

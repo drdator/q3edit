@@ -52,11 +52,14 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 ## Tools
 
 - `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
+- `activity_log` returns recent calls made by the current MCP connection and the path to its complete append-only JSONL transcript. Entries include the target editor session, summarized arguments/results, duration, status, and revision delta; full map text and image payloads are omitted.
 - `map_capabilities` advertises the batch limit and supported operation version/types, coordinate guidance, screenshot dimensions and modes, compiler availability, and the targeted editor's active game/project and loaded asset counts.
 - `operation_schema` returns the exact discriminated JSON Schema and semantic notes for one `map_apply`/`map_preview` operation. The batch tool intentionally keeps a flat compatibility schema because some MCP hosts omit tools containing `oneOf`/`anyOf`.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_statistics` summarizes world bounds, structural/detail geometry, texture usage, approximate light influence, and spawn/item distribution and spacing.
+- `map_summary` is the token-efficient orientation call for iterative work: revision, file, bounds, geometry/detail totals, diagnostics, major entity classes, and spawn/item distribution without full object dumps.
+- `map_design_review` combines editor validation, gameplay placement lint, jump-pad results, approximate route reachability, and compact spatial context in one revision-consistent response. It reports pass/needs-attention/blocked plus categorized findings without pretending the heuristics form an objective numeric quality score.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
 - `map_gameplay_lint` reports approximate embedded-entity, spawn-clearance, and pickup-support problems with implicated references.
@@ -75,6 +78,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `editor_set_camera` positions the 3D camera using world coordinates and yaw/pitch in degrees.
 - `editor_look_at` positions the camera and calculates the yaw/pitch needed to face a target point.
 - `editor_screenshot` returns a PNG from the perspective, top, front, or side viewport. It can frame world bounds or a named group and temporarily hide named groups, entity markers, tool/sky brushes, or objects outside section bounds. Perspective captures can use a depth-free wireframe x-ray mode. All visibility changes are restored after capture and do not dirty the map.
+- `editor_layout_screenshot` is the preferred spatial-design view. It defaults to a top-down whole-map overview with sky/tool brushes hidden, entity labels enabled, and an embedded axis/grid/world-unit scale legend. Front and side projections, sections, groups, and explicit bounds are also supported.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
 - `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, diagnostics, and added/resolved gameplay-lint findings without changing the document.
 - `map_create_jump_pad` and `map_create_teleporter` create complete, correctly linked trigger/destination pairs and persistently group them for later edits.
@@ -149,6 +153,7 @@ A useful authoring loop is:
 2. For complex geometry, call `map_preview` first; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.
+   Use `editor_layout_screenshot` for flow, symmetry, spacing, and route-layout decisions, and `map_design_review` for a combined structured quality pass.
 
 MCP tool lists are normally loaded when an agent session starts. Restart the Codex or Claude Code session after updating the bridge if a newly added tool is missing.
 
@@ -186,6 +191,10 @@ Symbolic IDs last only for the current batch. Assign a persistent group when lat
 ```
 
 Later, call `map_query` with `{ "group": "North Room" }`. Group membership is serialized into the `.map` document and survives save/reload. `map_apply` includes its complete symbolic alias mapping in both structured and normal text output for MCP clients that expose only one result representation.
+
+## Activity transcripts
+
+Each bridge MCP connection writes one JSONL file under `.q3edit/mcp-logs/`. Pass `--log-dir /path/to/logs` to `npm run bridge:serve --` to override the directory. The log is independent of the chat transcript and is intended for reviewing iteration strategy, retries, failures, and revision history after a design session.
 
 ## Manual tool calls
 

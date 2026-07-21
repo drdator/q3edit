@@ -9,6 +9,7 @@ import { analyzeJumpPad } from './jump-analysis';
 import { lintRoutes } from './route-lint';
 import { collectMapStatistics } from './map-statistics';
 import { compactMapSummary, reviewMap } from './design-review';
+import type { McpActivityLog } from './activity-log';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -192,6 +193,15 @@ const layoutScreenshotOutputSchema = z.object({
   mode: z.enum(['top', 'front', 'side']), frameBounds: nullableBounds,
   gridSize: z.number().positive(), majorGridSize: z.number().positive(),
   axisLabels: z.tuple([z.string(), z.string()]), worldUnitsPerPixel: z.number().positive(),
+});
+const activityLogOutputSchema = z.object({
+  enabled: z.boolean(), filePath: z.string().nullable(), mcpSessionId: z.string().nullable(), count: z.number().int(),
+  entries: z.array(z.object({
+    timestamp: z.string(), mcpSessionId: z.string(), editorSessionId: z.string().nullable(), tool: z.string(),
+    durationMs: z.number(), status: z.enum(['success', 'error']),
+    revisionBefore: z.number().int().nullable(), revisionAfter: z.number().int().nullable(), revisionDelta: z.number().int().nullable(),
+    arguments: z.unknown(), result: z.unknown(),
+  })),
 });
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
@@ -539,7 +549,7 @@ function compactApplyResult(result: {
   };
 }
 
-export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
+export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityLog): McpServer {
   let selectedEditorSessionId: string | undefined;
   const session = (requested?: string): string => hub.resolveSessionId(requested ?? selectedEditorSessionId);
   const sessionValue = (sessionId: string, value: unknown): Record<string, unknown> => {
@@ -549,6 +559,52 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
     instructions: 'Call editor_sessions first when more than one Q3Edit browser may be open, then pass sessionId or select one with editor_session_select. Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data. Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit. Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
   });
+  if (activityLog) {
+    const registerTool = server.registerTool.bind(server) as any;
+    server.registerTool = ((name: string, config: unknown, callback: (...args: any[]) => any) => registerTool(
+      name,
+      config as any,
+      async (args: Record<string, unknown>, extra: unknown) => {
+        const startedAt = Date.now();
+        const requestedSessionId = typeof args.sessionId === 'string' ? args.sessionId : selectedEditorSessionId;
+        let editorSessionId: string | null = null;
+        try { editorSessionId = hub.resolveSessionId(requestedSessionId); } catch { /* Tools may not target an editor. */ }
+        const revision = (): number | null => {
+          if (!editorSessionId) return null;
+          try { return hub.status(editorSessionId).snapshot?.revision ?? null; } catch { return null; }
+        };
+        const revisionBefore = revision();
+        let result: any;
+        try {
+          result = await callback(args, extra);
+        } catch (error) {
+          try {
+            await activityLog.record({
+              editorSessionId, tool: name, durationMs: Date.now() - startedAt, status: 'error',
+              revisionBefore, revisionAfter: revision(), revisionDelta: null,
+              arguments: args, result: { thrown: error instanceof Error ? error.message : String(error) },
+            });
+          } catch (logError) {
+            console.error('Failed to record MCP activity', logError);
+          }
+          throw error;
+        }
+        const revisionAfter = revision();
+        try {
+          await activityLog.record({
+            editorSessionId, tool: name, durationMs: Date.now() - startedAt, status: result?.isError ? 'error' : 'success',
+            revisionBefore, revisionAfter,
+            revisionDelta: revisionBefore === null || revisionAfter === null ? null : revisionAfter - revisionBefore,
+            arguments: args,
+            result: result?.structuredContent ?? { isError: result?.isError === true, content: result?.content },
+          });
+        } catch (logError) {
+          console.error('Failed to record MCP activity', logError);
+        }
+        return result;
+      },
+    )) as typeof server.registerTool;
+  }
 
   server.registerTool('editor_sessions', {
     title: 'List connected Q3Edit editor sessions',
@@ -556,6 +612,23 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async () => toolResult({ selectedSessionId: selectedEditorSessionId ?? null, sessions: hub.listSessions() }));
+
+  server.registerTool('activity_log', {
+    title: 'Inspect this MCP session activity log',
+    description: 'Return recent tool calls from this MCP connection, including target editor session, duration, status, summarized arguments/results, and revision deltas. The complete append-only JSONL transcript is written to filePath.',
+    inputSchema: {
+      editorSessionId: editorSessionId.optional().describe('Optionally filter entries to one editor tab'),
+      limit: z.number().int().min(1).max(500).optional().default(50),
+    },
+    outputSchema: activityLogOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ editorSessionId, limit }) => toolResult({
+    enabled: Boolean(activityLog),
+    filePath: activityLog?.filePath ?? null,
+    mcpSessionId: activityLog?.mcpSessionId ?? null,
+    count: activityLog?.count ?? 0,
+    entries: activityLog?.recent(limit, editorSessionId) ?? [],
+  }));
 
   server.registerTool('editor_session_select', {
     title: 'Select a Q3Edit editor session',

@@ -9,10 +9,12 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import { BridgeHub } from './bridge-hub';
 import { createQ3EditMcpServer } from './mcp-server';
+import { McpActivityLog } from './activity-log';
 
 interface ServerOptions {
   host: string;
   port: number;
+  logDirectory?: string;
 }
 
 function optionValue(name: string): string | undefined {
@@ -23,11 +25,13 @@ function optionValue(name: string): string | undefined {
 const options: ServerOptions = {
   host: optionValue('--host') ?? '127.0.0.1',
   port: Number(optionValue('--port') ?? 8765),
+  logDirectory: optionValue('--log-dir'),
 };
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const distPath = resolve(projectRoot, 'dist');
 const q3mapDistPath = resolve(projectRoot, 'q3map-compiler/dist');
+const activityLogPath = resolve(options.logDirectory ?? resolve(projectRoot, '.q3edit/mcp-logs'));
 if (!existsSync(distPath)) throw new Error(`Missing ${distPath}; run npm run build first`);
 
 const hub = new BridgeHub(existsSync(q3mapDistPath));
@@ -45,8 +49,9 @@ app.post('/mcp', async (req, res) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     let transport = sessionId ? transports.get(sessionId) : undefined;
     if (!transport && !sessionId && isInitializeRequest(req.body)) {
+      const newSessionId = randomUUID();
       transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
+        sessionIdGenerator: () => newSessionId,
         onsessioninitialized: id => {
           transports.set(id, transport!);
         },
@@ -54,7 +59,7 @@ app.post('/mcp', async (req, res) => {
       transport.onclose = () => {
         if (transport?.sessionId) transports.delete(transport.sessionId);
       };
-      await createQ3EditMcpServer(hub).connect(transport);
+      await createQ3EditMcpServer(hub, new McpActivityLog(activityLogPath, newSessionId)).connect(transport);
     }
     if (!transport) {
       res.status(400).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Invalid or missing MCP session' }, id: null });
@@ -96,6 +101,7 @@ const httpServer = app.listen(options.port, options.host, error => {
   if (error) throw error;
   console.log(`Q3Edit live bridge: http://${options.host}:${options.port}/?editor&bridge=1`);
   console.log(`MCP endpoint:       http://${options.host}:${options.port}/mcp`);
+  console.log(`MCP activity logs:  ${activityLogPath}`);
 });
 
 const webSockets = new WebSocketServer({ server: httpServer, path: '/editor' });
