@@ -2,6 +2,10 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html:not(.landing-active),
+html:not(.landing-active) * {
   overscroll-behavior: none;
 }
 
