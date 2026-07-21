@@ -104,6 +104,30 @@ function isAxisAligned(face: BrushFace): boolean {
   return absolute.some((value, axis) => value > 0.999 && absolute.every((other, otherAxis) => otherAxis === axis || other < 0.001));
 }
 
+function normalizedTexture(texture: string): string {
+  return texture.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '');
+}
+
+function isSkyTexture(texture: string): boolean {
+  const normalized = normalizedTexture(texture);
+  return normalized.startsWith('skies/') || /^common\/sky(?:_|$|\/)/.test(normalized);
+}
+
+function isHardToolTexture(texture: string): boolean {
+  const normalized = texture.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, '');
+  return /^common\/(?:clip|playerclip|botclip|weaponclip|trigger|hint|skip|areaportal|clusterportal|donotenter|origin)(?:_|$|\/)/.test(normalized);
+}
+
+function isCompositionShell(brush: Brush): boolean {
+  if (brush.faces.length === 0) return false;
+  const hasSky = brush.faces.some(face => isSkyTexture(face.texture));
+  if (hasSky) return brush.faces.every(face => {
+    const texture = normalizedTexture(face.texture);
+    return isSkyTexture(texture) || texture === 'common/caulk' || texture === 'common/nodraw';
+  });
+  return brush.faces.every(face => isHardToolTexture(face.texture));
+}
+
 function faceArea(face: BrushFace): number {
   if (face.polygon.length < 3) return 0;
   const origin = face.polygon[0];
@@ -192,6 +216,7 @@ export function reviewSpatialDesign(mapText: string): SpatialReviewResult {
   entities.forEach((entity, entityIndex) => {
     if (isGroupInfoEntity(entity) || entity.classname.startsWith('trigger_')) return;
     entity.brushes.forEach((brush, brushIndex) => {
+      if (isCompositionShell(brush)) return;
       const dimensions = brush.maxs.map((value, axis) => value - brush.mins[axis]) as Vec3;
       const center = brush.maxs.map((value, axis) => (value + brush.mins[axis]) / 2) as Vec3;
       entries.push({ ref: `E${entityIndex}:B${brushIndex}`, brush, dimensions, center });

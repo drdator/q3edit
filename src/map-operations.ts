@@ -1825,7 +1825,10 @@ function ensureGroup(editor: Editor, name: string, requestedId?: string): string
   if (!trimmed) throw new Error('group must not be empty');
   const existing = listNamedGroups(editor.entities).find(group => group.name.toLowerCase() === trimmed.toLowerCase());
   if (existing) {
-    if (requestedId && existing.id !== requestedId) throw new Error(`Group ${trimmed} already exists with id ${existing.id}`);
+    // Within one generated batch, the human-facing group name is the stable
+    // reuse key. A later operation may derive or suggest another ID for the
+    // same name; keep the first group instead of failing halfway through the
+    // atomic batch.
     return existing.id;
   }
   if (requestedId && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestedId)) throw new Error(`Invalid groupId ${requestedId}`);

@@ -259,6 +259,25 @@ describe('serializable map operations', () => {
     expect(editor.entities.find(entity => entity.classname === 'light')?.properties._q3edit_group_id).toBe('arena-details');
   });
 
+  test('reuses a batch group name when later operations suggest another id', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      {
+        type: 'create_box', mins: [0, 0, 0], maxs: [64, 64, 64],
+        group: 'Shared Details', groupId: 'shared-details',
+      },
+      {
+        type: 'create_box', mins: [80, 0, 0], maxs: [144, 64, 64],
+        group: 'Shared Details', groupId: 'another-generated-id',
+      },
+    ]);
+
+    expect(listNamedGroups(editor.entities)).toEqual([
+      expect.objectContaining({ id: 'shared-details', name: 'Shared Details' }),
+    ]);
+    expect(editor.worldspawn.brushes.every(brush => brush.editorGroupId === 'shared-details')).toBe(true);
+  });
+
   test('creates multiple wired gameplay helpers atomically in one batch', () => {
     const editor = emptyEditor();
     const result = applyMapOperations(editor, [

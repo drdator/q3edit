@@ -15,7 +15,7 @@ import {
 } from '../src/spatial-plan';
 import { lintGameplay } from './gameplay-lint';
 import { analyzeJumpPad } from './jump-analysis';
-import { lintRoutes } from './route-lint';
+import { lintRoutes, type RouteLintResult } from './route-lint';
 import { collectMapStatistics } from './map-statistics';
 import { compactMapSummary, reviewMap } from './design-review';
 import type { McpActivityLog } from './activity-log';
@@ -1199,6 +1199,30 @@ function compactItems<T>(items: T[]): { count: number; sample: T[]; truncated: b
   return { count: items.length, sample: items.slice(0, 8), truncated: items.length > 8 };
 }
 
+function routeLintResponse(result: RouteLintResult, detail: 'full' | 'summary' | 'issuesOnly'): RouteLintResult {
+  if (detail === 'full') return result;
+  const sample = <T>(items: T[], limit = 12): T[] => items.length <= limit
+    ? items
+    : [...items.slice(0, Math.ceil(limit / 2)), ...items.slice(-Math.floor(limit / 2))];
+  return {
+    ...result,
+    issues: sample(result.issues, detail === 'issuesOnly' ? 50 : 20),
+    jumpPads: detail === 'issuesOnly' ? [] : result.jumpPads.slice(0, 8).map(analysis => ({
+      ...analysis,
+      trajectory: sample(analysis.trajectory, 8),
+      clearance: { ...analysis.clearance, collisions: sample(analysis.clearance.collisions, 8) },
+    })),
+    connectivity: {
+      ...result.connectivity,
+      spawnPlatforms: detail === 'issuesOnly' ? [] : sample(result.connectivity.spawnPlatforms),
+      pickups: detail === 'issuesOnly'
+        ? result.connectivity.pickups.filter(pickup => !pickup.reachableFromSpawn).slice(0, 20)
+        : sample(result.connectivity.pickups),
+      edges: detail === 'issuesOnly' ? [] : sample(result.connectivity.edges, 24),
+    },
+  };
+}
+
 function generatedCollisionReport(mapText: string, createdRefs: string[]): { count: number; sample: Array<{ a: string; b: string; overlap: [number, number, number] }>; truncated: boolean } {
   const entities = parseMapWithDiagnostics(mapText).document.entities;
   const objects = entities.flatMap((entity, entityIndex) => [
@@ -2126,14 +2150,20 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   server.registerTool('map_route_lint', {
     title: 'Lint jump pads and approximate gameplay routes',
     description: 'Analyze every trigger_push trajectory and landing, then build a conservative platform graph connecting spawns, pickups, ordinary walk/jump transitions, and directed jump-pad routes. Results are editor heuristics, not AAS or engine playtest proof.',
-    inputSchema: { ...sessionInput },
+    inputSchema: {
+      ...sessionInput,
+      responseDetail: z.enum(['summary', 'issuesOnly', 'full']).optional().default('summary'),
+    },
     outputSchema: routeLintOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId }) => {
+  }, async ({ sessionId, responseDetail }) => {
     try {
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
-      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...lintRoutes(snapshot.mapText) });
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision,
+        ...routeLintResponse(lintRoutes(snapshot.mapText), responseDetail),
+      });
     } catch (error) {
       return toolError(error);
     }
@@ -2736,7 +2766,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           reviews: Object.fromEntries(Object.entries(reviewResults).map(([name, result]) => {
             const value = result as { after: unknown; delta: Record<string, unknown> };
             return [name, {
-              after: value.after,
+              after: name === 'route' ? routeLintResponse(value.after as RouteLintResult, 'summary') : value.after,
               delta: {
                 ...value.delta,
                 added: compactItems(value.delta.added as unknown[]),

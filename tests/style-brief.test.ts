@@ -63,4 +63,20 @@ describe('persistent MCP map style brief', () => {
     expect(review.metrics).toMatchObject({ intentionalNonAxialBrushes: 1, offGridBrushes: 0 });
     expect(review.issues.filter(issue => issue.code === 'style-grid-deviation')).toEqual([]);
   });
+
+  test('does not downgrade status for informational guidance alone', () => {
+    const editor = emptyEditor();
+    editor.worldspawn.properties[MAP_STYLE_BRIEF_KEY] = serializeStyleBrief({
+      palette: ['base_wall/*'], paletteMode: 'guide',
+    });
+    applyMapOperations(editor, [
+      { type: 'create_box', mins: [0, 0, 0], maxs: [64, 64, 64], texture: 'gothic_wall/stone' },
+    ]);
+
+    const review = reviewStyleBrief(editor.serializeMap());
+    expect(review.status).toBe('pass');
+    expect(review.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'style-palette-deviation', severity: 'info' }),
+    ]));
+  });
 });

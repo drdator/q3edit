@@ -114,4 +114,17 @@ describe('MCP spatial design review', () => {
       areaCount: 2, connectionCount: 1, realizedAreas: 1, realizedConnections: 1,
     });
   });
+
+  test('excludes enclosing sky and tool brushes from composition heuristics', () => {
+    const editor = emptyEditor();
+    applyMapOperations(editor, [
+      { type: 'create_box', mins: [-2048, -2048, -256], maxs: [2048, 2048, -240], texture: 'common/sky_space' },
+      { type: 'create_box', mins: [-2048, -2048, 1024], maxs: [2048, 2048, 1040], texture: 'common/sky_space' },
+      { type: 'create_box', mins: [-64, -64, 0], maxs: [64, 64, 32], texture: 'base_floor/concrete' },
+    ]);
+
+    const result = reviewSpatialDesign(editor.serializeMap());
+    expect(result.metrics.geometry.brushCount).toBe(1);
+    expect(result.metrics.longFlatWalls.refs).not.toEqual(expect.arrayContaining(['E0:B0', 'E0:B1']));
+  });
 });
