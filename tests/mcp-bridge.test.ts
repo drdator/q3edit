@@ -392,7 +392,7 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 2,
-        operations: { version: 2, maxPerBatch: 128 },
+        operations: { version: 3, maxPerBatch: 128 },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -423,6 +423,12 @@ describe('live MCP bridge', () => {
       const boxJson = JSON.stringify((boxSchema.structuredContent as { jsonSchema: unknown }).jsonSchema);
       expect(boxJson).toContain('"textureTransform"');
       expect(boxJson).toContain('"textureTransforms"');
+
+      const prefabSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_prefab' } });
+      expect(prefabSchema.structuredContent).toMatchObject({
+        type: 'create_prefab', required: ['type', 'prefab', 'mins', 'maxs', 'texture'],
+        notes: expect.arrayContaining([expect.stringContaining('default to detail classification')]),
+      });
 
       const sessions = await client.callTool({ name: 'editor_sessions', arguments: {} });
       expect(sessions.structuredContent).toMatchObject({

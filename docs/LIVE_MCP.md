@@ -105,6 +105,7 @@ Initial `map_apply` operations are:
 - `create_wedge`
 - `create_stairs`
 - `create_brush` from arbitrary convex face planes
+- `create_prefab` for textured, modular `pillar`, `door_frame`, and `jump_pad_base` assemblies
 - `create_jump_pad` and `create_teleporter` as composable, wired gameplay operations
 - `translate`
 - `rotate`
@@ -121,6 +122,8 @@ Initial `map_apply` operations are:
 - `delete`
 
 Creation operations accept `group` and an optional stable `groupId`. The created objects are assigned immediately, without a separate `assign_group` operation.
+
+`create_prefab` requires a discovered fallback `texture`, accepts role materials through `textures.primary`, `accent`, `focal`, `sides`, and `bottom`, and returns the whole assembly under its symbolic ID. Prefabs default to detail geometry. Pillars and door frames preserve architectural tiling; jump-pad bases automatically fit the focal material once on the top cap. Use `classification: "structural"` only when the module must seal the world or control visibility.
 
 `create_box` and `create_primitive` accept semantic `textures.top`, `textures.bottom`, and `textures.sides` slots. For non-box primitives, top/bottom are the positive/negative caps along `axis`. `create_stairs` accepts `textures.treads`, `textures.risers`, `textures.sides`, and `textures.underside`; unspecified slots fall back to `texture`.
 

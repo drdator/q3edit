@@ -357,6 +357,45 @@ describe('serializable map operations', () => {
     expect(riser.textureProjection).toMatchObject({ kind: 'classic', rotation: 90 });
   });
 
+  test('creates textured, detail-classified modular prefabs', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      {
+        type: 'create_prefab', id: 'pillar', prefab: 'pillar',
+        mins: [0, 0, 0], maxs: [64, 64, 128], texture: 'base_wall/metal',
+        textures: { accent: 'base_trim/trim' }, group: 'Prefab Details',
+      },
+      {
+        type: 'create_prefab', id: 'door', prefab: 'door_frame', orientation: 'x',
+        mins: [96, 0, 0], maxs: [224, 16, 128], texture: 'base_wall/metal',
+        textures: { accent: 'base_trim/trim' }, group: 'Prefab Details',
+      },
+      {
+        type: 'create_prefab', id: 'pad', prefab: 'jump_pad_base',
+        mins: [256, 0, 0], maxs: [384, 128, 16], texture: 'base_trim/metal',
+        textures: { focal: 'sfx/jumppad', sides: 'base_trim/trim' }, group: 'Prefab Details',
+      },
+    ]);
+
+    expect(result.aliases['@pillar']).toHaveLength(3);
+    expect(result.aliases['@door']).toHaveLength(3);
+    expect(result.aliases['@pad']).toHaveLength(1);
+    expect(editor.worldspawn.brushes).toHaveLength(7);
+    expect(editor.worldspawn.brushes.every(brush => brush.faces.every(face => (face.contentFlags & CONTENTS_DETAIL) !== 0))).toBe(true);
+    expect(editor.worldspawn.brushes[1].mins).toEqual([8, 8, 19]);
+    expect(editor.worldspawn.brushes[1].maxs).toEqual([56, 56, 109]);
+
+    const jumpPad = editor.worldspawn.brushes[6];
+    const top = jumpPad.faces.find(face => face.plane.normal[2] > 0.9)!;
+    const side = jumpPad.faces.find(face => Math.abs(face.plane.normal[2]) < 0.9)!;
+    expect(top.texture).toBe('sfx/jumppad');
+    expect(top.textureProjection.kind).toBe('classic');
+    if (top.textureProjection.kind !== 'classic') throw new Error('Expected classic texture projection');
+    expect(top.textureProjection.scaleX).toBeCloseTo(1);
+    expect(top.textureProjection.scaleY).toBeCloseTo(1);
+    expect(side.texture).toBe('base_trim/trim');
+  });
+
   test('creates repeated entities and classified detail geometry atomically', () => {
     const editor = emptyEditor();
     const result = applyMapOperations(editor, [

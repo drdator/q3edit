@@ -63,6 +63,13 @@ const stairTextureTransformsSchema = z.object({
   sides: textureTransformSchema.optional(),
   underside: textureTransformSchema.optional(),
 });
+const prefabTextureTransformsSchema = z.object({
+  primary: textureTransformSchema.optional(),
+  accent: textureTransformSchema.optional(),
+  focal: textureTransformSchema.optional(),
+  sides: textureTransformSchema.optional(),
+  bottom: textureTransformSchema.optional(),
+});
 const screenshotBounds = z.object({ mins: vec3, maxs: vec3 });
 const nullableBounds = screenshotBounds.nullable();
 const issueSeverity = z.enum(['error', 'warning', 'info']);
@@ -318,7 +325,7 @@ const styleBriefOutputSchema = z.object({
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
   'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
-  'create_wedge', 'create_stairs', 'create_brush', 'translate', 'rotate', 'mirror', 'clone',
+  'create_wedge', 'create_stairs', 'create_brush', 'create_prefab', 'translate', 'rotate', 'mirror', 'clone',
   'array', 'set_texture', 'edit_faces', 'set_brush_classification', 'clip_brushes',
   'hollow_brushes', 'csg_subtract', 'create_jump_pad', 'create_teleporter', 'delete',
   'assign_group', 'remove_from_group',
@@ -446,6 +453,23 @@ const mapOperationVariants = [
       textureTransform: textureTransformSchema.optional(),
     })).min(4).max(128),
   }),
+  z.object({
+    type: z.literal('create_prefab'),
+    ...creationMetadataSchema,
+    parent: operationRef.optional(),
+    prefab: z.enum(['pillar', 'door_frame', 'jump_pad_base']),
+    mins: vec3,
+    maxs: vec3,
+    texture: z.string().min(1),
+    textures: z.object({
+      primary: z.string().min(1).optional(), accent: z.string().min(1).optional(),
+      focal: z.string().min(1).optional(), sides: z.string().min(1).optional(), bottom: z.string().min(1).optional(),
+    }).optional(),
+    textureTransform: textureTransformSchema.optional(),
+    textureTransforms: prefabTextureTransformsSchema.optional(),
+    orientation: z.enum(['x', 'y']).optional(),
+    classification: z.enum(['detail', 'structural']).optional(),
+  }),
   z.object({ type: z.literal('translate'), targets: z.array(operationRef).min(1), delta: vec3 }),
   z.object({ type: z.literal('rotate'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']), angleDegrees: z.number() }),
   z.object({ type: z.literal('mirror'), targets: z.array(operationRef).min(1), center: vec3, axis: z.enum(['x', 'y', 'z']) }),
@@ -556,6 +580,12 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'Each face is a plane defined by three points. Point winding must face outward.',
     'textureTransform applies to every face; faces[].textureTransform overrides individual transform fields for that face.',
   ],
+  create_prefab: [
+    'Creates a reusable pillar (3 brushes), door_frame (3 brushes), or jump_pad_base (one 16-sided cylinder) inside mins/maxs.',
+    'texture is required and must be discovered from loaded assets; textures.primary, accent, focal, sides, and bottom override material roles.',
+    'Prefabs default to detail classification. Set classification to structural only when the module must seal the world or control visibility.',
+    'jump_pad_base fits the focal material once on its top. Pillars and door frames preserve natural architectural tiling.',
+  ],
   create_entity_array: ['Creates count entities at start + delta × index in one operation and one undo transaction.'],
   edit_faces: [
     'Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.',
@@ -579,6 +609,7 @@ const compatibleMapOperationInput = z.object({
     'create_wedge',
     'create_stairs',
     'create_brush',
+    'create_prefab',
     'translate',
     'rotate',
     'mirror',
@@ -620,6 +651,9 @@ const compatibleMapOperationInput = z.object({
     treads: z.string().optional(),
     risers: z.string().optional(),
     underside: z.string().optional(),
+    primary: z.string().optional(),
+    accent: z.string().optional(),
+    focal: z.string().optional(),
   }).optional(),
   textureTransform: compatibleTextureTransformSchema.optional(),
   textureTransforms: z.object({
@@ -632,8 +666,13 @@ const compatibleMapOperationInput = z.object({
     treads: compatibleTextureTransformSchema.optional(),
     risers: compatibleTextureTransformSchema.optional(),
     underside: compatibleTextureTransformSchema.optional(),
+    primary: compatibleTextureTransformSchema.optional(),
+    accent: compatibleTextureTransformSchema.optional(),
+    focal: compatibleTextureTransformSchema.optional(),
   }).optional(),
   primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'pyramid']).optional(),
+  prefab: z.enum(['pillar', 'door_frame', 'jump_pad_base']).optional(),
+  orientation: z.enum(['x', 'y']).optional(),
   axis: z.enum(['x', 'y', 'z']).optional(),
   sides: z.number().int().optional(),
   direction: z.enum(['x+', 'x-', 'y+', 'y-']).optional(),
@@ -844,7 +883,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       return toolResult({
         sessionId: resolved,
         protocolVersion: 2,
-        operations: { version: 2, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
+        operations: { version: 3, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         textureProjection: {
           creationFields: ['textureTransform', 'textureTransforms'],
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
@@ -1834,7 +1873,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, convex plane brushes, and bulk entity/box arrays. Geometry creation accepts textureTransform for all faces and textureTransforms for semantic face overrides; edit_faces controls existing face textures, projection, fit, and flags. Set responseDetail to compact for large batches and call operation_schema for exact fields.',
+    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, convex plane brushes, textured modular prefabs, and bulk entity/box arrays. Geometry creation accepts textureTransform for all faces and textureTransforms for semantic face overrides; edit_faces controls existing face textures, projection, fit, and flags. Set responseDetail to compact for large batches and call operation_schema for exact fields.',
     inputSchema: mapOperationBatchInputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, label, operations, responseDetail }) => {

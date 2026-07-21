@@ -167,6 +167,23 @@ export interface CreateBrushOperation extends CreationMetadata {
   faces: Array<{ points: [Vec3, Vec3, Vec3]; texture?: string; textureTransform?: TextureTransform }>;
 }
 
+export interface CreatePrefabOperation extends CreationMetadata {
+  type: 'create_prefab';
+  parent?: MapTargetRef;
+  prefab: 'pillar' | 'door_frame' | 'jump_pad_base';
+  mins: Vec3;
+  maxs: Vec3;
+  texture: string;
+  textures?: { primary?: string; accent?: string; focal?: string; sides?: string; bottom?: string };
+  textureTransform?: TextureTransform;
+  textureTransforms?: {
+    primary?: TextureTransform; accent?: TextureTransform; focal?: TextureTransform;
+    sides?: TextureTransform; bottom?: TextureTransform;
+  };
+  orientation?: 'x' | 'y';
+  classification?: 'detail' | 'structural';
+}
+
 export interface TranslateObjectsOperation {
   type: 'translate';
   targets: MapTargetRef[];
@@ -297,6 +314,7 @@ export type MapOperation =
   | CreateWedgeOperation
   | CreateStairsOperation
   | CreateBrushOperation
+  | CreatePrefabOperation
   | TranslateObjectsOperation
   | RotateObjectsOperation
   | MirrorObjectsOperation
@@ -602,6 +620,75 @@ function addPlaneBrush(editor: Editor, entity: Entity, operation: CreateBrushOpe
   });
   entity.brushes.push(brush);
   return brush;
+}
+
+function addPrefab(editor: Editor, entity: Entity, operation: CreatePrefabOperation): ObjectHandle[] {
+  assertBounds(operation.mins, operation.maxs);
+  if (!operation.texture.trim()) throw new Error('texture must not be empty');
+  const size = operation.maxs.map((value, axis) => value - operation.mins[axis]);
+  const classification = operation.classification ?? 'detail';
+  const materials = {
+    primary: operation.textures?.primary ?? operation.texture,
+    accent: operation.textures?.accent ?? operation.textures?.primary ?? operation.texture,
+    focal: operation.textures?.focal ?? operation.textures?.primary ?? operation.texture,
+    sides: operation.textures?.sides ?? operation.textures?.accent ?? operation.textures?.primary ?? operation.texture,
+    bottom: operation.textures?.bottom ?? 'common/caulk',
+  };
+  const handles: ObjectHandle[] = [];
+  const addRoleBox = (mins: Vec3, maxs: Vec3, role: 'primary' | 'accent') => {
+    const brush = addBox(entity, mins, maxs, materials[role]);
+    applyBrushTextureTransform(
+      editor, brush,
+      mergedTextureTransform(operation.textureTransform, operation.textureTransforms?.[role]),
+    );
+    classifyBrush(brush, classification);
+    handles.push({ kind: 'brush', entity, brush });
+  };
+
+  if (operation.prefab === 'pillar') {
+    if (Math.min(size[0], size[1]) < 16 || size[2] < 32) throw new Error('pillar bounds must be at least 16 × 16 × 32 units');
+    const capHeight = Math.max(4, Math.round(size[2] * 0.15));
+    const inset = Math.max(2, Math.round(Math.min(size[0], size[1]) * 0.125));
+    addRoleBox(operation.mins, [operation.maxs[0], operation.maxs[1], operation.mins[2] + capHeight], 'accent');
+    addRoleBox(
+      [operation.mins[0] + inset, operation.mins[1] + inset, operation.mins[2] + capHeight],
+      [operation.maxs[0] - inset, operation.maxs[1] - inset, operation.maxs[2] - capHeight],
+      'primary',
+    );
+    addRoleBox([operation.mins[0], operation.mins[1], operation.maxs[2] - capHeight], operation.maxs, 'accent');
+  } else if (operation.prefab === 'door_frame') {
+    const widthAxis = operation.orientation === 'y' ? 1 : 0;
+    const depthAxis = widthAxis === 0 ? 1 : 0;
+    if (size[widthAxis] < 48 || size[2] < 48 || size[depthAxis] < 4) {
+      throw new Error('door_frame bounds must be at least 48 units wide, 48 units high, and 4 units deep');
+    }
+    const postWidth = Math.max(4, Math.round(size[widthAxis] * 0.15));
+    const lintelHeight = Math.max(4, Math.round(size[2] * 0.2));
+    const firstMins = [...operation.mins] as Vec3; const firstMaxs = [...operation.maxs] as Vec3;
+    firstMaxs[widthAxis] = operation.mins[widthAxis] + postWidth; firstMaxs[2] -= lintelHeight;
+    const secondMins = [...operation.mins] as Vec3; const secondMaxs = [...operation.maxs] as Vec3;
+    secondMins[widthAxis] = operation.maxs[widthAxis] - postWidth; secondMaxs[2] -= lintelHeight;
+    const lintelMins = [...operation.mins] as Vec3; lintelMins[2] = operation.maxs[2] - lintelHeight;
+    addRoleBox(firstMins, firstMaxs, 'primary');
+    addRoleBox(secondMins, secondMaxs, 'primary');
+    addRoleBox(lintelMins, operation.maxs, 'accent');
+  } else {
+    if (Math.min(size[0], size[1]) < 32 || size[2] < 4) throw new Error('jump_pad_base bounds must be at least 32 × 32 × 4 units');
+    const brush = createBrushPrimitive('cylinder', operation.mins, operation.maxs, operation.texture, 2, 16);
+    const focalTransform = mergedTextureTransform(
+      mergedTextureTransform(operation.textureTransform, { fit: true }),
+      operation.textureTransforms?.focal,
+    );
+    applyCapSideTextures(editor, brush, 2, {
+      top: materials.focal, bottom: materials.bottom, sides: materials.sides,
+    }, operation.textureTransform, {
+      top: focalTransform, bottom: operation.textureTransforms?.bottom, sides: operation.textureTransforms?.sides,
+    }, operation.texture);
+    classifyBrush(brush, classification);
+    entity.brushes.push(brush);
+    handles.push({ kind: 'brush', entity, brush });
+  }
+  return handles;
 }
 
 function applyCreateRoom(editor: Editor, operation: CreateRoomOperation, aliases: SymbolicReferences): ObjectHandle[] {
@@ -1074,6 +1161,10 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         const { entity } = resolveEntity(editor, operation.parent, aliases);
         const handle: ObjectHandle = { kind: 'brush', entity, brush: addPlaneBrush(editor, entity, operation) };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
+      } else if (operation.type === 'create_prefab') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        const handles = addPrefab(editor, entity, operation);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'create_jump_pad' || operation.type === 'create_teleporter') {
         const created = createGameplayLink(editor, operation, ++gameplayLinkSequence);
         recordCreated(editor, operation, created.handles, createdHandles, aliases, created.groupHandles);
