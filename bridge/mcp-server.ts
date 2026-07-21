@@ -7,6 +7,7 @@ import type { MapDocumentRef, MapOperation } from '../src/map-operations';
 import { lintGameplay } from './gameplay-lint';
 import { analyzeJumpPad } from './jump-analysis';
 import { lintRoutes } from './route-lint';
+import { collectMapStatistics } from './map-statistics';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -26,7 +27,7 @@ const creationMetadataSchema = {
 const screenshotBounds = z.object({ mins: vec3, maxs: vec3 });
 const MAX_BATCH_OPERATIONS = 128;
 const SUPPORTED_MAP_OPERATIONS = [
-  'create_entity', 'set_entity_properties', 'create_box', 'create_room', 'create_primitive',
+  'create_entity', 'create_entity_array', 'set_entity_properties', 'create_box', 'create_box_array', 'create_room', 'create_primitive',
   'create_wedge', 'create_stairs', 'create_brush', 'translate', 'rotate', 'mirror', 'clone',
   'array', 'set_texture', 'edit_faces', 'set_brush_classification', 'clip_brushes',
   'hollow_brushes', 'csg_subtract', 'create_jump_pad', 'create_teleporter', 'delete',
@@ -39,6 +40,15 @@ const mapOperationVariants = [
     ...creationMetadataSchema,
     classname: z.string().min(1),
     origin: vec3.optional(),
+    properties: z.record(z.string(), z.string()).optional(),
+  }),
+  z.object({
+    type: z.literal('create_entity_array'),
+    ...creationMetadataSchema,
+    classname: z.string().min(1),
+    start: vec3,
+    count: z.number().int().min(1).max(128),
+    delta: vec3,
     properties: z.record(z.string(), z.string()).optional(),
   }),
   z.object({
@@ -71,6 +81,20 @@ const mapOperationVariants = [
       floor: z.string().min(1).optional(),
       ceiling: z.string().min(1).optional(),
     }).optional(),
+  }),
+  z.object({
+    type: z.literal('create_box_array'),
+    ...creationMetadataSchema,
+    parent: operationRef.optional(),
+    mins: vec3,
+    maxs: vec3,
+    count: z.number().int().min(1).max(128),
+    delta: vec3,
+    texture: z.string().min(1).optional(),
+    textures: z.object({
+      top: z.string().min(1).optional(), bottom: z.string().min(1).optional(), sides: z.string().min(1).optional(),
+    }).optional(),
+    classification: z.enum(['detail', 'structural']).optional(),
   }),
   z.object({
     type: z.literal('create_primitive'),
@@ -203,6 +227,8 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
     'exitAngle controls the destination facing angle in degrees.',
   ],
   create_brush: ['Each face is a plane defined by three points. Point winding must face outward.'],
+  create_entity_array: ['Creates count entities at start + delta × index in one operation and one undo transaction.'],
+  create_box_array: ['Creates count evenly spaced brushes at mins/maxs + delta × index; classification can mark every brush detail immediately.'],
   edit_faces: ['Targets must be face references such as E0:B2:F4 or a symbolic brush reference with an optional :F suffix.'],
   assign_group: ['The group name reuses an existing case-insensitive match or creates a persistent named group.'],
 };
@@ -213,8 +239,10 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
 const compatibleMapOperationInput = z.object({
   type: z.enum([
     'create_entity',
+    'create_entity_array',
     'set_entity_properties',
     'create_box',
+    'create_box_array',
     'create_room',
     'create_primitive',
     'create_wedge',
@@ -240,6 +268,8 @@ const compatibleMapOperationInput = z.object({
   id: symbolicId.optional(),
   classname: z.string().optional(),
   origin: compatibleVec3.optional(),
+  start: compatibleVec3.optional(),
+  count: z.number().int().optional(),
   properties: z.record(z.string(), z.string()).optional(),
   unset: z.array(z.string()).optional(),
   target: operationRef.optional(),
@@ -299,6 +329,7 @@ const mapOperationBatchInputSchema = {
   expectedRevision: z.number().int().nonnegative(),
   label: z.string().min(1).max(120).describe('Undo or preview label, for example MCP: Add side room'),
   operations: z.array(compatibleMapOperationInput).min(1).max(MAX_BATCH_OPERATIONS),
+  responseDetail: z.enum(['full', 'compact']).optional().default('full'),
 };
 
 function toolError(error: unknown) {
@@ -319,6 +350,21 @@ function validatedMapOperations(operations: unknown[]): MapOperation[] {
     if (!parsed.success) throw new Error(`Invalid operation ${index + 1}: ${z.prettifyError(parsed.error)}`);
     return parsed.data as MapOperation;
   });
+}
+
+function compactRefs(refs: string[]): { count: number; refs: string[]; truncated: boolean } {
+  if (refs.length <= 8) return { count: refs.length, refs, truncated: false };
+  return { count: refs.length, refs: [...refs.slice(0, 4), ...refs.slice(-4)], truncated: true };
+}
+
+function compactApplyResult(result: {
+  revision: number; operationCount: number; summary: string; created: string[]; changed: string[]; aliases: Record<string, string[]>;
+}): Record<string, unknown> {
+  return {
+    revision: result.revision, operationCount: result.operationCount, summary: result.summary,
+    created: compactRefs(result.created), changed: compactRefs(result.changed),
+    aliases: Object.fromEntries(Object.entries(result.aliases).map(([alias, refs]) => [alias, compactRefs(refs)])),
+  };
 }
 
 export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
@@ -431,6 +477,21 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const snapshot = hub.snapshot(resolved);
       const entities = classname ? snapshot.entities.filter(entity => entity.classname === classname) : snapshot.entities;
       return toolResult({ sessionId: resolved, revision: snapshot.revision, entities });
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_statistics', {
+    title: 'Summarize map geometry and gameplay distribution',
+    description: 'Return world bounds/size, structural versus detail geometry, texture usage, approximate light influence coverage, and spawn/item counts, bounds, class distribution, spacing, and object references.',
+    inputSchema: { ...sessionInput },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...collectMapStatistics(snapshot.mapText) });
     } catch (error) {
       return toolError(error);
     }
@@ -952,7 +1013,7 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
     description: 'Run an operation batch against an in-memory clone of the current revision. Returns generated references, aliases, object bounds, map counts, and diagnostics without changing the live document or undo history.',
     inputSchema: mapOperationBatchInputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, expectedRevision, label, operations }) => {
+  }, async ({ sessionId, expectedRevision, label, operations, responseDetail }) => {
     try {
       const resolved = session(sessionId);
       const beforeSnapshot = hub.snapshot(resolved);
@@ -965,15 +1026,32 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const afterKeys = new Set(afterGameplay.map(issueKey));
       const safePreview = { ...preview };
       delete safePreview.mapText;
-      return toolResult(sessionValue(resolved, {
+      const gameplayLint = {
+        beforeCount: beforeGameplay.length,
+        afterCount: afterGameplay.length,
+        added: afterGameplay.filter(issue => !beforeKeys.has(issueKey(issue))),
+        resolved: beforeGameplay.filter(issue => !afterKeys.has(issueKey(issue))),
+      };
+      const previewResult: Record<string, unknown> = {
         ...safePreview,
-        gameplayLint: {
-          beforeCount: beforeGameplay.length,
-          afterCount: afterGameplay.length,
-          added: afterGameplay.filter(issue => !beforeKeys.has(issueKey(issue))),
-          resolved: beforeGameplay.filter(issue => !afterKeys.has(issueKey(issue))),
-        },
-      }));
+        gameplayLint,
+      };
+      if (responseDetail === 'compact') {
+        const created = Array.isArray(previewResult.created) ? previewResult.created as string[] : [];
+        const changed = Array.isArray(previewResult.changed) ? previewResult.changed as string[] : [];
+        const aliases = previewResult.aliases && typeof previewResult.aliases === 'object'
+          ? previewResult.aliases as Record<string, string[]> : {};
+        const objects = Array.isArray(previewResult.objects) ? previewResult.objects : [];
+        return toolResult(sessionValue(resolved, {
+          ...compactApplyResult({
+            revision: Number(previewResult.revision), operationCount: Number(previewResult.operationCount),
+            summary: `${previewResult.operationCount} operation preview`, created, changed, aliases,
+          }),
+          objects: { count: objects.length, sample: objects.slice(0, 8), truncated: objects.length > 8 },
+          mapInfo: previewResult.mapInfo, diagnostics: previewResult.diagnostics, gameplayLint,
+        }));
+      }
+      return toolResult(sessionValue(resolved, previewResult));
     } catch (error) {
       return toolError(error);
     }
@@ -1041,22 +1119,23 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
 
   server.registerTool('map_apply', {
     title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, and convex plane brushes. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Use the advertised schema for exact fields.',
+    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, convex plane brushes, and bulk entity/box arrays. edit_faces controls individual face textures, UV transforms, fit, and flags; set_brush_classification marks geometry detail or structural. Set responseDetail to compact for large batches and call operation_schema for exact fields.',
     inputSchema: mapOperationBatchInputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ sessionId, expectedRevision, label, operations }) => {
+  }, async ({ sessionId, expectedRevision, label, operations, responseDetail }) => {
     try {
       const resolved = session(sessionId);
       const validatedOperations = validatedMapOperations(operations);
       const applied = await hub.applyOperations(expectedRevision, label, validatedOperations, resolved);
+      const result = responseDetail === 'compact' ? compactApplyResult(applied.result) : applied.result;
       const value = {
         sessionId: resolved,
-        ...applied.result,
+        ...result,
         mapInfo: applied.snapshot.mapInfo,
         diagnostics: applied.snapshot.diagnostics,
       };
       const aliases = Object.keys(applied.result.aliases).length > 0
-        ? `\nAliases: ${JSON.stringify(applied.result.aliases)}`
+        ? `\nAliases: ${JSON.stringify((result as { aliases?: unknown }).aliases)}`
         : '';
       return toolResult(value, `${applied.result.summary}\nEditor session: ${resolved}\nRevision: ${applied.result.revision}${aliases}`);
     } catch (error) {
@@ -1116,6 +1195,30 @@ export function createQ3EditMcpServer(hub: BridgeHub): McpServer {
       const resolved = session(sessionId);
       const result = await hub.saveMap(path, resolved);
       return toolResult({ sessionId: resolved, ...result }, `Saved editor session ${resolved} revision ${result.revision} to ${result.path}`);
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_save_and_compile', {
+    title: 'Save and compile the current map revision',
+    description: 'Revision-check the selected document, atomically save it to the active or supplied path, then compile that live revision and return the save result plus structured compiler diagnostics.',
+    inputSchema: {
+      ...sessionInput,
+      expectedRevision: z.number().int().nonnegative(),
+      path: z.string().min(1).optional(),
+      quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
+    },
+    annotations: { destructiveHint: true, openWorldHint: false },
+  }, async ({ sessionId, expectedRevision, path, quality }) => {
+    try {
+      const resolved = session(sessionId);
+      const current = hub.snapshot(resolved);
+      if (current.revision !== expectedRevision) throw new Error(`Revision conflict: expected ${expectedRevision}, current revision is ${current.revision}`);
+      const saved = await hub.saveMap(path, resolved);
+      const compile = await hub.compileMap(quality, resolved) as Record<string, unknown>;
+      return toolResult({ sessionId: resolved, saved, compile },
+        `Saved revision ${saved.revision} to ${saved.path}; compile ${compile.success ? 'succeeded' : 'failed'} (${quality}).`);
     } catch (error) {
       return toolError(error);
     }

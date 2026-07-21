@@ -2,8 +2,8 @@ import { entityOrigin, type Entity } from './entity';
 import type { MapDocumentRef } from './map-operations';
 
 export interface StructuredCompilerDiagnostic {
-  severity: 'error' | 'warning';
-  code: 'missing-shader-image' | 'compiler-warning' | 'compiler-error' | 'leak';
+  severity: 'error' | 'warning' | 'info';
+  code: 'missing-shader-image' | 'expected-tool-shader' | 'compiler-warning' | 'compiler-error' | 'leak';
   message: string;
   refs: MapDocumentRef[];
 }
@@ -34,16 +34,24 @@ function originRefs(entities: readonly Entity[], line: string): MapDocumentRef[]
   return refs;
 }
 
-export function structureCompilerOutput(output: readonly string[], entities: readonly Entity[]): StructuredCompilerDiagnostic[] {
+export function structureCompilerOutput(
+  output: readonly string[],
+  entities: readonly Entity[],
+  isDeclaredShader: (texture: string) => boolean = () => false,
+): StructuredCompilerDiagnostic[] {
   const diagnostics: StructuredCompilerDiagnostic[] = [];
   for (const raw of output) {
     const line = raw.trim();
     if (!line) continue;
     const missing = /warning:\s*couldn't find image for shader\s+(.+)$/i.exec(line);
     if (missing) {
+      const texture = missing[1].trim();
+      const expectedToolShader = isDeclaredShader(texture);
       diagnostics.push({
-        severity: 'warning', code: 'missing-shader-image', message: line,
-        refs: textureRefs(entities, missing[1].trim()),
+        severity: expectedToolShader ? 'info' : 'warning',
+        code: expectedToolShader ? 'expected-tool-shader' : 'missing-shader-image',
+        message: expectedToolShader ? `${line} (declared shader without a preview image)` : line,
+        refs: textureRefs(entities, texture),
       });
       continue;
     }

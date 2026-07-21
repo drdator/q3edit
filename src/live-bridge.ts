@@ -645,7 +645,9 @@ export class LiveMapBridge {
         this.compiledBsp = result.success && result.bsp
           ? { revision: this.editor.documentRevision, data: new Uint8Array(result.bsp) }
           : null;
-        const compilerDiagnostics = structureCompilerOutput(result.output, this.editor.entities);
+        const compilerDiagnostics = structureCompilerOutput(
+          result.output, this.editor.entities, texture => textureManager?.isShader(texture) ?? false,
+        );
         if (leaked) compilerDiagnostics.push({
           severity: 'error', code: 'leak', message: 'The BSP compiler produced a leak pointfile.', refs: [],
         });

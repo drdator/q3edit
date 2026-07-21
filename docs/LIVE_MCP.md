@@ -56,6 +56,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `operation_schema` returns the exact discriminated JSON Schema and semantic notes for one `map_apply`/`map_preview` operation. The batch tool intentionally keeps a flat compatibility schema because some MCP hosts omit tools containing `oneOf`/`anyOf`.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
 - `map_entities` lists entity references and supports an exact classname filter.
+- `map_statistics` summarizes world bounds, structural/detail geometry, texture usage, approximate light influence, and spawn/item distribution and spacing.
 - `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
 - `map_gameplay_lint` reports approximate embedded-entity, spawn-clearance, and pickup-support problems with implicated references.
@@ -80,14 +81,17 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_new` replaces the targeted editor with an empty or starter document using revision protection. It can preserve existing worldspawn keys and apply explicit worldspawn properties without enumerating starter objects.
 - `map_open` opens a local `.map` file in the connected browser.
 - `map_save` writes the current browser document to the active path or a supplied path.
+- `map_save_and_compile` revision-checks, saves, and compiles in the common finalization workflow.
 
 Declared shaders count as valid texture sources even when they intentionally have no image, so tool, trigger, clip, and sky shaders do not produce false missing-texture diagnostics.
 
 Initial `map_apply` operations are:
 
 - `create_entity`
+- `create_entity_array` for evenly spaced point entities
 - `set_entity_properties`
 - `create_box`
+- `create_box_array` for evenly spaced, optionally detail-classified geometry
 - `create_room`
 - `create_primitive` (`box`, `cylinder`, `cone`, `sphere`, or `pyramid`)
 - `create_wedge`
@@ -111,6 +115,8 @@ Initial `map_apply` operations are:
 Creation operations accept `group` and an optional stable `groupId`. The created objects are assigned immediately, without a separate `assign_group` operation.
 
 `create_box` and `create_primitive` accept semantic `textures.top`, `textures.bottom`, and `textures.sides` slots. For non-box primitives, top/bottom are the positive/negative caps along `axis`. `create_stairs` accepts `textures.treads`, `textures.risers`, `textures.sides`, and `textures.underside`; unspecified slots fall back to `texture`.
+
+Large `map_apply` and `map_preview` batches can set `responseDetail: "compact"`. Reference and alias lists then return total counts, the first/last samples, and an explicit `truncated` flag instead of flooding the MCP response.
 
 Object references use the current document indices: `E1`, `E0:B2`, `E0:B2:F4`, and `E0:P0`. Face references can be inspected, queried, selected, framed, or passed to `edit_faces`. References are revision-sensitive, so call `map_status`, `map_query`, or `map_entities` again after a revision conflict.
 

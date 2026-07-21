@@ -61,6 +61,15 @@ export interface SetEntityPropertiesOperation {
   unset?: string[];
 }
 
+export interface CreateEntityArrayOperation extends CreationMetadata {
+  type: 'create_entity_array';
+  classname: string;
+  start: Vec3;
+  count: number;
+  delta: Vec3;
+  properties?: Record<string, string>;
+}
+
 export interface CreateBoxOperation extends CreationMetadata {
   type: 'create_box';
   parent?: MapTargetRef;
@@ -81,6 +90,18 @@ export interface CreateRoomOperation extends CreationMetadata {
     floor?: string;
     ceiling?: string;
   };
+}
+
+export interface CreateBoxArrayOperation extends CreationMetadata {
+  type: 'create_box_array';
+  parent?: MapTargetRef;
+  mins: Vec3;
+  maxs: Vec3;
+  count: number;
+  delta: Vec3;
+  texture?: string;
+  textures?: { top?: string; bottom?: string; sides?: string };
+  classification?: 'detail' | 'structural';
 }
 
 export type MapAxis = 'x' | 'y' | 'z';
@@ -245,8 +266,10 @@ export interface DeleteObjectsOperation {
 
 export type MapOperation =
   | CreateEntityOperation
+  | CreateEntityArrayOperation
   | SetEntityPropertiesOperation
   | CreateBoxOperation
+  | CreateBoxArrayOperation
   | CreateRoomOperation
   | CreatePrimitiveOperation
   | CreateWedgeOperation
@@ -646,12 +669,16 @@ function classifyBrushes(targets: ResolvedObject[], classification: 'detail' | '
     else if (target.kind === 'brush') brushes.add(target.brush);
     else throw new Error(`${target.ref} is a patch; brush classification requires brushes or brush-owning entities`);
   }
-  for (const brush of brushes) for (const face of brush.faces) {
+  for (const brush of brushes) classifyBrush(brush, classification);
+  return [...brushes];
+}
+
+function classifyBrush(brush: Brush, classification: 'detail' | 'structural'): void {
+  for (const face of brush.faces) {
     face.contentFlags = classification === 'detail'
       ? (face.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL
       : face.contentFlags & ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
   }
-  return [...brushes];
 }
 
 function requireBrushes(targets: ResolvedObject[], operation: string): Array<ResolvedObject & { kind: 'brush' }> {
@@ -909,6 +936,18 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         editor.entities.push(entity);
         const handle: ObjectHandle = { kind: 'entity', entity };
         recordCreated(editor, operation, [handle], createdHandles, aliases);
+      } else if (operation.type === 'create_entity_array') {
+        if (!operation.classname.trim()) throw new Error('classname must not be empty');
+        assertVector('start', operation.start); assertVector('delta', operation.delta);
+        if (!Number.isInteger(operation.count) || operation.count < 1 || operation.count > 128) throw new Error('count must be an integer from 1 to 128');
+        const handles: ObjectHandle[] = [];
+        for (let index = 0; index < operation.count; index++) {
+          const origin = operation.start.map((value, axis) => value + operation.delta[axis] * index) as Vec3;
+          const entity = createEntity(operation.classname, origin);
+          Object.assign(entity.properties, operation.properties ?? {}, { classname: operation.classname });
+          editor.entities.push(entity); handles.push({ kind: 'entity', entity });
+        }
+        recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'set_entity_properties') {
         const targets = resolveTargets(editor, [operation.target], aliases);
         if (targets.length !== 1) throw new Error(`${operation.target} does not resolve to a single object`);
@@ -934,6 +973,22 @@ export function applyMapOperations(editor: Editor, operations: readonly MapOpera
         recordCreated(editor, operation, [handle], createdHandles, aliases);
       } else if (operation.type === 'create_room') {
         const handles = applyCreateRoom(editor, operation, aliases);
+        recordCreated(editor, operation, handles, createdHandles, aliases);
+      } else if (operation.type === 'create_box_array') {
+        const { entity } = resolveEntity(editor, operation.parent, aliases);
+        assertBounds(operation.mins, operation.maxs); assertVector('delta', operation.delta);
+        if (!Number.isInteger(operation.count) || operation.count < 1 || operation.count > 128) throw new Error('count must be an integer from 1 to 128');
+        const fallback = operation.texture ?? 'common/caulk';
+        const handles: ObjectHandle[] = [];
+        for (let index = 0; index < operation.count; index++) {
+          const offset = operation.delta.map(value => value * index) as Vec3;
+          const mins = operation.mins.map((value, axis) => value + offset[axis]) as Vec3;
+          const maxs = operation.maxs.map((value, axis) => value + offset[axis]) as Vec3;
+          const brush = addBox(entity, mins, maxs, fallback);
+          applyCapSideTextures(brush, 2, operation.textures, fallback);
+          if (operation.classification) classifyBrush(brush, operation.classification);
+          handles.push({ kind: 'brush', entity, brush });
+        }
         recordCreated(editor, operation, handles, createdHandles, aliases);
       } else if (operation.type === 'create_primitive') {
         const { entity } = resolveEntity(editor, operation.parent, aliases);

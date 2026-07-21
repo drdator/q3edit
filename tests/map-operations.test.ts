@@ -317,6 +317,28 @@ describe('serializable map operations', () => {
     expect(firstStep.faces.find(face => Math.abs(face.plane.normal[0]) > 0.9)?.texture).toBe('stairs/side');
   });
 
+  test('creates repeated entities and classified detail geometry atomically', () => {
+    const editor = emptyEditor();
+    const result = applyMapOperations(editor, [
+      {
+        type: 'create_entity_array', id: 'lights', classname: 'light', start: [0, 0, 64], count: 4,
+        delta: [64, 0, 0], properties: { light: '250' }, group: 'Lighting',
+      },
+      {
+        type: 'create_box_array', id: 'pillars', mins: [0, 64, 0], maxs: [16, 80, 96], count: 3,
+        delta: [64, 0, 0], texture: 'base_trim/metal', classification: 'detail', group: 'Details',
+      },
+    ]);
+
+    expect(result.aliases['@lights']).toHaveLength(4);
+    expect(result.aliases['@pillars']).toHaveLength(3);
+    expect(editor.entities.filter(entity => entity.classname === 'light').map(entity => entity.properties.origin)).toEqual([
+      '0 0 64', '64 0 64', '128 0 64', '192 0 64',
+    ]);
+    expect(editor.worldspawn.brushes).toHaveLength(3);
+    expect(editor.worldspawn.brushes.every(brush => brush.faces.every(face => (face.contentFlags & CONTENTS_DETAIL) !== 0))).toBe(true);
+  });
+
   test('rejects unknown and duplicate symbolic references transactionally', () => {
     const editor = emptyEditor();
     expect(() => applyMapOperations(editor, [

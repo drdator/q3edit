@@ -256,6 +256,7 @@ describe('live MCP bridge', () => {
         'map_capabilities',
         'operation_schema',
         'map_entities',
+        'map_statistics',
         'map_inspect',
         'map_validate',
         'map_gameplay_lint',
@@ -288,6 +289,7 @@ describe('live MCP bridge', () => {
         'map_new',
         'map_open',
         'map_save',
+        'map_save_and_compile',
       ]);
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
@@ -295,6 +297,12 @@ describe('live MCP bridge', () => {
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });
+
+      const statistics = await client.callTool({ name: 'map_statistics', arguments: {} });
+      expect(statistics.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4,
+        geometry: { totalBrushes: 0 }, lighting: { count: 0 }, spawns: { count: 0 }, items: { count: 0 },
+      });
 
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
@@ -451,12 +459,16 @@ describe('live MCP bridge', () => {
             type: 'create_stairs', id: 'stairs', mins: [0, 0, 0], maxs: [256, 128, 128],
             direction: 'x+', steps: 8, texture: 'base_floor/stone',
           }],
+          responseDetail: 'compact',
         },
       });
       expect(richerGeometry.isError).not.toBe(true);
       expect(richerGeometry.content).toEqual(expect.arrayContaining([
         expect.objectContaining({ text: expect.stringContaining('Aliases: {"@stairs"') }),
       ]));
+      expect(richerGeometry.structuredContent).toMatchObject({
+        created: { count: 1, truncated: false }, aliases: { '@stairs': { count: 1, truncated: false } },
+      });
 
       const gameplayBatch = await client.callTool({
         name: 'map_apply',

@@ -21,4 +21,17 @@ describe('structured compiler diagnostics', () => {
     expect(diagnostics[1]).toMatchObject({ severity: 'warning', refs: ['E1'] });
     expect(diagnostics[2]).toMatchObject({ severity: 'error', code: 'compiler-error' });
   });
+
+  test('classifies a missing image for a declared tool shader as informational', () => {
+    const world = createEntity('worldspawn');
+    world.brushes.push(createBoxBrush([0, 0, 0], [64, 64, 64], 'common/trigger'));
+    const diagnostics = structureCompilerOutput([
+      "WARNING: Couldn't find image for shader common/trigger",
+    ], [world], texture => texture === 'common/trigger');
+
+    expect(diagnostics).toEqual([expect.objectContaining({
+      severity: 'info', code: 'expected-tool-shader',
+      refs: ['E0:B0:F0', 'E0:B0:F1', 'E0:B0:F2', 'E0:B0:F3', 'E0:B0:F4', 'E0:B0:F5'],
+    })]);
+  });
 });
