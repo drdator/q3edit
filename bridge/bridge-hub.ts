@@ -244,8 +244,22 @@ export class BridgeHub {
     };
   }
 
-  async compileMap(quality: 'fast' | 'normal' | 'full', sessionId?: string): Promise<unknown> {
-    return this.capabilityRequest(sessionId, { type: 'map_compile', requestId: randomUUID(), quality }, 180_000);
+  async compileMap(quality: 'fast' | 'normal' | 'full', sessionId?: string, artifactPath?: string): Promise<unknown> {
+    const result = await this.capabilityRequest(sessionId, {
+      type: 'map_compile', requestId: randomUUID(), quality, includeArtifact: Boolean(artifactPath),
+    }, 180_000) as Record<string, unknown>;
+    if (!artifactPath) return result;
+    const bspBase64 = result.bspBase64;
+    if (result.success !== true || typeof bspBase64 !== 'string') {
+      const safe = { ...result }; delete safe.bspBase64;
+      return safe;
+    }
+    const temporaryPath = join(dirname(artifactPath), `.${basename(artifactPath)}.${process.pid}.tmp`);
+    await writeFile(temporaryPath, Buffer.from(bspBase64, 'base64'));
+    await rename(temporaryPath, artifactPath);
+    const safe: Record<string, unknown> = { ...result, artifact: { path: artifactPath, bytes: Buffer.byteLength(bspBase64, 'base64') } };
+    delete safe.bspBase64;
+    return safe;
   }
 
   async playMap(noclip: boolean, sessionId?: string): Promise<unknown> {

@@ -157,9 +157,11 @@ self.onmessage = async (e: MessageEvent) => {
     const pointfileText = readTextFile(bspMod, pointfilePath)
 
     if (bspExit !== 0 || !bsp) {
+      emit('=== Stage 1 result: failed ===')
       self.postMessage({ type: 'done', success: false, bsp: null, pointfileText, output })
       return
     }
+    emit('=== Stage 1 result: success ===')
 
     let prt: Uint8Array | null = null
     try { prt = bspMod.FS.readFile('/quake/baseq3/maps/compile.prt') } catch { /* */ }
@@ -174,6 +176,7 @@ self.onmessage = async (e: MessageEvent) => {
       const visExit = runQ3Map(visMod, ['-vis', ...(options.visArgs || []), bspPath], emit)
       try { bsp = visMod.FS.readFile(bspPath) } catch { /* */ }
       if (visExit !== 0) emit('Warning: vis pass failed, continuing without PVS')
+      emit(`=== Stage 2 result: ${visExit === 0 ? 'success' : 'failed'} ===`)
     }
 
     // Stage 3: Light
@@ -186,6 +189,7 @@ self.onmessage = async (e: MessageEvent) => {
       const lightExit = runQ3Map(lightMod, ['-light', ...(options.lightArgs || []), bspPath], emit)
       try { bsp = lightMod.FS.readFile(bspPath) } catch { /* */ }
       if (lightExit !== 0) emit('Warning: light pass failed, using unlit BSP')
+      emit(`=== Stage 3 result: ${lightExit === 0 ? 'success' : 'failed'} ===`)
     }
 
     self.postMessage({ type: 'done', success: true, bsp, pointfileText, output })

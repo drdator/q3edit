@@ -242,11 +242,12 @@ reliable in real production maps.
   remain valid legacy `.map` syntax.
 - [x] Propagate Save As filenames into the live editor session and subsequent
   compile/play map names.
-- [ ] Add a compiler preflight that identifies the offending construct and
+- [x] Add a compiler preflight that identifies the offending construct and
   object reference before invoking q3map.
-- [ ] Return an optional BSP artifact path from compile workflows.
-- [ ] Improve light-pass failure diagnostics and investigate large-map WASM
-  memory failures separately from BSP/VIS success.
+- [x] Return an optional BSP artifact path from compile workflows.
+- [x] Report BSP, VIS, and LIGHT pass results separately and classify WASM
+  memory failures with the active compiler stage.
+- [ ] Reproduce and investigate large-map LIGHT-pass WASM memory failures.
 
 ### Faster visual iteration
 

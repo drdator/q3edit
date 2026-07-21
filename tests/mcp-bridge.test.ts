@@ -150,7 +150,10 @@ class FakeEditorSocket extends EventEmitter {
     } else if (request.type === 'map_compile') {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
-        result: { success: true, quality: request.quality, bspBytes: 4096, leaked: false, pointfileLoaded: false, output: ['BSP done'] },
+        result: {
+          success: true, quality: request.quality, bspBytes: 4096, leaked: false, pointfileLoaded: false, output: ['BSP done'],
+          ...(request.includeArtifact ? { bspBase64: Buffer.alloc(4096, 7).toString('base64') } : {}),
+        },
       }));
     } else if (request.type === 'map_play') {
       queueMicrotask(() => this.emitMessage({
@@ -318,6 +321,7 @@ describe('live MCP bridge', () => {
         'map_analyze_jump_pad',
         'map_route_lint',
         'map_compile',
+        'map_compile_preflight',
         'map_play',
         'map_groups',
         'map_query',
@@ -572,6 +576,16 @@ describe('live MCP bridge', () => {
 
       const compiled = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast' } });
       expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
+
+      const preflight = await client.callTool({ name: 'map_compile_preflight', arguments: {} });
+      expect(preflight.structuredContent).toMatchObject({ sessionId: 'editor-a', revision: 4, ready: true, compilerSafeExport: true });
+
+      const artifactDirectory = await mkdtemp(join(tmpdir(), 'q3edit-mcp-artifact-'));
+      temporaryDirectories.push(artifactDirectory);
+      const artifactPath = join(artifactDirectory, 'live.bsp');
+      const compiledArtifact = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast', artifactPath } });
+      expect(compiledArtifact.structuredContent).toMatchObject({ artifact: { path: artifactPath, bytes: 4096 } });
+      expect((await readFile(artifactPath)).byteLength).toBe(4096);
 
       const played = await client.callTool({ name: 'map_play', arguments: { quality: 'fast', noclip: true } });
       expect(played.structuredContent).toMatchObject({ launch: { launched: true, noclip: true } });

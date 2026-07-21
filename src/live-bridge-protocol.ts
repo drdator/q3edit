@@ -113,7 +113,7 @@ export type BridgeToEditorMessage =
   | { type: 'editor_set_camera'; requestId: string; position: Vec3; yaw: number; pitch: number }
   | ({ type: 'editor_screenshot'; requestId: string } & EditorScreenshotOptions)
   | { type: 'editor_capabilities'; requestId: string }
-  | { type: 'map_compile'; requestId: string; quality: 'fast' | 'normal' | 'full' }
+  | { type: 'map_compile'; requestId: string; quality: 'fast' | 'normal' | 'full'; includeArtifact?: boolean }
   | { type: 'map_play'; requestId: string; noclip: boolean }
   | { type: 'game_status'; requestId: string }
   | { type: 'game_wait_ready'; requestId: string; timeoutMs: number }

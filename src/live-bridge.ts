@@ -37,6 +37,29 @@ export interface LiveBridgeEditorControls {
   captureBspPreview(): GameScreenshot;
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize)));
+  }
+  return btoa(binary);
+}
+
+function compilerStageStatus(output: readonly string[]): Record<'bsp' | 'vis' | 'light', 'success' | 'failed' | 'skipped'> {
+  const stages: Record<'bsp' | 'vis' | 'light', 'success' | 'failed' | 'skipped'> = {
+    bsp: 'skipped', vis: 'skipped', light: 'skipped',
+  };
+  for (const line of output) {
+    const match = /^=== Stage \d+ result: (success|failed) ===$/i.exec(line.trim());
+    if (!match) continue;
+    const number = Number(/^=== Stage (\d+)/.exec(line.trim())?.[1]);
+    const stage = number === 1 ? 'bsp' : number === 2 ? 'vis' : number === 3 ? 'light' : null;
+    if (stage) stages[stage] = match[1].toLowerCase() as 'success' | 'failed';
+  }
+  return stages;
+}
+
 function intersectsBounds(a: ScreenshotBounds, b: ScreenshotBounds): boolean {
   return a.mins.every((value, axis) => value <= b.maxs[axis] && a.maxs[axis] >= b.mins[axis]);
 }
@@ -682,8 +705,12 @@ export class LiveMapBridge {
             bspBytes: result.bsp?.byteLength ?? 0,
             leaked,
             pointfileLoaded: leaked,
+            stages: compilerStageStatus(result.output),
             diagnostics: compilerDiagnostics,
             output: result.output,
+            ...(message.includeArtifact && result.bsp ? {
+              bspBase64: bytesToBase64(new Uint8Array(result.bsp)),
+            } : {}),
           },
         });
       } catch (error) {

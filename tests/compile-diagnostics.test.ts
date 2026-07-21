@@ -34,4 +34,18 @@ describe('structured compiler diagnostics', () => {
       refs: ['E0:B0:F0', 'E0:B0:F1', 'E0:B0:F2', 'E0:B0:F3', 'E0:B0:F4', 'E0:B0:F5'],
     })]);
   });
+
+  test('identifies the compiler stage for WASM memory failures', () => {
+    const diagnostics = structureCompilerOutput([
+      '=== Stage 1: BSP ===',
+      '=== Stage 1 result: success ===',
+      '=== Stage 3: Light ===',
+      'WASM exception: memory access out of bounds',
+      'Warning: light pass failed, using unlit BSP',
+    ], [createEntity('worldspawn')]);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'error', code: 'compiler-memory', stage: 'light' }),
+      expect.objectContaining({ severity: 'warning', code: 'compiler-warning', stage: 'light' }),
+    ]));
+  });
 });

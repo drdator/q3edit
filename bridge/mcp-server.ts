@@ -31,6 +31,7 @@ import {
 import { constructionPathSummary, readConstructionPaths } from '../src/construction-paths';
 import { searchDesignPatterns } from './design-patterns';
 import { entityOrigin } from '../src/entity';
+import { inspectCompilerPreflight } from './compiler-preflight';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -1552,7 +1553,10 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           ],
           layoutPreset: 'editor_layout_screenshot',
         },
-        compiler: { available: hub.compilerAvailable, qualities: ['fast', 'normal', 'full'] },
+        compiler: {
+          available: hub.compilerAvailable, qualities: ['fast', 'normal', 'full'],
+          preflight: 'map_compile_preflight', compilerSafeInput: true, artifactExport: true,
+        },
         editor,
       });
     } catch (error) {
@@ -2023,12 +2027,31 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     inputSchema: {
       ...sessionInput,
       quality: z.enum(['fast', 'normal', 'full']).optional().default('fast'),
+      artifactPath: z.string().min(1).optional().describe('Optional local .bsp destination for the compiled artifact'),
     },
-    annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, quality }) => {
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ sessionId, quality, artifactPath }) => {
     try {
       const resolved = session(sessionId);
-      return toolResult(sessionValue(resolved, await hub.compileMap(quality, resolved)));
+      const snapshot = hub.snapshot(resolved);
+      const preflight = inspectCompilerPreflight(snapshot.mapText);
+      if (!preflight.ready) return toolError('Compiler preflight failed; inspect map_compile_preflight before compiling');
+      return toolResult(sessionValue(resolved, { ...(await hub.compileMap(quality, resolved, artifactPath) as Record<string, unknown>), preflight }));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('map_compile_preflight', {
+    title: 'Inspect compiler-safe map input',
+    description: 'Validate the current document before q3map and report exact editor metadata, group records, brush/patch properties, unsupported constructs, and long lines sanitized from compiler input.',
+    inputSchema: { ...sessionInput },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      return toolResult({ sessionId: resolved, revision: snapshot.revision, ...inspectCompilerPreflight(snapshot.mapText) });
     } catch (error) {
       return toolError(error);
     }
@@ -2818,17 +2841,20 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       ...sessionInput,
       expectedRevision: z.number().int().nonnegative(),
       path: z.string().min(1).optional(),
+      artifactPath: z.string().min(1).optional(),
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
     },
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ sessionId, expectedRevision, path, quality }) => {
+  }, async ({ sessionId, expectedRevision, path, artifactPath, quality }) => {
     try {
       const resolved = session(sessionId);
       const current = hub.snapshot(resolved);
       if (current.revision !== expectedRevision) throw new Error(`Revision conflict: expected ${expectedRevision}, current revision is ${current.revision}`);
       const saved = await hub.saveMap(path, resolved);
-      const compile = await hub.compileMap(quality, resolved) as Record<string, unknown>;
-      return toolResult({ sessionId: resolved, saved, compile },
+      const preflight = inspectCompilerPreflight(current.mapText);
+      if (!preflight.ready) throw new Error('Compiler preflight failed; inspect map_compile_preflight before compiling');
+      const compile = await hub.compileMap(quality, resolved, artifactPath) as Record<string, unknown>;
+      return toolResult({ sessionId: resolved, saved, compile, preflight },
         `Saved revision ${saved.revision} to ${saved.path}; compile ${compile.success ? 'succeeded' : 'failed'} (${quality}).`);
     } catch (error) {
       return toolError(error);
