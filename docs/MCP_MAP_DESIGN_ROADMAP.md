@@ -247,7 +247,14 @@ reliable in real production maps.
 - [x] Return an optional BSP artifact path from compile workflows.
 - [x] Report BSP, VIS, and LIGHT pass results separately and classify WASM
   memory failures with the active compiler stage.
-- [ ] Reproduce and investigate large-map LIGHT-pass WASM memory failures.
+- [x] Reproduce and investigate large-map LIGHT-pass WASM memory failures.
+
+Implementation note: the failure reproduced on a map containing two lightmapped
+patch surfaces. Legacy q3map keeps large per-surface lightmap scratch arrays and
+trace state on the C stack, which exhausted the compiler's 2 MiB WebAssembly
+stack during the LIGHT pass. The bundled compiler now uses an 8 MiB stack and
+initializes patch-shadow trace state on every lighting path. The original map
+now completes BSP, VIS, and LIGHT with both patches intact.
 
 ### Faster visual iteration
 

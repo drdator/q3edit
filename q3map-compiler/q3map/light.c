@@ -1216,6 +1216,7 @@ void TraceLtm( int num ) {
 
 	ds = &drawSurfaces[num];
 	si = ShaderInfoForShader( dshaders[ ds->shaderNum].shader );
+	tw.patchshadows = si->patchShadows ? qtrue : patchshadows;
 
 	// vertex-lit triangle model
 	if ( ds->surfaceType == MST_TRIANGLE_SOUP ) {
@@ -1602,6 +1603,8 @@ void TraceGrid( int num ) {
 	traceWork_t	tw;
 	float		addSize;
 
+	tw.patchshadows = patchshadows;
+
 	mod = num;
 	z = mod / ( gridBounds[0] * gridBounds[1] );
 	mod -= z * ( gridBounds[0] * gridBounds[1] );
@@ -1957,6 +1960,7 @@ void VertexLightingThread(int num) {
 	}
 
 	si = ShaderInfoForShader( dshaders[ ds->shaderNum].shader );
+	tw.patchshadows = si->patchShadows ? qtrue : patchshadows;
 
 	// calculate the vertex lighting for gouraud shade mode
 	VertexLighting( ds, si->vertexShadows, si->forceSunLight, si->vertexScale, &tw );
@@ -1974,6 +1978,7 @@ void TriSoupLightingThread(int num) {
 
 	ds = &drawSurfaces[num];
 	si = ShaderInfoForShader( dshaders[ ds->shaderNum].shader );
+	tw.patchshadows = si->patchShadows ? qtrue : patchshadows;
 
 	// vertex-lit triangle model
 	if ( ds->surfaceType == MST_TRIANGLE_SOUP ) {
@@ -2146,4 +2151,3 @@ int LightMain (int argc, char **argv) {
 	
 	return 0;
 }
-
