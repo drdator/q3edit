@@ -39,6 +39,17 @@ describe('map spatial query', () => {
       .toMatchObject({ ref: 'E0:B0:F0', brush: 'E0:B0', texture: 'base_floor/stone' });
   });
 
+  test('looks up exact entity, brush, face, and patch references directly', () => {
+    const matches = queryMap(queryFixture(), { refs: ['E2', 'E0:B0', 'E1:B0:F3'] });
+    expect(matches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ref: 'E2', kind: 'entity' }),
+      expect.objectContaining({ ref: 'E0:B0', kind: 'brush' }),
+      expect.objectContaining({ ref: 'E1:B0:F3', kind: 'face' }),
+    ]));
+    expect(matches).toHaveLength(3);
+    expect(queryMap(queryFixture(), { refs: ['E9'] })).toEqual([]);
+  });
+
   test('supports intersecting and contained world-space bounds', () => {
     expect(queryMap(queryFixture(), {
       kind: 'brush', bounds: { mins: [48, 48, 48], maxs: [80, 80, 80], mode: 'intersects' },

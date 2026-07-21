@@ -250,11 +250,11 @@ reliable in real production maps.
 
 ### Faster visual iteration
 
-- [ ] Make screenshot and review tools reliably discoverable in constrained
+- [x] Make screenshot and review tools reliably discoverable in constrained
   MCP clients.
-- [ ] Add spawn/entity targeting and fuller camera control to game preview.
-- [ ] Add a direct-reference form to `map_query`.
-- [ ] Let `map_preview` opt into route, gameplay, geometry, texture, style, and
+- [x] Add spawn/entity targeting and fuller camera control to game preview.
+- [x] Add a direct-reference form to `map_query`.
+- [x] Let `map_preview` opt into route, gameplay, geometry, texture, style, and
   spatial review before changes are committed.
 
 ### Semantic and generated-geometry feedback
@@ -268,8 +268,8 @@ reliable in real production maps.
 
 ### MCP context efficiency
 
-- [ ] Move the full agent workflow into a shared MCP resource.
-- [ ] Keep per-tool descriptions focused on each tool's unique purpose, inputs,
+- [x] Move the full agent workflow into a shared MCP resource.
+- [x] Keep per-tool descriptions focused on each tool's unique purpose, inputs,
   and failure modes.
 
 ## Success criteria

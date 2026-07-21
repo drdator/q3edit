@@ -6,6 +6,7 @@ import type { Patch } from '../src/patch';
 import { entityGroupId, groupNameMap, isGroupInfoEntity, listNamedGroups } from '../src/named-groups';
 
 export interface MapQueryOptions {
+  refs?: string[];
   kind?: 'entity' | 'brush' | 'face' | 'patch';
   classname?: string;
   texture?: string;
@@ -68,6 +69,9 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
     ? listNamedGroups(parsed.document.entities).find(group => group.id.toLowerCase() === requestedGroup || group.name.toLowerCase() === requestedGroup)?.id
     : undefined;
   const results: unknown[] = [];
+  const requestedRefs = options.refs && options.refs.length > 0 ? new Set(options.refs) : null;
+  const matchesRef = (ref: string): boolean => !requestedRefs || requestedRefs.has(ref);
+  const includeFaces = options.kind === 'face' || Boolean(options.refs?.some(ref => /:F\d+$/.test(ref)));
   const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
   const classname = options.classname?.toLowerCase();
 
@@ -81,7 +85,7 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
     );
 
     const entityGroupMatches = !requestedGroup || entityGroup === requestedGroupId;
-    if ((!options.kind || options.kind === 'entity') && classMatches && propertyMatches && entityGroupMatches &&
+    if ((!options.kind || options.kind === 'entity') && matchesRef(`E${entityIndex}`) && classMatches && propertyMatches && entityGroupMatches &&
         matchesTexture(entity, options.texture) && matchesBounds(entityGeometryBounds(entity), options.bounds)) {
       results.push({
         ref: `E${entityIndex}`,
@@ -102,7 +106,7 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
       const brush = entity.brushes[brushIndex];
       const brushGroup = brush.editorGroupId ?? entityGroup;
       if (requestedGroup && brushGroup !== requestedGroupId) continue;
-      if ((!options.kind || options.kind === 'brush') &&
+      if ((!options.kind || options.kind === 'brush') && matchesRef(`E${entityIndex}:B${brushIndex}`) &&
           matchesTexture(brush, options.texture) && matchesBounds(brush, options.bounds)) {
         results.push({
           ref: `E${entityIndex}:B${brushIndex}`,
@@ -115,10 +119,11 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
           group: brushGroup ? { id: brushGroup, name: names.get(brushGroup) ?? brushGroup } : null,
         });
       }
-      if (options.kind === 'face') {
+      if (includeFaces) {
         const textureQuery = options.texture?.toLowerCase();
         for (let faceIndex = 0; faceIndex < brush.faces.length && results.length < limit; faceIndex++) {
           const face = brush.faces[faceIndex];
+          if (!matchesRef(`E${entityIndex}:B${brushIndex}:F${faceIndex}`)) continue;
           if (textureQuery && !face.texture.toLowerCase().includes(textureQuery)) continue;
           const faceBounds = face.polygon.length > 0
             ? face.polygon.reduce<Bounds>((bounds, point) => ({
@@ -147,6 +152,7 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
       const patchGroup = patch.editorGroupId ?? entityGroup;
       if (requestedGroup && patchGroup !== requestedGroupId) continue;
       if (options.kind && options.kind !== 'patch') continue;
+      if (!matchesRef(`E${entityIndex}:P${patchIndex}`)) continue;
       if (!matchesTexture(patch, options.texture) || !matchesBounds(patch, options.bounds)) continue;
       results.push({
         ref: `E${entityIndex}:P${patchIndex}`,

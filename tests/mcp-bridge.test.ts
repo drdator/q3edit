@@ -293,6 +293,8 @@ describe('live MCP bridge', () => {
         'activity_log',
         'editor_session_select',
         'map_status',
+        'editor_capture',
+        'editor_review',
         'map_capabilities',
         'operation_schema',
         'map_entities',
@@ -354,6 +356,14 @@ describe('live MCP bridge', () => {
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
         expect(tools.tools.find(tool => tool.name === name)?.annotations?.readOnlyHint, `${name} mutation annotation`).toBe(false);
       }
+
+      const resources = await client.listResources();
+      expect(resources.resources).toEqual(expect.arrayContaining([
+        expect.objectContaining({ uri: 'q3edit://agent-workflow', mimeType: 'text/markdown' }),
+      ]));
+      const workflow = await client.readResource({ uri: 'q3edit://agent-workflow' });
+      expect(workflow.contents[0]).toMatchObject({ mimeType: 'text/markdown' });
+      expect((workflow.contents[0] as { text: string }).text).toContain('Treat UV projection as part of geometry');
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });
@@ -578,6 +588,7 @@ describe('live MCP bridge', () => {
           expectedRevision: 4, label: 'MCP: Preview box',
           operations: [{ type: 'create_box', mins: [0, 0, 0], maxs: [64, 64, 64] }],
           responseDetail: 'compact',
+          reviews: ['gameplay', 'geometry', 'route'],
         },
       });
       expect(previewed.structuredContent).toMatchObject({
@@ -590,6 +601,11 @@ describe('live MCP bridge', () => {
           resolved: { count: 0, sample: [], truncated: false },
         },
         generatedCollisions: { count: 0, sample: [], truncated: false },
+        reviews: {
+          gameplay: { delta: { beforeCount: 0, afterCount: 0 } },
+          geometry: { delta: { beforeCount: 0, afterCount: 0 } },
+          route: { delta: { beforeCount: 1, afterCount: 1 } },
+        },
       });
       expect((previewed.structuredContent as Record<string, unknown>).mapText).toBeUndefined();
 

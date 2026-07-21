@@ -30,6 +30,7 @@ import {
 } from './style-brief';
 import { constructionPathSummary, readConstructionPaths } from '../src/construction-paths';
 import { searchDesignPatterns } from './design-patterns';
+import { entityOrigin } from '../src/entity';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -1147,6 +1148,12 @@ const mapOperationBatchInputSchema = {
   operations: z.array(compatibleMapOperationInput).min(1).max(MAX_BATCH_OPERATIONS),
   responseDetail: z.enum(['full', 'compact']).optional().default('full'),
 };
+const previewReviewKind = z.enum(['gameplay', 'route', 'geometry', 'texture', 'style', 'spatial']);
+const mapPreviewInputSchema = {
+  ...mapOperationBatchInputSchema,
+  reviews: z.array(previewReviewKind).max(6).optional().default(['gameplay'])
+    .describe('Reviews to run against both the current and previewed revisions; defaults to gameplay for backward compatibility'),
+};
 
 function toolError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -1204,6 +1211,48 @@ function generatedCollisionReport(mapText: string, createdRefs: string[]): { cou
   return { count: collisions.length, sample: collisions.slice(0, 32), truncated: collisions.length > 32 };
 }
 
+function reviewDelta(before: unknown, after: unknown): Record<string, unknown> {
+  const issues = (value: unknown): Array<Record<string, unknown>> => {
+    if (Array.isArray(value)) return value.filter(item => item && typeof item === 'object') as Array<Record<string, unknown>>;
+    if (value && typeof value === 'object' && Array.isArray((value as { issues?: unknown }).issues)) {
+      return (value as { issues: Array<Record<string, unknown>> }).issues;
+    }
+    return [];
+  };
+  const key = (issue: Record<string, unknown>): string => JSON.stringify([
+    issue.code ?? null, issue.message ?? null, issue.ref ?? null, issue.refs ?? null,
+  ]);
+  const beforeIssues = issues(before); const afterIssues = issues(after);
+  const beforeKeys = new Set(beforeIssues.map(key)); const afterKeys = new Set(afterIssues.map(key));
+  return {
+    beforeCount: beforeIssues.length,
+    afterCount: afterIssues.length,
+    added: afterIssues.filter(issue => !beforeKeys.has(key(issue))),
+    resolved: beforeIssues.filter(issue => !afterKeys.has(key(issue))),
+  };
+}
+
+async function previewTextureReview(hub: BridgeHub, mapText: string, sessionId: string): Promise<unknown> {
+  const dimensions = new Map<string, TextureDimensions>();
+  await Promise.all(textureNamesForReview(mapText, false).map(async name => {
+    try {
+      const inspection = await hub.textureInspect(name, sessionId) as { image?: { width?: number | null; height?: number | null } | null };
+      const width = inspection.image?.width; const height = inspection.image?.height;
+      if (typeof width !== 'number' || typeof height !== 'number' || width <= 0 || height <= 0) return;
+      dimensions.set(name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, ''), { width, height, verified: true });
+    } catch { /* Use the texture review's fallback dimensions when an image is unavailable. */ }
+  }));
+  return reviewTextureQuality(mapText, dimensions, {
+    targetTexelsPerUnit: 2,
+    minimumTexelsPerUnit: 0.5,
+    maximumTexelsPerUnit: 6,
+    maximumAnisotropy: 3,
+    largeFittedFaceArea: 32768,
+    includeToolTextures: false,
+    limit: 100,
+  });
+}
+
 function compactApplyResult(result: {
   revision: number; operationCount: number; summary: string; created: string[]; changed: string[]; aliases: Record<string, string[]>;
 }): Record<string, unknown> {
@@ -1222,25 +1271,29 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     return { sessionId, result: value };
   };
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
-    instructions: [
-      'Call editor_sessions first when more than one Q3Edit browser may be open, then pass sessionId or select one with editor_session_select.',
-      'Inspect map_status before editing. Use map_query, map_groups, and the texture/entity discovery tools instead of guessing object, asset, or classname data.',
-      'Call map_style_get before substantial authoring and follow its persistent palette, grid, density, lighting, and visual notes when configured.',
-      'For substantial layouts, call map_spatial_plan_get and preview semantic areas and connections before generating detailed geometry. Use create_area and connect_areas to keep spatial intent persistent and inspectable.',
-      'Prefer create_tapered and native create_patch bevel, endcap, cylinder, arch, pipe, or ramp surfaces when spatial review shows excessive box and axis-aligned geometry.',
-      'Use create_path for curved or segmented corridors, walls, railings, pipes, beams, trim, stairs, and supports. Preview complex paths first, then inspect their persistent source/group relationship with map_construction_paths_get.',
-      'Refine blockout brushes with offset_faces, chamfer_brushes, taper_brushes, clip_brushes, hollow_brushes, and csg_subtract; preserve projections unless an intentional fit is requested.',
-      'Use reshape_room for a complete uncomplicated rectangular shell, and create_path.replaceTargets when selected straight geometry should become an angled or curved path in one validated transaction.',
-      'Use design_pattern_search for abstract area/route constraints when a layout needs stronger composition. Adapt roles to the live map; never treat a pattern as fixed prefab geometry.',
-      'Use repeat_variation for deliberate repeated rhythm: prefer short labeled sequences and small seeded bounds, preview generated collisions, and keep positions snapped to the modular grid.',
-      'Use the returned revision as expectedRevision in map_apply. Group related changes into one map_apply call so they appear as one undo step in Q3Edit.',
-      'Object references and revisions belong to one editor session. Creation operations may declare id and later operations in the same batch may target @id.',
-      'Treat texture projection as part of geometry creation: use textureTransform for all faces and textureTransforms for semantic overrides such as top, sides, floor, or treads.',
-      'Use fit for focal surfaces that should show one complete image, but preserve intentional tiling on large walls and floors. Inspect unfamiliar materials, run map_texture_review, and verify textured geometry with editor_screenshot.',
-      'Run map_spatial_review after blockout changes and address repeated axis alignment, weak height or route variation, flat walls, and missing spatial rhythm before adding decoration.',
-      'After a major edit, use editor_review_bundle for consistently framed perspective and orthographic visual review.',
-    ].join(' '),
+    instructions: 'Read q3edit://agent-workflow before substantial authoring. Select the intended editor session, inspect status/style/spatial state, preview atomic revision-checked batches, and use asset discovery instead of guessing. Treat texture projection as part of construction and finish major edits with design review plus editor_capture/editor_review visual checks.',
   });
+  server.registerResource('Q3Edit agent workflow', 'q3edit://agent-workflow', {
+    title: 'Q3Edit MCP map-authoring workflow',
+    description: 'Shared workflow and quality guidance for agents editing Quake 3 maps through Q3Edit.',
+    mimeType: 'text/markdown',
+  }, uri => ({
+    contents: [{
+      uri: uri.href,
+      mimeType: 'text/markdown',
+      text: `# Q3Edit MCP workflow
+
+1. Resolve the intended editor with \`editor_sessions\`, then inspect \`map_status\`, \`map_summary\`, \`map_style_get\`, and \`map_spatial_plan_get\`.
+2. Discover entity classes, textures, shaders, and exact operation schemas. Do not guess names or properties.
+3. For substantial maps, establish semantic areas, connections, height changes, routes, and landmarks before detailed geometry. Use design patterns as adaptable constraints, never fixed prefabs.
+4. Prefer angled, curved, terraced, and path-based construction where it supports the layout. Refine safe blockouts with chamfer, taper, face offset, clipping, hollowing, and CSG instead of leaving every room box-shaped.
+5. Preview related operations as one batch, including relevant reviews, then apply them atomically with the returned revision. Use symbolic IDs inside a batch and persistent named groups afterward.
+6. Treat UV projection as part of geometry. Fit focal one-image surfaces, preserve intentional tiling on large walls/floors, use semantic per-face transforms, and run \`map_texture_review\`.
+7. After major edits run \`map_design_review\`, capture perspective and orthographic views with \`editor_review\`, and revise weak routes, repeated dimensions, flat silhouettes, or texture problems before decoration.
+8. Save, compile, wait for the play preview, target a useful spawn/entity view, and inspect a game screenshot before finalizing.
+`,
+    }],
+  }));
   if (activityLog) {
     const registerTool = server.registerTool.bind(server) as any;
     server.registerTool = ((name: string, config: unknown, callback: (...args: any[]) => any) => {
@@ -1334,6 +1387,95 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     try {
       const resolved = session(sessionId);
       return toolResult(hub.status(resolved));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_capture', {
+    title: 'Capture a Q3Edit viewport',
+    description: 'High-priority visual QA tool: capture a perspective or orthographic PNG, optionally framed to bounds or a named group with sky/tool geometry hidden.',
+    inputSchema: {
+      ...sessionInput,
+      mode: z.enum(['perspective', 'top', 'front', 'side']).optional().default('perspective'),
+      width: z.number().int().min(64).max(2048).optional(),
+      height: z.number().int().min(64).max(2048).optional(),
+      frameBounds: screenshotBounds.optional(), frameGroup: z.string().min(1).optional(),
+      sectionBounds: screenshotBounds.optional(), hideGroups: z.array(z.string().min(1)).max(64).optional(),
+      hideEntityMarkers: z.boolean().optional().default(false),
+      hideToolBrushes: z.boolean().optional().default(false), hideSkyBrushes: z.boolean().optional().default(false),
+      xray: z.boolean().optional().default(false), showEntityLabels: z.boolean().optional(),
+      showCoordinates: z.boolean().optional(), layoutOverlay: z.boolean().optional().default(false),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, ...options }) => {
+    try {
+      const resolved = session(sessionId);
+      const screenshot = await hub.screenshot(options, resolved);
+      return {
+        content: [
+          { type: 'text' as const, text: `Q3Edit ${options.mode} viewport · ${screenshot.width} × ${screenshot.height}` },
+          { type: 'image' as const, data: screenshot.data, mimeType: screenshot.mimeType },
+        ],
+        structuredContent: {
+          sessionId: resolved, mode: options.mode, mimeType: screenshot.mimeType,
+          width: screenshot.width, height: screenshot.height,
+          ...(screenshot.gridSize === undefined ? {} : {
+            gridSize: screenshot.gridSize, majorGridSize: screenshot.majorGridSize,
+            axisLabels: screenshot.axisLabels, worldUnitsPerPixel: screenshot.worldUnitsPerPixel,
+          }),
+        },
+      };
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_review', {
+    title: 'Capture a multi-angle map review',
+    description: 'High-priority visual QA tool: capture consistently framed perspective and orthographic views in one call; layout views include grid and world-scale metadata.',
+    inputSchema: {
+      ...sessionInput,
+      views: z.array(z.enum(['perspective', 'top', 'front', 'side'])).min(1).max(4)
+        .optional().default(['perspective', 'top', 'front', 'side']),
+      width: z.number().int().min(320).max(1600).optional().default(960),
+      height: z.number().int().min(240).max(1200).optional().default(720),
+      frameBounds: screenshotBounds.optional(), frameGroup: z.string().min(1).optional(),
+      sectionBounds: screenshotBounds.optional(), hideGroups: z.array(z.string().min(1)).max(64).optional(),
+      hideToolBrushes: z.boolean().optional().default(true), hideSkyBrushes: z.boolean().optional().default(true),
+      hideEntityMarkers: z.boolean().optional().default(false),
+      showEntityLabels: z.boolean().optional().default(true), showCoordinates: z.boolean().optional().default(true),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, views, width, height, frameBounds: requestedBounds, frameGroup, ...visibility }) => {
+    try {
+      const resolved = session(sessionId);
+      const snapshot = hub.snapshot(resolved);
+      const frameBounds = requestedBounds ?? (frameGroup ? undefined : collectMapStatistics(snapshot.mapText).worldBounds ?? undefined);
+      const captures = [] as Array<{
+        mode: 'perspective' | 'top' | 'front' | 'side'; mimeType: string; data: string; width: number; height: number;
+        gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
+      }>;
+      for (const mode of [...new Set(views)]) {
+        const layoutOverlay = mode !== 'perspective';
+        const screenshot = await hub.screenshot({
+          ...visibility, mode, width, height, frameBounds, frameGroup, layoutOverlay,
+          showEntityLabels: layoutOverlay ? visibility.showEntityLabels : false,
+          showCoordinates: layoutOverlay ? visibility.showCoordinates : false,
+        }, resolved);
+        captures.push({ mode, ...screenshot });
+      }
+      return {
+        content: captures.flatMap(capture => [
+          { type: 'text' as const, text: `Q3Edit ${capture.mode} review · ${capture.width} × ${capture.height}` },
+          { type: 'image' as const, data: capture.data, mimeType: capture.mimeType },
+        ]),
+        structuredContent: {
+          sessionId: resolved, revision: snapshot.revision,
+          frameBounds: frameBounds ?? null, frameGroup: frameGroup ?? null,
+          views: captures.map(({ data: _data, ...capture }) => capture),
+        },
+      };
     } catch (error) {
       return toolError(error);
     }
@@ -1892,9 +2034,10 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_query', {
     title: 'Query live map objects',
-    description: 'Find entities, brushes, or patches by classname, texture, entity property, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
+    description: 'Find entities, brushes, faces, or patches by exact refs, classname, texture, entity property, group, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
     inputSchema: {
       ...sessionInput,
+      refs: z.array(objectRef).min(1).max(500).optional().describe('Return these exact known references without requiring indirect filters'),
       kind: z.enum(['entity', 'brush', 'face', 'patch']).optional(),
       classname: z.string().optional().describe('Exact entity classname; geometry results are limited to geometry owned by matching entities'),
       texture: z.string().optional().describe('Case-insensitive texture name substring'),
@@ -1908,13 +2051,14 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     },
     outputSchema: mapQueryOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit }) => {
+  }, async ({ sessionId, refs, kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit }) => {
     try {
       if ((mins && !maxs) || (!mins && maxs)) throw new Error('mins and maxs must be provided together');
       if (propertyValue !== undefined && !propertyKey) throw new Error('propertyValue requires propertyKey');
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
       const options: MapQueryOptions = {
+        refs,
         kind,
         classname,
         texture,
@@ -2347,14 +2491,57 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('game_set_view', {
     title: 'Position the compiled-preview player',
-    description: 'Relaunch the current BSP in noclip at a world-space position and yaw. Follow with game_wait_ready before capturing a screenshot.',
-    inputSchema: { ...sessionInput, position: vec3, yawDegrees: z.number() },
+    description: 'Relaunch the current BSP in noclip at an explicit position, a point entity, or a numbered player spawn. Supply yaw or a lookAt target, then call game_wait_ready before capturing.',
+    inputSchema: {
+      ...sessionInput,
+      position: vec3.optional(),
+      ref: objectRef.optional().describe('Point-entity reference such as E12; uses its origin and angle'),
+      spawnIndex: z.number().int().nonnegative().optional().describe('Zero-based index in the current info_player_* entity list'),
+      yawDegrees: z.number().optional(),
+      lookAt: vec3.optional().describe('Calculate yaw toward this point; overrides yawDegrees'),
+    },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ sessionId, position, yawDegrees }) => {
+  }, async ({ sessionId, position, ref, spawnIndex, yawDegrees, lookAt }) => {
     try {
       const resolved = session(sessionId);
-      const status = await hub.setGameView(position, yawDegrees * Math.PI / 180, resolved);
-      return toolResult({ sessionId: resolved, position, yawDegrees, ...status });
+      if ([position, ref, spawnIndex === undefined ? undefined : spawnIndex].filter(value => value !== undefined).length !== 1) {
+        throw new Error('Provide exactly one of position, ref, or spawnIndex');
+      }
+      const entities = parseMapWithDiagnostics(hub.snapshot(resolved).mapText).document.entities;
+      let source: string;
+      let entityAngle: number | undefined;
+      let resolvedPosition: [number, number, number];
+      if (position) {
+        resolvedPosition = position;
+        source = 'position';
+      } else {
+        let entityIndex: number;
+        if (ref) {
+          const match = /^E(\d+)$/.exec(ref);
+          if (!match) throw new Error('game_set_view ref must identify a point entity such as E12');
+          entityIndex = Number(match[1]);
+          source = ref;
+        } else {
+          const spawns = entities
+            .map((entity, index) => ({ entity, index }))
+            .filter(({ entity }) => entity.classname.startsWith('info_player_') && entity.classname !== 'info_player_intermission');
+          if (spawnIndex! >= spawns.length) throw new Error(`spawnIndex ${spawnIndex} is outside the ${spawns.length} available player spawns`);
+          entityIndex = spawns[spawnIndex!].index;
+          source = `spawn ${spawnIndex} (${entities[entityIndex].classname}, E${entityIndex})`;
+        }
+        const entity = entities[entityIndex];
+        if (!entity) throw new Error(`Entity E${entityIndex} does not exist`);
+        const origin = entityOrigin(entity);
+        if (!origin) throw new Error(`Entity E${entityIndex} has no valid origin`);
+        resolvedPosition = origin;
+        const parsedAngle = Number(entity.properties.angle);
+        if (Number.isFinite(parsedAngle)) entityAngle = parsedAngle;
+      }
+      const resolvedYaw = lookAt
+        ? Math.atan2(lookAt[1] - resolvedPosition[1], lookAt[0] - resolvedPosition[0]) * 180 / Math.PI
+        : yawDegrees ?? entityAngle ?? 0;
+      const status = await hub.setGameView(resolvedPosition, resolvedYaw * Math.PI / 180, resolved);
+      return toolResult({ sessionId: resolved, position: resolvedPosition, yawDegrees: resolvedYaw, source, ...status });
     } catch (error) {
       return toolError(error);
     }
@@ -2362,31 +2549,38 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_preview', {
     title: 'Preview map operations without committing',
-    description: 'Run an operation batch against an in-memory clone of the current revision. Returns generated references, aliases, object bounds, map counts, and diagnostics without changing the live document or undo history.',
-    inputSchema: mapOperationBatchInputSchema,
+    description: 'Run an operation batch against an in-memory clone. Returns generated objects and diagnostics without editing; reviews can also compare gameplay, routes, geometry, textures, style, and spatial quality before versus after.',
+    inputSchema: mapPreviewInputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, expectedRevision, label, operations, responseDetail }) => {
+  }, async ({ sessionId, expectedRevision, label, operations, responseDetail, reviews }) => {
     try {
       const resolved = session(sessionId);
       const beforeSnapshot = hub.snapshot(resolved);
-      const beforeGameplay = lintGameplay(beforeSnapshot.mapText);
       const preview = await hub.previewOperations(expectedRevision, label, validatedMapOperations(operations), resolved) as Record<string, unknown>;
       const previewMapText = typeof preview.mapText === 'string' ? preview.mapText : beforeSnapshot.mapText;
-      const afterGameplay = lintGameplay(previewMapText);
-      const issueKey = (issue: { code: string; message: string; refs: string[] }) => JSON.stringify([issue.code, issue.message, issue.refs]);
-      const beforeKeys = new Set(beforeGameplay.map(issueKey));
-      const afterKeys = new Set(afterGameplay.map(issueKey));
       const safePreview = { ...preview };
       delete safePreview.mapText;
-      const gameplayLint = {
-        beforeCount: beforeGameplay.length,
-        afterCount: afterGameplay.length,
-        added: afterGameplay.filter(issue => !beforeKeys.has(issueKey(issue))),
-        resolved: beforeGameplay.filter(issue => !afterKeys.has(issueKey(issue))),
+      const selectedReviews = new Set(reviews);
+      const reviewResults: Record<string, unknown> = {};
+      const compare = async (name: string, run: (mapText: string) => unknown | Promise<unknown>): Promise<void> => {
+        if (!selectedReviews.has(name as z.infer<typeof previewReviewKind>)) return;
+        const before = await run(beforeSnapshot.mapText);
+        const after = await run(previewMapText);
+        reviewResults[name] = { after, delta: reviewDelta(before, after) };
       };
+      await compare('gameplay', lintGameplay);
+      await compare('route', lintRoutes);
+      await compare('geometry', lintGeometry);
+      await compare('texture', mapText => previewTextureReview(hub, mapText, resolved));
+      await compare('style', reviewStyleBrief);
+      await compare('spatial', reviewSpatialDesign);
+      const gameplayLint = selectedReviews.has('gameplay')
+        ? (reviewResults.gameplay as { delta: unknown }).delta
+        : undefined;
       const previewResult: Record<string, unknown> = {
         ...safePreview,
-        gameplayLint,
+        ...(gameplayLint ? { gameplayLint } : {}),
+        reviews: reviewResults,
         generatedCollisions: generatedCollisionReport(previewMapText, Array.isArray(preview.created) ? preview.created as string[] : []),
       };
       if (responseDetail === 'compact') {
@@ -2403,10 +2597,24 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           objects: { count: objects.length, sample: objects.slice(0, 8), truncated: objects.length > 8 },
           mapInfo: previewResult.mapInfo,
           diagnostics: Array.isArray(previewResult.diagnostics) ? compactItems(previewResult.diagnostics) : previewResult.diagnostics,
-          gameplayLint: {
-            beforeCount: gameplayLint.beforeCount, afterCount: gameplayLint.afterCount,
-            added: compactItems(gameplayLint.added), resolved: compactItems(gameplayLint.resolved),
-          },
+          ...(gameplayLint && typeof gameplayLint === 'object' ? {
+            gameplayLint: {
+              ...(gameplayLint as Record<string, unknown>),
+              added: compactItems((gameplayLint as { added: unknown[] }).added),
+              resolved: compactItems((gameplayLint as { resolved: unknown[] }).resolved),
+            },
+          } : {}),
+          reviews: Object.fromEntries(Object.entries(reviewResults).map(([name, result]) => {
+            const value = result as { after: unknown; delta: Record<string, unknown> };
+            return [name, {
+              after: value.after,
+              delta: {
+                ...value.delta,
+                added: compactItems(value.delta.added as unknown[]),
+                resolved: compactItems(value.delta.resolved as unknown[]),
+              },
+            }];
+          })),
           generatedCollisions: previewResult.generatedCollisions,
         }));
       }
