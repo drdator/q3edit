@@ -8,19 +8,30 @@ feel authored rather than assembled from boxes and straight corridors.
 Agents currently favor simple, axis-aligned geometry because it is the safest
 and cheapest geometry to describe, validate, revise, and texture through the
 MCP API. Adding more primitive types alone will not fully solve this. Agents
-also need higher-level architectural vocabulary, spatial feedback, and tools
+also need a vocabulary for spatial intent, useful feedback, and generic tools
 that make interesting compositions as reliable as rectangular blockouts.
 
 ## Design goals
 
 - Make curved, angled, layered, and vertically connected spaces easy to author.
-- Let agents reason in terms of rooms, routes, landmarks, and architectural
-  modules instead of individual brushes.
+- Let agents reason in terms of rooms, routes, landmarks, and spatial
+  relationships instead of individual brushes.
 - Preserve predictable texture projection, compiler-safe geometry, undo, stable
   references, and atomic `map_apply` batches.
 - Give agents measurable feedback about spatial variety and composition.
 - Support deliberate repetition and variation without producing noisy or
   arbitrary geometry.
+
+## Non-goals
+
+- Do not build a large bundled library of authored prefabs or map fragments.
+- Do not make agents dependent on a fixed architectural kit or visual style.
+- Do not hide substantial opaque geometry behind operations that cannot be
+  inspected, edited, or reproduced from explicit parameters.
+- Do not substitute decorative complexity for a coherent layout.
+
+Existing focused helpers may remain useful, but new work should favor generic
+construction and refinement operations over an expanding prefab catalog.
 
 ## Recommended implementation order
 
@@ -42,8 +53,29 @@ that make interesting compositions as reliable as rectangular blockouts.
 This should come first because it gives agents an objective signal to improve,
 and lets us measure whether later geometry tools actually produce better maps.
 
-### 2. Curves and patches
+### 2. Semantic spaces and connections
 
+- [ ] Add `create_area` with purpose, center, bounds/radius, height, levels,
+  shape language, openings, and landmark intent.
+- [ ] Support shapes such as rectangular, octagonal, radial, curved, terraced,
+  and irregular.
+- [ ] Add `connect_areas` with route type, width, vertical change, curvature,
+  cover, visibility, and traversal intent.
+- [ ] Represent the area and route graph independently of generated brushes.
+- [ ] Let the implementation choose compiler-safe generic brushes and patches.
+- [ ] Return semantic relationships alongside generated object references.
+- [ ] Let spatial review evaluate the intended and realized area graph.
+- [ ] Support previewing the spatial plan before generating geometry.
+
+This gives agents a vocabulary closer to level design: “connect the atrium to
+the upper flank with a curved, partially enclosed route” instead of a long list
+of coordinates. It should happen before detailed geometry so composition drives
+construction rather than emerging accidentally from it.
+
+### 3. Angled brush construction, curves, and patches
+
+- [ ] Make arbitrary plane-based brush construction easy to validate and use.
+- [ ] Add reliable wedge, trapezoid, tapered, and octagonal brush operations.
 - [ ] Add `create_patch_bevel`.
 - [ ] Add `create_patch_endcap`.
 - [ ] Add `create_patch_cylinder`.
@@ -53,30 +85,10 @@ and lets us measure whether later geometry tools actually produce better maps.
 - [ ] Add `thicken_patch`.
 - [ ] Add `fit_patch_texture` and predictable texture controls.
 - [ ] Support stable aliases, groups, preview, and atomic application.
-- [ ] Add geometry/compiler validation for generated patches.
+- [ ] Add geometry/compiler validation for generated brushes and patches.
 
-Patches provide the most direct escape from box-only architecture and are
-native to the Quake 3 visual language.
-
-### 3. Architectural module library
-
-- [ ] Extend `create_prefab` with arches and archways.
-- [ ] Add alcoves and recessed wall bays.
-- [ ] Add buttresses and supports.
-- [ ] Add windows and window frames.
-- [ ] Add balconies and overlooks.
-- [ ] Add bridges and catwalks.
-- [ ] Add railings and barriers.
-- [ ] Add pipes, beams, trim bands, and ceiling ribs.
-- [ ] Add curved and spiral stair modules.
-- [ ] Add jump-pad and teleporter chambers.
-- [ ] Define named snap points/connectors on every applicable prefab.
-- [ ] Keep material roles and texture transforms explicit.
-- [ ] Mark decorative pieces as detail by default where appropriate.
-- [ ] Return compact bounds, connectors, aliases, and created references.
-
-Modules should be parametric rather than fixed assets. Dimensions, curvature,
-segment count, materials, detail level, and orientation should remain editable.
+Generic angled brushes and patches provide the direct escape from box-only
+architecture while remaining inspectable, editable, and native to Quake 3.
 
 ### 4. Path-based construction
 
@@ -85,9 +97,11 @@ segment count, materials, detail level, and orientation should remain editable.
 - [ ] Create railings along a path.
 - [ ] Create pipes, beams, and trim along a path.
 - [ ] Create stairs along a curved or segmented path.
-- [ ] Distribute supports or modules along a path.
+- [ ] Distribute generated supports or objects along a path.
 - [ ] Support corners, joins, caps, spacing, banking, and controlled variation.
 - [ ] Preview generated bounds and object counts before applying.
+- [ ] Return the underlying path and generated-object relationships so later
+  edits remain understandable.
 
 Path-based tools let an agent express intent with a few control points instead
 of constructing dozens of fragile individual pieces.
@@ -106,46 +120,33 @@ of constructing dozens of fragile individual pieces.
 These operations are especially valuable for revising a safe blockout into a
 more expressive final layout.
 
-### 6. Semantic spaces and connections
-
-- [ ] Add `create_area` with purpose, center, bounds/radius, height, levels,
-  shape language, openings, and landmark intent.
-- [ ] Support shapes such as rectangular, octagonal, radial, curved, terraced,
-  and irregular.
-- [ ] Add `connect_areas` with route type, width, vertical change, curvature,
-  cover, visibility, and traversal intent.
-- [ ] Let the implementation choose compiler-safe brushes, patches, and modules.
-- [ ] Return semantic relationships alongside generated object references.
-- [ ] Let spatial review evaluate the resulting area graph.
-
-This gives agents a vocabulary closer to level design: “connect the atrium to
-the upper flank with a curved, partially enclosed route” instead of a long list
-of coordinates.
-
-### 7. Design-pattern library
+### 6. Abstract design-pattern guidance
 
 - [ ] Add `design_pattern_search`.
-- [ ] Provide authored patterns such as:
+- [ ] Describe abstract spatial patterns such as:
   - raised perimeter loop
   - crossing bridges
   - split-level room
   - curved flank corridor
   - radial landmark
-  - compression/release entrance
+  - compression-release entrance
   - vertical courtyard
   - layered arena with an exposed center
 - [ ] Describe appropriate scale, gameplay purpose, risks, and variations.
-- [ ] Allow a selected pattern to seed `create_area` and `connect_areas` calls.
-- [ ] Keep patterns as guidance and parameterized structures, not opaque map
-  fragments.
+- [ ] Express patterns as area-graph and route constraints rather than geometry.
+- [ ] Allow a selected pattern to guide `create_area` and `connect_areas` calls.
+- [ ] Require the agent to adapt each pattern to the current bounds, style,
+  gameplay needs, and existing layout.
+- [ ] Do not ship opaque brushwork, fixed coordinates, or authored map fragments
+  as part of a pattern.
 
-### 8. Controlled variation
+### 7. Controlled variation
 
 - [ ] Add alternating and role-based material sequences.
 - [ ] Add deterministic size, spacing, and rotation sequences.
 - [ ] Add mirror and radial distribution helpers.
 - [ ] Add bounded position, scale, and orientation variation with a seed.
-- [ ] Add reusable variation presets for supports, trims, columns, and props.
+- [ ] Add parameterized variation rules for repeated generated geometry.
 - [ ] Preview the generated result and report collisions or invalid geometry.
 - [ ] Discourage unbounded randomness and preserve grid/compiler constraints.
 
@@ -156,13 +157,16 @@ rhythm and making results reproducible.
 
 1. Read or establish the map style brief.
 2. Define semantic areas, vertical levels, landmarks, and intended route graph.
-3. Select one or more suitable design patterns.
-4. Generate the main spaces and path-based connections.
-5. Apply architectural modules and controlled variation.
-6. Run spatial, geometry, texture, gameplay, and style reviews.
-7. Use multi-angle screenshots to inspect silhouette, rhythm, and navigation.
-8. Refine flagged sections instead of rebuilding the entire map.
-9. Save, compile, and playtest only after the editor-level review converges.
+3. Use an abstract design pattern when it supports the intended gameplay.
+4. Preview and review the spatial plan before committing detailed geometry.
+5. Generate the main spaces with angled brushes, patches, and path-based
+   connections.
+6. Refine the blockout and apply controlled variation where repetition is
+   visible.
+7. Run spatial, geometry, texture, gameplay, and style reviews.
+8. Use multi-angle screenshots to inspect silhouette, rhythm, and navigation.
+9. Refine flagged sections instead of rebuilding the entire map.
+10. Save, compile, and playtest after the editor-level review converges.
 
 ## Success criteria
 
@@ -174,4 +178,5 @@ rhythm and making results reproducible.
 - Texture projection remains intentional on generated and refined geometry.
 - The same request and seed produce reproducible geometry.
 - Spatial review scores and visual inspection improve across agent iterations.
+- Output quality does not depend on a bundled catalog of authored prefabs.
 
