@@ -59,7 +59,8 @@ app.post('/mcp', async (req, res) => {
       transport.onclose = () => {
         if (transport?.sessionId) transports.delete(transport.sessionId);
       };
-      await createQ3EditMcpServer(hub, new McpActivityLog(activityLogPath, newSessionId)).connect(transport);
+      const activityLog = new McpActivityLog(activityLogPath, newSessionId, entry => hub.publishMcpActivity(entry));
+      await createQ3EditMcpServer(hub, activityLog).connect(transport);
     }
     if (!transport) {
       res.status(400).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Invalid or missing MCP session' }, id: null });

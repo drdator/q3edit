@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { WebSocket } from 'ws';
-import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot } from '../src/live-bridge-protocol';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, McpActivityEntry } from '../src/live-bridge-protocol';
 import type { MapOperation, MapOperationResult } from '../src/map-operations';
 
 interface PendingRequest {
@@ -40,6 +40,7 @@ interface EditorSession {
 
 export class BridgeHub {
   private sessions = new Map<string, EditorSession>();
+  private activityEntries: McpActivityEntry[] = [];
 
   constructor(readonly compilerAvailable = false) {}
 
@@ -74,7 +75,22 @@ export class BridgeHub {
       }
       session.pending.clear();
     });
+    for (const entry of this.activityEntries) {
+      if (entry.editorSessionId === null || entry.editorSessionId === sessionId) {
+        socket.send(JSON.stringify({ type: 'mcp_activity', entry } satisfies BridgeToEditorMessage));
+      }
+    }
     return sessionId;
+  }
+
+  publishMcpActivity(entry: McpActivityEntry): void {
+    this.activityEntries.push(entry);
+    if (this.activityEntries.length > 2_000) this.activityEntries.splice(0, this.activityEntries.length - 2_000);
+    const message = JSON.stringify({ type: 'mcp_activity', entry } satisfies BridgeToEditorMessage);
+    for (const session of this.sessions.values()) {
+      if (entry.editorSessionId !== null && entry.editorSessionId !== session.id) continue;
+      if (session.socket.readyState === 1) session.socket.send(message);
+    }
   }
 
   listSessions(): EditorSessionSummary[] {

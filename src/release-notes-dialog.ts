@@ -89,6 +89,7 @@ export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
       items: [
         'Document revisions, unsaved-state tracking, centralized mutations, and consistent undo transactions protect edits.',
         'Inspect map and entity diagnostics, find brushes by address, and run JSON brush macros as one undoable action.',
+        'Review live MCP tool activity, arguments, results, failures, and revision changes from the View menu.',
         'Expanded regression coverage protects map round-tripping, geometry editing, assets, entities, and editor workflows.',
       ],
     },

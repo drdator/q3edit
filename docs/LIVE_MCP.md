@@ -196,6 +196,8 @@ Later, call `map_query` with `{ "group": "North Room" }`. Group membership is se
 
 Each bridge MCP connection writes one JSONL file under `.q3edit/mcp-logs/`. Pass `--log-dir /path/to/logs` to `npm run bridge:serve --` to override the directory. The log is independent of the chat transcript and is intended for reviewing iteration strategy, retries, failures, and revision history after a design session.
 
+Open **View → MCP Activity…** in Q3Edit to watch the calls targeting that editor tab in real time. The dialog separates actions from read-only inspection, highlights failures and revision changes, supports search/status/type filters, and exposes summarized arguments and results without placing image or full-map payloads in the UI.
+
 ## Manual tool calls
 
 The included development client is useful for checking the bridge without an agent:

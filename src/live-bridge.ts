@@ -1,7 +1,7 @@
 import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from './diagnostics';
 import { Editor, type SelectionItem } from './editor';
 import type { Vec3 } from './math';
-import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, ScreenshotBounds } from './live-bridge-protocol';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, McpActivityEntry, ScreenshotBounds } from './live-bridge-protocol';
 import { applyMapOperations } from './map-operations';
 import { getEntityClassRegistry } from './entity-definitions';
 import { collectCompileModelFiles, compileMap } from './q3map';
@@ -28,6 +28,7 @@ export interface LiveBridgeEditorControls {
     mimeType: string; data: string; width: number; height: number;
     gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
   };
+  recordMcpActivity(entry: McpActivityEntry): void;
   launchBspPreview(mapName: string, bsp: Uint8Array, noclip: boolean): void;
   gameStatus(): GamePreviewStatus;
   waitForGameReady(timeoutMs: number): Promise<GamePreviewStatus>;
@@ -210,6 +211,11 @@ export class LiveMapBridge {
       message = JSON.parse(raw) as BridgeToEditorMessage;
     } catch {
       console.warn('Ignored malformed live bridge message');
+      return;
+    }
+
+    if (message.type === 'mcp_activity') {
+      this.controls.recordMcpActivity(message.entry);
       return;
     }
 

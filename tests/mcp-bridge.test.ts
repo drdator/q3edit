@@ -235,6 +235,27 @@ describe('live MCP bridge', () => {
     expect(hub.status('editor-b').snapshot?.revision).toBe(10);
   });
 
+  test('streams MCP activity to the targeted editor and replays its backlog on reconnect', () => {
+    const hub = new BridgeHub();
+    const first = new FakeEditorSocket();
+    const second = new FakeEditorSocket();
+    hub.attachEditor(first as unknown as WebSocket, 'editor-a');
+    hub.attachEditor(second as unknown as WebSocket, 'editor-b');
+    hub.publishMcpActivity({
+      id: 'mcp:1', timestamp: '2026-07-21T08:00:00.000Z', mcpSessionId: 'mcp', editorSessionId: 'editor-a',
+      tool: 'map_apply', readOnly: false, durationMs: 7, status: 'success',
+      revisionBefore: 4, revisionAfter: 5, revisionDelta: 1,
+      arguments: { label: 'Add room' }, result: { revision: 5 },
+    });
+
+    expect(JSON.parse(first.sent[0])).toMatchObject({ type: 'mcp_activity', entry: { id: 'mcp:1', tool: 'map_apply' } });
+    expect(second.sent).toHaveLength(0);
+
+    const reconnected = new FakeEditorSocket();
+    hub.attachEditor(reconnected as unknown as WebSocket, 'editor-a');
+    expect(JSON.parse(reconnected.sent[0])).toMatchObject({ type: 'mcp_activity', entry: { id: 'mcp:1' } });
+  });
+
   test('writes a requested browser snapshot to disk', async () => {
     const { hub } = connectedHub();
     const directory = await mkdtemp(join(tmpdir(), 'q3edit-mcp-test-'));

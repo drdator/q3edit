@@ -2811,6 +2811,122 @@ button.diagnostic-row:hover { border-color: var(--accent); }
 
 .release-notes-dialog > .editor-dialog-actions { flex: 0 0 auto; }
 
+/* ── MCP activity ── */
+.mcp-activity-dialog {
+  width: min(900px, calc(100vw - 48px));
+  height: min(740px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+}
+.mcp-activity-header { display: flex; align-items: center; gap: 9px; }
+.mcp-activity-header .editor-dialog-title { margin-bottom: 0; }
+.mcp-activity-live {
+  padding: 1px 6px;
+  color: #8fdf9a;
+  background: rgba(70, 150, 80, 0.14);
+  border: 1px solid rgba(100, 190, 110, 0.45);
+  font-size: 9px;
+  letter-spacing: .08em;
+}
+.mcp-activity-dialog > .editor-dialog-description { margin: 7px 0 12px; }
+.mcp-activity-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mcp-activity-controls input,
+.mcp-activity-controls select {
+  min-width: 0;
+  height: 30px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid;
+  border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark);
+  font: inherit;
+}
+.mcp-activity-controls input:focus,
+.mcp-activity-controls select:focus { outline: 1px solid color-mix(in srgb, var(--accent) 65%, transparent); }
+.mcp-activity-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(80px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mcp-activity-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 8px;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg-dark) 70%, var(--bg));
+  border: 1px solid var(--border-dark);
+}
+.mcp-activity-summary strong { color: var(--text-bright); font-size: 13px; }
+.mcp-activity-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-dark);
+}
+.mcp-activity-entry { margin-bottom: 4px; background: var(--bg); border: 1px solid var(--border-dark); }
+.mcp-activity-entry:last-child { margin-bottom: 0; }
+.mcp-activity-entry[open] { border-color: var(--border-light); }
+.mcp-activity-entry > summary {
+  display: grid;
+  grid-template-columns: 72px 54px minmax(150px, 1fr) minmax(150px, auto) 64px;
+  gap: 8px;
+  align-items: center;
+  min-height: 31px;
+  padding: 5px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.mcp-activity-entry > summary::-webkit-details-marker { display: none; }
+.mcp-activity-entry > summary:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.mcp-activity-entry.error > summary { box-shadow: inset 2px 0 #e35d62; }
+.mcp-activity-entry.action:not(.error) > summary { box-shadow: inset 2px 0 var(--accent); }
+.mcp-activity-entry time,
+.mcp-activity-duration,
+.mcp-activity-revision { color: var(--text-dim); }
+.mcp-activity-duration { text-align: right; }
+.mcp-activity-kind {
+  justify-self: start;
+  padding: 1px 4px;
+  color: var(--text-dim);
+  border: 1px solid var(--border-light);
+  font-size: 8px;
+  letter-spacing: .05em;
+}
+.mcp-activity-entry.action .mcp-activity-kind { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border-dark)); }
+.mcp-activity-entry-body { padding: 8px 12px 12px; border-top: 1px solid var(--border-dark); }
+.mcp-activity-meta { margin-bottom: 8px; color: var(--text-dim); overflow-wrap: anywhere; }
+.mcp-activity-entry-body h3 { margin: 9px 0 4px; color: var(--text-bright); font-size: 10px; }
+.mcp-activity-entry-body pre {
+  max-height: 210px;
+  margin: 0;
+  overflow: auto;
+  padding: 8px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 10px/1.45 monospace;
+}
+.mcp-activity-empty { padding: 32px 12px; color: var(--text-dim); text-align: center; }
+.mcp-activity-actions { flex: 0 0 auto; align-items: center; }
+.mcp-activity-actions > span { margin-right: auto; color: var(--text-dim); }
+@media (max-width: 700px) {
+  .mcp-activity-controls { grid-template-columns: 1fr 1fr; }
+  .mcp-activity-search { grid-column: 1 / -1; }
+  .mcp-activity-entry > summary { grid-template-columns: 64px 50px 1fr 56px; }
+  .mcp-activity-revision { display: none; }
+}
+
 .game-preview-overlay {
   z-index: 10000;
   padding: 0;

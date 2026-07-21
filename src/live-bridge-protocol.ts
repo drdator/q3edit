@@ -55,7 +55,24 @@ export interface GameScreenshot {
   status: GamePreviewStatus;
 }
 
+export interface McpActivityEntry {
+  id: string;
+  timestamp: string;
+  mcpSessionId: string;
+  editorSessionId: string | null;
+  tool: string;
+  readOnly: boolean;
+  durationMs: number;
+  status: 'success' | 'error';
+  revisionBefore: number | null;
+  revisionAfter: number | null;
+  revisionDelta: number | null;
+  arguments: unknown;
+  result: unknown;
+}
+
 export type BridgeToEditorMessage =
+  | { type: 'mcp_activity'; entry: McpActivityEntry }
   | {
       type: 'apply_operations';
       requestId: string;

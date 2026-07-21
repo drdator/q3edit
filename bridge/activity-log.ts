@@ -1,19 +1,6 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-
-export interface McpActivityEntry {
-  timestamp: string;
-  mcpSessionId: string;
-  editorSessionId: string | null;
-  tool: string;
-  durationMs: number;
-  status: 'success' | 'error';
-  revisionBefore: number | null;
-  revisionAfter: number | null;
-  revisionDelta: number | null;
-  arguments: unknown;
-  result: unknown;
-}
+import type { McpActivityEntry } from '../src/live-bridge-protocol';
 
 interface SummarizeOptions {
   depth?: number;
@@ -43,14 +30,19 @@ export class McpActivityLog {
   readonly filePath: string;
   private entries: McpActivityEntry[] = [];
 
-  constructor(readonly directory: string, readonly mcpSessionId: string) {
+  constructor(
+    readonly directory: string,
+    readonly mcpSessionId: string,
+    private readonly onEntry?: (entry: McpActivityEntry) => void,
+  ) {
     this.filePath = join(resolve(directory), `${mcpSessionId}.jsonl`);
   }
 
-  async record(entry: Omit<McpActivityEntry, 'timestamp' | 'mcpSessionId' | 'arguments' | 'result'> & {
+  async record(entry: Omit<McpActivityEntry, 'id' | 'timestamp' | 'mcpSessionId' | 'arguments' | 'result'> & {
     arguments: unknown; result: unknown;
   }): Promise<void> {
     const complete: McpActivityEntry = {
+      id: `${this.mcpSessionId}:${this.entries.length + 1}`,
       timestamp: new Date().toISOString(),
       mcpSessionId: this.mcpSessionId,
       ...entry,
@@ -60,6 +52,7 @@ export class McpActivityLog {
     await mkdir(this.directory, { recursive: true });
     await appendFile(this.filePath, `${JSON.stringify(complete)}\n`, 'utf8');
     this.entries.push(complete);
+    this.onEntry?.(complete);
   }
 
   recent(limit = 50, editorSessionId?: string): McpActivityEntry[] {

@@ -197,7 +197,8 @@ const layoutScreenshotOutputSchema = z.object({
 const activityLogOutputSchema = z.object({
   enabled: z.boolean(), filePath: z.string().nullable(), mcpSessionId: z.string().nullable(), count: z.number().int(),
   entries: z.array(z.object({
-    timestamp: z.string(), mcpSessionId: z.string(), editorSessionId: z.string().nullable(), tool: z.string(),
+    id: z.string(), timestamp: z.string(), mcpSessionId: z.string(), editorSessionId: z.string().nullable(), tool: z.string(),
+    readOnly: z.boolean(),
     durationMs: z.number(), status: z.enum(['success', 'error']),
     revisionBefore: z.number().int().nullable(), revisionAfter: z.number().int().nullable(), revisionDelta: z.number().int().nullable(),
     arguments: z.unknown(), result: z.unknown(),
@@ -561,10 +562,9 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   });
   if (activityLog) {
     const registerTool = server.registerTool.bind(server) as any;
-    server.registerTool = ((name: string, config: unknown, callback: (...args: any[]) => any) => registerTool(
-      name,
-      config as any,
-      async (args: Record<string, unknown>, extra: unknown) => {
+    server.registerTool = ((name: string, config: unknown, callback: (...args: any[]) => any) => {
+      const readOnly = (config as { annotations?: { readOnlyHint?: boolean } }).annotations?.readOnlyHint === true;
+      return registerTool(name, config as any, async (args: Record<string, unknown>, extra: unknown) => {
         const startedAt = Date.now();
         const requestedSessionId = typeof args.sessionId === 'string' ? args.sessionId : selectedEditorSessionId;
         let editorSessionId: string | null = null;
@@ -580,7 +580,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         } catch (error) {
           try {
             await activityLog.record({
-              editorSessionId, tool: name, durationMs: Date.now() - startedAt, status: 'error',
+              editorSessionId, tool: name, readOnly, durationMs: Date.now() - startedAt, status: 'error',
               revisionBefore, revisionAfter: revision(), revisionDelta: null,
               arguments: args, result: { thrown: error instanceof Error ? error.message : String(error) },
             });
@@ -592,7 +592,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         const revisionAfter = revision();
         try {
           await activityLog.record({
-            editorSessionId, tool: name, durationMs: Date.now() - startedAt, status: result?.isError ? 'error' : 'success',
+            editorSessionId, tool: name, readOnly, durationMs: Date.now() - startedAt, status: result?.isError ? 'error' : 'success',
             revisionBefore, revisionAfter,
             revisionDelta: revisionBefore === null || revisionAfter === null ? null : revisionAfter - revisionBefore,
             arguments: args,
@@ -602,8 +602,8 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           console.error('Failed to record MCP activity', logError);
         }
         return result;
-      },
-    )) as typeof server.registerTool;
+      });
+    }) as typeof server.registerTool;
   }
 
   server.registerTool('editor_sessions', {

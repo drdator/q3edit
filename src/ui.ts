@@ -29,7 +29,8 @@ import {
 } from './sidebar-layout';
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import 'virtual:phosphor-icons.css';
-import type { GamePreviewStatus, GameScreenshot } from './live-bridge-protocol';
+import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge-protocol';
+import { McpActivityDialog } from './mcp-activity-dialog';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -88,6 +89,7 @@ export class UI {
   private gamePreviewLaunch: GamePreviewLaunch | null = null;
   private gamePreviewClose: ((markClosed?: boolean) => void) | null = null;
   private gamePreviewListeners = new Set<() => void>();
+  private readonly mcpActivity = new McpActivityDialog();
   private gamePreviewStatus: GamePreviewStatus = {
     state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
     launchedAt: null, runningAt: null, error: null, consoleTail: [],
@@ -108,6 +110,7 @@ export class UI {
       openPreferences: () => this.openPreferences(),
       openProjectSettings: () => this.openProjectSettings(),
       openDiagnostics: tab => this.openDiagnostics(tab),
+      openMcpActivity: () => this.mcpActivity.open(),
       openTerrainPanel: () => this.openTerrainPanel(),
       toggleSidebar: () => this.toggleSidebar(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
@@ -129,6 +132,10 @@ export class UI {
 
     this.editor.onLocateTexture = (texture: string) => this.locateTexture(texture);
     this.editor.onRequestExitVertexMode = () => this.handleExitVertexMode();
+  }
+
+  recordMcpActivity(entry: McpActivityEntry): void {
+    this.mcpActivity.add(entry);
   }
 
   // ── Menu Bar ──

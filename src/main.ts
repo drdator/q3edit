@@ -82,6 +82,7 @@ async function init() {
       if (mode === 'side') return vpYZ.capturePng(options.width, options.height, options.layoutOverlay);
       return vp3D.capturePng(options.width, options.height, options.xray);
     },
+    recordMcpActivity: entry => ui.recordMcpActivity(entry),
     launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
     gameStatus: () => ui.getGamePreviewStatus(),
     waitForGameReady: timeoutMs => ui.waitForGamePreview(timeoutMs),
