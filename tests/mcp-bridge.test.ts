@@ -325,6 +325,7 @@ describe('live MCP bridge', () => {
         'editor_capture',
         'editor_review',
         'map_capabilities',
+        'operation_search',
         'operation_schema',
         'map_entities',
         'map_statistics',
@@ -382,7 +383,7 @@ describe('live MCP bridge', () => {
       expect(`${mapApply?.title} ${mapApply?.description}`).toMatch(/create.*box.*Q3Edit|Q3Edit.*creating a box/i);
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['editor_selection', 'map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      for (const name of ['editor_selection', 'operation_search', 'map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
@@ -396,6 +397,11 @@ describe('live MCP bridge', () => {
       const workflow = await client.readResource({ uri: 'q3edit://agent-workflow' });
       expect(workflow.contents[0]).toMatchObject({ mimeType: 'text/markdown' });
       expect((workflow.contents[0] as { text: string }).text).toContain('Treat UV projection as part of geometry');
+
+      const operationSearch = await client.callTool({ name: 'operation_search', arguments: { query: 'curved gothic arch' } });
+      expect(operationSearch.structuredContent).toMatchObject({
+        query: 'curved gothic arch', matches: expect.arrayContaining([expect.objectContaining({ type: 'create_patch' })]),
+      });
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });

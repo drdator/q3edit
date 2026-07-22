@@ -24,8 +24,9 @@ requests.
 ## Author safely
 
 1. Read the current revision with `map_status` or `editor_selection`.
-2. Use `operation_schema` for unfamiliar operation fields and use texture or
-   entity discovery tools instead of guessing assets or class properties.
+2. Use `operation_search` when the correct authoring operation is unclear, then
+   use `operation_schema` for its exact fields. Use texture or entity discovery
+   tools instead of guessing assets or class properties.
 3. Use `map_preview` for non-trivial changes, then call `map_apply` with the
    same `expectedRevision`. Group related changes into one undoable batch.
 4. Use `editor_capture` for a perspective image and `editor_review` for

@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "direct",
+    "prompt": "Create a box in the current Q3Edit map.",
+    "expected": ["editor_sessions", "map_status", "map_preview", "map_apply"],
+    "forbidden": ["computer-use", "browser"]
+  },
+  {
+    "kind": "indirect",
+    "prompt": "Fix the texture projection on the brush I currently have selected.",
+    "expected": ["editor_selection", "map_preview", "map_apply"],
+    "forbidden": ["computer-use"]
+  },
+  {
+    "kind": "indirect",
+    "prompt": "Make this room less boxy with curved gothic arches.",
+    "expected": ["operation_search", "operation_schema", "map_preview", "map_apply", "editor_review"],
+    "forbidden": []
+  },
+  {
+    "kind": "direct",
+    "prompt": "Show me the current map from above.",
+    "expected": ["editor_capture"],
+    "forbidden": ["game_screenshot"]
+  },
+  {
+    "kind": "negative",
+    "prompt": "Resize the right sidebar in Q3Edit.",
+    "expected": [],
+    "forbidden": ["map_apply"]
+  },
+  {
+    "kind": "negative",
+    "prompt": "Explain how Quake III brush texture projection works.",
+    "expected": [],
+    "forbidden": ["map_apply"]
+  }
+]

@@ -37,6 +37,7 @@ import { registerSessionTools, type EditorSessionSelection } from './mcp/session
 import { toolError, toolResult } from './mcp/tool-result';
 import { installMcpActivityLogging } from './mcp/activity-middleware';
 import { registerAgentWorkflowResource } from './mcp/agent-workflow';
+import { OPERATION_CATEGORIES, searchOperations } from './mcp/operation-search';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -244,6 +245,13 @@ const routeLintOutputSchema = z.object({
 const mapQueryOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), count: z.number().int().nonnegative(),
   matches: z.array(mapQueryMatchSchema),
+});
+const operationSearchOutputSchema = z.object({
+  query: z.string(), category: z.enum(OPERATION_CATEGORIES).nullable(), count: z.number().int().nonnegative(),
+  matches: z.array(z.object({
+    type: z.string(), category: z.enum(OPERATION_CATEGORIES), summary: z.string(), keywords: z.array(z.string()),
+    next: z.literal('Call operation_schema with this exact type before constructing the operation.'),
+  })),
 });
 const editorSelectionOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), count: z.number().int().nonnegative(),
@@ -1643,6 +1651,24 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     } catch (error) {
       return toolError(error);
     }
+  });
+
+  server.registerTool('operation_search', {
+    title: 'Find the right Q3Edit map operation',
+    description: 'Use this when the desired authoring action is known in plain language but the exact map operation type is not. Searches geometry, material, refinement, gameplay, planning, transform, entity, and grouping operations; then call operation_schema for the chosen exact type.',
+    inputSchema: {
+      query: z.string().max(500).optional().default('').describe('Natural-language design intent, for example "curved gothic arch", "carve a doorway", or "fix face texture projection"'),
+      category: z.enum(OPERATION_CATEGORIES).optional().describe('Optional category filter when the broad kind of operation is already known'),
+      limit: z.number().int().min(1).max(20).optional().default(8).describe('Maximum matches to return; defaults to 8'),
+    },
+    outputSchema: operationSearchOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ query, category, limit }) => {
+    const matches = searchOperations(query, category, limit).map(match => ({
+      ...match,
+      next: 'Call operation_schema with this exact type before constructing the operation.' as const,
+    }));
+    return toolResult({ query, category: category ?? null, count: matches.length, matches });
   });
 
   server.registerTool('operation_schema', {
