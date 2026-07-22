@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Q3Edit is an open-source, browser-based level editor for Quake III Arena — TypeScript + WebGL2, with id Software's q3map BSP compiler and ioquake3 running as WebAssembly. Edit, compile, and playtest without leaving the tab.">
+  <meta name="description" content="Q3Edit is an open-source, browser-based level editor for Quake III Arena with live MCP authoring for Codex and Claude, plus q3map and ioquake3 running as WebAssembly.">
   <meta name="theme-color" content="#111311">
   <link rel="icon" type="image/svg+xml" href="/logo.svg">
   <title>Q3Edit — edit, compile, and play Quake 3 maps in your browser</title>
@@ -17,8 +17,9 @@
         <span>Q3EDIT</span>
       </a>
       <div class="landing-nav-links">
+        <a class="landing-nav-link landing-nav-mcp" href="#mcp">MCP</a>
         <a class="landing-nav-link" href="/release-notes.html">Release notes</a>
-        <a class="landing-nav-link" href="https://github.com/drdator/q3edit">GitHub <span aria-hidden="true">↗</span></a>
+        <a class="landing-nav-link landing-nav-github" href="https://github.com/drdator/q3edit">GitHub <span aria-hidden="true">↗</span></a>
         <a class="landing-nav-link" href="?editor">Launch editor <span aria-hidden="true">→</span></a>
       </div>
     </nav>
@@ -60,6 +61,30 @@
         </div>
         <div class="landing-visual-note"><span></span> Real screenshot — the editor running in a browser tab</div>
       </div>
+    </section>
+
+    <section class="landing-mcp" id="mcp" aria-labelledby="landing-mcp-title">
+      <div class="landing-mcp-copy">
+        <div class="landing-kicker"><span></span> Live MCP authoring</div>
+        <h2 id="landing-mcp-title">Build maps with Codex or Claude.</h2>
+        <p>
+          Connect an AI coding agent to the map open in Q3Edit. The agent can
+          inspect, create, texture, validate, compile, and playtest geometry
+          while every atomic edit appears live in the browser and remains
+          available through normal undo.
+        </p>
+        <a
+          class="landing-button landing-button-secondary"
+          href="https://github.com/drdator/q3edit/blob/main/docs/LIVE_MCP.md#start-the-bridge"
+        >
+          MCP setup instructions <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+      <ol class="landing-mcp-steps" aria-label="MCP setup overview">
+        <li><span>01</span><div><strong>Run the local companion</strong><p>Your maps, compiler, assets, and activity logs stay on your computer.</p></div></li>
+        <li><span>02</span><div><strong>Connect Q3Edit</strong><p>Enter the pairing code in View → Local MCP Connection, or use the printed editor URL.</p></div></li>
+        <li><span>03</span><div><strong>Describe the map</strong><p>Use Codex, Claude Code, or any compatible MCP client to author and review it.</p></div></li>
+      </ol>
     </section>
 
     <footer class="landing-footer">
