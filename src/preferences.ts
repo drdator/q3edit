@@ -8,7 +8,7 @@ import {
 import type { BrushPrimitive } from './brush-primitives';
 import type { InvisibleMode } from './editor';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH } from './sidebar-layout';
-import { clampMcpActivityPanelHeight, DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT } from './mcp-activity-panel';
+import { clampMcpActivityPanelHeight, DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT } from './live-bridge/activity-panel';
 
 export const PREFERENCES_VERSION = 2;
 export const PREFERENCES_STORAGE_KEY = 'q3edit.preferences.v2';

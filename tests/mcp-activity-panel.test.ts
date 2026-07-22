@@ -4,8 +4,8 @@ import {
   filterMcpActivity,
   resizedMcpActivityPanelHeight,
   summarizeMcpActivity,
-} from '../src/mcp-activity-panel';
-import type { McpActivityEntry } from '../src/live-bridge-protocol';
+} from '../src/live-bridge';
+import type { McpActivityEntry } from '../src/live-bridge';
 
 function entry(overrides: Partial<McpActivityEntry>): McpActivityEntry {
   return {

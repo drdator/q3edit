@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { WebSocket } from 'ws';
-import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, McpActivityEntry } from '../src/live-bridge-protocol';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, McpActivityEntry } from '../src/live-bridge/protocol';
 import type { MapOperation, MapOperationResult } from '../src/map-operations';
 
 interface PendingRequest {

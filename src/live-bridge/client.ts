@@ -1,24 +1,25 @@
-import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from './diagnostics';
-import { Editor, type SelectionItem } from './editor';
-import type { Vec3 } from './math';
-import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, McpActivityEntry, ScreenshotBounds } from './live-bridge-protocol';
-import { applyMapOperations } from './map-operations';
-import { getEntityClassRegistry } from './entity-definitions';
-import { collectCompileModelFiles, compileMap } from './q3map';
-import { structureCompilerOutput } from './compile-diagnostics';
-import { cloneMapSnapshot } from './history';
-import { entityBounds } from './editor-queries';
-import { createWorldspawn } from './entity';
-import type { Entity } from './entity';
-import type { Brush } from './brush';
-import type { Patch } from './patch';
+import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from '../diagnostics';
+import { Editor, type SelectionItem } from '../editor';
+import type { Vec3 } from '../math';
+import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, McpActivityEntry, ScreenshotBounds } from './protocol';
+import { applyMapOperations } from '../map-operations';
+import { getEntityClassRegistry } from '../entity-definitions';
+import { collectCompileModelFiles, compileMap } from '../q3map';
+import { structureCompilerOutput } from '../compile-diagnostics';
+import { cloneMapSnapshot } from '../history';
+import { entityBounds } from '../editor-queries';
+import { createWorldspawn } from '../entity';
+import type { Entity } from '../entity';
+import type { Brush } from '../brush';
+import type { Patch } from '../patch';
 import {
   GROUP_HIDDEN_KEY,
   entityGroupId,
   isGroupInfoEntity,
   listNamedGroups,
-} from './named-groups';
-import { textureSearchScore } from './texture-search';
+} from '../named-groups';
+import { textureSearchScore } from '../texture-search';
+import { configuredBridgeUrl } from './configuration';
 
 export type LiveBridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -142,22 +143,6 @@ function selectionRef(editor: Editor, item: SelectionItem): string {
   const faceIndex = item.brush.faces.indexOf(item.face);
   if (faceIndex < 0) throw new Error('The selection contains a face that is no longer in the document');
   return `E${entityIndex}:B${brushIndex}:F${faceIndex}`;
-}
-
-function configuredBridgeUrl(): string | null {
-  const value = new URLSearchParams(window.location.search).get('bridge');
-  if (!value) return null;
-  if (value === '1' || value === 'true') {
-    return `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/editor`;
-  }
-  try {
-    const url = new URL(value, window.location.href);
-    if (url.protocol === 'http:') url.protocol = 'ws:';
-    if (url.protocol === 'https:') url.protocol = 'wss:';
-    return url.toString();
-  } catch {
-    return null;
-  }
 }
 
 const EDITOR_SESSION_STORAGE_KEY = 'q3edit.mcpEditorSessionId';

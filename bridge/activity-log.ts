@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { McpActivityEntry } from '../src/live-bridge-protocol';
+import type { McpActivityEntry } from '../src/live-bridge/protocol';
 
 interface SummarizeOptions {
   depth?: number;

@@ -33,6 +33,10 @@ import { searchDesignPatterns } from './design-patterns';
 import { entityOrigin } from '../src/entity';
 import { inspectCompilerPreflight } from './compiler-preflight';
 import { explainDiagnostic } from './diagnostic-explain';
+import { registerSessionTools, type EditorSessionSelection } from './mcp/session-tools';
+import { toolError, toolResult } from './mcp/tool-result';
+import { installMcpActivityLogging } from './mcp/activity-middleware';
+import { registerAgentWorkflowResource } from './mcp/agent-workflow';
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 const compatibleVec3 = z.array(z.number()).length(3);
@@ -455,16 +459,6 @@ const reviewBundleOutputSchema = z.object({
     width: z.number().int(), height: z.number().int(),
     gridSize: z.number().optional(), majorGridSize: z.number().optional(),
     axisLabels: z.tuple([z.string(), z.string()]).optional(), worldUnitsPerPixel: z.number().optional(),
-  })),
-});
-const activityLogOutputSchema = z.object({
-  enabled: z.boolean(), filePath: z.string().nullable(), mcpSessionId: z.string().nullable(), count: z.number().int(),
-  entries: z.array(z.object({
-    id: z.string(), timestamp: z.string(), mcpSessionId: z.string(), editorSessionId: z.string().nullable(), tool: z.string(),
-    readOnly: z.boolean(),
-    durationMs: z.number(), status: z.enum(['success', 'error']),
-    revisionBefore: z.number().int().nullable(), revisionAfter: z.number().int().nullable(), revisionDelta: z.number().int().nullable(),
-    arguments: z.unknown(), result: z.unknown(),
   })),
 });
 const textureReviewIssueSchema = z.object({
@@ -1170,18 +1164,6 @@ const mapPreviewInputSchema = {
     .describe('Reviews to run against both the current and previewed revisions; defaults to gameplay for backward compatibility'),
 };
 
-function toolError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return { isError: true, content: [{ type: 'text' as const, text: message }] };
-}
-
-function toolResult(value: unknown, text?: string) {
-  return {
-    content: [{ type: 'text' as const, text: text ?? JSON.stringify(value, null, 2) }],
-    structuredContent: value as Record<string, unknown>,
-  };
-}
-
 function validatedMapOperations(operations: unknown[]): MapOperation[] {
   return operations.map((operation, index) => {
     const parsed = mapOperation.safeParse(operation);
@@ -1312,8 +1294,8 @@ const Q3EDIT_SERVER_INSTRUCTIONS = `${Q3EDIT_ROUTING_INSTRUCTIONS}
 Read q3edit://agent-workflow before substantial authoring. Select the intended editor session, inspect status/style/spatial state, preview atomic revision-checked batches, and use asset discovery instead of guessing. Treat texture projection as part of construction and finish major edits with design review plus editor_capture/editor_review visual checks.`;
 
 export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityLog): McpServer {
-  let selectedEditorSessionId: string | undefined;
-  const session = (requested?: string): string => hub.resolveSessionId(requested ?? selectedEditorSessionId);
+  const editorSession: EditorSessionSelection = {};
+  const session = (requested?: string): string => hub.resolveSessionId(requested ?? editorSession.selectedEditorSessionId);
   const sessionValue = (sessionId: string, value: unknown): Record<string, unknown> => {
     if (value && typeof value === 'object' && !Array.isArray(value)) return { sessionId, ...(value as Record<string, unknown>) };
     return { sessionId, result: value };
@@ -1321,112 +1303,9 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
     instructions: Q3EDIT_SERVER_INSTRUCTIONS,
   });
-  server.registerResource('Q3Edit agent workflow', 'q3edit://agent-workflow', {
-    title: 'Q3Edit MCP map-authoring workflow',
-    description: 'Shared workflow and quality guidance for agents editing Quake 3 maps through Q3Edit.',
-    mimeType: 'text/markdown',
-  }, uri => ({
-    contents: [{
-      uri: uri.href,
-      mimeType: 'text/markdown',
-      text: `# Q3Edit MCP workflow
-
-1. Resolve the intended editor with \`editor_sessions\`, then inspect \`map_status\`, \`map_summary\`, \`map_style_get\`, and \`map_spatial_plan_get\`.
-   If the user refers to their current selection, call \`editor_selection\` first and use its returned revision and references instead of guessing what they mean.
-2. Discover entity classes, textures, shaders, and exact operation schemas. Do not guess names or properties.
-3. For substantial maps, establish semantic areas, connections, height changes, routes, and landmarks before detailed geometry. Use design patterns as adaptable constraints, never fixed prefabs.
-4. Prefer angled, curved, terraced, and path-based construction where it supports the layout. Refine safe blockouts with chamfer, taper, face offset, clipping, hollowing, and CSG instead of leaving every room box-shaped.
-5. Preview related operations as one batch, including relevant reviews, then apply them atomically with the returned revision. Use symbolic IDs inside a batch and persistent named groups afterward. If an applied direction is visually poor, use revision-checked \`map_undo\` instead of destructively reconstructing the prior map.
-6. Treat UV projection as part of geometry. Fit focal one-image surfaces, preserve intentional tiling on large walls/floors, use semantic per-face transforms, and run \`map_texture_review\`.
-7. After major edits run \`map_design_review\`, capture perspective and orthographic views with \`editor_review\`, and revise weak routes, repeated dimensions, flat silhouettes, or texture problems before decoration.
-8. Save and compile, then use \`map_play({useLastCompile:true})\` while the revision is unchanged. Wait for verified play-preview readiness, target a useful spawn/entity view, and inspect a game screenshot before finalizing.
-9. When a compiler or review warning is unclear, pass its code, message, severity, and refs to \`diagnostic_explain\` before guessing at a repair.
-`,
-    }],
-  }));
-  if (activityLog) {
-    const registerTool = server.registerTool.bind(server) as any;
-    server.registerTool = ((name: string, config: unknown, callback: (...args: any[]) => any) => {
-      const readOnly = (config as { annotations?: { readOnlyHint?: boolean } }).annotations?.readOnlyHint === true;
-      return registerTool(name, config as any, async (args: Record<string, unknown>, extra: unknown) => {
-        const startedAt = Date.now();
-        const requestedSessionId = typeof args.sessionId === 'string' ? args.sessionId : selectedEditorSessionId;
-        let editorSessionId: string | null = null;
-        try { editorSessionId = hub.resolveSessionId(requestedSessionId); } catch { /* Tools may not target an editor. */ }
-        const revision = (): number | null => {
-          if (!editorSessionId) return null;
-          try { return hub.status(editorSessionId).snapshot?.revision ?? null; } catch { return null; }
-        };
-        const revisionBefore = revision();
-        let result: any;
-        try {
-          result = await callback(args, extra);
-        } catch (error) {
-          try {
-            await activityLog.record({
-              editorSessionId, tool: name, readOnly, durationMs: Date.now() - startedAt, status: 'error',
-              revisionBefore, revisionAfter: revision(), revisionDelta: null,
-              arguments: args, result: { thrown: error instanceof Error ? error.message : String(error) },
-            });
-          } catch (logError) {
-            console.error('Failed to record MCP activity', logError);
-          }
-          throw error;
-        }
-        const revisionAfter = revision();
-        try {
-          await activityLog.record({
-            editorSessionId, tool: name, readOnly, durationMs: Date.now() - startedAt, status: result?.isError ? 'error' : 'success',
-            revisionBefore, revisionAfter,
-            revisionDelta: revisionBefore === null || revisionAfter === null ? null : revisionAfter - revisionBefore,
-            arguments: args,
-            result: result?.structuredContent ?? { isError: result?.isError === true, content: result?.content },
-          });
-        } catch (logError) {
-          console.error('Failed to record MCP activity', logError);
-        }
-        return result;
-      });
-    }) as typeof server.registerTool;
-  }
-
-  server.registerTool('editor_sessions', {
-    title: 'List connected Q3Edit editor sessions',
-    description: 'List stable browser-tab session IDs with filenames, revisions, active save paths, and activity timestamps. Use this before document tools when multiple editors are open.',
-    inputSchema: {},
-    annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async () => toolResult({ selectedSessionId: selectedEditorSessionId ?? null, sessions: hub.listSessions() }));
-
-  server.registerTool('activity_log', {
-    title: 'Inspect this MCP session activity log',
-    description: 'Return recent tool calls from this MCP connection, including target editor session, duration, status, summarized arguments/results, and revision deltas. The complete append-only JSONL transcript is written to filePath.',
-    inputSchema: {
-      editorSessionId: editorSessionId.optional().describe('Optionally filter entries to one editor tab'),
-      limit: z.number().int().min(1).max(500).optional().default(50),
-    },
-    outputSchema: activityLogOutputSchema,
-    annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ editorSessionId, limit }) => toolResult({
-    enabled: Boolean(activityLog),
-    filePath: activityLog?.filePath ?? null,
-    mcpSessionId: activityLog?.mcpSessionId ?? null,
-    count: activityLog?.count ?? 0,
-    entries: activityLog?.recent(limit, editorSessionId) ?? [],
-  }));
-
-  server.registerTool('editor_session_select', {
-    title: 'Select a Q3Edit editor session',
-    description: 'Set the default editor session for subsequent tools on this MCP connection. Explicit sessionId arguments still override it.',
-    inputSchema: { sessionId: editorSessionId },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ sessionId }) => {
-    try {
-      selectedEditorSessionId = hub.resolveSessionId(sessionId);
-      return toolResult({ selectedSessionId: selectedEditorSessionId, status: hub.status(selectedEditorSessionId) });
-    } catch (error) {
-      return toolError(error);
-    }
-  });
+  registerAgentWorkflowResource(server);
+  installMcpActivityLogging(server, hub, activityLog, () => editorSession.selectedEditorSessionId);
+  registerSessionTools(server, hub, editorSession, activityLog);
 
   server.registerTool('map_status', {
     title: 'Get live Q3Edit map status',

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { BridgeHub } from '../bridge/bridge-hub';
 import { createQ3EditMcpServer } from '../bridge/mcp-server';
 import { McpActivityLog } from '../bridge/activity-log';
-import type { EditorToBridgeMessage, LiveMapSnapshot } from '../src/live-bridge-protocol';
+import type { EditorToBridgeMessage, LiveMapSnapshot } from '../src/live-bridge';
 
 function snapshot(revision = 4): LiveMapSnapshot {
   return {

@@ -29,8 +29,8 @@ import {
 } from './sidebar-layout';
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import 'virtual:phosphor-icons.css';
-import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge-protocol';
-import { McpActivityPanel } from './mcp-activity-panel';
+import { McpActivityPanel } from './live-bridge/activity-panel';
+import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;

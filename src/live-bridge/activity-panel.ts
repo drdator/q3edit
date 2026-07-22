@@ -1,4 +1,4 @@
-import type { McpActivityEntry } from './live-bridge-protocol';
+import type { McpActivityEntry } from './protocol';
 
 export interface McpActivityFilter {
   query: string;

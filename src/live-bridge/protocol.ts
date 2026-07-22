@@ -1,6 +1,6 @@
-import type { EditorDiagnostic, EntityInfo, MapInfo } from './diagnostics';
-import type { MapOperation, MapOperationResult } from './map-operations';
-import type { Vec3 } from './math';
+import type { EditorDiagnostic, EntityInfo, MapInfo } from '../diagnostics';
+import type { MapOperation, MapOperationResult } from '../map-operations';
+import type { Vec3 } from '../math';
 
 export interface LiveMapSnapshot {
   fileName: string;

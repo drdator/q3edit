@@ -15,7 +15,7 @@ import {
 } from './pak-storage';
 import { TextureManager } from './textures';
 import { saveProjectConfiguration, type ProjectConfiguration } from './project-config';
-import { connectConfiguredLiveBridge } from './live-bridge';
+import { configuredBridgeUrl } from './live-bridge/configuration';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -67,29 +67,32 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor);
-  connectConfiguredLiveBridge(editor, {
-    setCamera: (position, yaw, pitch) => vp3D.setCamera(position, yaw, pitch),
-    frameBounds: bounds => {
-      vp3D.frameBounds(bounds);
-      vpXY.frameBounds(bounds);
-      vpXZ.frameBounds(bounds);
-      vpYZ.frameBounds(bounds);
-    },
-    captureScreenshot: options => {
-      const mode = options.mode ?? 'perspective';
-      if (mode === 'top') return vpXY.capturePng(options.width, options.height, options.layoutOverlay);
-      if (mode === 'front') return vpXZ.capturePng(options.width, options.height, options.layoutOverlay);
-      if (mode === 'side') return vpYZ.capturePng(options.width, options.height, options.layoutOverlay);
-      return vp3D.capturePng(options.width, options.height, options.xray);
-    },
-    recordMcpActivity: entry => ui.recordMcpActivity(entry),
-    launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
-    gameStatus: () => ui.getGamePreviewStatus(),
-    waitForGameReady: timeoutMs => ui.waitForGamePreview(timeoutMs),
-    gameCommand: command => ui.runGamePreviewCommand(command),
-    setGameView: (position, yaw) => ui.setGamePreviewView(position, yaw),
-    captureBspPreview: () => ui.captureBspPreview(),
-  });
+  if (configuredBridgeUrl()) {
+    const { connectConfiguredLiveBridge } = await import('./live-bridge/client');
+    connectConfiguredLiveBridge(editor, {
+      setCamera: (position, yaw, pitch) => vp3D.setCamera(position, yaw, pitch),
+      frameBounds: bounds => {
+        vp3D.frameBounds(bounds);
+        vpXY.frameBounds(bounds);
+        vpXZ.frameBounds(bounds);
+        vpYZ.frameBounds(bounds);
+      },
+      captureScreenshot: options => {
+        const mode = options.mode ?? 'perspective';
+        if (mode === 'top') return vpXY.capturePng(options.width, options.height, options.layoutOverlay);
+        if (mode === 'front') return vpXZ.capturePng(options.width, options.height, options.layoutOverlay);
+        if (mode === 'side') return vpYZ.capturePng(options.width, options.height, options.layoutOverlay);
+        return vp3D.capturePng(options.width, options.height, options.xray);
+      },
+      recordMcpActivity: entry => ui.recordMcpActivity(entry),
+      launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
+      gameStatus: () => ui.getGamePreviewStatus(),
+      waitForGameReady: timeoutMs => ui.waitForGamePreview(timeoutMs),
+      gameCommand: command => ui.runGamePreviewCommand(command),
+      setGameView: (position, yaw) => ui.setGamePreviewView(position, yaw),
+      captureBspPreview: () => ui.captureBspPreview(),
+    });
+  }
 
   let defaultArchives: PakArchive[] = [];
   let defaultPakLoaded = false;
