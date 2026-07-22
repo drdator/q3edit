@@ -308,6 +308,13 @@
           const assets = await loadLaunchAssets();
           setStatus('Loading ioquake3 WebAssembly runtime...');
           const ioquake3 = (await import('./ioquake3.js')).default;
+          const availableBotNames = assets.gameDir === 'baseoa'
+            ? ['Sarge', 'Grism', 'Sorceress']
+            : ['Sarge', 'Major', 'Grunt'];
+          const requestedBotNames = availableBotNames.slice(0, launch.botCount);
+          const botArguments = requestedBotNames.flatMap((name, index) => [
+            '+addbot', name, String(launch.botSkill), 'free', String(index * 250),
+          ]);
           await ioquake3({
             canvas,
             arguments: [
@@ -318,14 +325,14 @@
               '+set', 'r_fullscreen', '0',
               '+set', 'r_allowResize', '1',
               ...(launch.noclip ? ['+set', 'sv_cheats', '1'] : []),
-              ...(launch.botMinPlayers > 0 ? [
+              ...(launch.botCount > 0 ? [
                 '+set', 'bot_enable', '1',
-                '+set', 'bot_minplayers', String(launch.botMinPlayers),
+                '+set', 'bot_minplayers', String(launch.botCount + 1),
               ] : []),
               '+set', 'com_basegame', assets.gameDir,
               '+devmap', launch.mapName,
-              ...((launch.botMinPlayers > 0 || launch.noclip || (launch.commands || []).length > 0) ? ['+wait', '30'] : []),
-              ...(launch.botMinPlayers > 0 ? ['+addbot', 'Sarge', '2', 'free', '0'] : []),
+              ...((launch.botCount > 0 || launch.noclip || (launch.commands || []).length > 0) ? ['+wait', '30'] : []),
+              ...botArguments,
               ...(launch.noclip ? ['+noclip'] : []),
               ...(launch.commands || []).flatMap(command => [`+${command.name}`, ...command.args]),
             ],
@@ -344,15 +351,17 @@
                 send('q3edit-player:running', {
                   mapName: launch.mapName,
                   botNavigation: Boolean(launch.aas),
-                  botMinPlayers: launch.botMinPlayers,
-                  botJoined: launch.botMinPlayers > 0 && consoleLines.some(line => /Sarge.*(?:connected|entered the game)/i.test(line)),
+                  botCount: launch.botCount,
+                  botJoinedCount: requestedBotNames.filter(name =>
+                    consoleLines.some(line => new RegExp(`${name}.*(?:connected|entered the game)`, 'i').test(line))
+                  ).length,
                   noclip: launch.noclip && consoleLines.some(line => /\bnoclip\s+ON\b/i.test(line)),
                   commandErrors: [
                     ...consoleLines.filter(line => /unknown command/i.test(line) && /\b(?:noclip|setviewpos|map_restart)\b/i.test(line)),
-                    ...consoleLines.filter(line => /Bot 'Sarge' not defined/i.test(line)),
-                    ...(launch.botMinPlayers > 0 && consoleLines.some(line => /0 bots parsed/i.test(line))
+                    ...consoleLines.filter(line => /Bot '.*' not defined/i.test(line)),
+                    ...(launch.botCount > 0 && consoleLines.some(line => /0 bots parsed/i.test(line))
                       ? ['No bot definitions were found in the loaded PK3 files.'] : []),
-                    ...(launch.botMinPlayers > 0 && consoleLines.some(line => /bot library used before being setup/i.test(line))
+                    ...(launch.botCount > 0 && consoleLines.some(line => /bot library used before being setup/i.test(line))
                       ? ['The bot library could not start. Check the loaded PK3 files and generated AAS.'] : []),
                   ],
                   renderer: {
@@ -362,7 +371,7 @@
                     preserveDrawingBuffer: gl?.getContextAttributes()?.preserveDrawingBuffer === true,
                   },
                 });
-              }, launch.botMinPlayers > 0 ? 2000 : launch.noclip || (launch.commands || []).length > 0 ? 1500 : 300);
+              }, launch.botCount > 0 ? 2500 : launch.noclip || (launch.commands || []).length > 0 ? 1500 : 300);
             }],
             print: (message) => {
               console.log(message);
@@ -391,14 +400,15 @@
           return;
         }
         const aas = event.data.aas instanceof ArrayBuffer ? event.data.aas : null;
-        const botMinPlayers = aas
-          ? Math.max(0, Math.min(16, Math.trunc(Number(event.data.botMinPlayers) || 0)))
+        const botCount = aas
+          ? Math.max(0, Math.min(3, Math.trunc(Number(event.data.botCount) || 0)))
           : 0;
+        const botSkill = Math.max(1, Math.min(5, Math.trunc(Number(event.data.botSkill) || 2)));
         const commands = Array.isArray(event.data.commands) ? event.data.commands.filter(command =>
           command && ['setviewpos', 'map_restart'].includes(command.name) &&
           Array.isArray(command.args) && command.args.every(argument => typeof argument === 'string')
         ) : [];
-        void start({ mapName, bsp, aas, botMinPlayers, noclip: event.data.noclip === true, commands });
+        void start({ mapName, bsp, aas, botCount, botSkill, noclip: event.data.noclip === true, commands });
       });
 
       window.addEventListener('error', (event) => fail(event.error ?? event.message));

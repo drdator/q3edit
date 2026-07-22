@@ -18,7 +18,7 @@ geometry, entities, textures, terrain, and client-side BSP compilation.
 - OpenArena textures by default, with optional retail Quake III PK3 files
 - q3map and BSPC compiled to WebAssembly for client-side BSP, VIS, light, and bot-navigation stages
 - ioquake3 compiled to WebAssembly for playing compiled maps in the editor
-- Quick Play with Bot compiles bot navigation and automatically adds an OpenArena or retail Quake III bot
+- Remembered Quick Play options cover compile quality, up to three bots, and bot skill
 
 Q3Edit is under active development. Save important work frequently and keep
 copies of your source `.map` files.

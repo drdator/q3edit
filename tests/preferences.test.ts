@@ -23,6 +23,7 @@ describe('global preferences', () => {
     preferences.collapsedPanels['entity-panel'] = true;
     preferences.sidebar = { visible: false, width: 420 };
     preferences.mcpActivity = { visible: true, height: 360 };
+    preferences.quickPlay = { quality: 'full', botsEnabled: true, botCount: 3, botSkill: 4 };
     saveGlobalPreferences(preferences, storage);
 
     const loaded = loadGlobalPreferences(storage);
@@ -32,6 +33,7 @@ describe('global preferences', () => {
     expect(loaded.preferences.collapsedPanels).toEqual({ 'entity-panel': true });
     expect(loaded.preferences.sidebar).toEqual({ visible: false, width: 420 });
     expect(loaded.preferences.mcpActivity).toEqual({ visible: true, height: 360 });
+    expect(loaded.preferences.quickPlay).toEqual({ quality: 'full', botsEnabled: true, botCount: 3, botSkill: 4 });
   });
 
   it('ignores invalid persisted panel states', () => {
@@ -70,6 +72,21 @@ describe('global preferences', () => {
     expect(loadGlobalPreferences(storage).preferences.mcpActivity).toEqual({
       visible: false,
       height: 800,
+    });
+  });
+
+  it('normalizes persisted Quick Play settings', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 2,
+      quickPlay: { quality: 'instant', botsEnabled: true, botCount: 99, botSkill: -4 },
+    }));
+
+    expect(loadGlobalPreferences(storage).preferences.quickPlay).toEqual({
+      quality: 'normal',
+      botsEnabled: true,
+      botCount: 3,
+      botSkill: 1,
     });
   });
 

@@ -44,6 +44,17 @@ unzip -q "$bot_source_archive" \
   'botfiles/*' \
   'scripts/bots.txt' \
   -d "$bot_temp_dir"
+mv "$bot_temp_dir/scripts/bots.txt" "$bot_temp_dir/scripts/bots-all.txt"
+awk 'BEGIN { RS = "}"; ORS = "}\n\n" }
+  /name[[:space:]]+(Grism|Sarge|Sorceress)([[:space:]]|$)/ {
+    sub(/^[[:space:]]+/, ""); print
+  }' "$bot_temp_dir/scripts/bots-all.txt" > "$bot_temp_dir/scripts/bots.txt"
+if [[ "$(grep -c '^[[:space:]]*name[[:space:]]' "$bot_temp_dir/scripts/bots.txt")" -ne 3 ]]; then
+  echo "Could not build the reduced OpenArena bot catalog." >&2
+  exit 1
+fi
+touch -r "$bot_temp_dir/scripts/bots-all.txt" "$bot_temp_dir/scripts/bots.txt"
+rm -f "$bot_temp_dir/scripts/bots-all.txt"
 rm -f "$bot_archive"
 (
   cd "$bot_temp_dir"

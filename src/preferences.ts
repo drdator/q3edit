@@ -17,6 +17,14 @@ export const LEGACY_DISPLAY_STORAGE_KEY = 'q3edit.display.v1';
 export type ThemePreset = 'dark' | 'light' | 'high-contrast' | 'custom';
 export type ViewportLayout = 'quad' | 'wide-3d' | 'wide-2d';
 export type GridSnapMode = 'off' | 'abs' | 'rel';
+export type QuickPlayQuality = 'fast' | 'normal' | 'full';
+
+export interface QuickPlayPreferences {
+  quality: QuickPlayQuality;
+  botsEnabled: boolean;
+  botCount: number;
+  botSkill: number;
+}
 
 export interface ThemeColors {
   background: string;
@@ -34,6 +42,7 @@ export interface GlobalPreferences {
   collapsedPanels: Record<string, boolean>;
   sidebar: { visible: boolean; width: number };
   mcpActivity: { visible: boolean; height: number };
+  quickPlay: QuickPlayPreferences;
   theme: { preset: ThemePreset; colors: ThemeColors };
   viewportLayout: ViewportLayout;
   editorDefaults: {
@@ -65,6 +74,7 @@ export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
   collapsedPanels: {},
   sidebar: { visible: true, width: DEFAULT_SIDEBAR_WIDTH },
   mcpActivity: { visible: false, height: DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT },
+  quickPlay: { quality: 'normal', botsEnabled: false, botCount: 1, botSkill: 2 },
   theme: { preset: 'dark', colors: DEFAULT_THEME_COLORS },
   viewportLayout: 'quad',
   editorDefaults: {
@@ -110,6 +120,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   const theme = isRecord(value.theme) ? value.theme : {};
   const sidebar = isRecord(value.sidebar) ? value.sidebar : {};
   const mcpActivity = isRecord(value.mcpActivity) ? value.mcpActivity : {};
+  const quickPlay = isRecord(value.quickPlay) ? value.quickPlay : {};
   const colors = isRecord(theme.colors) ? theme.colors : {};
   const rawGrid = Number(editor.gridSize);
   const gridSize = Number.isFinite(rawGrid) ? Math.min(256, Math.max(1, Math.round(rawGrid))) : defaults.editorDefaults.gridSize;
@@ -132,6 +143,9 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   const snapModes: GridSnapMode[] = ['off', 'abs', 'rel'];
   const primitives: BrushPrimitive[] = ['box', 'cylinder', 'cone', 'sphere', 'pyramid'];
   const invisibleModes: InvisibleMode[] = ['show', 'dim', 'hide'];
+  const quickPlayQualities: QuickPlayQuality[] = ['fast', 'normal', 'full'];
+  const rawBotCount = Number(quickPlay.botCount);
+  const rawBotSkill = Number(quickPlay.botSkill);
   return {
     version: PREFERENCES_VERSION,
     shortcuts,
@@ -143,6 +157,13 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
     mcpActivity: {
       visible: typeof mcpActivity.visible === 'boolean' ? mcpActivity.visible : defaults.mcpActivity.visible,
       height: clampMcpActivityPanelHeight(Number(mcpActivity.height)),
+    },
+    quickPlay: {
+      quality: quickPlayQualities.includes(quickPlay.quality as QuickPlayQuality)
+        ? quickPlay.quality as QuickPlayQuality : defaults.quickPlay.quality,
+      botsEnabled: typeof quickPlay.botsEnabled === 'boolean' ? quickPlay.botsEnabled : defaults.quickPlay.botsEnabled,
+      botCount: Number.isFinite(rawBotCount) ? Math.min(3, Math.max(1, Math.round(rawBotCount))) : defaults.quickPlay.botCount,
+      botSkill: Number.isFinite(rawBotSkill) ? Math.min(5, Math.max(1, Math.round(rawBotSkill))) : defaults.quickPlay.botSkill,
     },
     theme: {
       preset: presets.includes(theme.preset as ThemePreset) ? theme.preset as ThemePreset : defaults.theme.preset,
