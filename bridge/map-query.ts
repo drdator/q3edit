@@ -1,0 +1,195 @@
+import type { Brush } from '../src/brush';
+import { entityOrigin, type Entity } from '../src/entity';
+import { parseMapWithDiagnostics } from '../src/mapfile';
+import { vec3Max, vec3Min, type Vec3 } from '../src/math';
+import type { Patch } from '../src/patch';
+import { entityGroupId, groupNameMap, isGroupInfoEntity, listNamedGroups } from '../src/named-groups';
+
+export interface MapQueryOptions {
+  refs?: string[];
+  kind?: 'entity' | 'brush' | 'face' | 'patch';
+  classname?: string;
+  texture?: string;
+  propertyKey?: string;
+  propertyValue?: string;
+  group?: string;
+  bounds?: { mins: Vec3; maxs: Vec3; mode?: 'intersects' | 'inside' };
+  limit?: number;
+  offset?: number;
+}
+
+type Bounds = { mins: Vec3; maxs: Vec3 };
+
+function entityGeometryBounds(entity: Entity): Bounds | null {
+  let mins: Vec3 = [Infinity, Infinity, Infinity];
+  let maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+  let found = false;
+  for (const object of [...entity.brushes, ...entity.patches]) {
+    mins = vec3Min(mins, object.mins);
+    maxs = vec3Max(maxs, object.maxs);
+    found = true;
+  }
+  if (found) return { mins, maxs };
+  const origin = entityOrigin(entity);
+  return origin ? { mins: origin, maxs: origin } : null;
+}
+
+function matchesBounds(object: Bounds | null, query: MapQueryOptions['bounds']): boolean {
+  if (!query) return true;
+  if (!object) return false;
+  if (query.mode === 'inside') {
+    return object.mins.every((value, axis) => value >= query.mins[axis]) &&
+      object.maxs.every((value, axis) => value <= query.maxs[axis]);
+  }
+  return object.maxs.every((value, axis) => value >= query.mins[axis]) &&
+    object.mins.every((value, axis) => value <= query.maxs[axis]);
+}
+
+function objectTextures(object: Entity | Brush | Patch): string[] {
+  if ('classname' in object) {
+    return [...new Set([
+      ...object.brushes.flatMap(brush => brush.faces.map(face => face.texture)),
+      ...object.patches.map(patch => patch.texture),
+    ])];
+  }
+  if ('faces' in object) return [...new Set(object.faces.map(face => face.texture))];
+  return [object.texture];
+}
+
+function matchesTexture(object: Entity | Brush | Patch, texture: string | undefined): boolean {
+  if (!texture) return true;
+  const query = texture.toLowerCase();
+  return objectTextures(object).some(value => value.toLowerCase().includes(query));
+}
+
+export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
+  const parsed = parseMapWithDiagnostics(mapText);
+  const names = groupNameMap(parsed.document.entities);
+  const requestedGroup = options.group?.trim().toLowerCase();
+  const requestedGroupId = requestedGroup
+    ? listNamedGroups(parsed.document.entities).find(group => group.id.toLowerCase() === requestedGroup || group.name.toLowerCase() === requestedGroup)?.id
+    : undefined;
+  const results: unknown[] = [];
+  const requestedRefs = options.refs && options.refs.length > 0 ? new Set(options.refs) : null;
+  const matchesRef = (ref: string): boolean => !requestedRefs || requestedRefs.has(ref);
+  const includeFaces = options.kind === 'face' || Boolean(options.refs?.some(ref => /:F\d+$/.test(ref)));
+  const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const scanLimit = offset + limit;
+  const classname = options.classname?.toLowerCase();
+
+  for (let entityIndex = 0; entityIndex < parsed.document.entities.length && results.length < scanLimit; entityIndex++) {
+    const entity = parsed.document.entities[entityIndex];
+    const entityGroup = entityGroupId(entity);
+    const classMatches = !classname || entity.classname.toLowerCase() === classname;
+    const propertyMatches = !options.propertyKey || (
+      Object.prototype.hasOwnProperty.call(entity.properties, options.propertyKey) &&
+      (options.propertyValue === undefined || entity.properties[options.propertyKey].toLowerCase().includes(options.propertyValue.toLowerCase()))
+    );
+
+    const entityGroupMatches = !requestedGroup || entityGroup === requestedGroupId;
+    if ((!options.kind || options.kind === 'entity') && matchesRef(`E${entityIndex}`) && classMatches && propertyMatches && entityGroupMatches &&
+        matchesTexture(entity, options.texture) && matchesBounds(entityGeometryBounds(entity), options.bounds)) {
+      results.push({
+        ref: `E${entityIndex}`,
+        kind: 'entity',
+        classname: entity.classname,
+        origin: entityOrigin(entity),
+        bounds: entityGeometryBounds(entity),
+        properties: entity.properties,
+        brushCount: entity.brushes.length,
+        patchCount: entity.patches.length,
+        textures: objectTextures(entity),
+        group: entityGroup ? { id: entityGroup, name: names.get(entityGroup) ?? entityGroup } : null,
+      });
+    }
+
+    if (!classMatches || !propertyMatches || options.kind === 'entity' || isGroupInfoEntity(entity)) continue;
+    for (let brushIndex = 0; brushIndex < entity.brushes.length && results.length < scanLimit; brushIndex++) {
+      const brush = entity.brushes[brushIndex];
+      const brushGroup = brush.editorGroupId ?? entityGroup;
+      if (requestedGroup && brushGroup !== requestedGroupId) continue;
+      if ((!options.kind || options.kind === 'brush') && matchesRef(`E${entityIndex}:B${brushIndex}`) &&
+          matchesTexture(brush, options.texture) && matchesBounds(brush, options.bounds)) {
+        results.push({
+          ref: `E${entityIndex}:B${brushIndex}`,
+          kind: 'brush',
+          entity: `E${entityIndex}`,
+          classname: entity.classname,
+          bounds: { mins: brush.mins, maxs: brush.maxs },
+          faceCount: brush.faces.length,
+          textures: objectTextures(brush),
+          group: brushGroup ? { id: brushGroup, name: names.get(brushGroup) ?? brushGroup } : null,
+        });
+      }
+      if (includeFaces) {
+        const textureQuery = options.texture?.toLowerCase();
+        for (let faceIndex = 0; faceIndex < brush.faces.length && results.length < scanLimit; faceIndex++) {
+          const face = brush.faces[faceIndex];
+          if (!matchesRef(`E${entityIndex}:B${brushIndex}:F${faceIndex}`)) continue;
+          if (textureQuery && !face.texture.toLowerCase().includes(textureQuery)) continue;
+          const faceBounds = face.polygon.length > 0
+            ? face.polygon.reduce<Bounds>((bounds, point) => ({
+                mins: vec3Min(bounds.mins, point), maxs: vec3Max(bounds.maxs, point),
+              }), { mins: [Infinity, Infinity, Infinity], maxs: [-Infinity, -Infinity, -Infinity] })
+            : null;
+          if (!matchesBounds(faceBounds, options.bounds)) continue;
+          results.push({
+            ref: `E${entityIndex}:B${brushIndex}:F${faceIndex}`,
+            kind: 'face',
+            entity: `E${entityIndex}`,
+            brush: `E${entityIndex}:B${brushIndex}`,
+            classname: entity.classname,
+            texture: face.texture,
+            bounds: faceBounds,
+            contentFlags: face.contentFlags,
+            surfaceFlags: face.surfaceFlags,
+            value: face.value,
+            group: brushGroup ? { id: brushGroup, name: names.get(brushGroup) ?? brushGroup } : null,
+          });
+        }
+      }
+    }
+    for (let patchIndex = 0; patchIndex < entity.patches.length && results.length < scanLimit; patchIndex++) {
+      const patch = entity.patches[patchIndex];
+      const patchGroup = patch.editorGroupId ?? entityGroup;
+      if (requestedGroup && patchGroup !== requestedGroupId) continue;
+      if (options.kind && options.kind !== 'patch') continue;
+      if (!matchesRef(`E${entityIndex}:P${patchIndex}`)) continue;
+      if (!matchesTexture(patch, options.texture) || !matchesBounds(patch, options.bounds)) continue;
+      results.push({
+        ref: `E${entityIndex}:P${patchIndex}`,
+        kind: 'patch',
+        entity: `E${entityIndex}`,
+        classname: entity.classname,
+        bounds: { mins: patch.mins, maxs: patch.maxs },
+        width: patch.width,
+        height: patch.height,
+        textures: objectTextures(patch),
+        group: patchGroup ? { id: patchGroup, name: names.get(patchGroup) ?? patchGroup } : null,
+      });
+    }
+  }
+  return results.slice(offset, scanLimit);
+}
+
+export function inspectMapGroups(mapText: string): unknown[] {
+  const parsed = parseMapWithDiagnostics(mapText);
+  return listNamedGroups(parsed.document.entities).map(group => {
+    const members: string[] = [];
+    parsed.document.entities.forEach((entity, entityIndex) => {
+      if (isGroupInfoEntity(entity)) return;
+      if (entityGroupId(entity) === group.id) {
+        members.push(`E${entityIndex}`);
+        return;
+      }
+      entity.brushes.forEach((brush, brushIndex) => {
+        if (brush.editorGroupId === group.id) members.push(`E${entityIndex}:B${brushIndex}`);
+      });
+      entity.patches.forEach((patch, patchIndex) => {
+        if (patch.editorGroupId === group.id) members.push(`E${entityIndex}:P${patchIndex}`);
+      });
+    });
+    return { id: group.id, name: group.name, hidden: group.hidden, locked: group.locked, memberCount: members.length, members };
+  });
+}

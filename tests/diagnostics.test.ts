@@ -12,11 +12,18 @@ import {
 import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
 import { loadMap } from '../src/editor-document';
+import { GROUP_INFO_CLASSNAME } from '../src/named-groups';
 
 describe('map diagnostics', () => {
   it('treats intrinsic worldspawn as a documented map class', () => {
     const editor = new Editor();
     editor.entities = [createEntity('worldspawn')];
+    expect(collectEditorDiagnostics(editor).map(item => item.code)).not.toContain('unknown-class');
+  });
+
+  it('does not report Q3Edit group metadata as an unknown game class', () => {
+    const editor = new Editor();
+    editor.entities = [createEntity('worldspawn'), createEntity(GROUP_INFO_CLASSNAME)];
     expect(collectEditorDiagnostics(editor).map(item => item.code)).not.toContain('unknown-class');
   });
 

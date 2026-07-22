@@ -96,6 +96,7 @@ export interface Viewport3DRenderContext {
   lightRadiusVAO: WebGLVertexArrayObject;
   lightRadiusDraws: LightRadiusDraw[];
   gizmo: GizmoRenderData;
+  xray: boolean;
 }
 
 export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
@@ -105,6 +106,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   ctx.canvas.height = rect.height * dpr;
   ctx.gl.viewport(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.gl.clear(ctx.gl.COLOR_BUFFER_BIT | ctx.gl.DEPTH_BUFFER_BIT);
+  if (ctx.xray) ctx.gl.disable(ctx.gl.DEPTH_TEST);
 
   const aspect = ctx.canvas.width / ctx.canvas.height || 1;
   const proj = mat4Perspective(ctx.fov, aspect, 1, 16384);
@@ -203,8 +205,10 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   if ((!isGameView || ctx.editor.display.rendererMode === 'wireframe') && ctx.wireCount > 0) {
     ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
-    ctx.gl.uniform3f(ctx.lineColorLoc, 0.0, 0.0, 0.0);
+    if (ctx.xray) ctx.gl.uniform3f(ctx.lineColorLoc, 0.25, 0.8, 1.0);
+    else ctx.gl.uniform3f(ctx.lineColorLoc, 0.0, 0.0, 0.0);
     ctx.gl.bindVertexArray(ctx.wireVAO);
+    if (ctx.xray) ctx.gl.disable(ctx.gl.DEPTH_TEST);
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.wireCount);
   }
 
@@ -346,5 +350,6 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   }
 
   ctx.gl.bindVertexArray(null);
+  if (ctx.xray) ctx.gl.enable(ctx.gl.DEPTH_TEST);
   return pv;
 }

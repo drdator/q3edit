@@ -1,0 +1,13 @@
+interface:
+  display_name: "Q3Edit Map Authoring"
+  short_description: "Author live Quake III maps through Q3Edit"
+  default_prompt: "Use $q3edit-map-authoring to create geometry in my current Q3Edit map."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "q3edit"
+      description: "Live Q3Edit map-authoring server"
+      transport: "streamable_http"
+      url: "http://127.0.0.1:8765/mcp"
+policy:
+  allow_implicit_invocation: true

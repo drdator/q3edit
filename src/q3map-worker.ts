@@ -21,6 +21,7 @@ async function createModule(onOutput: (text: string) => void): Promise<Q3MapModu
   if (!scriptLoaded) {
     // Fetch and eval the Emscripten glue (importScripts doesn't work in module workers)
     const resp = await fetch('/q3map-compiler/dist/q3map.js?v=' + Date.now())
+    if (!resp.ok) throw new Error(`Could not load q3map.js (${resp.status})`)
     const code = await resp.text()
     // eslint-disable-next-line no-eval
     ;(0, eval)(code)
@@ -142,48 +143,58 @@ self.onmessage = async (e: MessageEvent) => {
   const mapPath = '/quake/baseq3/maps/compile.map'
   const pointfilePath = '/quake/baseq3/maps/compile.lin'
 
-  // Stage 1: BSP
-  emit('=== Stage 1: BSP ===')
-  const bspMod = await createModule(emit)
-  setupFS(bspMod, mapText, null, options.shaderFiles, null, options.assetFiles)
+  try {
 
-  const bspExit = runQ3Map(bspMod, [...(options.args || []), mapPath], emit)
+    // Stage 1: BSP
+    emit('=== Stage 1: BSP ===')
+    const bspMod = await createModule(emit)
+    setupFS(bspMod, mapText, null, options.shaderFiles, null, options.assetFiles)
 
-  let bsp: Uint8Array | null = null
-  try { bsp = bspMod.FS.readFile(bspPath) } catch { /* */ }
-  const pointfileText = readTextFile(bspMod, pointfilePath)
+    const bspExit = runQ3Map(bspMod, [...(options.args || []), mapPath], emit)
 
-  if (bspExit !== 0 || !bsp) {
-    self.postMessage({ type: 'done', success: false, bsp: null, pointfileText, output })
-    return
+    let bsp: Uint8Array | null = null
+    try { bsp = bspMod.FS.readFile(bspPath) } catch { /* */ }
+    const pointfileText = readTextFile(bspMod, pointfilePath)
+
+    if (bspExit !== 0 || !bsp) {
+      emit('=== Stage 1 result: failed ===')
+      self.postMessage({ type: 'done', success: false, bsp: null, pointfileText, output })
+      return
+    }
+    emit('=== Stage 1 result: success ===')
+
+    let prt: Uint8Array | null = null
+    try { prt = bspMod.FS.readFile('/quake/baseq3/maps/compile.prt') } catch { /* */ }
+
+    // Stage 2: Vis
+    if (options.vis !== false && prt) {
+      emit('')
+      emit('=== Stage 2: Vis ===')
+      const visMod = await createModule(emit)
+      setupFS(visMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
+
+      const visExit = runQ3Map(visMod, ['-vis', ...(options.visArgs || []), bspPath], emit)
+      try { bsp = visMod.FS.readFile(bspPath) } catch { /* */ }
+      if (visExit !== 0) emit('Warning: vis pass failed, continuing without PVS')
+      emit(`=== Stage 2 result: ${visExit === 0 ? 'success' : 'failed'} ===`)
+    }
+
+    // Stage 3: Light
+    if (options.light !== false) {
+      emit('')
+      emit('=== Stage 3: Light ===')
+      const lightMod = await createModule(emit)
+      setupFS(lightMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
+
+      const lightExit = runQ3Map(lightMod, ['-light', ...(options.lightArgs || []), bspPath], emit)
+      try { bsp = lightMod.FS.readFile(bspPath) } catch { /* */ }
+      if (lightExit !== 0) emit('Warning: light pass failed, using unlit BSP')
+      emit(`=== Stage 3 result: ${lightExit === 0 ? 'success' : 'failed'} ===`)
+    }
+
+    self.postMessage({ type: 'done', success: true, bsp, pointfileText, output })
+  } catch (error) {
+    emit(`Compiler worker error: ${error instanceof Error ? error.message : String(error)}`)
+    self.postMessage({ type: 'done', success: false, bsp: null, pointfileText: null, output })
   }
-
-  let prt: Uint8Array | null = null
-  try { prt = bspMod.FS.readFile('/quake/baseq3/maps/compile.prt') } catch { /* */ }
-
-  // Stage 2: Vis
-  if (options.vis !== false && prt) {
-    emit('')
-    emit('=== Stage 2: Vis ===')
-    const visMod = await createModule(emit)
-    setupFS(visMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
-
-    const visExit = runQ3Map(visMod, ['-vis', ...(options.visArgs || []), bspPath], emit)
-    try { bsp = visMod.FS.readFile(bspPath) } catch { /* */ }
-    if (visExit !== 0) emit('Warning: vis pass failed, continuing without PVS')
-  }
-
-  // Stage 3: Light
-  if (options.light !== false) {
-    emit('')
-    emit('=== Stage 3: Light ===')
-    const lightMod = await createModule(emit)
-    setupFS(lightMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
-
-    const lightExit = runQ3Map(lightMod, ['-light', ...(options.lightArgs || []), bspPath], emit)
-    try { bsp = lightMod.FS.readFile(bspPath) } catch { /* */ }
-    if (lightExit !== 0) emit('Warning: light pass failed, using unlit BSP')
-  }
-
-  self.postMessage({ type: 'done', success: true, bsp, pointfileText, output })
 }

@@ -79,6 +79,72 @@ function createBrushFromPolygons(polygons: Vec3[][], texture: string): Brush {
   return brush;
 }
 
+export type WedgeDirection = 'x+' | 'x-' | 'y+' | 'y-';
+
+/** Create a right triangular ramp whose high end faces direction. */
+export function createWedgeBrush(mins: Vec3, maxs: Vec3, texture: string, direction: WedgeDirection): Brush {
+  validateBrushPrimitiveParameters('box', mins, maxs, 2, 4);
+  const travelAxis = direction[0] === 'x' ? 0 : 1;
+  const sideAxis = travelAxis === 0 ? 1 : 0;
+  const highTravel = direction.endsWith('+') ? maxs[travelAxis] : mins[travelAxis];
+  const lowTravel = direction.endsWith('+') ? mins[travelAxis] : maxs[travelAxis];
+  const point = (travel: number, side: number, height: number): Vec3 => {
+    const value: Vec3 = [0, 0, height];
+    value[travelAxis] = travel;
+    value[sideAxis] = side;
+    return value;
+  };
+  const lowSide = mins[sideAxis];
+  const highSide = maxs[sideAxis];
+  const low0 = point(lowTravel, lowSide, mins[2]);
+  const low1 = point(lowTravel, highSide, mins[2]);
+  const high0 = point(highTravel, lowSide, mins[2]);
+  const high1 = point(highTravel, highSide, mins[2]);
+  const top0 = point(highTravel, lowSide, maxs[2]);
+  const top1 = point(highTravel, highSide, maxs[2]);
+  return createBrushFromPolygons([
+    [low0, low1, high1, high0],
+    [high0, high1, top1, top0],
+    [low0, high0, top0],
+    [low1, top1, high1],
+    [low0, top0, top1, low1],
+  ], texture);
+}
+
+/** Create a convex box-like brush whose top rectangle may be scaled and offset. */
+export function createTaperedBrush(
+  mins: Vec3,
+  maxs: Vec3,
+  texture: string,
+  topScale: [number, number] = [0.75, 0.75],
+  topOffset: [number, number] = [0, 0],
+): Brush {
+  validateBrushPrimitiveParameters('box', mins, maxs, 2, 4);
+  if (!topScale.every(value => Number.isFinite(value) && value > 0 && value <= 4)) {
+    throw new Error('Tapered brush topScale values must be greater than zero and at most 4');
+  }
+  if (!topOffset.every(Number.isFinite)) throw new Error('Tapered brush topOffset values must be finite');
+  const centerX = (mins[0] + maxs[0]) / 2 + topOffset[0];
+  const centerY = (mins[1] + maxs[1]) / 2 + topOffset[1];
+  const halfX = (maxs[0] - mins[0]) / 2 * topScale[0];
+  const halfY = (maxs[1] - mins[1]) / 2 * topScale[1];
+  const bottom: Vec3[] = [
+    [mins[0], mins[1], mins[2]], [maxs[0], mins[1], mins[2]],
+    [maxs[0], maxs[1], mins[2]], [mins[0], maxs[1], mins[2]],
+  ];
+  const top: Vec3[] = [
+    [centerX - halfX, centerY - halfY, maxs[2]], [centerX + halfX, centerY - halfY, maxs[2]],
+    [centerX + halfX, centerY + halfY, maxs[2]], [centerX - halfX, centerY + halfY, maxs[2]],
+  ];
+  return createBrushFromPolygons([
+    [...bottom].reverse(), top,
+    [bottom[0], bottom[1], top[1], top[0]],
+    [bottom[1], bottom[2], top[2], top[1]],
+    [bottom[2], bottom[3], top[3], top[2]],
+    [bottom[3], bottom[0], top[0], top[3]],
+  ], texture);
+}
+
 function makeAxisPoint(axis: number, axisValue: number, uAxis: number, uValue: number, vAxis: number, vValue: number): Vec3 {
   const point: Vec3 = [0, 0, 0];
   point[axis] = axisValue;

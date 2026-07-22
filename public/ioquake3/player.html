@@ -73,11 +73,19 @@
       const OPENARENA_KEY = 'openarena-enabled';
       const loading = document.getElementById('loading');
       const canvas = document.getElementById('canvas');
+      const nativeGetContext = canvas.getContext.bind(canvas);
+      canvas.getContext = (contextType, attributes) => nativeGetContext(
+        contextType,
+        contextType === 'webgl' || contextType === 'webgl2'
+          ? { ...(attributes || {}), preserveDrawingBuffer: true }
+          : attributes,
+      );
       let started = false;
       let capturePending = false;
       let captureAttempt = 0;
       let handledCaptureFailure = 0;
       let captureRequestedForPointerGesture = false;
+      const consoleLines = [];
 
       function reportCaptureFailure(error, attempt = captureAttempt) {
         if (attempt !== captureAttempt || document.pointerLockElement === canvas) return;
@@ -306,8 +314,12 @@
               '+set', 'r_mode', '-2',
               '+set', 'r_fullscreen', '0',
               '+set', 'r_allowResize', '1',
+              ...(launch.noclip ? ['+set', 'sv_cheats', '1'] : []),
               '+set', 'com_basegame', assets.gameDir,
               '+devmap', launch.mapName,
+              ...((launch.noclip || (launch.commands || []).length > 0) ? ['+wait', '30'] : []),
+              ...(launch.noclip ? ['+noclip'] : []),
+              ...(launch.commands || []).flatMap(command => [`+${command.name}`, ...command.args]),
             ],
             locateFile: (file) => new URL(file, import.meta.url).href,
             preRun: [(module) => {
@@ -320,11 +332,30 @@
             postRun: [() => {
               window.setTimeout(() => {
                 loading.hidden = true;
-                send('q3edit-player:running', { mapName: launch.mapName });
-              }, 300);
+                const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+                send('q3edit-player:running', {
+                  mapName: launch.mapName,
+                  noclip: launch.noclip && consoleLines.some(line => /\bnoclip\s+ON\b/i.test(line)),
+                  commandErrors: consoleLines.filter(line => /unknown command/i.test(line) && /\b(?:noclip|setviewpos|map_restart)\b/i.test(line)),
+                  renderer: {
+                    context: gl ? (gl instanceof WebGL2RenderingContext ? 'webgl2' : 'webgl') : 'unavailable',
+                    width: canvas.width,
+                    height: canvas.height,
+                    preserveDrawingBuffer: gl?.getContextAttributes()?.preserveDrawingBuffer === true,
+                  },
+                });
+              }, launch.noclip || (launch.commands || []).length > 0 ? 1500 : 300);
             }],
-            print: (message) => console.log(message),
-            printErr: (message) => console.error(message),
+            print: (message) => {
+              console.log(message);
+              consoleLines.push(String(message));
+              send('q3edit-player:console', { stream: 'stdout', message: String(message) });
+            },
+            printErr: (message) => {
+              console.error(message);
+              consoleLines.push(String(message));
+              send('q3edit-player:console', { stream: 'stderr', message: String(message) });
+            },
           });
         } catch (error) {
           fail(error);
@@ -341,7 +372,11 @@
           fail(new Error('The compiled BSP data was not provided'));
           return;
         }
-        void start({ mapName, bsp });
+        const commands = Array.isArray(event.data.commands) ? event.data.commands.filter(command =>
+          command && ['setviewpos', 'map_restart'].includes(command.name) &&
+          Array.isArray(command.args) && command.args.every(argument => typeof argument === 'string')
+        ) : [];
+        void start({ mapName, bsp, noclip: event.data.noclip === true, commands });
       });
 
       window.addEventListener('error', (event) => fail(event.error ?? event.message));

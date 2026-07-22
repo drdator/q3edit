@@ -32,6 +32,9 @@ describe('CommandRegistry', () => {
       openPreferences: noop,
       openProjectSettings: noop,
       openDiagnostics: noop,
+      toggleMcpActivity: noop,
+      isMcpActivityOpen: () => false,
+      openMcpConnection: noop,
       openTerrainPanel: noop,
       toggleSidebar: noop,
       cycleInvisibleMode: noop,
@@ -48,6 +51,8 @@ describe('CommandRegistry', () => {
     expect(registry.getState('edit.preferences').label).toBe('Preferences...');
     expect(registry.getState('file.project-settings').label).toBe('Project Settings...');
     expect(registry.getState('view.release-notes').label).toBe('Release Notes...');
+    expect(registry.getState('view.mcp-activity').label).toBe('MCP Activity');
+    expect(registry.getState('view.mcp-activity').checked).toBe(false);
   });
 
   it('exposes checked state for display categories, renderer modes, and lighting', () => {
@@ -55,7 +60,8 @@ describe('CommandRegistry', () => {
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
-      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop, openTerrainPanel: noop,
+      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
+      toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,

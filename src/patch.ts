@@ -701,3 +701,31 @@ export function createEndcapPatch(mins: Vec3, maxs: Vec3, texture: string): Patc
   ];
   return makePatch(5, 3, ctrl, texture);
 }
+
+/** Create a doorway-like semi-elliptical arch surface curved in X/Z and extruded along Y. */
+export function createArchPatch(mins: Vec3, maxs: Vec3, texture: string): Patch {
+  const [x0, y0, z0] = mins;
+  const [x1, y1, z1] = maxs;
+  const mx = (x0 + x1) / 2;
+  const my = (y0 + y1) / 2;
+  const columns: Array<[number, number]> = [[x0, z0], [x0, z1], [mx, z1], [x1, z1], [x1, z0]];
+  const ctrl = [[y0, 0], [my, 0.5], [y1, 1]].map(([y, v]) =>
+    columns.map(([x, z], column) => cp(x, y, z, column / 4, v)),
+  );
+  return makePatch(5, 3, ctrl, texture);
+}
+
+/** Create a smooth inclined surface with travel along X and width along Y. */
+export function createRampPatch(mins: Vec3, maxs: Vec3, texture: string): Patch {
+  const [x0, y0, z0] = mins;
+  const [x1, y1, z1] = maxs;
+  const mx = (x0 + x1) / 2;
+  const my = (y0 + y1) / 2;
+  const mz = (z0 + z1) / 2;
+  const ctrl: PatchControlPoint[][] = [
+    [cp(x0, y1, z0, 0, 0), cp(mx, y1, mz, 0.5, 0), cp(x1, y1, z1, 1, 0)],
+    [cp(x0, my, z0, 0, 0.5), cp(mx, my, mz, 0.5, 0.5), cp(x1, my, z1, 1, 0.5)],
+    [cp(x0, y0, z0, 0, 1), cp(mx, y0, mz, 0.5, 1), cp(x1, y0, z1, 1, 1)],
+  ];
+  return makePatch(3, 3, ctrl, texture);
+}

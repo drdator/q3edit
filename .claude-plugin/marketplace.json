@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "q3edit",
+  "description": "Q3Edit live Quake III map-authoring integration.",
+  "owner": {
+    "name": "Q3Edit contributors"
+  },
+  "plugins": [
+    {
+      "name": "q3edit",
+      "description": "Author and inspect live Quake III maps through Q3Edit's MCP tools.",
+      "source": "./plugins/q3edit-claude",
+      "category": "development",
+      "homepage": "https://q3edit.com"
+    }
+  ]
+}

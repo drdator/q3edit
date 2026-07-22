@@ -118,6 +118,33 @@ describe('patch map formats', () => {
     expect(loaded.ctrl[1][1]).toEqual({ xyz: [64, 48, 48], uv: [0.375, 0.625] });
   });
 
+  test('produces compiler-safe output without editor metadata or patch group epairs', () => {
+    const worldspawn = createEntity('worldspawn');
+    worldspawn.properties._q3edit_style_brief = JSON.stringify({ notes: 'x'.repeat(12_000) });
+    worldspawn.properties._q3edit_spatial_plan = JSON.stringify({ areas: Array.from({ length: 50 }, (_, id) => ({ id })) });
+    const patch = createFlatPatch([0, 0, 0], [128, 128, 32], 'base_wall/concrete');
+    patch.editorGroupId = 'arches';
+    patch.properties = { _q3edit_internal: 'editor only' };
+    worldspawn.patches.push(patch);
+    const group = createEntity('group_info');
+    group.properties._q3edit_group_id = 'arches';
+    group.properties.group = 'Gothic Arches';
+
+    const editable = serializeMap([worldspawn, group]);
+    const patchBlock = editable.slice(editable.indexOf('patchDef2'), editable.indexOf('// entity 1'));
+    expect(editable).toContain('_q3edit_style_brief');
+    expect(editable).toContain('// q3edit-group arches');
+    expect(patchBlock).not.toContain('"group" "Gothic Arches"');
+
+    const compilerSafe = serializeMap([worldspawn, group], { compilerSafe: true });
+    expect(compilerSafe).not.toContain('_q3edit_');
+    expect(compilerSafe).not.toContain('group_info');
+    expect(compilerSafe).not.toContain('q3edit-group');
+    expect(compilerSafe).not.toContain('editor only');
+    expect(Math.max(...compilerSafe.split('\n').map(line => line.length))).toBeLessThan(4096);
+    expect(parseMapWithDiagnostics(compilerSafe).diagnostics).toEqual([]);
+  });
+
   test('round-trips terrainDef heights and per-sample surface metadata', () => {
     const worldspawn = createEntity('worldspawn');
     const terrain = createTerrainDefGridPatch(

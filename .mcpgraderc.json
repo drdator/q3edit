@@ -1,0 +1,8 @@
+{
+  "disable": ["N002"],
+  "tokenBudget": {
+    "totalBudget": 36000,
+    "perToolBudget": 2100,
+    "maxTools": 64
+  }
+}

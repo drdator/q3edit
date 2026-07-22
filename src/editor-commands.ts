@@ -17,6 +17,9 @@ export interface EditorCommandContext {
   openPreferences: () => void;
   openProjectSettings: () => void;
   openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
+  toggleMcpActivity: () => void;
+  isMcpActivityOpen: () => boolean;
+  openMcpConnection: () => void;
   openTerrainPanel: () => void;
   toggleSidebar: () => void;
   cycleInvisibleMode: () => void;
@@ -180,6 +183,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     ...displayCommands,
     ...rendererCommands,
     ...filteringCommands,
+    { id: 'view.mcp-connection', label: 'Local MCP Connection...', menu: menu('View', 980, 'mcp-activity'), execute: ctx => ctx.openMcpConnection() },
+    { id: 'view.mcp-activity', label: 'MCP Activity', menu: menu('View', 990, 'mcp-activity'), checked: ctx => ctx.isMcpActivityOpen(), execute: ctx => ctx.toggleMcpActivity() },
     { id: 'view.release-notes', label: 'Release Notes...', menu: menu('View', 1000, 'release-notes'), execute: () => openReleaseNotesDialog() },
 
     { id: 'region.from-selection', label: 'Set From Selection', menu: menu('Region', 0, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromSelection() },

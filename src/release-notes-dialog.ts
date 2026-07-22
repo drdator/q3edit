@@ -10,9 +10,52 @@ export interface ReleaseNotes {
   sections: readonly ReleaseNotesSection[];
 }
 
+export const MCP_PREVIEW_RELEASE_NOTES: ReleaseNotes = {
+  title: 'July 22, 2026 — MCP Preview',
+  label: 'Latest release',
+  summary: 'A complete local AI map-authoring workflow for Codex and Claude, with live editing, richer construction tools, visual review, diagnostics, compilation, and play-preview control.',
+  sections: [
+    {
+      title: 'Live AI authoring',
+      items: [
+        'Connect Codex or Claude to the current Q3Edit document through the experimental local MCP companion and see atomic map edits appear immediately in every viewport.',
+        'Target multiple open editor sessions reliably by filename, revision, connection ID, and last-active time instead of depending on whichever tab connected most recently.',
+        'Use revision-checked previews, symbolic references, persistent named groups, normal undo and redo, and exact selection references for safer iterative editing.',
+        'Follow every MCP request, result, failure, and revision change in the docked activity console or its append-only local transcript.',
+      ],
+    },
+    {
+      title: 'Construction & discovery',
+      items: [
+        'Create boxes, wedges, cylinders, stairs, arbitrary convex brushes, curved patches, paths, rooms, gameplay helpers, controlled patterns, and semantic areas and connections.',
+        'Refine geometry with clipping, hollowing, CSG subtraction, chamfers, face offsets, transforms, detail or structural classification, per-face materials, and patch thickening.',
+        'Search and inspect textures, shaders, entity classes, properties, groups, spatial plans, construction paths, map objects, and the user’s current selection without guessing names or references.',
+        'Carry structured style and spatial intent between agent sessions, with texture-projection guidance and abstract design patterns that encourage more varied layouts.',
+      ],
+    },
+    {
+      title: 'Review, compile & play',
+      items: [
+        'Capture perspective, top, front, and side editor views with shared framing, coordinate overlays, sections, x-ray rendering, and optional sky, tool, group, or marker hiding.',
+        'Review geometry, textures, gameplay placement, jump trajectories, routes, spatial composition, and overall design through structured diagnostics linked back to map references.',
+        'Run compiler-safe preflight checks, save and compile maps, export BSP artifacts, reuse unchanged builds, and inspect structured BSP, VIS, and lighting results.',
+        'Launch the compiled map, wait for renderer readiness, position the game camera at coordinates, entities, or player spawns, and detect unusable black screenshots.',
+      ],
+    },
+    {
+      title: 'Local companion',
+      items: [
+        'Use the deployed q3edit.com editor while the MCP server, files, compiler, and logs remain on the user’s computer.',
+        'Pair the browser with a per-start code from the View menu or status bar; local and q3edit.com editor origins are validated before a document can connect.',
+        'Install Q3Edit plugins for Codex and Claude Code so ordinary map-editing prompts route to the MCP tools instead of generic browser automation.',
+      ],
+    },
+  ],
+};
+
 export const LATEST_RELEASE_NOTES: ReleaseNotes = {
   title: 'July 21, 2026 Update',
-  label: 'Latest release',
+  label: 'Previous release',
   summary: 'A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.',
   sections: [
     {
@@ -41,7 +84,7 @@ export const LATEST_RELEASE_NOTES: ReleaseNotes = {
 
 export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
   title: 'July 2026 Update',
-  label: 'Previous release',
+  label: 'Earlier release',
   summary: 'A major editor update with richer Quake III compatibility, modern entity and model workflows, advanced geometry tools, camera paths, project configuration, and a more dependable editing core.',
   sections: [
     {
@@ -89,6 +132,7 @@ export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
       items: [
         'Document revisions, unsaved-state tracking, centralized mutations, and consistent undo transactions protect edits.',
         'Inspect map and entity diagnostics, find brushes by address, and run JSON brush macros as one undoable action.',
+        'Review live MCP tool activity, arguments, results, failures, and revision changes from the View menu.',
         'Expanded regression coverage protects map round-tripping, geometry editing, assets, entities, and editor workflows.',
       ],
     },
@@ -96,6 +140,7 @@ export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
 };
 
 export const RELEASE_NOTES: readonly ReleaseNotes[] = [
+  MCP_PREVIEW_RELEASE_NOTES,
   LATEST_RELEASE_NOTES,
   JULY_2026_RELEASE_NOTES,
 ];

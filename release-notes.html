@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Q3Edit release notes: new browser-based Quake III map editing features, workflow improvements, rendering fixes, and compatibility updates.">
+  <meta name="description" content="Q3Edit release notes: local AI map authoring with Codex and Claude, browser-based Quake III editing, workflow improvements, rendering fixes, and compatibility updates.">
   <meta name="theme-color" content="#111311">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Q3Edit Release Notes">
@@ -39,6 +39,51 @@
       <div class="release-notes-history">
         <article class="release-notes-entry">
           <span class="release-notes-entry-label">Latest release</span>
+          <h2>July 22, 2026 — MCP Preview</h2>
+          <p class="release-notes-entry-summary">A complete local AI map-authoring workflow for Codex and Claude, with live editing, richer construction tools, visual review, diagnostics, compilation, and play-preview control.</p>
+
+          <section>
+            <h3>Live AI authoring</h3>
+            <ul>
+              <li>Connect Codex or Claude to the current Q3Edit document through the experimental local MCP companion and see atomic map edits appear immediately in every viewport.</li>
+              <li>Target multiple open editor sessions reliably by filename, revision, connection ID, and last-active time instead of depending on whichever tab connected most recently.</li>
+              <li>Use revision-checked previews, symbolic references, persistent named groups, normal undo and redo, and exact selection references for safer iterative editing.</li>
+              <li>Follow every MCP request, result, failure, and revision change in the docked activity console or its append-only local transcript.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3>Construction &amp; discovery</h3>
+            <ul>
+              <li>Create boxes, wedges, cylinders, stairs, arbitrary convex brushes, curved patches, paths, rooms, gameplay helpers, controlled patterns, and semantic areas and connections.</li>
+              <li>Refine geometry with clipping, hollowing, CSG subtraction, chamfers, face offsets, transforms, detail or structural classification, per-face materials, and patch thickening.</li>
+              <li>Search and inspect textures, shaders, entity classes, properties, groups, spatial plans, construction paths, map objects, and the user’s current selection without guessing names or references.</li>
+              <li>Carry structured style and spatial intent between agent sessions, with texture-projection guidance and abstract design patterns that encourage more varied layouts.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3>Review, compile &amp; play</h3>
+            <ul>
+              <li>Capture perspective, top, front, and side editor views with shared framing, coordinate overlays, sections, x-ray rendering, and optional sky, tool, group, or marker hiding.</li>
+              <li>Review geometry, textures, gameplay placement, jump trajectories, routes, spatial composition, and overall design through structured diagnostics linked back to map references.</li>
+              <li>Run compiler-safe preflight checks, save and compile maps, export BSP artifacts, reuse unchanged builds, and inspect structured BSP, VIS, and lighting results.</li>
+              <li>Launch the compiled map, wait for renderer readiness, position the game camera at coordinates, entities, or player spawns, and detect unusable black screenshots.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3>Local companion</h3>
+            <ul>
+              <li>Use the deployed q3edit.com editor while the MCP server, files, compiler, and logs remain on the user’s computer.</li>
+              <li>Pair the browser with a per-start code from the View menu or status bar; local and q3edit.com editor origins are validated before a document can connect.</li>
+              <li>Install Q3Edit plugins for Codex and Claude Code so ordinary map-editing prompts route to the MCP tools instead of generic browser automation.</li>
+            </ul>
+          </section>
+        </article>
+
+        <article class="release-notes-entry">
+          <span class="release-notes-entry-label">Previous release</span>
           <h2>July 21, 2026 Update</h2>
           <p class="release-notes-entry-summary">A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.</p>
 
@@ -66,7 +111,7 @@
         </article>
 
         <article class="release-notes-entry">
-          <span class="release-notes-entry-label">Previous release</span>
+          <span class="release-notes-entry-label">Earlier release</span>
           <h2>July 2026 Update</h2>
           <p class="release-notes-entry-summary">A major editor update with richer Quake III compatibility, modern entity and model workflows, advanced geometry tools, camera paths, project configuration, and a more dependable editing core.</p>
 

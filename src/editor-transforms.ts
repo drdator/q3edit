@@ -64,7 +64,7 @@ function selectedEntitySet(editor: Editor): Set<Entity> {
   );
 }
 
-function translateEditorBrush(editor: Editor, brush: Brush, delta: Vec3): void {
+export function translateEditorBrush(editor: Editor, brush: Brush, delta: Vec3): void {
   if (editor.textureLock) {
     translateBrushLocked(brush, delta);
     return;
@@ -72,7 +72,7 @@ function translateEditorBrush(editor: Editor, brush: Brush, delta: Vec3): void {
   translateBrush(brush, delta);
 }
 
-function rotateEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: number, angle: number): void {
+export function rotateEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: number, angle: number): void {
   if (editor.textureLock) {
     rotateBrushLocked(brush, center, axis, angle);
     return;
@@ -111,7 +111,7 @@ function rotateMiscModel(entity: Entity, axis: number, angle: number, originalAn
   }
 }
 
-function mirrorEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: number): void {
+export function mirrorEditorBrush(editor: Editor, brush: Brush, center: Vec3, axis: number): void {
   if (editor.textureLock) {
     mirrorBrushLocked(brush, center, axis);
     return;
@@ -133,7 +133,7 @@ function scaleEditorBrush(
   scaleBrushFaces(brush, originalPoints, center, scale);
 }
 
-function translateEditorEntity(editor: Editor, entity: Entity, delta: Vec3): void {
+export function translateEditorEntity(editor: Editor, entity: Entity, delta: Vec3): void {
   if (!editor.textureLock) {
     translateEntity(entity, delta);
     return;
@@ -151,7 +151,7 @@ function translateEditorEntity(editor: Editor, entity: Entity, delta: Vec3): voi
   }
 }
 
-function rotateEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number, angle: number): void {
+export function rotateEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number, angle: number): void {
   if (!editor.textureLock) {
     rotateEntity(entity, center, axis, angle);
     rotateMiscModel(entity, axis, angle);
@@ -171,7 +171,7 @@ function rotateEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: 
   rotateMiscModel(entity, axis, angle);
 }
 
-function mirrorEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number): void {
+export function mirrorEditorEntity(editor: Editor, entity: Entity, center: Vec3, axis: number): void {
   if (!editor.textureLock) {
     mirrorEntity(entity, center, axis);
     return;

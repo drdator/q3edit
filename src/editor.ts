@@ -58,6 +58,7 @@ import {
   redo as redoDocument,
   saveMapToFile as saveEditorMapToFile,
   serializeMap as serializeEditorMap,
+  serializeCompileMap as serializeEditorCompileMap,
   undo as undoDocument,
 } from './editor-document';
 import {
@@ -266,6 +267,11 @@ import {
   type TransactionOptions,
 } from './editor-transactions';
 
+export interface EditorDocumentChange {
+  label: string;
+  revision: number;
+}
+
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
 export type GizmoMode = 'move' | 'scale';
@@ -323,6 +329,7 @@ export class Editor {
   documentRevision = 0;
   savedDocumentRevision = 0;
   private nextDocumentRevision = 1;
+  private documentChangeListeners = new Set<(change: EditorDocumentChange) => void>();
 
   // Drag state for brush creation
   creating = false;
@@ -858,6 +865,16 @@ export class Editor {
     this.documentRevision = this.nextDocumentRevision++;
   }
 
+  subscribeDocumentChanges(listener: (change: EditorDocumentChange) => void): () => void {
+    this.documentChangeListeners.add(listener);
+    return () => this.documentChangeListeners.delete(listener);
+  }
+
+  notifyDocumentChanged(label: string): void {
+    const change = { label, revision: this.documentRevision };
+    for (const listener of this.documentChangeListeners) listener(change);
+  }
+
   /** Internal history hook: restore the identity associated with a snapshot. */
   restoreDocumentRevision(revision: number): void {
     this.documentRevision = revision;
@@ -899,8 +916,12 @@ export class Editor {
     return serializeEditorMap(this);
   }
 
-  serializeRegionMap(addCompileBoundaryBrushes = false): string {
-    return serializeEditorRegionMap(this, { addCompileBoundaryBrushes });
+  serializeCompileMap(): string {
+    return serializeEditorCompileMap(this);
+  }
+
+  serializeRegionMap(addCompileBoundaryBrushes = false, compilerSafe = false): string {
+    return serializeEditorRegionMap(this, { addCompileBoundaryBrushes, compilerSafe });
   }
 
   collectRegionEntities(addCompileBoundaryBrushes = false): Entity[] {

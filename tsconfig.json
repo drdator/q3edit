@@ -9,5 +9,5 @@
     "outDir": "dist",
     "sourceMap": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "vite.config.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "bridge/**/*.ts", "vite.config.ts", "scripts/**/*.ts"]
 }

@@ -68,6 +68,7 @@ export function commitTransaction(editor: Editor): boolean {
   editor.history.record(active.before, active.beforeRevision, active.label, active.options);
   editor.commitDocumentRevision();
   editor.redrawRequested = true;
+  editor.notifyDocumentChanged(active.label);
   return true;
 }
 

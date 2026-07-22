@@ -44,6 +44,8 @@ Start the Vite development server:
 npm run dev
 ```
 
+For experimental live map editing from Claude Code or Codex, see [Live MCP bridge](docs/LIVE_MCP.md).
+
 The OpenArena PK3 files are generated under `public/openarena/` and ignored by
 Git. Retail Quake III PK3 files are never part of the repository: users select
 them from the editor, and Q3Edit stores them only in that browser.

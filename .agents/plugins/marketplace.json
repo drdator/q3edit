@@ -1,0 +1,20 @@
+{
+  "name": "q3edit",
+  "interface": {
+    "displayName": "Q3Edit"
+  },
+  "plugins": [
+    {
+      "name": "q3edit",
+      "source": {
+        "source": "local",
+        "path": "./plugins/q3edit"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer-Tools"
+    }
+  ]
+}

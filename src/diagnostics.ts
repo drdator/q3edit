@@ -4,7 +4,7 @@ import type { Entity } from './entity';
 import { entityOrigin } from './entity';
 import { getEntityClassRegistry } from './entity-definitions';
 import { isTerrainMesh, validateTerrainMesh } from './terrain-model';
-import { listNamedGroups } from './named-groups';
+import { isGroupInfoEntity, listNamedGroups } from './named-groups';
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info';
 export type DiagnosticTarget =
@@ -106,7 +106,7 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
   editor.entities.forEach((entity, entityIndex) => {
     const target = targetForEntity(entityIndex);
     if (!entity.classname.trim()) result.push({ severity: 'error', code: 'missing-classname', message: `${entityId(entityIndex)} has no classname`, target });
-    else if (entity.classname !== 'worldspawn' && !getEntityClassRegistry().get(entity.classname)) result.push({ severity: 'info', code: 'unknown-class', message: `${entityId(entityIndex)} uses undocumented class ${entity.classname}`, target });
+    else if (entity.classname !== 'worldspawn' && !isGroupInfoEntity(entity) && !getEntityClassRegistry().get(entity.classname)) result.push({ severity: 'info', code: 'unknown-class', message: `${entityId(entityIndex)} uses undocumented class ${entity.classname}`, target });
     if (entity.properties.classname !== entity.classname) {
       result.push({ severity: 'warning', code: 'classname-mismatch', message: `${entityId(entityIndex)} classname property does not match its class`, target });
     }

@@ -17,6 +17,7 @@ export interface RegionBounds {
 
 interface RegionExportOptions {
   addCompileBoundaryBrushes?: boolean;
+  compilerSafe?: boolean;
 }
 
 const REGION_COMPILE_WALL_THICKNESS = 16;
@@ -232,7 +233,7 @@ export function collectRegionEntities(editor: Editor, options: RegionExportOptio
 }
 
 export function serializeRegionMap(editor: Editor, options: RegionExportOptions = {}): string {
-  return serializeEntities(collectRegionEntities(editor, options));
+  return serializeEntities(collectRegionEntities(editor, options), { compilerSafe: options.compilerSafe });
 }
 
 export function saveRegionToFile(editor: Editor): void {
