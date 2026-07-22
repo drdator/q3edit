@@ -2979,9 +2979,7 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
 .mcp-activity-meta { margin-bottom: 8px; color: var(--text-dim); overflow-wrap: anywhere; }
 .mcp-activity-entry-body h3 { margin: 9px 0 4px; color: var(--text-bright); font-size: 10px; }
 .mcp-activity-entry-body pre {
-  max-height: 210px;
   margin: 0;
-  overflow: auto;
   padding: 8px;
   color: var(--text);
   background: var(--bg-darker);
@@ -2989,6 +2987,14 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: 10px/1.45 monospace;
+}
+.mcp-activity-entry-body pre.mcp-activity-arguments {
+  max-height: 210px;
+  overflow: auto;
+}
+.mcp-activity-entry-body pre.mcp-activity-result {
+  max-height: none;
+  overflow: visible;
 }
 .mcp-activity-empty { padding: 28px 12px; color: var(--text-dim); text-align: center; }
 @media (max-width: 900px) {

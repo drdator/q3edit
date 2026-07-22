@@ -9,6 +9,21 @@ export interface McpActivityFilter {
 export const DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT = 280;
 export const MIN_MCP_ACTIVITY_PANEL_HEIGHT = 140;
 export const MAX_MCP_ACTIVITY_PANEL_HEIGHT = 800;
+export const MCP_ACTIVITY_TAIL_THRESHOLD = 24;
+
+export interface McpActivityScrollMetrics {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}
+
+export function isMcpActivityAtTail(
+  metrics: McpActivityScrollMetrics,
+  threshold = MCP_ACTIVITY_TAIL_THRESHOLD,
+): boolean {
+  if (metrics.scrollHeight <= metrics.clientHeight) return true;
+  return metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop <= threshold;
+}
 
 export function clampMcpActivityPanelHeight(height: number, viewportHeight = Number.POSITIVE_INFINITY): number {
   const finiteHeight = Number.isFinite(height) ? height : DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT;
@@ -83,6 +98,7 @@ export interface McpActivityPanelOptions {
 export class McpActivityPanel {
   private entries = new Map<string, McpActivityEntry>();
   private dismissedIds = new Set<string>();
+  private expandedIds = new Set<string>();
   private readonly root: HTMLElement;
   private readonly search: HTMLInputElement;
   private readonly status: HTMLSelectElement;
@@ -92,6 +108,7 @@ export class McpActivityPanel {
   private readonly resizer: HTMLElement;
   private visible: boolean;
   private height: number;
+  private followTail = true;
 
   constructor(private readonly options: McpActivityPanelOptions = {}) {
     const root = document.getElementById('mcp-activity-panel');
@@ -155,6 +172,9 @@ export class McpActivityPanel {
     this.search.addEventListener('input', () => this.render());
     this.status.addEventListener('change', () => this.render());
     this.kind.addEventListener('change', () => this.render());
+    this.list.addEventListener('scroll', () => {
+      this.followTail = isMcpActivityAtTail(this.list);
+    }, { passive: true });
     this.root.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -172,7 +192,11 @@ export class McpActivityPanel {
   add(entry: McpActivityEntry): void {
     if (this.dismissedIds.has(entry.id)) return;
     this.entries.set(entry.id, entry);
-    while (this.entries.size > 1_000) this.entries.delete(this.entries.keys().next().value!);
+    while (this.entries.size > 1_000) {
+      const oldestId = this.entries.keys().next().value!;
+      this.entries.delete(oldestId);
+      this.expandedIds.delete(oldestId);
+    }
     this.render();
   }
 
@@ -192,6 +216,7 @@ export class McpActivityPanel {
     }
     this.visible = true;
     this.applyVisibility(true);
+    if (this.followTail) this.scrollToTail();
     this.search.focus();
   }
 
@@ -204,6 +229,8 @@ export class McpActivityPanel {
   private clear(): void {
     for (const id of this.entries.keys()) this.dismissedIds.add(id);
     this.entries.clear();
+    this.expandedIds.clear();
+    this.followTail = true;
     this.render();
   }
 
@@ -257,9 +284,12 @@ export class McpActivityPanel {
     this.resizer.setAttribute('aria-valuenow', String(this.height));
     this.options.onHeightChange?.(this.height, committed);
     this.options.onLayoutChange?.();
+    if (this.followTail) this.scrollToTail();
   }
 
   private render(): void {
+    const previousScrollTop = this.list.scrollTop;
+    const shouldFollowTail = this.followTail;
     const all = [...this.entries.values()];
     const totals = summarizeMcpActivity(all);
     this.summary.innerHTML = '';
@@ -276,18 +306,25 @@ export class McpActivityPanel {
       query: this.search.value,
       status: this.status.value as McpActivityFilter['status'],
       kind: this.kind.value as McpActivityFilter['kind'],
-    }).reverse();
+    });
     this.list.innerHTML = '';
     if (filtered.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'mcp-activity-empty';
       empty.textContent = all.length === 0 ? 'No MCP calls have been received yet.' : 'No calls match the current filters.';
       this.list.appendChild(empty);
+      this.restoreScrollPosition(shouldFollowTail, previousScrollTop);
       return;
     }
     for (const entry of filtered) {
       const details = document.createElement('details');
       details.className = `mcp-activity-entry ${entry.status} ${entry.readOnly ? 'read-only' : 'action'}`;
+      details.open = this.expandedIds.has(entry.id);
+      details.addEventListener('toggle', () => {
+        if (details.open) this.expandedIds.add(entry.id);
+        else this.expandedIds.delete(entry.id);
+        if (this.followTail) this.scrollToTail();
+      });
       const row = document.createElement('summary');
       const timestamp = document.createElement('time');
       timestamp.dateTime = entry.timestamp;
@@ -305,11 +342,26 @@ export class McpActivityPanel {
       const meta = document.createElement('div'); meta.className = 'mcp-activity-meta';
       meta.textContent = `${entry.status.toUpperCase()} · Editor ${entry.editorSessionId ?? 'unscoped'} · MCP ${entry.mcpSessionId}`;
       const argumentsTitle = document.createElement('h3'); argumentsTitle.textContent = 'Arguments';
-      const argumentsJson = document.createElement('pre'); argumentsJson.textContent = prettyJson(entry.arguments);
+      const argumentsJson = document.createElement('pre'); argumentsJson.className = 'mcp-activity-arguments'; argumentsJson.textContent = prettyJson(entry.arguments);
       const resultTitle = document.createElement('h3'); resultTitle.textContent = 'Result';
-      const resultJson = document.createElement('pre'); resultJson.textContent = prettyJson(entry.result);
+      const resultJson = document.createElement('pre'); resultJson.className = 'mcp-activity-result'; resultJson.textContent = prettyJson(entry.result);
       body.append(meta, argumentsTitle, argumentsJson, resultTitle, resultJson);
       details.append(row, body); this.list.appendChild(details);
     }
+    this.restoreScrollPosition(shouldFollowTail, previousScrollTop);
+  }
+
+  private restoreScrollPosition(followTail: boolean, scrollTop: number): void {
+    if (followTail) this.scrollToTail();
+    else this.list.scrollTop = scrollTop;
+  }
+
+  private scrollToTail(): void {
+    const scroll = () => {
+      if (!this.followTail) return;
+      this.list.scrollTop = this.list.scrollHeight;
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(scroll);
+    else scroll();
   }
 }

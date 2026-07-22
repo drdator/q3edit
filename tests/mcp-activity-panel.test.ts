@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampMcpActivityPanelHeight,
   filterMcpActivity,
+  isMcpActivityAtTail,
   resizedMcpActivityPanelHeight,
   summarizeMcpActivity,
 } from '../src/live-bridge';
@@ -28,6 +29,8 @@ describe('MCP activity panel helpers', () => {
   ];
 
   it('filters by call kind, status, and searchable details', () => {
+    expect(filterMcpActivity(entries, { query: '', status: 'all', kind: 'all' }).map(item => item.id))
+      .toEqual(['mcp:1', 'mcp:2', 'mcp:3']);
     expect(filterMcpActivity(entries, { query: '', status: 'all', kind: 'action' }).map(item => item.tool)).toEqual(['map_apply']);
     expect(filterMcpActivity(entries, { query: '', status: 'error', kind: 'all' }).map(item => item.tool)).toEqual(['map_compile']);
     expect(filterMcpActivity(entries, { query: 'tower', status: 'all', kind: 'all' }).map(item => item.tool)).toEqual(['map_apply']);
@@ -43,5 +46,11 @@ describe('MCP activity panel helpers', () => {
     expect(clampMcpActivityPanelHeight(900, 900)).toBe(720);
     expect(resizedMcpActivityPanelHeight(280, 600, 500, 900)).toBe(380);
     expect(resizedMcpActivityPanelHeight(280, 600, 760, 900)).toBe(140);
+  });
+
+  it('follows the console tail only while the scroll position is near the end', () => {
+    expect(isMcpActivityAtTail({ scrollTop: 0, scrollHeight: 100, clientHeight: 100 })).toBe(true);
+    expect(isMcpActivityAtTail({ scrollTop: 376, scrollHeight: 500, clientHeight: 100 })).toBe(true);
+    expect(isMcpActivityAtTail({ scrollTop: 300, scrollHeight: 500, clientHeight: 100 })).toBe(false);
   });
 });
