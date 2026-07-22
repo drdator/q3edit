@@ -295,7 +295,7 @@ export function openReleaseNotesDialog(
     dismissCheckbox = document.createElement('input');
     dismissCheckbox.type = 'checkbox';
     const dismissText = document.createElement('span');
-    dismissText.textContent = 'Never show release notes again';
+    dismissText.textContent = 'Don’t show release notes automatically';
     dismissLabel.append(dismissCheckbox, dismissText);
     actions.appendChild(dismissLabel);
   }
