@@ -40,13 +40,13 @@ export function registerSessionTools(
   server.registerTool('activity_log', {
     title: 'Inspect this MCP session activity log',
     description: 'Return recent tool calls from this MCP connection, including target editor session, duration, status, summarized arguments/results, and revision deltas. The complete append-only JSONL transcript is written to filePath.',
-    inputSchema: {
+    inputSchema: z.object({
       editorSessionId: editorSessionId.optional().describe('Optionally filter entries to one editor tab'),
       limit: z.number().int().min(1).max(100).optional().default(50).describe('Maximum entries in this page; defaults to 50'),
       cursor: z.string().min(1).optional().describe('Opaque nextCursor from the previous response for older activity'),
       responseDetail: z.enum(['summary', 'full']).optional().default('summary')
         .describe('summary omits recorded arguments and results; full includes their bounded activity-log representations'),
-    },
+    }).meta({ required: [] }),
     outputSchema: activityLogOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ editorSessionId: requestedSessionId, limit, cursor, responseDetail }) => {
@@ -65,8 +65,10 @@ export function registerSessionTools(
 
   server.registerTool('editor_session_select', {
     title: 'Select a Q3Edit editor session',
-    description: 'Set the default editor session for subsequent tools on this MCP connection. Explicit sessionId arguments still override it.',
-    inputSchema: { sessionId: editorSessionId },
+    description: 'Set the default editor session for subsequent tools on this MCP connection; explicit sessionId arguments still override it. Returns the selected session ID and its current map status.',
+    inputSchema: {
+      sessionId: editorSessionId.describe('Stable browser-tab session ID returned by editor_sessions, e.g. "editor-7f3a"'),
+    },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {

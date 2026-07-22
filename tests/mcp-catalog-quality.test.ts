@@ -34,6 +34,14 @@ function parameterDescriptionCounts(schema: unknown): { total: number; described
   return { total, described };
 }
 
+function topLevelProperties(schema: unknown): Array<Record<string, unknown>> {
+  if (!schema || typeof schema !== 'object') return [];
+  const properties = (schema as { properties?: unknown }).properties;
+  return properties && typeof properties === 'object'
+    ? Object.values(properties as Record<string, Record<string, unknown>>)
+    : [];
+}
+
 describe('MCP catalog quality budgets', () => {
   test('keeps discovery metadata concise, descriptive, and safe to defer', async () => {
     const server = createQ3EditMcpServer(new BridgeHub());
@@ -46,12 +54,20 @@ describe('MCP catalog quality budgets', () => {
       const instructions = client.getInstructions() ?? '';
       expect(instructions.split('\n\n')[0].length).toBeLessThanOrEqual(512);
       expect(instructions.length).toBeLessThanOrEqual(2_000);
-      expect(JSON.stringify(tools).length).toBeLessThan(145_000);
-      expect(tools).toHaveLength(64);
+      expect(JSON.stringify(tools).length).toBeLessThan(150_000);
+      expect(tools).toHaveLength(61);
       expect(tools.every(tool => /^[A-Za-z0-9_.-]{1,128}$/.test(tool.name))).toBe(true);
       expect(tools.every(tool => Boolean(tool.title) && Boolean(tool.description))).toBe(true);
+      expect(tools.every(tool => /\b(returns?|responds?|yields?|outputs?|provides|lists?)\b/i.test(tool.description ?? ''))).toBe(true);
       expect(Math.max(...tools.map(tool => tool.description?.length ?? 0))).toBeLessThan(2_000);
       expect(tools.every(tool => tool.annotations?.openWorldHint === false)).toBe(true);
+      expect(tools.every(tool => {
+        const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
+        return !schema.properties || Object.keys(schema.properties).length === 0 || Array.isArray(schema.required);
+      })).toBe(true);
+      expect(tools.flatMap(tool => topLevelProperties(tool.inputSchema)).every(property => (
+        Array.isArray(property.enum) || typeof property.description === 'string'
+      ))).toBe(true);
 
       const applyInputBytes = JSON.stringify(tools.find(tool => tool.name === 'map_apply')?.inputSchema).length;
       const previewInputBytes = JSON.stringify(tools.find(tool => tool.name === 'map_preview')?.inputSchema).length;

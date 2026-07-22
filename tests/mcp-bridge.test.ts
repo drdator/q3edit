@@ -363,9 +363,6 @@ describe('live MCP bridge', () => {
         'editor_frame_objects',
         'editor_set_camera',
         'editor_look_at',
-        'editor_screenshot',
-        'editor_layout_screenshot',
-        'editor_review_bundle',
         'game_screenshot',
         'game_status',
         'game_wait_ready',
@@ -396,7 +393,7 @@ describe('live MCP bridge', () => {
       expect(tools.tools.find(tool => tool.name === 'map_redo')?.annotations?.destructiveHint).toBe(true);
       expect(tools.tools.find(tool => tool.name === 'map_compile')?.annotations?.destructiveHint).toBe(true);
       expect(tools.tools.find(tool => tool.name === 'map_create_jump_pad')?.annotations?.destructiveHint).toBe(false);
-      expect(tools.tools.find(tool => tool.name === 'editor_screenshot')?._meta).toMatchObject({ deprecated: true, replacement: 'editor_capture' });
+      expect(tools.tools.find(tool => tool.name === 'editor_screenshot')).toBeUndefined();
       expect((tools.tools.find(tool => tool.name === 'editor_sessions')?.inputSchema as { additionalProperties?: boolean }).additionalProperties).toBe(false);
 
       const resources = await client.listResources();
@@ -755,7 +752,7 @@ describe('live MCP bridge', () => {
       expect(lookAt.structuredContent).toMatchObject({ yawDegrees: 90, pitchDegrees: 45 });
 
       const screenshot = await client.callTool({
-        name: 'editor_screenshot',
+        name: 'editor_capture',
         arguments: { mode: 'top', width: 640, height: 360, frameGroup: 'reactor', hideSkyBrushes: true },
       });
       expect(screenshot.content).toEqual(expect.arrayContaining([
@@ -766,7 +763,11 @@ describe('live MCP bridge', () => {
       });
 
       const layout = await client.callTool({
-        name: 'editor_layout_screenshot', arguments: { mode: 'front', showCoordinates: true },
+        name: 'editor_capture',
+        arguments: {
+          mode: 'front', width: 1200, height: 900, hideToolBrushes: true, hideSkyBrushes: true,
+          showEntityLabels: true, showCoordinates: true, layoutOverlay: true,
+        },
       });
       expect(layout.content).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: 'image', mimeType: 'image/png', data: 'c2NyZWVuc2hvdA==' }),
@@ -782,7 +783,7 @@ describe('live MCP bridge', () => {
       });
 
       const reviewBundle = await client.callTool({
-        name: 'editor_review_bundle',
+        name: 'editor_review',
         arguments: { views: ['perspective', 'top', 'side'], frameGroup: 'reactor', width: 800, height: 600 },
       });
       expect((reviewBundle.content as Array<{ type: string }>).filter(item => item.type === 'image')).toHaveLength(3);

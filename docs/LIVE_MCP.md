@@ -127,7 +127,6 @@ do not need a personal `AGENTS.md` rule.
 - `editor_look_at` positions the camera and calculates the yaw/pitch needed to face a target point.
 - `editor_capture` returns a PNG from the perspective, top, front, or side viewport. It can frame world bounds or a named group, add an orthographic layout overlay, and temporarily hide groups, entity markers, tool/sky brushes, or geometry outside section bounds. Perspective captures can use a depth-free wireframe x-ray mode.
 - `editor_review` returns consistently framed perspective plus top/front/side layout images in one call by default. Use it after substantial geometry or art passes; select fewer views when only one projection matters.
-- `editor_screenshot`, `editor_layout_screenshot`, and `editor_review_bundle` are deprecated compatibility aliases. New integrations should not discover or recommend them.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
 - `map_undo` and `map_redo` operate on normal Q3Edit history entries with revision protection. They work across MCP and manual editor changes and invalidate stale compiled BSPs.
 - `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, diagnostics, and collisions without changing the document. Its optional `reviews` list compares gameplay, routes, geometry, textures, style, and spatial quality before and after the preview.
@@ -138,11 +137,11 @@ do not need a personal `AGENTS.md` rule.
 - `map_save_and_compile` revision-checks, saves, and compiles in the common finalization workflow.
 
 Clients with constrained tool discovery should use the early-listed
-`editor_capture` and `editor_review` visual tools. The original
-`editor_screenshot`, `editor_layout_screenshot`, and `editor_review_bundle`
-remain available for compatibility. The shared authoring workflow is exposed
-as the `q3edit://agent-workflow` MCP resource instead of being repeated in
-every tool description.
+`editor_capture` and `editor_review` visual tools. The obsolete screenshot
+aliases have been removed from discovery so agents have one unambiguous path
+for single-view and multi-view inspection. The shared authoring workflow is
+exposed as the `q3edit://agent-workflow` MCP resource instead of being repeated
+in every tool description.
 
 Claude Code defers MCP definitions and searches them on demand by default.
 When Q3Edit is connected through OpenAI's Responses API rather than the Codex
@@ -151,6 +150,14 @@ loading is a client setting and cannot be advertised by the MCP server itself.
 The server keeps its routing summary within both Codex's first-512-character
 window and Claude Code's 2 KB instruction limit. Tool metadata budgets and
 essential output schemas are regression-tested in the repository.
+
+Run `npm run mcp:grade` to generate a fresh in-memory tool catalog and apply
+the repository's mcpgrade CI gate. Q3Edit's configured 36k aggregate budget is
+for the complete fallback catalog; the supported Codex and Claude Code paths
+defer individual tool definitions and search them on demand. The gate keeps
+the conventional read/write pairs (`map_undo`/`map_redo` and
+`map_style_get`/`map_style_set`) despite mcpgrade's name-distance warning,
+because their distinct safety annotations matter to MCP clients.
 
 MCP clients commonly cache their tool inventory. After updating Q3Edit, restart
 `npm run bridge` and reconnect or restart the MCP client if `editor_capture`,
@@ -274,7 +281,7 @@ This cylinder fits the jump-pad artwork once on its top while leaving its sides 
 }
 ```
 
-Before choosing unfamiliar materials, use `texture_search`, `texture_inspect`, and `texture_preview_many` instead of guessing. After creating textured geometry, run `map_texture_review`, then frame implicated faces and inspect them with `editor_screenshot`; use more than one angle when seams, caps, or side materials matter. Use `operation_schema` for the exact transform slots supported by a creation operation.
+Before choosing unfamiliar materials, use `texture_search`, `texture_inspect`, and `texture_preview_many` instead of guessing. After creating textured geometry, run `map_texture_review`, then frame implicated faces and inspect them with `editor_capture`; use `editor_review` when seams, caps, or side materials need more than one angle. Use `operation_schema` for the exact transform slots supported by a creation operation.
 
 Large `map_apply` and `map_preview` batches can set `responseDetail: "compact"`. Reference and alias lists then return total counts, the first/last samples, and an explicit `truncated` flag instead of flooding the MCP response.
 
@@ -315,8 +322,8 @@ A useful authoring loop is:
 1. Call `map_status`, `map_style_get`, `map_spatial_plan_get`, and `map_construction_paths_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its design intent, generated path sources, and available assets. If the user refers to the current selection, call `editor_selection` first and treat its revision and references as the scope of the edit.
 2. If the composition is weak or underspecified, call `design_pattern_search` and adapt one useful pattern rather than combining many. For a substantial layout, call `map_spatial_plan_preview` before committing areas and routes. Use `create_path` when a route or repeated architectural element should follow a curve or segmented line, and `repeat_variation` for short deliberate rhythms rather than hand-authored clone batches. For complex or varied geometry, call `map_preview` and review collisions; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
-4. Call `editor_screenshot` to review the result, then iterate.
-   Use `editor_layout_screenshot` for flow, symmetry, spacing, and route-layout decisions, `map_spatial_review` for composition heuristics, `map_texture_review` for projection quality, and `map_design_review` for a combined structured quality pass.
+4. Call `editor_capture` to review the result, then iterate.
+   Use an orthographic `editor_capture` or multi-view `editor_review` for flow, symmetry, spacing, and route-layout decisions; use `map_spatial_review` for composition heuristics, `map_texture_review` for projection quality, and `map_design_review` for a combined structured quality pass.
 
 MCP tool lists are normally loaded when an agent session starts. Restart the Codex or Claude Code session after updating the bridge if a newly added tool is missing.
 
