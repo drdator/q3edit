@@ -2,6 +2,7 @@ import { localCompanionBridgeUrl } from './configuration';
 
 const ENDPOINT_STORAGE_KEY = 'q3edit.mcpBridge.endpoint';
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:8765/editor';
+export const MCP_INSTALLATION_URL = 'https://github.com/drdator/q3edit/blob/main/docs/LIVE_MCP.md#start-the-bridge';
 
 export interface McpConnectionDialogOptions {
   currentUrl: string | null;
@@ -51,6 +52,15 @@ export function openMcpConnectionDialog(options: McpConnectionDialogOptions): vo
   const description = document.createElement('div');
   description.className = 'editor-dialog-description';
   description.textContent = 'Run the Q3Edit bridge on this computer, then enter the pairing code printed in its terminal. The map stays in this browser while Codex or Claude connects to the local MCP endpoint.';
+  const documentation = document.createElement('div');
+  documentation.className = 'mcp-connection-documentation';
+  documentation.append('Need to install the companion? ');
+  const documentationLink = document.createElement('a');
+  documentationLink.href = MCP_INSTALLATION_URL;
+  documentationLink.target = '_blank';
+  documentationLink.rel = 'noopener noreferrer';
+  documentationLink.textContent = 'Read the MCP setup guide\u00a0↗';
+  documentation.append(documentationLink);
 
   const fields = document.createElement('div');
   fields.className = 'mcp-connection-fields';
@@ -118,7 +128,7 @@ export function openMcpConnectionDialog(options: McpConnectionDialogOptions): vo
     else if (event.key === 'Enter') { event.preventDefault(); connect.click(); }
   });
 
-  dialog.append(title, description, fields, permission, status, actions);
+  dialog.append(title, description, documentation, fields, permission, status, actions);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   code.focus();
