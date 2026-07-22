@@ -16,7 +16,7 @@ export const RELEASE_NOTES_NEVER_SHOW_KEY = 'q3edit.releaseNotes.neverShow';
 
 export const JULY_22_UPDATE_RELEASE_NOTES: ReleaseNotes = {
   id: '2026-07-22-bots-and-workflow',
-  title: 'July 22, 2026 Update',
+  title: 'July 22, 2026 Update 2',
   label: 'Latest release',
   summary: 'Bot-ready Quick Play, clearer MCP onboarding, and editing refinements that make testing maps and everyday construction more dependable.',
   sections: [
@@ -236,6 +236,7 @@ export function dismissReleaseNotes(
 }
 
 export interface ReleaseNotesDialogOptions {
+  dialogTitle?: string;
   showDismissCheckbox?: boolean;
   dismissChecked?: boolean;
   onClose?: (dismissed: boolean) => void;
@@ -259,7 +260,7 @@ export function openReleaseNotesDialog(
   const title = document.createElement('div');
   title.id = 'release-notes-title';
   title.className = 'editor-dialog-title';
-  title.textContent = 'Release Notes';
+  title.textContent = options.dialogTitle ?? 'Release Notes';
 
   const content = document.createElement('div');
   content.className = 'release-notes-content';
@@ -267,12 +268,15 @@ export function openReleaseNotesDialog(
     ? releaseNotes
     : [releaseNotes as ReleaseNotes];
   for (const release of releases) {
+    const isLatestRelease = release.id === RELEASE_NOTES[0]?.id;
     const article = document.createElement('article');
     article.className = 'release-notes-release';
+    article.classList.toggle('latest', isLatestRelease);
     const intro = document.createElement('header');
     intro.className = 'release-notes-intro';
     const label = document.createElement('span');
     label.className = 'release-notes-label';
+    label.classList.toggle('latest', isLatestRelease);
     label.textContent = release.label;
     const heading = document.createElement('h2');
     heading.textContent = release.title;
@@ -336,7 +340,8 @@ export function openUnreadReleaseNotesDialog(
   storage: (ReleaseNotesReadStorage & ReleaseNotesWriteStorage) | null = currentStorage(),
 ): boolean {
   if (isReleaseNotesDismissed(release, storage)) return false;
-  openReleaseNotesDialog(release, {
+  openReleaseNotesDialog(RELEASE_NOTES, {
+    dialogTitle: 'Q3Edit has been updated',
     showDismissCheckbox: true,
     dismissChecked: false,
     onClose: neverShowAgain => dismissReleaseNotes(release, storage, neverShowAgain),
