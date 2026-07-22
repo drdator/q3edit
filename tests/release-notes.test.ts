@@ -7,6 +7,7 @@ import {
   JULY_22_UPDATE_RELEASE_NOTES,
   MCP_PREVIEW_RELEASE_NOTES,
   RELEASE_NOTES_DISMISSED_KEY,
+  RELEASE_NOTES_NEVER_SHOW_KEY,
   RELEASE_NOTES,
 } from '../src/release-notes-dialog';
 
@@ -21,7 +22,7 @@ describe('release notes', () => {
     expect(new Set(RELEASE_NOTES.map(release => release.id)).size).toBe(RELEASE_NOTES.length);
   });
 
-  it('dismisses only the current entry so a future release becomes unread', () => {
+  it('marks the current entry read while allowing a permanent automatic-display opt-out', () => {
     const values = new Map<string, string>();
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
@@ -33,5 +34,9 @@ describe('release notes', () => {
     expect(values.get(RELEASE_NOTES_DISMISSED_KEY)).toBe(JULY_22_UPDATE_RELEASE_NOTES.id);
     expect(isReleaseNotesDismissed(JULY_22_UPDATE_RELEASE_NOTES, storage)).toBe(true);
     expect(isReleaseNotesDismissed(MCP_PREVIEW_RELEASE_NOTES, storage)).toBe(false);
+
+    dismissReleaseNotes(JULY_22_UPDATE_RELEASE_NOTES, storage, true);
+    expect(values.get(RELEASE_NOTES_NEVER_SHOW_KEY)).toBe('1');
+    expect(isReleaseNotesDismissed(MCP_PREVIEW_RELEASE_NOTES, storage)).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ export interface ReleaseNotes {
 }
 
 export const RELEASE_NOTES_DISMISSED_KEY = 'q3edit.releaseNotes.dismissed';
+export const RELEASE_NOTES_NEVER_SHOW_KEY = 'q3edit.releaseNotes.neverShow';
 
 export const JULY_22_UPDATE_RELEASE_NOTES: ReleaseNotes = {
   id: '2026-07-22-bots-and-workflow',
@@ -201,7 +202,8 @@ export function isReleaseNotesDismissed(
 ): boolean {
   if (!storage) return false;
   try {
-    return storage.getItem(RELEASE_NOTES_DISMISSED_KEY) === release.id;
+    return storage.getItem(RELEASE_NOTES_NEVER_SHOW_KEY) === '1'
+      || storage.getItem(RELEASE_NOTES_DISMISSED_KEY) === release.id;
   } catch {
     return false;
   }
@@ -210,10 +212,12 @@ export function isReleaseNotesDismissed(
 export function dismissReleaseNotes(
   release: ReleaseNotes = RELEASE_NOTES[0],
   storage: ReleaseNotesWriteStorage | null = currentStorage(),
+  neverShowAgain = false,
 ): void {
   if (!storage) return;
   try {
     storage.setItem(RELEASE_NOTES_DISMISSED_KEY, release.id);
+    if (neverShowAgain) storage.setItem(RELEASE_NOTES_NEVER_SHOW_KEY, '1');
   } catch {
     // The dialog remains usable when browser storage is unavailable.
   }
@@ -291,7 +295,7 @@ export function openReleaseNotesDialog(
     dismissCheckbox = document.createElement('input');
     dismissCheckbox.type = 'checkbox';
     const dismissText = document.createElement('span');
-    dismissText.textContent = 'Don’t show this update again';
+    dismissText.textContent = 'Never show release notes again';
     dismissLabel.append(dismissCheckbox, dismissText);
     actions.appendChild(dismissLabel);
   }
@@ -319,9 +323,7 @@ export function openUnreadReleaseNotesDialog(
   if (isReleaseNotesDismissed(release, storage)) return false;
   openReleaseNotesDialog(release, {
     showDismissCheckbox: true,
-    onClose: dismissed => {
-      if (dismissed) dismissReleaseNotes(release, storage);
-    },
+    onClose: neverShowAgain => dismissReleaseNotes(release, storage, neverShowAgain),
   });
   return true;
 }
