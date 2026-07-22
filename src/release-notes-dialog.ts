@@ -16,7 +16,7 @@ export const RELEASE_NOTES_NEVER_SHOW_KEY = 'q3edit.releaseNotes.neverShow';
 
 export const JULY_22_UPDATE_RELEASE_NOTES: ReleaseNotes = {
   id: '2026-07-22-bots-and-workflow',
-  title: 'July 22, 2026 Update 2',
+  title: 'July 22, 2026 — Update 2',
   label: 'Latest release',
   summary: 'Bot-ready Quick Play, clearer MCP onboarding, and editing refinements that make testing maps and everyday construction more dependable.',
   sections: [
