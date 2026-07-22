@@ -192,23 +192,6 @@ body.landing-active #app {
   max-width: 560px;
 }
 
-.landing-kicker {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 28px;
-  color: var(--landing-accent);
-  font: 600 10px/1 monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.landing-kicker span {
-  width: 24px;
-  height: 1px;
-  background: currentColor;
-}
-
 .landing-copy h1 {
   margin: 0;
   color: var(--landing-text);
@@ -241,6 +224,7 @@ body.landing-active #app {
 
 .landing-button {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   gap: 22px;
@@ -249,6 +233,7 @@ body.landing-active #app {
   font: 700 11px/1 monospace;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+  white-space: nowrap;
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 
@@ -275,6 +260,10 @@ body.landing-active #app {
   background: var(--landing-accent);
   border-color: var(--landing-accent);
   transform: translateY(-2px);
+}
+
+.landing-button .ph {
+  font-size: 15px;
 }
 
 .landing-requirement {
@@ -357,10 +346,6 @@ body.landing-active #app {
 
 .landing-mcp-copy {
   max-width: 520px;
-}
-
-.landing-mcp-copy .landing-kicker {
-  margin-bottom: 22px;
 }
 
 .landing-mcp-copy h2 {
