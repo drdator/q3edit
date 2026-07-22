@@ -297,6 +297,9 @@
           module.FS.writeFile(`${root}/${name}`, new Uint8Array(archive.data));
         }
         module.FS.writeFile(`${root}/maps/${launch.mapName}.bsp`, new Uint8Array(launch.bsp));
+        if (launch.aas) {
+          module.FS.writeFile(`${root}/maps/${launch.mapName}.aas`, new Uint8Array(launch.aas));
+        }
       }
 
       async function start(launch) {
@@ -372,11 +375,12 @@
           fail(new Error('The compiled BSP data was not provided'));
           return;
         }
+        const aas = event.data.aas instanceof ArrayBuffer ? event.data.aas : null;
         const commands = Array.isArray(event.data.commands) ? event.data.commands.filter(command =>
           command && ['setviewpos', 'map_restart'].includes(command.name) &&
           Array.isArray(command.args) && command.args.every(argument => typeof argument === 'string')
         ) : [];
-        void start({ mapName, bsp, noclip: event.data.noclip === true, commands });
+        void start({ mapName, bsp, aas, noclip: event.data.noclip === true, commands });
       });
 
       window.addEventListener('error', (event) => fail(event.error ?? event.message));

@@ -14,18 +14,20 @@ interface Q3MapModule {
 }
 
 type CreateQ3Map = (opts?: Record<string, unknown>) => Promise<Q3MapModule>
+type CreateBspc = (opts?: Record<string, unknown>) => Promise<Q3MapModule>
 
-let scriptLoaded = false
+let q3mapScriptLoaded = false
+let bspcScriptLoaded = false
 
 async function createModule(onOutput: (text: string) => void): Promise<Q3MapModule> {
-  if (!scriptLoaded) {
+  if (!q3mapScriptLoaded) {
     // Fetch and eval the Emscripten glue (importScripts doesn't work in module workers)
     const resp = await fetch('/q3map-compiler/dist/q3map.js?v=' + Date.now())
     if (!resp.ok) throw new Error(`Could not load q3map.js (${resp.status})`)
     const code = await resp.text()
     // eslint-disable-next-line no-eval
     ;(0, eval)(code)
-    scriptLoaded = true
+    q3mapScriptLoaded = true
   }
   const createQ3Map: CreateQ3Map = (self as any).createQ3Map
 
@@ -34,6 +36,25 @@ async function createModule(onOutput: (text: string) => void): Promise<Q3MapModu
     print: (text: string) => { onOutput(text) },
     printErr: (text: string) => { onOutput(text) },
     locateFile: (path: string) => `/q3map-compiler/dist/${path}?v=${Date.now()}`,
+  })
+}
+
+async function createBspcModule(onOutput: (text: string) => void): Promise<Q3MapModule> {
+  if (!bspcScriptLoaded) {
+    const resp = await fetch('/bspc-compiler/dist/bspc.js?v=' + Date.now())
+    if (!resp.ok) throw new Error(`Could not load bspc.js (${resp.status})`)
+    const code = await resp.text()
+    // eslint-disable-next-line no-eval
+    ;(0, eval)(code)
+    bspcScriptLoaded = true
+  }
+  const createBspc: CreateBspc = (self as any).createBspc
+
+  return createBspc({
+    noInitialRun: true,
+    print: (text: string) => { onOutput(text) },
+    printErr: (text: string) => { onOutput(text) },
+    locateFile: (path: string) => `/bspc-compiler/dist/${path}?v=${Date.now()}`,
   })
 }
 
@@ -128,6 +149,7 @@ self.onmessage = async (e: MessageEvent) => {
       lightArgs?: string[]
       vis?: boolean
       visArgs?: string[]
+      aas?: boolean
       shaderFiles?: Record<string, string>
       assetFiles?: [string, Uint8Array][]
     }
@@ -158,7 +180,7 @@ self.onmessage = async (e: MessageEvent) => {
 
     if (bspExit !== 0 || !bsp) {
       emit('=== Stage 1 result: failed ===')
-      self.postMessage({ type: 'done', success: false, bsp: null, pointfileText, output })
+      self.postMessage({ type: 'done', success: false, bsp: null, aas: null, pointfileText, output })
       return
     }
     emit('=== Stage 1 result: success ===')
@@ -192,9 +214,30 @@ self.onmessage = async (e: MessageEvent) => {
       emit(`=== Stage 3 result: ${lightExit === 0 ? 'success' : 'failed'} ===`)
     }
 
-    self.postMessage({ type: 'done', success: true, bsp, pointfileText, output })
+    // Stage 4: AAS bot navigation
+    let aas: Uint8Array | null = null
+    if (options.aas !== false) {
+      emit('')
+      emit('=== Stage 4: Bot navigation ===')
+      try {
+        const bspcMod = await createBspcModule(emit)
+        setupFS(bspcMod, null, bsp, undefined, null, undefined)
+        const aasExit = runQ3Map(bspcMod, ['-bsp2aas', bspPath], emit)
+        try { aas = bspcMod.FS.readFile('/quake/baseq3/maps/compile.aas') } catch { /* */ }
+        if (aasExit !== 0 || !aas) {
+          aas = null
+          emit('Warning: bot navigation generation failed; the BSP can still be played without bots')
+        }
+        emit(`=== Stage 4 result: ${aas ? 'success' : 'failed'} ===`)
+      } catch (error) {
+        emit(`Warning: bot navigation generation failed: ${error instanceof Error ? error.message : String(error)}`)
+        emit('=== Stage 4 result: failed ===')
+      }
+    }
+
+    self.postMessage({ type: 'done', success: true, bsp, aas, pointfileText, output })
   } catch (error) {
     emit(`Compiler worker error: ${error instanceof Error ? error.message : String(error)}`)
-    self.postMessage({ type: 'done', success: false, bsp: null, pointfileText: null, output })
+    self.postMessage({ type: 'done', success: false, bsp: null, aas: null, pointfileText: null, output })
   }
 }

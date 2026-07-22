@@ -254,8 +254,9 @@ export class BridgeHub {
     }, 180_000) as Record<string, unknown>;
     if (!artifactPath) return result;
     const bspBase64 = result.bspBase64;
+    const aasBase64 = result.aasBase64;
     if (result.success !== true || typeof bspBase64 !== 'string') {
-      const safe = { ...result }; delete safe.bspBase64;
+      const safe = { ...result }; delete safe.bspBase64; delete safe.aasBase64;
       return safe;
     }
     const temporaryPath = join(dirname(artifactPath), `.${basename(artifactPath)}.${process.pid}.tmp`);
@@ -263,6 +264,14 @@ export class BridgeHub {
     await rename(temporaryPath, artifactPath);
     const safe: Record<string, unknown> = { ...result, artifact: { path: artifactPath, bytes: Buffer.byteLength(bspBase64, 'base64') } };
     delete safe.bspBase64;
+    delete safe.aasBase64;
+    if (typeof aasBase64 === 'string') {
+      const aasPath = artifactPath.replace(/\.bsp$/i, '') + '.aas';
+      const aasTemporaryPath = join(dirname(aasPath), `.${basename(aasPath)}.${process.pid}.tmp`);
+      await writeFile(aasTemporaryPath, Buffer.from(aasBase64, 'base64'));
+      await rename(aasTemporaryPath, aasPath);
+      safe.aasArtifact = { path: aasPath, bytes: Buffer.byteLength(aasBase64, 'base64') };
+    }
     return safe;
   }
 

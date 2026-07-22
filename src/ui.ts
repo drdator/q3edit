@@ -62,6 +62,7 @@ const COMMON_TEXTURES = [
 interface GamePreviewLaunch {
   mapName: string;
   bsp: Uint8Array;
+  aas: Uint8Array | null;
   noclip: boolean;
   commands: Array<{ name: 'setviewpos' | 'map_restart'; args: string[] }>;
 }
@@ -2587,7 +2588,13 @@ export class UI {
     saveBtn.textContent = 'Save .bsp';
     saveBtn.hidden = true;
 
-    buttons.append(closeBtn, runBtn, saveBtn, compileBtn);
+    const saveAasBtn = document.createElement('button');
+    saveAasBtn.type = 'button';
+    saveAasBtn.className = 'btn';
+    saveAasBtn.textContent = 'Save .aas';
+    saveAasBtn.hidden = true;
+
+    buttons.append(closeBtn, runBtn, saveAasBtn, saveBtn, compileBtn);
     dialog.appendChild(buttons);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
@@ -2632,6 +2639,7 @@ export class UI {
       qualitySelect.disabled = true;
       runBtn.hidden = true;
       saveBtn.hidden = true;
+      saveAasBtn.hidden = true;
       dialog.classList.remove('success', 'warning', 'error');
       status.textContent = compileWithRegion ? 'Compiling active region...' : 'Compiling...';
       log.textContent = '';
@@ -2679,7 +2687,10 @@ export class UI {
         } else {
           dialog.classList.add('success');
           this.editor.clearPointfile(false);
-          status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
+          const navigation = result.aas
+            ? `, bot navigation ${(result.aas.length / 1024).toFixed(1)} KB`
+            : ', bot navigation unavailable';
+          status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB${navigation})`;
           this.editor.statusMessage = 'BSP compiled successfully';
         }
 
@@ -2695,14 +2706,28 @@ export class UI {
           this.editor.statusMessage = `Saved ${baseName}.bsp`;
         };
 
+        if (result.aas) {
+          saveAasBtn.hidden = false;
+          saveAasBtn.onclick = () => {
+            const blob = new Blob([new Uint8Array(result.aas!)], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = baseName + '.aas';
+            a.click();
+            URL.revokeObjectURL(url);
+            this.editor.statusMessage = `Saved ${baseName}.aas`;
+          };
+        }
+
         runBtn.hidden = false;
         runBtn.onclick = () => {
-          this.openBspPreview(baseName, result.bsp!);
+          this.openBspPreview(baseName, result.bsp!, result.aas);
         };
 
         if (autoPlay && !dismissed) {
           overlay.remove();
-          this.openBspPreview(baseName, result.bsp);
+          this.openBspPreview(baseName, result.bsp, result.aas);
         }
       } else {
         dialog.classList.add('error');
@@ -2756,7 +2781,7 @@ export class UI {
   runGamePreviewCommand(command: 'noclip' | 'restart'): GamePreviewStatus {
     const launch = this.gamePreviewLaunch;
     if (!launch) throw new Error('No compiled BSP preview is available; call map_play first');
-    this.openBspPreview(launch.mapName, launch.bsp, command === 'noclip' ? true : launch.noclip, launch.commands);
+    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, command === 'noclip' ? true : launch.noclip, launch.commands);
     return this.getGamePreviewStatus();
   }
 
@@ -2767,13 +2792,14 @@ export class UI {
       name: 'setviewpos' as const,
       args: [...position.map(value => String(value)), String(yaw * 180 / Math.PI)],
     };
-    this.openBspPreview(launch.mapName, launch.bsp, true, [command]);
+    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, true, [command]);
     return this.getGamePreviewStatus();
   }
 
   openBspPreview(
     mapName: string,
     bsp: Uint8Array,
+    aas: Uint8Array | null = null,
     noclip = false,
     commands: GamePreviewLaunch['commands'] = [],
   ): void {
@@ -2784,7 +2810,9 @@ export class UI {
     bspCopy.set(bsp);
     const retainedBsp = new Uint8Array(bsp.byteLength);
     retainedBsp.set(bsp);
-    this.gamePreviewLaunch = { mapName: safeMapName, bsp: retainedBsp, noclip, commands: structuredClone(commands) };
+    const aasCopy = aas ? new Uint8Array(aas) : null;
+    const retainedAas = aas ? new Uint8Array(aas) : null;
+    this.gamePreviewLaunch = { mapName: safeMapName, bsp: retainedBsp, aas: retainedAas, noclip, commands: structuredClone(commands) };
     this.updateGamePreviewStatus({
       state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName, noclip: false,
       noclipRequested: noclip, commandErrors: [],
@@ -2859,13 +2887,16 @@ export class UI {
       const message = event.data;
       if (message?.type === 'q3edit-player:ready' && !launchSent) {
         launchSent = true;
-        frame.contentWindow?.postMessage({
+        const launchMessage = {
           type: 'q3edit-player:launch',
           mapName: safeMapName,
           bsp: bspCopy.buffer,
+          aas: aasCopy?.buffer ?? null,
           noclip,
           commands,
-        }, window.location.origin, [bspCopy.buffer]);
+        };
+        const transfer = aasCopy ? [bspCopy.buffer, aasCopy.buffer] : [bspCopy.buffer];
+        frame.contentWindow?.postMessage(launchMessage, window.location.origin, transfer);
       } else if (message?.type === 'q3edit-player:status') {
         status.textContent = message.message;
         this.updateGamePreviewStatus({ state: 'loading', message: String(message.message) });
