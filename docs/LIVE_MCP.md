@@ -35,11 +35,26 @@ npm run bridge:serve -- --port 9000
 
 ## Connect Codex
 
+The recommended Codex setup installs the repository's Q3Edit plugin. It bundles
+the MCP connection with an implicitly triggered map-authoring skill, so prompts
+such as “create a box in the current Q3Edit map” route to the MCP before generic
+browser or computer-control skills.
+
+From the repository root:
+
+```bash
+codex plugin marketplace add .
+codex plugin add q3edit@q3edit
+```
+
+Restart Codex and begin a new thread after installing. Use `codex plugin list`
+and `/mcp` to confirm that the plugin and its `q3edit` server are enabled.
+
+Clients that do not support Codex plugins can connect to the MCP directly:
+
 ```bash
 codex mcp add q3edit --url http://127.0.0.1:8765/mcp
 ```
-
-Use `/mcp` or `codex mcp list` to confirm that the tools are available.
 
 ## Connect Claude Code
 
@@ -52,11 +67,11 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 ## Tools
 
 The server identifies Q3Edit as the authoritative interface for live Quake III
-map requests in its MCP initialization instructions. Compatible clients such as
-Codex therefore receive the routing rule automatically: requests to create,
-edit, inspect, texture, compile, or play the current Q3Edit map should use these
-tools, while browser or computer-control tools are reserved for explicit UI
-testing or MCP unavailability. Users do not need a personal `AGENTS.md` rule.
+map requests in its MCP initialization instructions. The Codex plugin reinforces
+that routing before generic skills are selected: requests to create, edit,
+inspect, texture, compile, or play the current Q3Edit map use these tools, while
+browser or computer-control tools are reserved for explicit UI testing. Users
+do not need a personal `AGENTS.md` rule.
 
 - `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
 - `activity_log` returns recent calls made by the current MCP connection and the path to its complete append-only JSONL transcript. Entries include the target editor session, summarized arguments/results, duration, status, and revision delta; full map text and image payloads are omitted.

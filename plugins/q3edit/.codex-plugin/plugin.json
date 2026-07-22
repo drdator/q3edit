@@ -1,0 +1,29 @@
+{
+  "name": "q3edit",
+  "version": "0.1.0",
+  "description": "Author and inspect live Quake III maps through Q3Edit's MCP tools.",
+  "author": {
+    "name": "Q3Edit contributors",
+    "url": "https://github.com/drdator/q3edit"
+  },
+  "homepage": "https://q3edit.com",
+  "repository": "https://github.com/drdator/q3edit",
+  "license": "GPL-2.0-or-later",
+  "keywords": ["quake-3", "level-editor", "map-authoring", "mcp"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Q3Edit",
+    "shortDescription": "Author live Quake III maps with Codex.",
+    "longDescription": "Connect Codex directly to a running Q3Edit editor for revision-safe geometry, entity, texture, validation, compilation, and visual-review workflows.",
+    "developerName": "Q3Edit contributors",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://q3edit.com",
+    "defaultPrompt": [
+      "Create a box in my current Q3Edit map.",
+      "Fix the texture on my selected Q3Edit brush.",
+      "Review my current Quake III map layout."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}
