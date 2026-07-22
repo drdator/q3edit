@@ -192,23 +192,6 @@ body.landing-active #app {
   max-width: 560px;
 }
 
-.landing-kicker {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 28px;
-  color: var(--landing-accent);
-  font: 600 10px/1 monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.landing-kicker span {
-  width: 24px;
-  height: 1px;
-  background: currentColor;
-}
-
 .landing-copy h1 {
   margin: 0;
   color: var(--landing-text);
@@ -363,10 +346,6 @@ body.landing-active #app {
 
 .landing-mcp-copy {
   max-width: 520px;
-}
-
-.landing-mcp-copy .landing-kicker {
-  margin-bottom: 22px;
 }
 
 .landing-mcp-copy h2 {

@@ -15,8 +15,16 @@ describe('landing page', () => {
   it('uses Phosphor icons in its call-to-action buttons', () => {
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-    expect(html).toContain('class="ph ph-arrow-right"');
-    expect(html).toContain('class="ph ph-arrow-square-out"');
+    expect(html.match(/class="ph ph-arrow-right"/g)).toHaveLength(2);
+    expect(html).not.toContain('class="ph ph-arrow-square-out"');
     expect(html).not.toMatch(/landing-button[^>]*>[\s\S]*?<span[^>]*>[→↗]<\/span>/);
+  });
+
+  it('keeps the primary section headings free of kicker labels', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+    expect(html).not.toContain('landing-kicker');
+    expect(html).not.toContain('Quake III Arena map editor');
+    expect(html).not.toContain('Live MCP authoring');
   });
 });

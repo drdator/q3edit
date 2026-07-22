@@ -11,7 +11,8 @@ describe('MCP discovery', () => {
 
   it('introduces live MCP authoring on the crawlable landing page', () => {
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-    expect(html).toContain('Live MCP authoring');
+    expect(html).toContain('<section class="landing-mcp"');
+    expect(html).toContain('Connect an AI coding agent to the map open in Q3Edit.');
     expect(html).toContain('Build maps with Codex or Claude.');
     expect(html).toContain(MCP_INSTALLATION_URL);
     expect(html).toContain('View → Local MCP Connection');
