@@ -57,6 +57,7 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.mcp-activity').label).toBe('MCP Activity');
     expect(registry.getState('view.mcp-activity').checked).toBe(false);
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
+    expect(registry.getState('file.quick-play').shortcut).toBe('F5');
     context.editor.preferences.quickPlay = { quality: 'full', botsEnabled: true, botCount: 2, botSkill: 3 };
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     registry.execute('file.quick-play');

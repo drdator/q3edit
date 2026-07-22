@@ -823,13 +823,33 @@ textarea:focus-visible {
   gap: 2px;
   flex-shrink: 0;
   user-select: none;
+  overflow: hidden;
+}
+
+.toolbar-tools,
+.toolbar-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 2px;
+}
+
+.toolbar-tools {
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
 }
 
-#toolbar::-webkit-scrollbar {
+.toolbar-tools::-webkit-scrollbar {
   display: none;
+}
+
+.toolbar-footer {
+  flex: 0 0 auto;
+  padding-bottom: 1px;
+  background: var(--bg);
 }
 
 .tool-btn {
