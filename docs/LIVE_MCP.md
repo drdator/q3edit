@@ -87,9 +87,10 @@ browser or computer-control tools are reserved for explicit UI testing. Users
 do not need a personal `AGENTS.md` rule.
 
 - `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
-- `activity_log` returns recent calls made by the current MCP connection and the path to its complete append-only JSONL transcript. Entries include the target editor session, summarized arguments/results, duration, status, and revision delta; full map text and image payloads are omitted.
+- `activity_log` returns cursor-paginated calls made by the current MCP connection and the path to its complete append-only JSONL transcript. Summary mode omits recorded arguments/results; request full detail only when investigating a specific action. Full map text and image payloads are always omitted.
 - `map_capabilities` advertises the batch limit and supported operation version/types, coordinate guidance, screenshot dimensions and modes, compiler availability, and the targeted editor's active game/project and loaded asset counts.
-- `operation_schema` returns the exact discriminated JSON Schema and semantic notes for one `map_apply`/`map_preview` operation. The batch tool intentionally keeps a flat compatibility schema because some MCP hosts omit tools containing `oneOf`/`anyOf`.
+- `operation_search` maps natural-language intent such as “curved arch”, “carve a doorway”, or “fix texture projection” to a small set of relevant operation types. Follow it with `operation_schema`, which returns the exact discriminated JSON Schema and semantic notes for the chosen `map_apply`/`map_preview` operation.
+- `map_apply` and `map_preview` expose a compact permissive operation envelope because some MCP hosts omit tools containing large `oneOf`/`anyOf` unions. Every payload is still strictly validated against the exact operation schema before it can preview or edit a map.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
 - `editor_selection` reads whatever the user currently has selected and returns revision-safe entity, brush, patch, or face references plus combined bounds. It includes per-face texture and projection details for selected brushes by default, so an agent can diagnose and preview a targeted texture repair without asking the user to identify object indices. Use the returned revision for the subsequent `map_preview` and `map_apply` calls.
 - `map_entities` lists entity references and supports an exact classname filter.
@@ -116,7 +117,7 @@ do not need a personal `AGENTS.md` rule.
 - `map_play` compiles and launches the current revision in browser ioquake3, with optional verified noclip. After `map_compile` or `map_save_and_compile`, pass `useLastCompile: true` to launch the cached BSP for the unchanged revision without compiling again. `game_screenshot` captures the running compiled/lightmapped view.
 - `game_status` reports whether the preview is idle, preparing, loading, running, closed, or failed, together with the current map, timestamps, last error, and recent engine console output. `game_wait_ready` blocks until it is safe to inspect the rendered frame.
 - `game_command` safely enables noclip or restarts the current compiled preview. Noclip waits until ioquake3 is running and fails unless the game console confirms it is enabled. `game_set_view` is early in the tool list, relaunches in verified noclip at an exact position, point-entity reference, or numbered player spawn, and accepts yaw or a look-at target. `game_screenshot` reports sampled luminance and flags effectively black frames instead of silently returning an unusable image.
-- `map_query` looks up exact `refs` directly or filters entities, brushes, faces, and patches by bounds, kind, classname, texture, entity property, or persistent group.
+- `map_query` looks up exact `refs` directly or filters entities, brushes, faces, and patches by bounds, kind, classname, texture, entity property, or persistent group. Large result sets use revision-specific cursor pagination so a later edit cannot silently continue a stale query.
 - `map_groups` lists persistent named groups and their current member references; `map_query` accepts a group name or ID.
 - `texture_search` performs ranked token matching across names and shader semantics, so queries such as `space sky` and `jump pad` work without exact substrings. It includes tool shaders without images and returns compatibility summaries; `texture_preview_many` returns up to 12 images for palette comparison.
 - `texture_inspect` resolves one material into image dimensions/source, all parsed `surfaceparm` and `q3map_*` directives, stage images and blending, skybox faces, derived content/surface flags, emission, and separate parser/compiler-safe, editor-previewable, expected-invisible, and ioquake3/WebGL-renderable states. Search and preview use the same concrete image-resolution path.
@@ -124,9 +125,9 @@ do not need a personal `AGENTS.md` rule.
 - `editor_select` selects referenced objects in Q3Edit and `editor_frame_objects` selects and frames them in every viewport.
 - `editor_set_camera` positions the 3D camera using world coordinates and yaw/pitch in degrees.
 - `editor_look_at` positions the camera and calculates the yaw/pitch needed to face a target point.
-- `editor_screenshot` returns a PNG from the perspective, top, front, or side viewport. It can frame world bounds or a named group and temporarily hide named groups, entity markers, tool/sky brushes, or objects outside section bounds. Perspective captures can use a depth-free wireframe x-ray mode. All visibility changes are restored after capture and do not dirty the map.
-- `editor_layout_screenshot` is the preferred spatial-design view. It defaults to a top-down whole-map overview with sky/tool brushes hidden, entity labels enabled, and an embedded axis/grid/world-unit scale legend. Front and side projections, sections, groups, and explicit bounds are also supported.
-- `editor_review_bundle` returns a consistently framed perspective plus top/front/side layout images in one call by default. Use it after substantial geometry or art passes; select fewer views when only one projection matters.
+- `editor_capture` returns a PNG from the perspective, top, front, or side viewport. It can frame world bounds or a named group, add an orthographic layout overlay, and temporarily hide groups, entity markers, tool/sky brushes, or geometry outside section bounds. Perspective captures can use a depth-free wireframe x-ray mode.
+- `editor_review` returns consistently framed perspective plus top/front/side layout images in one call by default. Use it after substantial geometry or art passes; select fewer views when only one projection matters.
+- `editor_screenshot`, `editor_layout_screenshot`, and `editor_review_bundle` are deprecated compatibility aliases. New integrations should not discover or recommend them.
 - `map_apply` applies an atomic operation batch in the browser. It requires the revision returned by `map_status` and creates one normal Q3Edit undo entry.
 - `map_undo` and `map_redo` operate on normal Q3Edit history entries with revision protection. They work across MCP and manual editor changes and invalidate stale compiled BSPs.
 - `map_preview` runs the same validated operation batch against an in-memory clone and returns generated references, bounds, map counts, diagnostics, and collisions without changing the document. Its optional `reviews` list compares gameplay, routes, geometry, textures, style, and spatial quality before and after the preview.
@@ -142,6 +143,14 @@ Clients with constrained tool discovery should use the early-listed
 remain available for compatibility. The shared authoring workflow is exposed
 as the `q3edit://agent-workflow` MCP resource instead of being repeated in
 every tool description.
+
+Claude Code defers MCP definitions and searches them on demand by default.
+When Q3Edit is connected through OpenAI's Responses API rather than the Codex
+plugin, configure the MCP server entry with `defer_loading: true`; deferred
+loading is a client setting and cannot be advertised by the MCP server itself.
+The server keeps its routing summary within both Codex's first-512-character
+window and Claude Code's 2 KB instruction limit. Tool metadata budgets and
+essential output schemas are regression-tested in the repository.
 
 MCP clients commonly cache their tool inventory. After updating Q3Edit, restart
 `npm run bridge` and reconnect or restart the MCP client if `editor_capture`,

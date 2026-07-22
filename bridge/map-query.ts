@@ -15,6 +15,7 @@ export interface MapQueryOptions {
   group?: string;
   bounds?: { mins: Vec3; maxs: Vec3; mode?: 'intersects' | 'inside' };
   limit?: number;
+  offset?: number;
 }
 
 type Bounds = { mins: Vec3; maxs: Vec3 };
@@ -73,9 +74,11 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
   const matchesRef = (ref: string): boolean => !requestedRefs || requestedRefs.has(ref);
   const includeFaces = options.kind === 'face' || Boolean(options.refs?.some(ref => /:F\d+$/.test(ref)));
   const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const scanLimit = offset + limit;
   const classname = options.classname?.toLowerCase();
 
-  for (let entityIndex = 0; entityIndex < parsed.document.entities.length && results.length < limit; entityIndex++) {
+  for (let entityIndex = 0; entityIndex < parsed.document.entities.length && results.length < scanLimit; entityIndex++) {
     const entity = parsed.document.entities[entityIndex];
     const entityGroup = entityGroupId(entity);
     const classMatches = !classname || entity.classname.toLowerCase() === classname;
@@ -102,7 +105,7 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
     }
 
     if (!classMatches || !propertyMatches || options.kind === 'entity' || isGroupInfoEntity(entity)) continue;
-    for (let brushIndex = 0; brushIndex < entity.brushes.length && results.length < limit; brushIndex++) {
+    for (let brushIndex = 0; brushIndex < entity.brushes.length && results.length < scanLimit; brushIndex++) {
       const brush = entity.brushes[brushIndex];
       const brushGroup = brush.editorGroupId ?? entityGroup;
       if (requestedGroup && brushGroup !== requestedGroupId) continue;
@@ -121,7 +124,7 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
       }
       if (includeFaces) {
         const textureQuery = options.texture?.toLowerCase();
-        for (let faceIndex = 0; faceIndex < brush.faces.length && results.length < limit; faceIndex++) {
+        for (let faceIndex = 0; faceIndex < brush.faces.length && results.length < scanLimit; faceIndex++) {
           const face = brush.faces[faceIndex];
           if (!matchesRef(`E${entityIndex}:B${brushIndex}:F${faceIndex}`)) continue;
           if (textureQuery && !face.texture.toLowerCase().includes(textureQuery)) continue;
@@ -147,7 +150,7 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
         }
       }
     }
-    for (let patchIndex = 0; patchIndex < entity.patches.length && results.length < limit; patchIndex++) {
+    for (let patchIndex = 0; patchIndex < entity.patches.length && results.length < scanLimit; patchIndex++) {
       const patch = entity.patches[patchIndex];
       const patchGroup = patch.editorGroupId ?? entityGroup;
       if (requestedGroup && patchGroup !== requestedGroupId) continue;
@@ -167,7 +170,7 @@ export function queryMap(mapText: string, options: MapQueryOptions): unknown[] {
       });
     }
   }
-  return results;
+  return results.slice(offset, scanLimit);
 }
 
 export function inspectMapGroups(mapText: string): unknown[] {

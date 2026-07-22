@@ -60,5 +60,17 @@ export class McpActivityLog {
     return filtered.slice(-Math.max(1, Math.min(limit, 500)));
   }
 
+  page(limit = 50, cursor?: string, editorSessionId?: string): { entries: McpActivityEntry[]; nextCursor: string | null; filteredCount: number } {
+    const filtered = editorSessionId ? this.entries.filter(entry => entry.editorSessionId === editorSessionId) : this.entries;
+    let end = filtered.length;
+    if (cursor) {
+      end = filtered.findIndex(entry => entry.id === cursor);
+      if (end < 0) throw new Error('Activity cursor is no longer available; restart from the newest page');
+    }
+    const start = Math.max(0, end - Math.max(1, Math.min(limit, 100)));
+    const entries = filtered.slice(start, end);
+    return { entries, nextCursor: start > 0 ? entries[0].id : null, filteredCount: filtered.length };
+  }
+
   get count(): number { return this.entries.length; }
 }

@@ -379,16 +379,25 @@ describe('live MCP bridge', () => {
         'map_save_and_compile',
       ]);
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
+      const previewSchema = tools.tools.find(tool => tool.name === 'map_preview')?.inputSchema;
       const mapApply = tools.tools.find(tool => tool.name === 'map_apply');
       expect(`${mapApply?.title} ${mapApply?.description}`).toMatch(/create.*box.*Q3Edit|Q3Edit.*creating a box/i);
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['editor_selection', 'operation_search', 'map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      expect(JSON.stringify(applySchema).length).toBeLessThan(4_000);
+      expect(JSON.stringify(previewSchema).length).toBeLessThan(4_500);
+      expect(JSON.stringify(applySchema)).toContain('Additional fields are accepted here');
+      for (const name of ['map_status', 'editor_selection', 'map_capabilities', 'operation_search', 'operation_schema', 'map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_compile', 'map_play', 'map_query', 'texture_search', 'entity_class_search', 'game_screenshot', 'game_status', 'game_wait_ready', 'map_preview', 'map_apply', 'map_save_and_compile']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
         expect(tools.tools.find(tool => tool.name === name)?.annotations?.readOnlyHint, `${name} mutation annotation`).toBe(false);
       }
+      expect(tools.tools.find(tool => tool.name === 'map_redo')?.annotations?.destructiveHint).toBe(true);
+      expect(tools.tools.find(tool => tool.name === 'map_compile')?.annotations?.destructiveHint).toBe(true);
+      expect(tools.tools.find(tool => tool.name === 'map_create_jump_pad')?.annotations?.destructiveHint).toBe(false);
+      expect(tools.tools.find(tool => tool.name === 'editor_screenshot')?._meta).toMatchObject({ deprecated: true, replacement: 'editor_capture' });
+      expect((tools.tools.find(tool => tool.name === 'editor_sessions')?.inputSchema as { additionalProperties?: boolean }).additionalProperties).toBe(false);
 
       const resources = await client.listResources();
       expect(resources.resources).toEqual(expect.arrayContaining([
@@ -497,7 +506,7 @@ describe('live MCP bridge', () => {
 
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
-        sessionId: 'editor-a', protocolVersion: 4,
+        sessionId: 'editor-a', protocolVersion: 5,
         essentialTools: expect.arrayContaining(['editor_selection', 'map_preview', 'map_apply', 'editor_capture', 'editor_review', 'game_set_view', 'map_undo']),
         operations: { version: 11, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
@@ -626,8 +635,18 @@ describe('live MCP bridge', () => {
       const routes = await client.callTool({ name: 'map_route_lint', arguments: {} });
       expect(routes.structuredContent).toMatchObject({ sessionId: 'editor-a', revision: 4 });
 
-      const compiled = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast' } });
+      const compileProgress: Array<{ progress: number; total?: number; message?: string }> = [];
+      const compiled = await client.callTool(
+        { name: 'map_compile', arguments: { quality: 'fast' } },
+        undefined,
+        { onprogress: progress => compileProgress.push(progress) },
+      );
       expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
+      expect(compileProgress).toEqual([
+        expect.objectContaining({ progress: 0, total: 3, message: expect.stringContaining('Checking') }),
+        expect.objectContaining({ progress: 1, total: 3, message: expect.stringContaining('Compiling') }),
+        expect.objectContaining({ progress: 3, total: 3, message: 'Compile complete' }),
+      ]);
 
       const preflight = await client.callTool({ name: 'map_compile_preflight', arguments: {} });
       expect(preflight.structuredContent).toMatchObject({ sessionId: 'editor-a', revision: 4, ready: true, compilerSafeExport: true });

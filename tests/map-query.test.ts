@@ -39,6 +39,11 @@ describe('map spatial query', () => {
       .toMatchObject({ ref: 'E0:B0:F0', brush: 'E0:B0', texture: 'base_floor/stone' });
   });
 
+  test('supports stable offset pages without changing default query behavior', () => {
+    expect(queryMap(queryFixture(), { kind: 'face', texture: 'stone', limit: 2, offset: 2 }).map((match: any) => match.ref))
+      .toEqual(['E0:B0:F2', 'E0:B0:F3']);
+  });
+
   test('looks up exact entity, brush, face, and patch references directly', () => {
     const matches = queryMap(queryFixture(), { refs: ['E2', 'E0:B0', 'E1:B0:F3'] });
     expect(matches).toEqual(expect.arrayContaining([

@@ -244,8 +244,62 @@ const routeLintOutputSchema = z.object({
 });
 const mapQueryOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), count: z.number().int().nonnegative(),
+  nextCursor: z.string().nullable(),
   matches: z.array(mapQueryMatchSchema),
 });
+const mapStatusOutputSchema = z.object({
+  sessionId: z.string(), editorConnected: z.boolean(), activeMapPath: z.string().nullable(),
+  snapshot: z.object({
+    fileName: z.string(), revision: z.number().int().nonnegative(), mapInfo: z.unknown(),
+    entities: z.array(z.unknown()), diagnostics: z.array(z.unknown()),
+  }).nullable(),
+});
+const operationSchemaOutputSchema = z.object({
+  type: z.string(), acceptedBy: z.tuple([z.literal('map_apply'), z.literal('map_preview')]),
+  jsonSchema: z.record(z.string(), z.unknown()), required: z.array(z.string()), notes: z.array(z.string()),
+});
+const compactRefCollectionSchema = z.object({ count: z.number().int().nonnegative(), refs: z.array(z.string()), truncated: z.boolean() });
+const refCollectionSchema = z.union([z.array(z.string()), compactRefCollectionSchema]);
+const aliasCollectionSchema = z.record(z.string(), refCollectionSchema);
+const mapApplyOutputSchema = z.looseObject({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), operationCount: z.number().int().nonnegative(), summary: z.string(),
+  created: refCollectionSchema, changed: refCollectionSchema, aliases: aliasCollectionSchema,
+  mapInfo: z.unknown(), diagnostics: z.array(z.unknown()),
+});
+const mapPreviewOutputSchema = z.looseObject({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), operationCount: z.number().int().nonnegative(),
+  created: refCollectionSchema, changed: refCollectionSchema, aliases: aliasCollectionSchema,
+  objects: z.union([z.array(z.unknown()), z.object({ count: z.number().int(), sample: z.array(z.unknown()), truncated: z.boolean() })]),
+  diagnostics: z.unknown(), reviews: z.record(z.string(), z.unknown()), generatedCollisions: z.unknown(),
+});
+const mapCapabilitiesOutputSchema = z.looseObject({
+  sessionId: z.string(), protocolVersion: z.number().int(), essentialTools: z.array(z.string()),
+  operations: z.object({ version: z.number().int(), maxPerBatch: z.number().int(), supported: z.array(z.string()) }),
+  editor: z.unknown(),
+});
+const compileOutputSchema = z.looseObject({
+  sessionId: z.string(), success: z.boolean(), quality: z.enum(['fast', 'normal', 'full']), preflight: z.unknown(),
+});
+const gameStatusFields = {
+  sessionId: z.string(), state: z.enum(['idle', 'preparing', 'loading', 'running', 'error', 'closed']), message: z.string(),
+  mapName: z.string().nullable(), noclip: z.boolean(), noclipRequested: z.boolean().optional(),
+  commandErrors: z.array(z.string()).optional(), launchedAt: z.string().nullable(), runningAt: z.string().nullable(),
+  error: z.string().nullable(), consoleTail: z.array(z.string()), renderer: z.unknown().optional(),
+};
+const gameStatusOutputSchema = z.looseObject(gameStatusFields);
+const mapPlayOutputSchema = z.object({
+  sessionId: z.string(), compile: z.unknown(), launch: z.unknown(), status: gameStatusOutputSchema.omit({ sessionId: true }),
+});
+const saveAndCompileOutputSchema = z.object({
+  sessionId: z.string(),
+  saved: z.object({ path: z.string(), revision: z.number().int().nonnegative() }),
+  compile: z.unknown(), preflight: z.unknown(),
+});
+const gameScreenshotOutputSchema = z.object({
+  sessionId: z.string(), mimeType: z.literal('image/png'), width: z.number().int(), height: z.number().int(),
+  blackFrame: z.boolean(), meanLuminance: z.number(), status: gameStatusOutputSchema.omit({ sessionId: true }),
+});
+const assetSearchOutputSchema = z.looseObject({ sessionId: z.string(), query: z.string(), matches: z.array(z.unknown()) });
 const operationSearchOutputSchema = z.object({
   query: z.string(), category: z.enum(OPERATION_CATEGORIES).nullable(), count: z.number().int().nonnegative(),
   matches: z.array(z.object({
@@ -403,50 +457,25 @@ const sampledDesignFindingSchema = z.object({
   sample: z.array(z.object({ source: z.enum(['validation', 'geometry', 'spatial', 'style', 'gameplay', 'routes']), severity: issueSeverity, code: z.string(), message: z.string(), refs: z.array(z.string()) })),
   truncated: z.boolean(),
 });
-const designReviewOutputSchema = z.object({
+// Keep the composite contract focused on stable control-loop fields. Detailed
+// sub-review schemas remain on their dedicated tools and would otherwise make
+// discovering this one tool cost more than 5,000 tokens.
+const designReviewOutputSchema = z.looseObject({
   sessionId: z.string(), revision: z.number().int(), model: z.string(), detail: z.enum(['compact', 'full']),
   status: z.enum(['pass', 'needs-attention', 'blocked']),
   severityCounts: z.object({ errors: z.number().int(), warnings: z.number().int(), info: z.number().int() }),
-  findingCount: z.number().int(), findings: sampledDesignFindingSchema, map: compactMapSummarySchema,
+  findingCount: z.number().int(), findings: sampledDesignFindingSchema, map: z.unknown(),
   validation: sampledDesignFindingSchema,
-  geometry: z.object({
-    issueCount: z.number().int(),
-    issues: z.object({ count: z.number().int(), sample: z.array(geometryLintIssueSchema), truncated: z.boolean() }),
-  }),
-  spatial: z.object({
-    model: z.string(), status: z.enum(['pass', 'needs-attention']), metrics: spatialReviewMetricsSchema,
-    issueCount: z.number().int(),
-    issues: z.object({ count: z.number().int(), sample: z.array(spatialReviewIssueSchema), truncated: z.boolean() }),
-  }),
-  style: z.object({
-    brief: mapStyleBriefSchema.nullable(), status: z.enum(['not-configured', 'pass', 'needs-attention']),
-    metrics: styleMetricsSchema, issueCount: z.number().int(),
-    issues: z.object({ count: z.number().int(), sample: z.array(styleFindingSchema), truncated: z.boolean() }),
-  }),
-  gameplay: z.object({
-    issueCount: z.number().int(),
-    issues: z.object({ count: z.number().int(), sample: z.array(gameplayLintIssueSchema), truncated: z.boolean() }),
-  }),
-  routes: z.object({
-    issueCount: z.number().int(),
-    issues: z.object({ count: z.number().int(), sample: z.array(routeLintIssueSchema), truncated: z.boolean() }),
-    jumpPads: z.object({
-      count: z.number().int(), truncated: z.boolean(),
-      sample: z.array(z.object({
-        triggerRef: z.string().nullable(), targetRef: z.string().nullable(),
-        clearance: z.object({ clear: z.boolean(), collisionCount: z.number().int() }),
-        landing: z.union([
-          z.object({ supported: z.literal(false) }),
-          z.object({ supported: z.literal(true), brushRef: z.string(), hullClear: z.boolean(), blockers: z.array(z.string()) }),
-        ]),
-        warnings: z.array(z.string()),
-      })),
-    }),
-    connectivity: z.object({
+  geometry: z.looseObject({ issueCount: z.number().int(), issues: z.unknown() }),
+  spatial: z.looseObject({ status: z.enum(['pass', 'needs-attention']), issueCount: z.number().int(), issues: z.unknown(), metrics: z.unknown() }),
+  style: z.looseObject({ status: z.enum(['not-configured', 'pass', 'needs-attention']), issueCount: z.number().int(), issues: z.unknown() }),
+  gameplay: z.looseObject({ issueCount: z.number().int(), issues: z.unknown() }),
+  routes: z.looseObject({
+    issueCount: z.number().int(), issues: z.unknown(), jumpPads: z.unknown(),
+    connectivity: z.looseObject({
       platformCount: z.number().int(), edgeCount: z.number().int(), reachablePlatformCount: z.number().int(),
       spawnCount: z.number().int(), pickupCount: z.number().int(), reachablePickupCount: z.number().int(),
-      unreachablePickupRefs: z.array(z.string()),
-      edgeKinds: z.object({ walk: z.number().int(), jump: z.number().int(), 'jump-pad': z.number().int() }),
+      unreachablePickupRefs: z.array(z.string()), edgeKinds: z.unknown(),
     }),
   }),
 });
@@ -1160,10 +1189,19 @@ const compatibleMapOperationInput = z.object({
 
 const mapOperationBatchInputSchema = {
   ...sessionInput,
-  expectedRevision: z.number().int().nonnegative(),
+  expectedRevision: z.number().int().nonnegative()
+    .describe('Current document revision from map_status or editor_selection; the call fails instead of overwriting newer edits when it no longer matches'),
   label: z.string().min(1).max(120).describe('Undo or preview label, for example MCP: Add side room'),
-  operations: z.array(compatibleMapOperationInput).min(1).max(MAX_BATCH_OPERATIONS),
-  responseDetail: z.enum(['full', 'compact']).optional().default('full'),
+  operations: z.array(z.looseObject({
+    type: z.enum(SUPPORTED_MAP_OPERATIONS)
+      .describe('Exact operation type returned by operation_search or map_capabilities; call operation_schema for its required payload fields'),
+    id: symbolicId.optional()
+      .describe('Optional symbolic ID for creation operations, allowing later operations in this batch to target @id'),
+  }).describe('Operation payload. Additional fields are accepted here for broad MCP-host compatibility and strictly validated against operation_schema before preview or application.'))
+    .min(1).max(MAX_BATCH_OPERATIONS)
+    .describe(`One atomic ordered batch of 1–${MAX_BATCH_OPERATIONS} operations; symbolic references may target objects created earlier in the same batch`),
+  responseDetail: z.enum(['full', 'compact']).optional().default('compact')
+    .describe('compact returns bounded reference samples and is preferred for normal agent loops; full returns every created and changed reference'),
 };
 const previewReviewKind = z.enum(['gameplay', 'route', 'geometry', 'texture', 'style', 'spatial']);
 const mapPreviewInputSchema = {
@@ -1197,6 +1235,21 @@ function compactRefs(refs: string[]): { count: number; refs: string[]; truncated
 
 function compactItems<T>(items: T[]): { count: number; sample: T[]; truncated: boolean } {
   return { count: items.length, sample: items.slice(0, 8), truncated: items.length > 8 };
+}
+
+interface ToolProgressContext {
+  _meta?: { progressToken?: string | number };
+  sendNotification?: (notification: {
+    method: 'notifications/progress';
+    params: { progressToken: string | number; progress: number; total?: number; message?: string };
+  }) => Promise<void>;
+}
+
+async function reportToolProgress(extra: unknown, progress: number, total: number, message: string): Promise<void> {
+  const context = extra as ToolProgressContext;
+  const progressToken = context._meta?.progressToken;
+  if (progressToken === undefined || !context.sendNotification) return;
+  await context.sendNotification({ method: 'notifications/progress', params: { progressToken, progress, total, message } });
 }
 
 function routeLintResponse(result: RouteLintResult, detail: 'full' | 'summary' | 'issuesOnly'): RouteLintResult {
@@ -1319,6 +1372,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     title: 'Get live Q3Edit map status',
     description: 'First call for live Q3Edit map authoring: return the connected editor, active map, revision, map counts, and diagnostics summary before creating or editing geometry and entities.',
     inputSchema: { ...sessionInput },
+    outputSchema: mapStatusOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
@@ -1376,7 +1430,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         ...sessionInput,
         expectedRevision: z.number().int().nonnegative(),
       },
-      annotations: { readOnlyHint: false, destructiveHint: action === 'undo', idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     }, async ({ sessionId, expectedRevision }) => {
       try {
         const resolved = session(sessionId);
@@ -1483,15 +1537,21 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     description: 'High-priority visual QA tool: capture a perspective or orthographic PNG, optionally framed to bounds or a named group with sky/tool geometry hidden.',
     inputSchema: {
       ...sessionInput,
-      mode: z.enum(['perspective', 'top', 'front', 'side']).optional().default('perspective'),
-      width: z.number().int().min(64).max(2048).optional(),
-      height: z.number().int().min(64).max(2048).optional(),
-      frameBounds: screenshotBounds.optional(), frameGroup: z.string().min(1).optional(),
-      sectionBounds: screenshotBounds.optional(), hideGroups: z.array(z.string().min(1)).max(64).optional(),
-      hideEntityMarkers: z.boolean().optional().default(false),
-      hideToolBrushes: z.boolean().optional().default(false), hideSkyBrushes: z.boolean().optional().default(false),
-      xray: z.boolean().optional().default(false), showEntityLabels: z.boolean().optional(),
-      showCoordinates: z.boolean().optional(), layoutOverlay: z.boolean().optional().default(false),
+      mode: z.enum(['perspective', 'top', 'front', 'side']).optional().default('perspective')
+        .describe('Viewport projection; use top/front/side for measurable layout review and perspective for visual composition'),
+      width: z.number().int().min(64).max(2048).optional().describe('PNG width in pixels; defaults to the editor capture size'),
+      height: z.number().int().min(64).max(2048).optional().describe('PNG height in pixels; defaults to the editor capture size'),
+      frameBounds: screenshotBounds.optional().describe('World-space bounds to fit in the image'),
+      frameGroup: z.string().min(1).optional().describe('Persistent group name or ID to fit; do not combine with frameBounds'),
+      sectionBounds: screenshotBounds.optional().describe('Only render geometry intersecting these world-space bounds'),
+      hideGroups: z.array(z.string().min(1)).max(64).optional().describe('Persistent group names or IDs to omit from the image'),
+      hideEntityMarkers: z.boolean().optional().default(false).describe('Hide point-entity markers while retaining map geometry'),
+      hideToolBrushes: z.boolean().optional().default(false).describe('Hide trigger, clip, hint, caulk, nodraw, and other tool-material brushes'),
+      hideSkyBrushes: z.boolean().optional().default(false).describe('Hide enclosing sky geometry so exterior overview captures can see inside'),
+      xray: z.boolean().optional().default(false).describe('Render occluded geometry translucently for spatial inspection'),
+      showEntityLabels: z.boolean().optional().describe('Show entity labels, primarily useful in orthographic layout captures'),
+      showCoordinates: z.boolean().optional().describe('Show coordinate/grid labels in orthographic captures'),
+      layoutOverlay: z.boolean().optional().default(false).describe('Add grid scale, axes, entity labels, and coordinate context to orthographic captures'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, ...options }) => {
@@ -1523,11 +1583,13 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     inputSchema: {
       ...sessionInput,
       views: z.array(z.enum(['perspective', 'top', 'front', 'side'])).min(1).max(4)
-        .optional().default(['perspective', 'top', 'front', 'side']),
-      width: z.number().int().min(320).max(1600).optional().default(960),
-      height: z.number().int().min(240).max(1200).optional().default(720),
-      frameBounds: screenshotBounds.optional(), frameGroup: z.string().min(1).optional(),
-      sectionBounds: screenshotBounds.optional(), hideGroups: z.array(z.string().min(1)).max(64).optional(),
+        .optional().default(['perspective', 'top', 'front', 'side']).describe('Unique views to capture with consistent framing'),
+      width: z.number().int().min(320).max(1600).optional().default(960).describe('Width in pixels for every returned view'),
+      height: z.number().int().min(240).max(1200).optional().default(720).describe('Height in pixels for every returned view'),
+      frameBounds: screenshotBounds.optional().describe('World-space bounds shared by all views; defaults to map bounds'),
+      frameGroup: z.string().min(1).optional().describe('Persistent group name or ID to fit in every view'),
+      sectionBounds: screenshotBounds.optional().describe('Only render geometry intersecting these world-space bounds'),
+      hideGroups: z.array(z.string().min(1)).max(64).optional().describe('Persistent groups to omit from every view'),
       hideToolBrushes: z.boolean().optional().default(true), hideSkyBrushes: z.boolean().optional().default(true),
       hideEntityMarkers: z.boolean().optional().default(false),
       showEntityLabels: z.boolean().optional().default(true), showCoordinates: z.boolean().optional().default(true),
@@ -1571,6 +1633,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     title: 'Describe Q3Edit MCP capabilities and limits',
     description: 'Return batch limits, supported operation versions, screenshot constraints, compiler availability, and the selected editor’s loaded project/game profile.',
     inputSchema: { ...sessionInput },
+    outputSchema: mapCapabilitiesOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
@@ -1578,13 +1641,15 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const editor = await hub.editorCapabilities(resolved);
       return toolResult({
         sessionId: resolved,
-        protocolVersion: 4,
+        protocolVersion: 5,
         essentialTools: [
-          'map_status', 'editor_selection', 'map_preview', 'map_apply', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
+          'map_status', 'editor_selection', 'operation_search', 'operation_schema', 'map_preview', 'map_apply', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
           'map_compile', 'map_play', 'game_command', 'game_set_view', 'game_screenshot',
         ],
         discovery: {
           note: 'MCP clients cache tool inventories. Restart the bridge and reconnect the client after upgrading when an essential tool is absent.',
+          operationWorkflow: ['operation_search', 'operation_schema', 'map_preview', 'map_apply'],
+          deferredLoading: 'Configured by the MCP client; Claude Code enables tool search automatically and OpenAI Responses API clients should set defer_loading=true.',
         },
         operations: { version: 11, maxPerBatch: MAX_BATCH_OPERATIONS, supported: SUPPORTED_MAP_OPERATIONS },
         spatialPlanning: {
@@ -1624,7 +1689,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
           order: ['fit', 'shift', 'scale', 'rotateDegrees'],
           semanticSlots: ['top', 'bottom', 'sides', 'walls', 'floor', 'ceiling', 'treads', 'risers', 'underside'],
-          note: 'Fit focal one-image surfaces; keep intentional tiling on large architectural surfaces and verify with editor_screenshot.',
+          note: 'Fit focal one-image surfaces; keep intentional tiling on large architectural surfaces and verify with editor_capture.',
         },
         coordinates: {
           finiteNumbersRequired: true,
@@ -1639,7 +1704,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
             'frameBounds', 'frameGroup', 'hideGroups', 'hideToolBrushes', 'hideSkyBrushes', 'sectionBounds', 'xray',
             'showEntityLabels', 'showCoordinates', 'layoutOverlay',
           ],
-          layoutPreset: 'editor_layout_screenshot',
+          layoutPreset: 'editor_capture with an orthographic mode and layoutOverlay=true',
         },
         compiler: {
           available: hub.compilerAvailable, qualities: ['fast', 'normal', 'full'],
@@ -1674,7 +1739,8 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   server.registerTool('operation_schema', {
     title: 'Get the exact schema for one map operation',
     description: 'Return the discriminated JSON Schema, required fields, constraints, and semantic notes for one operation accepted by map_apply and map_preview. Use this instead of inferring fields from the compatibility-oriented flat batch schema.',
-    inputSchema: { type: z.enum(SUPPORTED_MAP_OPERATIONS) },
+    inputSchema: { type: z.enum(SUPPORTED_MAP_OPERATIONS).describe('Exact operation type returned by operation_search or map_capabilities') },
+    outputSchema: operationSchemaOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ type }) => {
     const schema = operationSchemaByType.get(type);
@@ -1808,10 +1874,10 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     description: 'Find constraint-based spatial patterns for stronger composition. Results describe roles, route relationships, risks, variations, and adaptation to the live map; they contain no prefab geometry or fixed coordinates.',
     inputSchema: {
       ...sessionInput,
-      query: z.string().max(500).optional().default(''),
-      goals: z.array(z.string().min(1).max(200)).max(12).optional().default([]),
-      scale: designPatternScaleSchema.optional(),
-      limit: z.number().int().min(1).max(8).optional().default(4),
+      query: z.string().max(500).optional().default('').describe('Natural-language spatial intent such as vertical arena, layered loop, or readable landmark'),
+      goals: z.array(z.string().min(1).max(200)).max(12).optional().default([]).describe('Independent gameplay or composition goals used to rank patterns'),
+      scale: designPatternScaleSchema.optional().describe('Approximate intended map scale'),
+      limit: z.number().int().min(1).max(8).optional().default(4).describe('Maximum abstract patterns to return'),
     },
     outputSchema: designPatternSearchOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1836,8 +1902,8 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     inputSchema: {
       ...sessionInput,
       replace: z.boolean().optional().default(false).describe('Preview only the proposed plan instead of merging it with the current persisted plan'),
-      areas: z.array(spatialAreaProposalSchema).max(128).optional().default([]),
-      connections: z.array(spatialConnectionProposalSchema).max(256).optional().default([]),
+      areas: z.array(spatialAreaProposalSchema).max(128).optional().default([]).describe('Semantic spaces to add or replace; this preview creates no geometry'),
+      connections: z.array(spatialConnectionProposalSchema).max(256).optional().default([]).describe('Directed or bidirectional route intents linking area IDs'),
     },
     outputSchema: spatialPlanOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1878,17 +1944,17 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     description: 'Estimate sampled points, segments, distributed stair/support/post points, total brush count, and approximate length before previewing or applying create_path.',
     inputSchema: {
       ...sessionInput,
-      kind: constructionPathKindSchema,
-      curve: z.enum(['polyline', 'catmull-rom']).optional(),
-      points: z.array(vec3).min(2).max(64),
-      width: z.number().positive(),
-      height: z.number().positive().optional(),
-      thickness: z.number().positive().optional(),
-      spacing: z.number().positive().optional(),
-      subdivisions: z.number().int().min(1).max(16).optional(),
-      sides: z.number().int().min(3).max(32).optional(),
-      join: z.enum(['overlap', 'bevel']).optional(),
-      bankDegrees: z.number().min(-180).max(180).optional(),
+      kind: constructionPathKindSchema.describe('Generated construction family; corridor/wall/beam/trim sweep segments while railing/supports distribute repeated pieces'),
+      curve: z.enum(['polyline', 'catmull-rom']).optional().describe('Polyline follows control points directly; Catmull–Rom adds sampled curved segments'),
+      points: z.array(vec3).min(2).max(64).describe('Ordered world-space control points in map units'),
+      width: z.number().positive().describe('Cross-section width in map units'),
+      height: z.number().positive().optional().describe('Cross-section height in map units where applicable'),
+      thickness: z.number().positive().optional().describe('Floor, wall, trim, or shell thickness in map units'),
+      spacing: z.number().positive().optional().describe('Distance between distributed posts, supports, or stair samples'),
+      subdivisions: z.number().int().min(1).max(16).optional().describe('Catmull–Rom samples per control-point span; higher values create more brushes'),
+      sides: z.number().int().min(3).max(32).optional().describe('Radial sides for pipe/support cylinder geometry'),
+      join: z.enum(['overlap', 'bevel']).optional().describe('How adjacent swept segments meet at corners'),
+      bankDegrees: z.number().min(-180).max(180).optional().describe('Constant roll around the path direction in degrees'),
       variation: z.object({
         seed: z.number().int(), spacing: z.number().nonnegative().optional(), grid: z.number().positive().optional(),
       }).optional(),
@@ -2187,14 +2253,19 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       quality: z.enum(['fast', 'normal', 'full']).optional().default('fast'),
       artifactPath: z.string().min(1).optional().describe('Optional local .bsp destination for the compiled artifact'),
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ sessionId, quality, artifactPath }) => {
+    outputSchema: compileOutputSchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  }, async ({ sessionId, quality, artifactPath }, extra) => {
     try {
+      await reportToolProgress(extra, 0, 3, 'Checking compiler-safe map input');
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
       const preflight = inspectCompilerPreflight(snapshot.mapText);
       if (!preflight.ready) return toolError('Compiler preflight failed; inspect map_compile_preflight before compiling');
-      return toolResult(sessionValue(resolved, { ...(await hub.compileMap(quality, resolved, artifactPath) as Record<string, unknown>), preflight }));
+      await reportToolProgress(extra, 1, 3, `Compiling ${quality} BSP`);
+      const compiled = await hub.compileMap(quality, resolved, artifactPath) as Record<string, unknown>;
+      await reportToolProgress(extra, 3, 3, compiled.success === true ? 'Compile complete' : 'Compile finished with errors');
+      return toolResult(sessionValue(resolved, { ...compiled, preflight }));
     } catch (error) {
       return toolError(error);
     }
@@ -2224,14 +2295,17 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       noclip: z.boolean().optional().default(false),
       useLastCompile: z.boolean().optional().default(false),
     },
+    outputSchema: mapPlayOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ sessionId, quality, noclip, useLastCompile }) => {
+  }, async ({ sessionId, quality, noclip, useLastCompile }, extra) => {
     try {
       const resolved = session(sessionId);
       let compile: Record<string, unknown>;
       if (useLastCompile) {
+        await reportToolProgress(extra, 1, 4, 'Reusing the current revision’s compiled BSP');
         compile = { reused: true, revision: hub.snapshot(resolved).revision };
       } else {
+        await reportToolProgress(extra, 0, 4, `Compiling ${quality} BSP for playtest`);
         compile = await hub.compileMap(quality, resolved) as Record<string, unknown>;
         if (compile.success !== true) {
           return {
@@ -2241,7 +2315,9 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           };
         }
       }
+      await reportToolProgress(extra, 2, 4, 'Launching the compiled playtest');
       const launch = await hub.playMap(noclip, resolved);
+      await reportToolProgress(extra, 3, 4, 'Waiting for the game renderer');
       const status = await hub.waitForGameReady(30_000, resolved);
       const result = { sessionId: resolved, compile, launch, status };
       const commandErrors = status.commandErrors ?? [];
@@ -2252,6 +2328,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           structuredContent: result,
         };
       }
+      await reportToolProgress(extra, 4, 4, 'Playtest is ready');
       return toolResult(result, `${useLastCompile ? 'Reused the current compiled BSP and launched' : 'Compiled and launched'} editor session ${resolved} (${quality}${noclip ? ', verified noclip' : ''}).`);
     } catch (error) {
       return toolError(error);
@@ -2279,7 +2356,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     inputSchema: {
       ...sessionInput,
       refs: z.array(objectRef).min(1).max(500).optional().describe('Return these exact known references without requiring indirect filters'),
-      kind: z.enum(['entity', 'brush', 'face', 'patch']).optional(),
+      kind: z.enum(['entity', 'brush', 'face', 'patch']).optional().describe('Restrict results to one document-object kind; omit to search entities and complete geometry objects'),
       classname: z.string().optional().describe('Exact entity classname; geometry results are limited to geometry owned by matching entities'),
       texture: z.string().optional().describe('Case-insensitive texture name substring'),
       propertyKey: z.string().optional().describe('Entity property key that must exist'),
@@ -2287,17 +2364,24 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       group: z.string().optional().describe('Exact persistent group name or ID'),
       mins: compatibleVec3.optional().describe('Minimum world-space bounds; must be provided together with maxs'),
       maxs: compatibleVec3.optional().describe('Maximum world-space bounds; must be provided together with mins'),
-      boundsMode: z.enum(['intersects', 'inside']).optional().default('intersects'),
-      limit: z.number().int().min(1).max(500).optional().default(100),
+      boundsMode: z.enum(['intersects', 'inside']).optional().default('intersects').describe('intersects includes partial overlap; inside requires complete containment'),
+      limit: z.number().int().min(1).max(200).optional().default(100).describe('Maximum matches in this page; defaults to 100'),
+      cursor: z.string().regex(/^\d+:\d+$/).optional().describe('Opaque nextCursor from a previous response; cursors are revision-specific'),
     },
     outputSchema: mapQueryOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, refs, kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit }) => {
+  }, async ({ sessionId, refs, kind, classname, texture, propertyKey, propertyValue, group, mins, maxs, boundsMode, limit, cursor }) => {
     try {
       if ((mins && !maxs) || (!mins && maxs)) throw new Error('mins and maxs must be provided together');
       if (propertyValue !== undefined && !propertyKey) throw new Error('propertyValue requires propertyKey');
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
+      let offset = 0;
+      if (cursor) {
+        const [cursorRevision, cursorOffset] = cursor.split(':').map(Number);
+        if (cursorRevision !== snapshot.revision) throw new Error(`Map query cursor revision ${cursorRevision} is stale; current revision is ${snapshot.revision}`);
+        offset = cursorOffset;
+      }
       const options: MapQueryOptions = {
         refs,
         kind,
@@ -2311,10 +2395,16 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
           maxs: maxs as [number, number, number],
           mode: boundsMode,
         } : undefined,
-        limit,
+        limit: limit + 1,
+        offset,
       };
-      const matches = queryMap(snapshot.mapText, options);
-      return toolResult({ sessionId: resolved, revision: snapshot.revision, count: matches.length, matches });
+      const page = queryMap(snapshot.mapText, options);
+      const hasMore = page.length > limit;
+      const matches = page.slice(0, limit);
+      return toolResult({
+        sessionId: resolved, revision: snapshot.revision, count: matches.length,
+        nextCursor: hasMore ? `${snapshot.revision}:${offset + matches.length}` : null, matches,
+      });
     } catch (error) {
       return toolError(error);
     }
@@ -2325,9 +2415,10 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     description: 'Search the texture assets currently loaded by Q3Edit. Use returned names when creating or texturing geometry.',
     inputSchema: {
       ...sessionInput,
-      query: z.string().optional().default(''),
-      limit: z.number().int().min(1).max(200).optional().default(50),
+      query: z.string().optional().default('').describe('Tokenized texture or shader search; try semantic terms such as sky, jump, metal trim, or gothic floor'),
+      limit: z.number().int().min(1).max(200).optional().default(50).describe('Maximum matching assets to return'),
     },
+    outputSchema: assetSearchOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, query, limit }) => {
     try {
@@ -2399,10 +2490,11 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     description: 'Search Q3Edit entity definitions by classname, category, or description before creating an entity.',
     inputSchema: {
       ...sessionInput,
-      query: z.string().optional().default(''),
-      classType: z.enum(['point', 'brush']).optional(),
-      limit: z.number().int().min(1).max(200).optional().default(50),
+      query: z.string().optional().default('').describe('Classname, category, or purpose such as light, spawn, trigger, teleporter, or moving door'),
+      classType: z.enum(['point', 'brush']).optional().describe('Restrict definitions to point entities or brush entities'),
+      limit: z.number().int().min(1).max(200).optional().default(50).describe('Maximum matching class definitions to return'),
     },
+    outputSchema: assetSearchOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, query, classType, limit }) => {
     try {
@@ -2509,8 +2601,9 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   });
 
   server.registerTool('editor_screenshot', {
-    title: 'Capture a controlled Q3Edit viewport',
-    description: 'Render a perspective or orthographic PNG. The call can frame bounds/a named group and temporarily hide groups, entity markers, tool/sky brushes, or objects outside sectionBounds without modifying the document. xray produces a depth-free wireframe perspective.',
+    title: 'Deprecated: capture a controlled Q3Edit viewport',
+    description: 'Deprecated compatibility alias; use editor_capture. Render a perspective or orthographic PNG with optional framing, temporary visibility controls, and x-ray rendering.',
+    _meta: { deprecated: true, replacement: 'editor_capture' },
     inputSchema: {
       ...sessionInput,
       mode: z.enum(['perspective', 'top', 'front', 'side']).optional().default('perspective'),
@@ -2556,8 +2649,9 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   });
 
   server.registerTool('editor_layout_screenshot', {
-    title: 'Capture a map-design layout overview',
-    description: 'Capture a purpose-built top/front/side flat-shaded overview with grid, axis, and world-unit scale overlays. By default it frames the whole map, hides sky/tool brushes, and labels entities for spatial layout review.',
+    title: 'Deprecated: capture a map-design layout overview',
+    description: 'Deprecated compatibility alias; use editor_capture with an orthographic mode and layoutOverlay=true, or editor_review for several views.',
+    _meta: { deprecated: true, replacement: 'editor_capture' },
     inputSchema: {
       ...sessionInput,
       mode: z.enum(['top', 'front', 'side']).optional().default('top'),
@@ -2603,8 +2697,9 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   });
 
   server.registerTool('editor_review_bundle', {
-    title: 'Capture a multi-angle map review bundle',
-    description: 'Capture several consistently framed editor views in one call. The default bundle contains perspective, top, front, and side PNGs; orthographic views include layout grid/scale metadata. Use after major edits to review appearance and spatial structure without four tool round trips.',
+    title: 'Deprecated: capture a multi-angle map review bundle',
+    description: 'Deprecated compatibility alias; use editor_review for consistently framed perspective and orthographic visual QA.',
+    _meta: { deprecated: true, replacement: 'editor_review' },
     inputSchema: {
       ...sessionInput,
       views: z.array(z.enum(['perspective', 'top', 'front', 'side'])).min(1).max(4)
@@ -2662,6 +2757,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     title: 'Capture the compiled BSP playtest',
     description: 'Return a PNG from the browser ioquake3 preview with current lifecycle state, sampled mean luminance, and explicit black-frame detection. Call game_wait_ready first.',
     inputSchema: { ...sessionInput },
+    outputSchema: gameScreenshotOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
@@ -2689,6 +2785,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     title: 'Inspect compiled BSP preview status',
     description: 'Return ioquake3 lifecycle state, current map, noclip state, timestamps, last error, and recent stdout/stderr lines.',
     inputSchema: { ...sessionInput },
+    outputSchema: gameStatusOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
     try {
@@ -2706,11 +2803,15 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       ...sessionInput,
       timeoutMs: z.number().int().min(100).max(120_000).optional().default(30_000),
     },
+    outputSchema: gameStatusOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, timeoutMs }) => {
+  }, async ({ sessionId, timeoutMs }, extra) => {
     try {
       const resolved = session(sessionId);
-      return toolResult({ sessionId: resolved, ...(await hub.waitForGameReady(timeoutMs, resolved)) });
+      await reportToolProgress(extra, 0, 1, 'Waiting for compiled preview readiness');
+      const status = await hub.waitForGameReady(timeoutMs, resolved);
+      await reportToolProgress(extra, 1, 1, `Game preview state: ${status.state}`);
+      return toolResult({ sessionId: resolved, ...status });
     } catch (error) {
       return toolError(error);
     }
@@ -2720,6 +2821,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     title: 'Preview creation or edits in the live Q3Edit map',
     description: 'Primary safe preview for Q3Edit authoring requests such as creating a box, room, entity, or textured geometry. Runs map operations against an in-memory clone and returns generated objects and diagnostics without editing; optional reviews compare quality before versus after.',
     inputSchema: mapPreviewInputSchema,
+    outputSchema: mapPreviewOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, label, operations, responseDetail, reviews }) => {
     try {
@@ -2805,7 +2907,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       targetname: z.string().min(1).max(64).optional(),
       group: z.string().min(1).max(120).optional().default('Jump Pad'),
     },
-    annotations: { destructiveHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, mins, maxs, apex, targetname, group }) => {
     try {
       const resolved = session(sessionId);
@@ -2835,7 +2937,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       targetname: z.string().min(1).max(64).optional(),
       group: z.string().min(1).max(120).optional().default('Teleporter'),
     },
-    annotations: { destructiveHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, mins, maxs, destination, exitAngle, targetname, group }) => {
     try {
       const resolved = session(sessionId);
@@ -2857,6 +2959,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     title: 'Create or edit geometry and entities in the live Q3Edit map',
     description: 'Primary Q3Edit authoring tool for requests such as creating a box, room, light, model, or other map content. Applies one atomic, undoable operation batch in the connected editor. Creation/clone/array operations accept an optional symbolic id; later operations can target @id. Geometry includes primitives, wedges, stairs, convex plane brushes, textured modular prefabs, and bulk entity/box arrays. Texture transforms support semantic faces; edit_faces controls existing textures, projection, fit, and flags. Call map_status first, map_preview before non-trivial edits, and operation_schema for exact fields.',
     inputSchema: mapOperationBatchInputSchema,
+    outputSchema: mapApplyOutputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, label, operations, responseDetail }) => {
     try {
@@ -2946,16 +3049,21 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       artifactPath: z.string().min(1).optional(),
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
     },
+    outputSchema: saveAndCompileOutputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
-  }, async ({ sessionId, expectedRevision, path, artifactPath, quality }) => {
+  }, async ({ sessionId, expectedRevision, path, artifactPath, quality }, extra) => {
     try {
+      await reportToolProgress(extra, 0, 4, 'Checking the live document revision');
       const resolved = session(sessionId);
       const current = hub.snapshot(resolved);
       if (current.revision !== expectedRevision) throw new Error(`Revision conflict: expected ${expectedRevision}, current revision is ${current.revision}`);
+      await reportToolProgress(extra, 1, 4, 'Saving the live map');
       const saved = await hub.saveMap(path, resolved);
       const preflight = inspectCompilerPreflight(current.mapText);
       if (!preflight.ready) throw new Error('Compiler preflight failed; inspect map_compile_preflight before compiling');
+      await reportToolProgress(extra, 2, 4, `Compiling ${quality} BSP`);
       const compile = await hub.compileMap(quality, resolved, artifactPath) as Record<string, unknown>;
+      await reportToolProgress(extra, 4, 4, compile.success === true ? 'Save and compile complete' : 'Compile finished with errors');
       return toolResult({ sessionId: resolved, saved, compile, preflight },
         `Saved revision ${saved.revision} to ${saved.path}; compile ${compile.success ? 'succeeded' : 'failed'} (${quality}).`);
     } catch (error) {
