@@ -5,7 +5,6 @@ import type { Vec3 } from './math';
 import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 import { openExactPrimitiveDialog } from './primitive-dialog';
 import { openReleaseNotesDialog } from './release-notes-dialog';
-import { quickPlayLabel } from './quick-play-dialog';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -130,9 +129,9 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.import-prefab', label: 'Import Prefab...', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },
     { id: 'file.save-prefab', label: 'Save Selection as Prefab', menu: menu('File', 50, 'prefab'), enabled: hasSelection, execute: ({ editor }) => editor.saveSelectionAsPrefab() },
     { id: 'file.export-console', label: 'Export .map to Console', menu: menu('File', 60, 'export'), execute: ({ editor }) => console.log(editor.serializeMap()) },
-    { id: 'file.compile-bsp', label: 'Compile BSP...', menu: menu('File', 70, 'compile'), execute: ctx => ctx.compileBSP() },
-    { id: 'file.quick-play', label: ({ editor }) => quickPlayLabel(editor.preferences.quickPlay), defaultShortcut: 'Mod+Alt+2', menu: menu('File', 80, 'compile'), execute: ctx => ctx.quickPlay() },
-    { id: 'file.quick-play-options', label: 'Quick Play Options...', menu: menu('File', 81, 'compile'), execute: ctx => ctx.openQuickPlayOptions() },
+    { id: 'file.quick-play', label: 'Quick Play', defaultShortcut: 'Mod+Alt+2', menu: menu('File', 70, 'quick-play'), execute: ctx => ctx.quickPlay() },
+    { id: 'file.quick-play-options', label: 'Quick Play Options...', menu: menu('File', 71, 'quick-play'), execute: ctx => ctx.openQuickPlayOptions() },
+    { id: 'file.compile-bsp', label: 'Compile BSP...', menu: menu('File', 80, 'compile'), execute: ctx => ctx.compileBSP() },
 
     { id: 'edit.undo', label: 'Undo', defaultShortcut: 'Mod+Z', menu: menu('Edit', 0, 'history'), enabled: ({ editor }) => editor.history.canUndo, execute: ({ editor }) => editor.undo() },
     { id: 'edit.redo', label: 'Redo', defaultShortcut: 'Mod+Y', alternateShortcuts: ['Mod+Shift+Z'], menu: menu('Edit', 10, 'history'), enabled: ({ editor }) => editor.history.canRedo, execute: ({ editor }) => editor.redo() },

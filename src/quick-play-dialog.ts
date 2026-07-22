@@ -8,7 +8,6 @@ import {
 
 export interface QuickPlayDialogOptions {
   editor: Editor;
-  onPlay: (preferences: QuickPlayPreferences) => void | Promise<void>;
 }
 
 function option(value: string, label: string, selected: boolean): HTMLOptionElement {
@@ -36,13 +35,7 @@ function button(label: string, primary = false): HTMLButtonElement {
   return control;
 }
 
-export function quickPlayLabel(preferences: QuickPlayPreferences): string {
-  const quality = preferences.quality[0].toUpperCase() + preferences.quality.slice(1);
-  if (!preferences.botsEnabled) return `Quick Play — ${quality}`;
-  return `Quick Play — ${quality}, ${preferences.botCount} ${preferences.botCount === 1 ? 'Bot' : 'Bots'}`;
-}
-
-export function openQuickPlayDialog({ editor, onPlay }: QuickPlayDialogOptions): void {
+export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
   document.getElementById('quick-play-dialog')?.remove();
   const current = editor.preferences.quickPlay;
 
@@ -109,8 +102,7 @@ export function openQuickPlayDialog({ editor, onPlay }: QuickPlayDialogOptions):
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
   const cancel = button('Cancel');
-  const save = button('Save');
-  const play = button('Play Now', true);
+  const save = button('Save', true);
 
   const persist = (): QuickPlayPreferences => {
     const preferences = normalizeGlobalPreferences({
@@ -133,15 +125,9 @@ export function openQuickPlayDialog({ editor, onPlay }: QuickPlayDialogOptions):
     editor.statusMessage = 'Quick Play settings saved';
     overlay.remove();
   };
-  const playNow = (): void => {
-    const preferences = persist();
-    overlay.remove();
-    void onPlay(preferences);
-  };
-  play.onclick = playNow;
-  dialog.onsubmit = event => { event.preventDefault(); playNow(); };
+  dialog.onsubmit = event => { event.preventDefault(); save.click(); };
 
-  actions.append(cancel, save, play);
+  actions.append(cancel, save);
   dialog.append(title, description, fields, actions);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);

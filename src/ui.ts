@@ -2499,7 +2499,6 @@ export class UI {
   private openQuickPlayOptions(): void {
     openQuickPlayDialog({
       editor: this.editor,
-      onPlay: preferences => this.quickPlay(preferences),
     });
   }
 

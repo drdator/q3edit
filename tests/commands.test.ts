@@ -56,9 +56,9 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.release-notes').label).toBe('Release Notes...');
     expect(registry.getState('view.mcp-activity').label).toBe('MCP Activity');
     expect(registry.getState('view.mcp-activity').checked).toBe(false);
-    expect(registry.getState('file.quick-play').label).toBe('Quick Play — Normal');
+    expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     context.editor.preferences.quickPlay = { quality: 'full', botsEnabled: true, botCount: 2, botSkill: 3 };
-    expect(registry.getState('file.quick-play').label).toBe('Quick Play — Full, 2 Bots');
+    expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     registry.execute('file.quick-play');
     expect(quickPlay).toHaveBeenCalledWith();
   });
