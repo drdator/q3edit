@@ -549,8 +549,18 @@ describe('live MCP bridge', () => {
       const patchSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_patch' } });
       expect(patchSchema.structuredContent).toMatchObject({
         type: 'create_patch', required: ['type', 'preset', 'mins', 'maxs'],
-        notes: expect.arrayContaining([expect.stringContaining('native editable patchDef2')]),
+        notes: expect.arrayContaining([
+          expect.stringContaining('native editable patchDef2'),
+          expect.stringContaining('classification=detail'),
+        ]),
       });
+      expect(JSON.stringify((patchSchema.structuredContent as { jsonSchema: unknown }).jsonSchema)).toContain('"classification"');
+      const editPatchSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'edit_patches' } });
+      expect(editPatchSchema.structuredContent).toMatchObject({
+        type: 'edit_patches',
+        notes: expect.arrayContaining([expect.stringContaining('converts every targeted patch')]),
+      });
+      expect(JSON.stringify((editPatchSchema.structuredContent as { jsonSchema: unknown }).jsonSchema)).toContain('"classification"');
       const pathSchema = await client.callTool({ name: 'operation_schema', arguments: { type: 'create_path' } });
       expect(pathSchema.structuredContent).toMatchObject({
         type: 'create_path', required: ['type', 'id', 'kind', 'points', 'width'],

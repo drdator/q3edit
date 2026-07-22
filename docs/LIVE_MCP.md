@@ -198,8 +198,8 @@ Initial `map_apply` operations are:
 - `create_stairs`
 - `create_brush` from arbitrary convex face planes
 - `create_prefab` for textured, modular `pillar`, `door_frame`, and `jump_pad_base` assemblies
-- `create_patch` for native editable bevel, endcap, cylinder, arch, pipe, and ramp patchDef2 surfaces
-- `edit_patches` for material, natural/fit UVs, relative UV transforms, and subdivisions
+- `create_patch` for native editable bevel, endcap, cylinder, arch, pipe, and ramp patchDef2 surfaces, with optional detail/structural classification
+- `edit_patches` for material, natural/fit UVs, relative UV transforms, subdivisions, and detail/structural classification
 - `thicken_patch` for offset front/back surfaces with optional caps
 - `create_area` and `connect_areas` for persistent semantic plans with optional transparent geometry
 - `create_path` for polyline or Catmull-Rom corridors, walls, railings, pipes, beams, trim, stairs, and distributed supports
@@ -229,7 +229,7 @@ Creation operations accept `group` and an optional stable `groupId`. The created
 
 `create_box` and `create_primitive` accept semantic `textures.top`, `textures.bottom`, and `textures.sides` slots. For non-box primitives, top/bottom are the positive/negative caps along `axis`. `create_stairs` accepts `textures.treads`, `textures.risers`, `textures.sides`, and `textures.underside`; unspecified slots fall back to `texture`.
 
-`create_patch` produces ordinary patchDef2 control grids and validates their dimensions, finite coordinates/UVs, bounds, and tessellation before committing. `axis` selects the extrusion axis for cylindrical/cap surfaces and arches; `direction` orients ramps. `textureMode: "fit"` maps one repeat over the grid, while `"natural"` derives world-scale UVs. `edit_patches` applies fit/natural mapping before relative shift, scale, and rotation. Thickening replaces a source with grouped editable patch surfaces and can expose the result through one symbolic alias.
+`create_patch` produces ordinary patchDef2 control grids and validates their dimensions, finite coordinates/UVs, bounds, and tessellation before committing. `axis` selects the extrusion axis for cylindrical/cap surfaces and arches; `direction` orients ramps. `textureMode: "fit"` maps one repeat over the grid, while `"natural"` derives world-scale UVs. `classification: "detail"` keeps decorative curves from unnecessarily splitting the BSP; use `"structural"` only when a patch must participate in world structure. `edit_patches` applies fit/natural mapping before relative shift, scale, and rotation, and can reclassify existing patches. Thickening replaces a source with grouped editable patch surfaces and can expose the result through one symbolic alias.
 
 `create_path` samples two to 64 control points as a polyline or Catmull-Rom curve and produces ordinary grouped brushes. Its role-specific settings cover width, height/thickness, support/post/stair spacing, pipe sides, corner joins, constant banking, texture, and structural/detail classification. Optional seeded `variation` applies bounded per-segment width, height, spacing, and bank deviations; dimensions snap to its grid and the bounds must remain smaller than their base values. Every path is stored as versioned worldspawn metadata with its generated group, bounds, object count, optional replacement count, and variation settings; use `map_construction_paths_get` to recover that relationship in later sessions. `replaceTargets` atomically removes selected straight geometry only after the new path validates, making an angled or curved refinement one undoable operation. Q3 brushes are closed solids, so physical segment ends are always capped. Use `map_preview` before applying a dense or varied path to review exact generated objects, aggregate bounds, collisions, diagnostics, and the 256-object per-path limit.
 

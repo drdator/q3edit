@@ -689,6 +689,7 @@ const mapOperationVariants = [
     direction: z.enum(['x+', 'x-', 'y+', 'y-']).optional(),
     subdivisions: z.number().int().min(1).max(24).optional(),
     textureMode: z.enum(['natural', 'fit']).optional(),
+    classification: z.enum(['detail', 'structural']).optional(),
   }),
   z.object({
     type: z.literal('create_area'),
@@ -795,6 +796,7 @@ const mapOperationVariants = [
     scale: z.tuple([z.number().positive(), z.number().positive()]).optional(),
     rotateDegrees: z.number().optional(),
     subdivisions: z.number().int().min(1).max(24).optional(),
+    classification: z.enum(['detail', 'structural']).optional(),
   }),
   z.object({
     type: z.literal('thicken_patch'),
@@ -933,10 +935,12 @@ const OPERATION_SCHEMA_NOTES: Partial<Record<(typeof SUPPORTED_MAP_OPERATIONS)[n
   create_patch: [
     'Creates a native editable patchDef2 surface using bevel, endcap, cylinder, arch, pipe, or ramp control grids.',
     'axis selects the extrusion axis for bevel/endcap/cylinder/pipe and arch; direction orients ramps. Use textureMode=fit for one repeat or natural for world-scale tiling.',
+    'Set classification=detail for decorative curved surfaces that should not split the BSP or control visibility; use structural only when the patch must participate in world structure.',
     'Generated patches are validated for odd 3..31 control grids, finite control points/UVs, finite bounds, and non-empty tessellation.',
   ],
   edit_patches: [
     'Targets patch references or patch-owning entities. textureMode is applied before relative shift, scale, and rotation.',
+    'classification converts every targeted patch between detail and structural without rebuilding its control grid.',
     'subdivisions controls editor/render tessellation from 1 through 24 without changing the serialized control grid.',
   ],
   thicken_patch: [

@@ -3,6 +3,7 @@ import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
 import { applyMapOperations } from '../src/map-operations';
 import { parseMapWithDiagnostics } from '../src/mapfile';
+import { CONTENTS_DETAIL, CONTENTS_STRUCTURAL } from '../src/map-flags';
 
 function emptyEditor(): Editor {
   const editor = new Editor();
@@ -24,11 +25,13 @@ describe('MCP angled brush and patch operations', () => {
       texture: 'base_wall/metal',
       textureMode: 'natural' as const,
       subdivisions: 4,
+      classification: 'detail' as const,
     })));
 
     expect(editor.worldspawn.patches).toHaveLength(6);
     expect(editor.worldspawn.patches.every(patch => patch.subdivisions === 4 && patch.tessIndices.length > 0)).toBe(true);
     expect(editor.worldspawn.patches.every(patch => patch.editorGroupId)).toBe(true);
+    expect(editor.worldspawn.patches.every(patch => (patch.contentFlags & CONTENTS_DETAIL) !== 0)).toBe(true);
     for (const preset of presets) expect(result.aliases[`@${preset}`]).toEqual([expect.stringMatching(/^E0:P/)]);
     expect(parseMapWithDiagnostics(editor.serializeMap()).diagnostics).toEqual([]);
   });
@@ -42,7 +45,7 @@ describe('MCP angled brush and patch operations', () => {
       },
       {
         type: 'edit_patches', targets: ['@arch'], texture: 'base_trim/pewter', textureMode: 'fit',
-        shift: [0.25, 0], scale: [2, 1], rotateDegrees: 90, subdivisions: 8,
+        shift: [0.25, 0], scale: [2, 1], rotateDegrees: 90, subdivisions: 8, classification: 'structural',
       },
       { type: 'thicken_patch', id: 'shell', targets: ['@arch'], amount: 16, caps: true, group: 'Thick arch' },
     ]);
@@ -50,6 +53,7 @@ describe('MCP angled brush and patch operations', () => {
     expect(editor.worldspawn.patches).toHaveLength(6);
     expect(editor.worldspawn.patches.every(patch => patch.texture === 'base_trim/pewter')).toBe(true);
     expect(editor.worldspawn.patches.every(patch => patch.subdivisions === 8 && patch.editorGroupId)).toBe(true);
+    expect(editor.worldspawn.patches.every(patch => (patch.contentFlags & (CONTENTS_DETAIL | CONTENTS_STRUCTURAL)) === 0)).toBe(true);
     expect(result.aliases['@shell']).toHaveLength(6);
   });
 

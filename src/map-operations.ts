@@ -242,6 +242,7 @@ export interface CreatePatchOperation extends CreationMetadata {
   direction?: WedgeDirection;
   subdivisions?: number;
   textureMode?: 'natural' | 'fit';
+  classification?: 'detail' | 'structural';
 }
 
 export interface EditPatchesOperation {
@@ -253,6 +254,7 @@ export interface EditPatchesOperation {
   scale?: [number, number];
   rotateDegrees?: number;
   subdivisions?: number;
+  classification?: 'detail' | 'structural';
 }
 
 export interface ThickenPatchOperation extends CreationMetadata {
@@ -799,6 +801,12 @@ function validateGeneratedPatch(patch: Patch): void {
   }
 }
 
+function classifyPatch(patch: Patch, classification: 'detail' | 'structural'): void {
+  patch.contentFlags = classification === 'detail'
+    ? (patch.contentFlags | CONTENTS_DETAIL) & ~CONTENTS_STRUCTURAL
+    : patch.contentFlags & ~(CONTENTS_DETAIL | CONTENTS_STRUCTURAL);
+}
+
 function addPatch(editor: Editor, entity: Entity, operation: CreatePatchOperation): Patch {
   assertBounds(operation.mins, operation.maxs);
   const texture = operation.texture ?? 'common/caulk';
@@ -826,6 +834,7 @@ function addPatch(editor: Editor, entity: Entity, operation: CreatePatchOperatio
   }
   if (operation.textureMode === 'fit') fitPatchUV(patch);
   else if (operation.textureMode === 'natural') naturalizePatchUV(patch);
+  if (operation.classification !== undefined) classifyPatch(patch, operation.classification);
   validateGeneratedPatch(patch);
   entity.patches.push(patch);
   return patch;
@@ -859,6 +868,7 @@ function applyEditPatches(operation: EditPatchesOperation, patches: Array<{ enti
       transformPatchUV(patch, operation.shift ?? [0, 0], operation.scale ?? [1, 1], operation.rotateDegrees ?? 0);
     }
     if (operation.subdivisions !== undefined) { patch.subdivisions = operation.subdivisions; tessellatePatch(patch); }
+    if (operation.classification !== undefined) classifyPatch(patch, operation.classification);
     validateGeneratedPatch(patch);
   }
 }
