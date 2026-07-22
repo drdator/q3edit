@@ -304,6 +304,13 @@ describe('live MCP bridge', () => {
     await client.connect(clientTransport);
 
     try {
+      const instructions = client.getInstructions();
+      expect(instructions?.split('\n\n')[0].length).toBeLessThanOrEqual(512);
+      expect(instructions).toContain('For requests like "create a box in the current Q3Edit map"');
+      expect(instructions?.slice(0, 512)).toContain("use this server's tools");
+      expect(instructions?.slice(0, 512)).toContain('Never substitute browser, computer-use, shell, or direct .map file editing');
+      expect(instructions?.slice(0, 512)).toContain('map_preview and map_apply');
+
       const tools = await client.listTools();
       expect(tools.tools.map(tool => tool.name)).toEqual([
         'editor_sessions',
@@ -371,6 +378,8 @@ describe('live MCP bridge', () => {
         'map_save_and_compile',
       ]);
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
+      const mapApply = tools.tools.find(tool => tool.name === 'map_apply');
+      expect(`${mapApply?.title} ${mapApply?.description}`).toMatch(/create.*box.*Q3Edit|Q3Edit.*creating a box/i);
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
       for (const name of ['editor_selection', 'map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
@@ -483,7 +492,7 @@ describe('live MCP bridge', () => {
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
         sessionId: 'editor-a', protocolVersion: 4,
-        essentialTools: expect.arrayContaining(['editor_selection', 'editor_capture', 'editor_review', 'game_set_view', 'map_undo']),
+        essentialTools: expect.arrayContaining(['editor_selection', 'map_preview', 'map_apply', 'editor_capture', 'editor_review', 'game_set_view', 'map_undo']),
         operations: { version: 11, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },

@@ -1302,6 +1302,15 @@ function compactApplyResult(result: {
   };
 }
 
+// Codex prioritizes the first 512 characters of MCP server instructions while
+// deciding whether this server matches the user's request. Keep this routing
+// paragraph self-contained and at or below that limit.
+const Q3EDIT_ROUTING_INSTRUCTIONS = `Q3Edit is the authoritative interface for the live Quake III map. For requests like "create a box in the current Q3Edit map", or any request to create, edit, inspect, texture, compile, play, or modify the current map or selection, use this server's tools. Never substitute browser, computer-use, shell, or direct .map file editing unless the user asks to test the UI or this server is unavailable. Start with editor_sessions and map_status (editor_selection for selected objects), then map_preview and map_apply.`;
+
+const Q3EDIT_SERVER_INSTRUCTIONS = `${Q3EDIT_ROUTING_INSTRUCTIONS}
+
+Read q3edit://agent-workflow before substantial authoring. Select the intended editor session, inspect status/style/spatial state, preview atomic revision-checked batches, and use asset discovery instead of guessing. Treat texture projection as part of construction and finish major edits with design review plus editor_capture/editor_review visual checks.`;
+
 export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityLog): McpServer {
   let selectedEditorSessionId: string | undefined;
   const session = (requested?: string): string => hub.resolveSessionId(requested ?? selectedEditorSessionId);
@@ -1310,7 +1319,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     return { sessionId, result: value };
   };
   const server = new McpServer({ name: 'q3edit-live', version: '0.1.0' }, {
-    instructions: 'Read q3edit://agent-workflow before substantial authoring. Select the intended editor session, inspect status/style/spatial state, preview atomic revision-checked batches, and use asset discovery instead of guessing. Treat texture projection as part of construction and finish major edits with design review plus editor_capture/editor_review visual checks.',
+    instructions: Q3EDIT_SERVER_INSTRUCTIONS,
   });
   server.registerResource('Q3Edit agent workflow', 'q3edit://agent-workflow', {
     title: 'Q3Edit MCP map-authoring workflow',
@@ -1421,7 +1430,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_status', {
     title: 'Get live Q3Edit map status',
-    description: 'Return the connected editor, active map, revision, map counts, and diagnostics summary.',
+    description: 'First call for live Q3Edit map authoring: return the connected editor, active map, revision, map counts, and diagnostics summary before creating or editing geometry and entities.',
     inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
@@ -1684,7 +1693,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         sessionId: resolved,
         protocolVersion: 4,
         essentialTools: [
-          'map_status', 'editor_selection', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
+          'map_status', 'editor_selection', 'map_preview', 'map_apply', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
           'map_compile', 'map_play', 'game_command', 'game_set_view', 'game_screenshot',
         ],
         discovery: {
@@ -2803,8 +2812,8 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   });
 
   server.registerTool('map_preview', {
-    title: 'Preview map operations without committing',
-    description: 'Run an operation batch against an in-memory clone. Returns generated objects and diagnostics without editing; reviews can also compare gameplay, routes, geometry, textures, style, and spatial quality before versus after.',
+    title: 'Preview creation or edits in the live Q3Edit map',
+    description: 'Primary safe preview for Q3Edit authoring requests such as creating a box, room, entity, or textured geometry. Runs map operations against an in-memory clone and returns generated objects and diagnostics without editing; optional reviews compare quality before versus after.',
     inputSchema: mapPreviewInputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, label, operations, responseDetail, reviews }) => {
@@ -2940,8 +2949,8 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
   });
 
   server.registerTool('map_apply', {
-    title: 'Apply live map operations',
-    description: 'Apply one atomic, undoable batch in the connected Q3Edit browser. Creation/clone/array operations accept an optional symbolic id; later operations in the batch can target @id. assign_group gives objects a stable persistent group for later map_query calls. Geometry includes primitives, wedges, stairs, convex plane brushes, textured modular prefabs, and bulk entity/box arrays. Geometry creation accepts textureTransform for all faces and textureTransforms for semantic face overrides; edit_faces controls existing face textures, projection, fit, and flags. Set responseDetail to compact for large batches and call operation_schema for exact fields.',
+    title: 'Create or edit geometry and entities in the live Q3Edit map',
+    description: 'Primary Q3Edit authoring tool for requests such as creating a box, room, light, model, or other map content. Applies one atomic, undoable operation batch in the connected editor. Creation/clone/array operations accept an optional symbolic id; later operations can target @id. Geometry includes primitives, wedges, stairs, convex plane brushes, textured modular prefabs, and bulk entity/box arrays. Texture transforms support semantic faces; edit_faces controls existing textures, projection, fit, and flags. Call map_status first, map_preview before non-trivial edits, and operation_schema for exact fields.',
     inputSchema: mapOperationBatchInputSchema,
     annotations: { destructiveHint: true, openWorldHint: false },
   }, async ({ sessionId, expectedRevision, label, operations, responseDetail }) => {

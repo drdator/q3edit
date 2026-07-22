@@ -51,6 +51,13 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 
 ## Tools
 
+The server identifies Q3Edit as the authoritative interface for live Quake III
+map requests in its MCP initialization instructions. Compatible clients such as
+Codex therefore receive the routing rule automatically: requests to create,
+edit, inspect, texture, compile, or play the current Q3Edit map should use these
+tools, while browser or computer-control tools are reserved for explicit UI
+testing or MCP unavailability. Users do not need a personal `AGENTS.md` rule.
+
 - `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
 - `activity_log` returns recent calls made by the current MCP connection and the path to its complete append-only JSONL transcript. Entries include the target editor session, summarized arguments/results, duration, status, and revision delta; full map text and image payloads are omitted.
 - `map_capabilities` advertises the batch limit and supported operation version/types, coordinate guidance, screenshot dimensions and modes, compiler availability, and the targeted editor's active game/project and loaded asset counts.
