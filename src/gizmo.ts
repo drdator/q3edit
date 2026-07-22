@@ -1,5 +1,6 @@
 import { Vec3, Mat4, vec3Add, vec3Sub, vec3Scale, vec3Length, vec3Copy, snapAxisDelta } from './math';
 import { Editor } from './editor';
+import { cloneTextureProjection, type BrushTextureProjection } from './brush';
 import { PatchControlPoint } from './patch';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { createLineBuffer } from './gl-utils';
@@ -27,6 +28,7 @@ export class Gizmo {
   private origMins: Vec3 = [0, 0, 0];
   private origMaxs: Vec3 = [0, 0, 0];
   private origPoints: [Vec3, Vec3, Vec3][][] = [];
+  private origTextureProjections: BrushTextureProjection[][] = [];
   private origPatchCtrls: PatchControlPoint[][][] = [];
   private screenDir: [number, number] = [0, 0];
   private screenDirLen = 0;
@@ -163,6 +165,7 @@ export class Gizmo {
       const center = this.editor.selectionCenter();
       if (center) this.center = center;
       this.origPoints = [];
+      this.origTextureProjections = [];
       this.origPatchCtrls = [];
       const selectedBrushItems = getSelectedBrushItems(this.editor);
       const selectedPatchItems = getSelectedPatchItems(this.editor);
@@ -173,6 +176,9 @@ export class Gizmo {
           brush.faces.map((f: { points: [Vec3, Vec3, Vec3] }) =>
             [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
           )
+        );
+        this.origTextureProjections.push(
+          brush.faces.map(face => cloneTextureProjection(face.textureProjection)),
         );
         for (let i = 0; i < 3; i++) {
           if (brush.mins[i] < mins[i]) mins[i] = brush.mins[i];
@@ -307,7 +313,10 @@ export class Gizmo {
         this.editor,
         selectedBrushItems.flatMap((item, index) => {
           const origPoints = this.origPoints[index];
-          return origPoints?.length ? [{ brush: item.brush, origPoints }] : [];
+          const textureProjections = this.origTextureProjections[index];
+          return origPoints?.length && textureProjections?.length
+            ? [{ brush: item.brush, origPoints, textureProjections }]
+            : [];
         }),
         selectedPatchItems.flatMap((item, index) => {
           const origCtrl = this.origPatchCtrls[index];
