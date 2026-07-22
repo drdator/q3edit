@@ -58,11 +58,24 @@ codex mcp add q3edit --url http://127.0.0.1:8765/mcp
 
 ## Connect Claude Code
 
+The repository also includes a Claude Code package that connects to the same
+MCP server and reuses the identical map-authoring skill. From the repository
+root:
+
+```bash
+claude plugin marketplace add ./
+claude plugin install q3edit@q3edit
+```
+
+Restart Claude Code and begin a new session after installing. Use
+`claude plugin list` and `/mcp` to confirm that the plugin and its `q3edit`
+server are enabled.
+
+Clients that do not support Claude Code plugins can connect directly:
+
 ```bash
 claude mcp add --transport http --scope local q3edit http://127.0.0.1:8765/mcp
 ```
-
-Use `/mcp` or `claude mcp list` to confirm the connection.
 
 ## Tools
 
