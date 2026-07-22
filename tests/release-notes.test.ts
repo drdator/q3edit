@@ -2,24 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
   dismissReleaseNotes,
   isReleaseNotesDismissed,
-  JULY_2026_RELEASE_NOTES,
-  JULY_21_RELEASE_NOTES,
-  JULY_22_UPDATE_RELEASE_NOTES,
-  MCP_PREVIEW_RELEASE_NOTES,
   RELEASE_NOTES_DISMISSED_KEY,
   RELEASE_NOTES_NEVER_SHOW_KEY,
   RELEASE_NOTES,
 } from '../src/release-notes-dialog';
 
 describe('release notes', () => {
-  it('keeps the newest update first and preserves the previous release', () => {
-    expect(RELEASE_NOTES).toEqual([
-      JULY_22_UPDATE_RELEASE_NOTES,
-      MCP_PREVIEW_RELEASE_NOTES,
-      JULY_21_RELEASE_NOTES,
-      JULY_2026_RELEASE_NOTES,
-    ]);
+  it('loads unique releases in descending chronological order', () => {
+    expect(RELEASE_NOTES.length).toBeGreaterThan(1);
     expect(new Set(RELEASE_NOTES.map(release => release.id)).size).toBe(RELEASE_NOTES.length);
+    for (let index = 1; index < RELEASE_NOTES.length; index += 1) {
+      const previous = RELEASE_NOTES[index - 1];
+      const current = RELEASE_NOTES[index];
+      expect(previous.date > current.date || (previous.date === current.date && previous.order >= current.order)).toBe(true);
+    }
   });
 
   it('marks the current entry read while allowing a permanent automatic-display opt-out', () => {
@@ -29,19 +25,21 @@ describe('release notes', () => {
       setItem: (key: string, value: string) => { values.set(key, value); },
       removeItem: (key: string) => { values.delete(key); },
     };
+    const currentRelease = RELEASE_NOTES[0];
+    const previousRelease = RELEASE_NOTES[1];
 
-    expect(isReleaseNotesDismissed(JULY_22_UPDATE_RELEASE_NOTES, storage)).toBe(false);
-    dismissReleaseNotes(JULY_22_UPDATE_RELEASE_NOTES, storage);
-    expect(values.get(RELEASE_NOTES_DISMISSED_KEY)).toBe(JULY_22_UPDATE_RELEASE_NOTES.id);
-    expect(isReleaseNotesDismissed(JULY_22_UPDATE_RELEASE_NOTES, storage)).toBe(true);
-    expect(isReleaseNotesDismissed(MCP_PREVIEW_RELEASE_NOTES, storage)).toBe(false);
+    expect(isReleaseNotesDismissed(currentRelease, storage)).toBe(false);
+    dismissReleaseNotes(currentRelease, storage);
+    expect(values.get(RELEASE_NOTES_DISMISSED_KEY)).toBe(currentRelease.id);
+    expect(isReleaseNotesDismissed(currentRelease, storage)).toBe(true);
+    expect(isReleaseNotesDismissed(previousRelease, storage)).toBe(false);
 
-    dismissReleaseNotes(JULY_22_UPDATE_RELEASE_NOTES, storage, true);
+    dismissReleaseNotes(currentRelease, storage, true);
     expect(values.get(RELEASE_NOTES_NEVER_SHOW_KEY)).toBe('1');
-    expect(isReleaseNotesDismissed(MCP_PREVIEW_RELEASE_NOTES, storage)).toBe(true);
+    expect(isReleaseNotesDismissed(previousRelease, storage)).toBe(true);
 
-    dismissReleaseNotes(JULY_22_UPDATE_RELEASE_NOTES, storage, false);
+    dismissReleaseNotes(currentRelease, storage, false);
     expect(values.has(RELEASE_NOTES_NEVER_SHOW_KEY)).toBe(false);
-    expect(isReleaseNotesDismissed(MCP_PREVIEW_RELEASE_NOTES, storage)).toBe(false);
+    expect(isReleaseNotesDismissed(previousRelease, storage)).toBe(false);
   });
 });
