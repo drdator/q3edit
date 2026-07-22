@@ -241,6 +241,7 @@ body.landing-active #app {
 
 .landing-button {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   gap: 22px;
@@ -249,6 +250,7 @@ body.landing-active #app {
   font: 700 11px/1 monospace;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+  white-space: nowrap;
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 
