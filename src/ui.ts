@@ -96,7 +96,7 @@ export class UI {
   private mcpConnect: ((url: string) => void | Promise<void>) | null = null;
   private mcpDisconnect: (() => void) | null = null;
   private gamePreviewStatus: GamePreviewStatus = {
-    state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
+    state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, botNavigation: false, noclip: false,
     noclipRequested: false, commandErrors: [], launchedAt: null, runningAt: null, error: null, consoleTail: [],
     renderer: null,
   };
@@ -2814,7 +2814,8 @@ export class UI {
     const retainedAas = aas ? new Uint8Array(aas) : null;
     this.gamePreviewLaunch = { mapName: safeMapName, bsp: retainedBsp, aas: retainedAas, noclip, commands: structuredClone(commands) };
     this.updateGamePreviewStatus({
-      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName, noclip: false,
+      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName,
+      botNavigation: retainedAas !== null, noclip: false,
       noclipRequested: noclip, commandErrors: [],
       launchedAt: new Date().toISOString(), runningAt: null, error: null, consoleTail: [],
       renderer: null,
@@ -2906,9 +2907,13 @@ export class UI {
         if (noclip && message.noclip !== true && commandErrors.length === 0) {
           commandErrors.push('Noclip was requested but the game did not confirm that it is enabled.');
         }
-        status.textContent = commandErrors.length > 0 ? `Running ${safeMapName} with command errors` : `Running ${safeMapName}`;
+        const navigationLabel = message.botNavigation === true ? ' with bot navigation' : ' without bot navigation';
+        status.textContent = commandErrors.length > 0
+          ? `Running ${safeMapName}${navigationLabel} with command errors`
+          : `Running ${safeMapName}${navigationLabel}`;
         this.updateGamePreviewStatus({
           state: 'running', message: status.textContent, runningAt: new Date().toISOString(),
+          botNavigation: message.botNavigation === true,
           noclip: message.noclip === true,
           commandErrors,
           renderer: message.renderer ?? null,

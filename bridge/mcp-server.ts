@@ -282,7 +282,7 @@ const compileOutputSchema = z.looseObject({
 });
 const gameStatusFields = {
   sessionId: z.string(), state: z.enum(['idle', 'preparing', 'loading', 'running', 'error', 'closed']), message: z.string(),
-  mapName: z.string().nullable(), noclip: z.boolean(), noclipRequested: z.boolean().optional(),
+  mapName: z.string().nullable(), botNavigation: z.boolean(), noclip: z.boolean(), noclipRequested: z.boolean().optional(),
   commandErrors: z.array(z.string()).optional(), launchedAt: z.string().nullable(), runningAt: z.string().nullable(),
   error: z.string().nullable(), consoleTail: z.array(z.string()), renderer: z.unknown().optional(),
 };

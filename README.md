@@ -16,7 +16,7 @@ geometry, entities, textures, terrain, and client-side BSP compilation.
 - Local `.map` file loading and saving
 - Browser-local PK3 management with ordering and enable/disable controls
 - OpenArena textures by default, with optional retail Quake III PK3 files
-- q3map compiled to WebAssembly for client-side BSP, VIS, and light stages
+- q3map and BSPC compiled to WebAssembly for client-side BSP, VIS, light, and bot-navigation stages
 - ioquake3 compiled to WebAssembly for playing compiled maps in the editor
 
 Q3Edit is under active development. Save important work frequently and keep
@@ -58,7 +58,7 @@ Build the TypeScript/Vite application:
 npm run build
 ```
 
-Build a complete deployable `dist/`, including q3map JavaScript and WebAssembly:
+Build a complete deployable `dist/`, including q3map and BSPC JavaScript and WebAssembly:
 
 ```sh
 npm run build:release
@@ -66,6 +66,8 @@ npm run build:release
 
 The q3map port and its provenance are documented in
 [`q3map-compiler/README.md`](q3map-compiler/README.md).
+The BSP-to-AAS bot-navigation port is documented in
+[`bspc-compiler/README.md`](bspc-compiler/README.md).
 The browser player uses a pinned, unmodified ioquake3 revision. Build and
 source details are documented in [`public/ioquake3/SOURCE.md`](public/ioquake3/SOURCE.md).
 

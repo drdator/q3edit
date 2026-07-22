@@ -37,6 +37,8 @@ export interface GamePreviewStatus {
   state: 'idle' | 'preparing' | 'loading' | 'running' | 'error' | 'closed';
   message: string;
   mapName: string | null;
+  /** True when an AAS bot-navigation artifact is installed beside the BSP. */
+  botNavigation: boolean;
   /** True only after the running game has acknowledged that noclip is enabled. */
   noclip: boolean;
   noclipRequested?: boolean;

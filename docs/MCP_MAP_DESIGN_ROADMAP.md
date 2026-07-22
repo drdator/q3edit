@@ -298,12 +298,14 @@ now completes BSP, VIS, and LIGHT with both patches intact.
   common targets, models, and one-shot/startup triggers.
 - [x] Resolve likely refs for `noshader` diagnostics and add
   `diagnostic_explain` with actionable repair templates.
-- [ ] Add bot AAS generation through a bundled BSPC-compatible compiler.
+- [x] Add bot AAS generation through a bundled BSPC-compatible compiler.
 
-Implementation note: AAS remains separate because q3map does not generate bot
-navigation data. Completing it requires porting and validating a BSPC/AAS
-toolchain in WebAssembly, then adding staged diagnostics and artifact export
-similar to BSP/VIS/LIGHT.
+Implementation note: AAS remains a separate fourth compile stage because q3map
+does not generate bot navigation data. Q3Edit now runs a bundled BSPC WebAssembly
+port after the final BSP pass, keeps BSP and AAS together in the revision cache,
+installs both in Quick Play, and exports sibling `.bsp`/`.aas` artifacts through
+the MCP. AAS failure is reported independently and does not discard a playable
+BSP.
 
 ## Success criteria
 

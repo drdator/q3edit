@@ -184,7 +184,7 @@ class FakeEditorSocket extends EventEmitter {
         result: {
           mimeType: 'image/png', data: 'Z2FtZQ==', width: 1280, height: 720,
           blackFrame: false, meanLuminance: 42,
-          status: { state: 'running', message: 'Running live', mapName: 'live', noclip: true, launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [] },
+          status: { state: 'running', message: 'Running live', mapName: 'live', botNavigation: true, noclip: true, launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [] },
         },
       }));
     } else if (request.type === 'game_status' || request.type === 'game_wait_ready' || request.type === 'game_command' || request.type === 'game_set_view') {
@@ -192,7 +192,7 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: {
           state: request.type === 'game_command' || request.type === 'game_set_view' ? 'preparing' : 'running',
-          message: 'Running live', mapName: 'live', noclip: true, noclipRequested: true, commandErrors: [],
+          message: 'Running live', mapName: 'live', botNavigation: true, noclip: true, noclipRequested: true, commandErrors: [],
           launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [],
         },
       }));

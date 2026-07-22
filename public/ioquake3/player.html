@@ -338,6 +338,7 @@
                 const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
                 send('q3edit-player:running', {
                   mapName: launch.mapName,
+                  botNavigation: Boolean(launch.aas),
                   noclip: launch.noclip && consoleLines.some(line => /\bnoclip\s+ON\b/i.test(line)),
                   commandErrors: consoleLines.filter(line => /unknown command/i.test(line) && /\b(?:noclip|setviewpos|map_restart)\b/i.test(line)),
                   renderer: {
