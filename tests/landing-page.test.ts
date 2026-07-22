@@ -27,4 +27,11 @@ describe('landing page', () => {
     expect(html).not.toContain('Quake III Arena map editor');
     expect(html).not.toContain('Live MCP authoring');
   });
+
+  it('keeps the editor screenshot caption concise', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+    expect(html).toContain('The editor running in a browser tab');
+    expect(html).not.toContain('Real screenshot —');
+  });
 });
