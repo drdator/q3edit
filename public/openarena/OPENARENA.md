@@ -1,7 +1,11 @@
 # OpenArena default assets
 
 Q3Edit includes the unmodified `pak0.pk3` and `pak4-textures.pk3` archives
-from OpenArena 0.8.8 as its default texture library.
+from OpenArena 0.8.8 as its default models and texture library. It also builds
+`q3edit-bots.pk3` from the unmodified `scripts/bots.txt` and `botfiles/` entries
+in OpenArena's `pak6-misc.pk3`. Those definitions and personality files are
+used by Quick Play with Bot. OpenArena's unrelated maps, demos, and navigation
+files are not included in the generated archive.
 
 OpenArena is free, open content released under the GNU General Public License,
 version 2 or later. The complete license is provided in `COPYING`.

@@ -63,6 +63,7 @@ interface GamePreviewLaunch {
   mapName: string;
   bsp: Uint8Array;
   aas: Uint8Array | null;
+  botMinPlayers: number;
   noclip: boolean;
   commands: Array<{ name: 'setviewpos' | 'map_restart'; args: string[] }>;
 }
@@ -125,7 +126,7 @@ export class UI {
       openRotateDialog: () => this.openRotateDialog(),
       openScaleDialog: () => this.openScaleDialog(),
       compileBSP: () => this.compileBSP(),
-      quickPlay: quality => this.compileBSP(quality),
+      quickPlay: (quality, withBot = false) => this.compileBSP(quality, withBot),
       managePakFiles: () => this.onManagePakFiles?.(),
       openPreferences: () => this.openPreferences(),
       openProjectSettings: () => this.openProjectSettings(),
@@ -2483,7 +2484,10 @@ export class UI {
     });
   }
 
-  private async compileBSP(autoPlayQuality: 'fast' | 'normal' | 'full' | null = null): Promise<void> {
+  private async compileBSP(
+    autoPlayQuality: 'fast' | 'normal' | 'full' | null = null,
+    autoBot = false,
+  ): Promise<void> {
     document.getElementById('compile-dialog')?.remove();
     const autoPlay = autoPlayQuality !== null;
     const autoPlayLabel = autoPlayQuality
@@ -2505,8 +2509,8 @@ export class UI {
     title.className = 'editor-dialog-title';
     title.textContent = autoPlay
       ? (this.editor.isRegionActive()
-          ? `Quick Play (${autoPlayLabel}, Region)`
-          : `Quick Play (${autoPlayLabel})`)
+          ? `Quick Play${autoBot ? ' with Bot' : ''} (${autoPlayLabel}, Region)`
+          : `Quick Play${autoBot ? ' with Bot' : ''} (${autoPlayLabel})`)
       : (this.editor.isRegionActive() ? 'Compile BSP (Region)' : 'Compile BSP');
     dialog.appendChild(title);
 
@@ -2514,8 +2518,8 @@ export class UI {
     description.className = 'editor-dialog-description';
     description.textContent = autoPlay
       ? (this.editor.isRegionActive()
-          ? `Compile the active region at ${autoPlayQuality} quality, then start it in browser ioquake3.`
-          : `Compile the current map at ${autoPlayQuality} quality, then start it in browser ioquake3.`)
+          ? `Compile the active region at ${autoPlayQuality} quality, then start it in browser ioquake3${autoBot ? ' with one bot opponent' : ''}.`
+          : `Compile the current map at ${autoPlayQuality} quality, then start it in browser ioquake3${autoBot ? ' with one bot opponent' : ''}.`)
       : (this.editor.isRegionActive()
           ? 'Compile the active region with the browser-based q3map toolchain.'
           : 'Compile the current map with the browser-based q3map toolchain.');
@@ -2726,8 +2730,15 @@ export class UI {
         };
 
         if (autoPlay && !dismissed) {
-          overlay.remove();
-          this.openBspPreview(baseName, result.bsp, result.aas);
+          if (autoBot && !result.aas) {
+            dialog.classList.remove('success');
+            dialog.classList.add('warning');
+            status.textContent = 'Compiled, but Quick Play with Bot requires successful bot navigation';
+            this.editor.statusMessage = 'Bot Quick Play stopped: AAS generation failed';
+          } else {
+            overlay.remove();
+            this.openBspPreview(baseName, result.bsp, result.aas, false, [], autoBot ? 2 : 0);
+          }
         }
       } else {
         dialog.classList.add('error');
@@ -2781,7 +2792,10 @@ export class UI {
   runGamePreviewCommand(command: 'noclip' | 'restart'): GamePreviewStatus {
     const launch = this.gamePreviewLaunch;
     if (!launch) throw new Error('No compiled BSP preview is available; call map_play first');
-    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, command === 'noclip' ? true : launch.noclip, launch.commands);
+    this.openBspPreview(
+      launch.mapName, launch.bsp, launch.aas,
+      command === 'noclip' ? true : launch.noclip, launch.commands, launch.botMinPlayers,
+    );
     return this.getGamePreviewStatus();
   }
 
@@ -2792,7 +2806,7 @@ export class UI {
       name: 'setviewpos' as const,
       args: [...position.map(value => String(value)), String(yaw * 180 / Math.PI)],
     };
-    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, true, [command]);
+    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, true, [command], launch.botMinPlayers);
     return this.getGamePreviewStatus();
   }
 
@@ -2802,6 +2816,7 @@ export class UI {
     aas: Uint8Array | null = null,
     noclip = false,
     commands: GamePreviewLaunch['commands'] = [],
+    botMinPlayers = 0,
   ): void {
     this.gamePreviewClose?.(false);
 
@@ -2812,7 +2827,10 @@ export class UI {
     retainedBsp.set(bsp);
     const aasCopy = aas ? new Uint8Array(aas) : null;
     const retainedAas = aas ? new Uint8Array(aas) : null;
-    this.gamePreviewLaunch = { mapName: safeMapName, bsp: retainedBsp, aas: retainedAas, noclip, commands: structuredClone(commands) };
+    this.gamePreviewLaunch = {
+      mapName: safeMapName, bsp: retainedBsp, aas: retainedAas,
+      botMinPlayers, noclip, commands: structuredClone(commands),
+    };
     this.updateGamePreviewStatus({
       state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName,
       botNavigation: retainedAas !== null, noclip: false,
@@ -2893,6 +2911,7 @@ export class UI {
           mapName: safeMapName,
           bsp: bspCopy.buffer,
           aas: aasCopy?.buffer ?? null,
+          botMinPlayers,
           noclip,
           commands,
         };
@@ -2908,9 +2927,12 @@ export class UI {
           commandErrors.push('Noclip was requested but the game did not confirm that it is enabled.');
         }
         const navigationLabel = message.botNavigation === true ? ' with bot navigation' : ' without bot navigation';
+        const botLabel = message.botMinPlayers > 0
+          ? (message.botJoined === true ? ' · bot added' : ' · bot auto-fill enabled')
+          : '';
         status.textContent = commandErrors.length > 0
-          ? `Running ${safeMapName}${navigationLabel} with command errors`
-          : `Running ${safeMapName}${navigationLabel}`;
+          ? `Running ${safeMapName}${navigationLabel}${botLabel} with errors`
+          : `Running ${safeMapName}${navigationLabel}${botLabel}`;
         this.updateGamePreviewStatus({
           state: 'running', message: status.textContent, runningAt: new Date().toISOString(),
           botNavigation: message.botNavigation === true,

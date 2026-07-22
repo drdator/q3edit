@@ -318,9 +318,14 @@
               '+set', 'r_fullscreen', '0',
               '+set', 'r_allowResize', '1',
               ...(launch.noclip ? ['+set', 'sv_cheats', '1'] : []),
+              ...(launch.botMinPlayers > 0 ? [
+                '+set', 'bot_enable', '1',
+                '+set', 'bot_minplayers', String(launch.botMinPlayers),
+              ] : []),
               '+set', 'com_basegame', assets.gameDir,
               '+devmap', launch.mapName,
-              ...((launch.noclip || (launch.commands || []).length > 0) ? ['+wait', '30'] : []),
+              ...((launch.botMinPlayers > 0 || launch.noclip || (launch.commands || []).length > 0) ? ['+wait', '30'] : []),
+              ...(launch.botMinPlayers > 0 ? ['+addbot', 'Sarge', '2', 'free', '0'] : []),
               ...(launch.noclip ? ['+noclip'] : []),
               ...(launch.commands || []).flatMap(command => [`+${command.name}`, ...command.args]),
             ],
@@ -339,8 +344,17 @@
                 send('q3edit-player:running', {
                   mapName: launch.mapName,
                   botNavigation: Boolean(launch.aas),
+                  botMinPlayers: launch.botMinPlayers,
+                  botJoined: launch.botMinPlayers > 0 && consoleLines.some(line => /Sarge.*(?:connected|entered the game)/i.test(line)),
                   noclip: launch.noclip && consoleLines.some(line => /\bnoclip\s+ON\b/i.test(line)),
-                  commandErrors: consoleLines.filter(line => /unknown command/i.test(line) && /\b(?:noclip|setviewpos|map_restart)\b/i.test(line)),
+                  commandErrors: [
+                    ...consoleLines.filter(line => /unknown command/i.test(line) && /\b(?:noclip|setviewpos|map_restart)\b/i.test(line)),
+                    ...consoleLines.filter(line => /Bot 'Sarge' not defined/i.test(line)),
+                    ...(launch.botMinPlayers > 0 && consoleLines.some(line => /0 bots parsed/i.test(line))
+                      ? ['No bot definitions were found in the loaded PK3 files.'] : []),
+                    ...(launch.botMinPlayers > 0 && consoleLines.some(line => /bot library used before being setup/i.test(line))
+                      ? ['The bot library could not start. Check the loaded PK3 files and generated AAS.'] : []),
+                  ],
                   renderer: {
                     context: gl ? (gl instanceof WebGL2RenderingContext ? 'webgl2' : 'webgl') : 'unavailable',
                     width: canvas.width,
@@ -348,7 +362,7 @@
                     preserveDrawingBuffer: gl?.getContextAttributes()?.preserveDrawingBuffer === true,
                   },
                 });
-              }, launch.noclip || (launch.commands || []).length > 0 ? 1500 : 300);
+              }, launch.botMinPlayers > 0 ? 2000 : launch.noclip || (launch.commands || []).length > 0 ? 1500 : 300);
             }],
             print: (message) => {
               console.log(message);
@@ -377,11 +391,14 @@
           return;
         }
         const aas = event.data.aas instanceof ArrayBuffer ? event.data.aas : null;
+        const botMinPlayers = aas
+          ? Math.max(0, Math.min(16, Math.trunc(Number(event.data.botMinPlayers) || 0)))
+          : 0;
         const commands = Array.isArray(event.data.commands) ? event.data.commands.filter(command =>
           command && ['setviewpos', 'map_restart'].includes(command.name) &&
           Array.isArray(command.args) && command.args.every(argument => typeof argument === 'string')
         ) : [];
-        void start({ mapName, bsp, aas, noclip: event.data.noclip === true, commands });
+        void start({ mapName, bsp, aas, botMinPlayers, noclip: event.data.noclip === true, commands });
       });
 
       window.addEventListener('error', (event) => fail(event.error ?? event.message));

@@ -12,7 +12,7 @@ export interface EditorCommandContext {
   openRotateDialog: () => void;
   openScaleDialog: () => void;
   compileBSP: () => void | Promise<void>;
-  quickPlay: (quality: 'fast' | 'normal' | 'full') => void | Promise<void>;
+  quickPlay: (quality: 'fast' | 'normal' | 'full', withBot?: boolean) => void | Promise<void>;
   managePakFiles: () => void | Promise<void>;
   openPreferences: () => void;
   openProjectSettings: () => void;
@@ -132,6 +132,9 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.quick-play-fast', label: 'Fast', defaultShortcut: 'Mod+Alt+1', menu: menu('File', 80, 'compile', 'Quick Play'), execute: ctx => ctx.quickPlay('fast') },
     { id: 'file.quick-play-normal', label: 'Normal', defaultShortcut: 'Mod+Alt+2', menu: menu('File', 81, 'compile', 'Quick Play'), execute: ctx => ctx.quickPlay('normal') },
     { id: 'file.quick-play-full', label: 'Full', defaultShortcut: 'Mod+Alt+3', menu: menu('File', 82, 'compile', 'Quick Play'), execute: ctx => ctx.quickPlay('full') },
+    { id: 'file.quick-play-bot-fast', label: 'Fast', menu: menu('File', 83, 'compile', 'Quick Play with Bot'), execute: ctx => ctx.quickPlay('fast', true) },
+    { id: 'file.quick-play-bot-normal', label: 'Normal', menu: menu('File', 84, 'compile', 'Quick Play with Bot'), execute: ctx => ctx.quickPlay('normal', true) },
+    { id: 'file.quick-play-bot-full', label: 'Full', menu: menu('File', 85, 'compile', 'Quick Play with Bot'), execute: ctx => ctx.quickPlay('full', true) },
 
     { id: 'edit.undo', label: 'Undo', defaultShortcut: 'Mod+Z', menu: menu('Edit', 0, 'history'), enabled: ({ editor }) => editor.history.canUndo, execute: ({ editor }) => editor.undo() },
     { id: 'edit.redo', label: 'Redo', defaultShortcut: 'Mod+Y', alternateShortcuts: ['Mod+Shift+Z'], menu: menu('Edit', 10, 'history'), enabled: ({ editor }) => editor.history.canRedo, execute: ({ editor }) => editor.redo() },

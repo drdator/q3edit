@@ -1,8 +1,9 @@
 {
-  "label": "OpenArena 0.8.8 default textures",
+  "label": "OpenArena 0.8.8 default assets",
   "archives": [
     "pak0.pk3",
-    "pak4-textures.pk3"
+    "pak4-textures.pk3",
+    "q3edit-bots.pk3"
   ],
   "license": "COPYING",
   "source": "OPENARENA.md"

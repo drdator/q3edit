@@ -21,13 +21,14 @@ const keyEvent = (key: string, overrides: Partial<KeyboardShortcutEvent> = {}): 
 describe('CommandRegistry', () => {
   it('registers the complete editor command set without conflicts', () => {
     const noop = () => {};
+    const quickPlay = vi.fn();
     const context: EditorCommandContext = {
       editor: {} as Editor,
       handleExitVertexMode: noop,
       openRotateDialog: noop,
       openScaleDialog: noop,
       compileBSP: noop,
-      quickPlay: noop,
+      quickPlay,
       managePakFiles: noop,
       openPreferences: noop,
       openProjectSettings: noop,
@@ -53,6 +54,9 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.release-notes').label).toBe('Release Notes...');
     expect(registry.getState('view.mcp-activity').label).toBe('MCP Activity');
     expect(registry.getState('view.mcp-activity').checked).toBe(false);
+    expect(registry.getState('file.quick-play-bot-normal').label).toBe('Normal');
+    registry.execute('file.quick-play-bot-normal');
+    expect(quickPlay).toHaveBeenCalledWith('normal', true);
   });
 
   it('exposes checked state for display categories, renderer modes, and lighting', () => {

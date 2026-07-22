@@ -18,6 +18,7 @@ geometry, entities, textures, terrain, and client-side BSP compilation.
 - OpenArena textures by default, with optional retail Quake III PK3 files
 - q3map and BSPC compiled to WebAssembly for client-side BSP, VIS, light, and bot-navigation stages
 - ioquake3 compiled to WebAssembly for playing compiled maps in the editor
+- Quick Play with Bot compiles bot navigation and automatically adds an OpenArena or retail Quake III bot
 
 Q3Edit is under active development. Save important work frequently and keep
 copies of your source `.map` files.
@@ -28,10 +29,10 @@ Requirements:
 
 - Node.js 22 or newer
 - A modern browser with WebGL2
-- `curl`, `unzip`, and `shasum` to prepare OpenArena assets
+- `curl`, `unzip`, `zip`, and `shasum` to prepare OpenArena assets
 - Git, CMake, and Emscripten 5.0.3 to build the WebAssembly tools
 
-Install dependencies and prepare the default texture assets:
+Install dependencies and prepare the default OpenArena assets:
 
 ```sh
 npm ci
