@@ -3504,6 +3504,12 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
 
 .status-mcp {
   margin-left: auto;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
 }
 
 .status-mcp:empty {
@@ -3531,6 +3537,45 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
 
 .status-mcp.error::before {
   background: #d96868;
+}
+
+.status-mcp.available:hover,
+.status-mcp.disconnected:hover,
+.status-mcp.error:hover {
+  color: var(--text);
+}
+
+.mcp-connection-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.mcp-connection-fields {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-dark);
+}
+
+.mcp-connection-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-dim);
+}
+
+.mcp-connection-fields input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mcp-connection-note,
+.mcp-connection-status {
+  margin-top: 10px;
+  color: var(--text-dim);
+}
+
+.mcp-connection-status:not(:empty) {
+  padding: 8px 10px;
+  background: var(--bg-dark);
 }
 
 /* ── Scrollbar styling ── */

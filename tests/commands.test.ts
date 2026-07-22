@@ -34,6 +34,7 @@ describe('CommandRegistry', () => {
       openDiagnostics: noop,
       toggleMcpActivity: noop,
       isMcpActivityOpen: () => false,
+      openMcpConnection: noop,
       openTerrainPanel: noop,
       toggleSidebar: noop,
       cycleInvisibleMode: noop,
@@ -60,7 +61,7 @@ describe('CommandRegistry', () => {
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
       compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
-      toggleMcpActivity: noop, isMcpActivityOpen: () => false, openTerrainPanel: noop,
+      toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,

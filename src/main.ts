@@ -67,9 +67,8 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor);
-  if (configuredBridgeUrl()) {
-    const { connectConfiguredLiveBridge } = await import('./live-bridge/client');
-    connectConfiguredLiveBridge(editor, {
+  const initialBridgeUrl = configuredBridgeUrl();
+  const bridgeControls = {
       setCamera: (position, yaw, pitch) => vp3D.setCamera(position, yaw, pitch),
       frameBounds: bounds => {
         vp3D.frameBounds(bounds);
@@ -91,8 +90,21 @@ async function init() {
       gameCommand: command => ui.runGamePreviewCommand(command),
       setGameView: (position, yaw) => ui.setGamePreviewView(position, yaw),
       captureBspPreview: () => ui.captureBspPreview(),
-    });
-  }
+  } satisfies import('./live-bridge/client').LiveBridgeEditorControls;
+  let liveBridge: import('./live-bridge/client').LiveMapBridge | null = null;
+  const connectMcp = async (url: string): Promise<void> => {
+    liveBridge?.disconnect();
+    const { connectLiveBridge } = await import('./live-bridge/client');
+    liveBridge = connectLiveBridge(editor, bridgeControls, url);
+    ui.setMcpConnectionUrl(url);
+  };
+  const disconnectMcp = (): void => {
+    liveBridge?.disconnect();
+    liveBridge = null;
+    ui.setMcpConnectionUrl(null);
+  };
+  ui.configureMcpConnection(connectMcp, disconnectMcp, initialBridgeUrl);
+  if (initialBridgeUrl) await connectMcp(initialBridgeUrl);
 
   let defaultArchives: PakArchive[] = [];
   let defaultPakLoaded = false;

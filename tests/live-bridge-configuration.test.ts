@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { configuredBridgeUrl, type BridgeLocation } from '../src/live-bridge/configuration';
+import { configuredBridgeUrl, localCompanionBridgeUrl, type BridgeLocation } from '../src/live-bridge/configuration';
 
 function location(search: string, protocol = 'http:'): BridgeLocation {
   const host = '127.0.0.1:8765';
@@ -19,5 +19,16 @@ describe('live bridge configuration', () => {
   it('normalizes explicitly configured HTTP bridge URLs', () => {
     expect(configuredBridgeUrl(location('?bridge=http%3A%2F%2Flocalhost%3A9000%2Feditor')))
       .toBe('ws://localhost:9000/editor');
+  });
+
+  it('adds a pairing token without discarding bridge query parameters', () => {
+    expect(configuredBridgeUrl(location('?bridge=1&bridgeToken=A1B2C3D4')))
+      .toBe('ws://127.0.0.1:8765/editor?token=A1B2C3D4');
+    expect(localCompanionBridgeUrl('http://127.0.0.1:9000/editor?channel=local', 'CODE', 'https://q3edit.com/?editor'))
+      .toBe('ws://127.0.0.1:9000/editor?channel=local&token=CODE');
+  });
+
+  it('rejects bridge addresses using unrelated URL schemes', () => {
+    expect(() => localCompanionBridgeUrl('file:///tmp/editor.sock', 'CODE', 'https://q3edit.com/?editor')).toThrow(/HTTP/);
   });
 });

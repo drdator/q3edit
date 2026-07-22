@@ -31,6 +31,7 @@ import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout'
 import 'virtual:phosphor-icons.css';
 import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
+import { openMcpConnectionDialog } from './live-bridge/connection-dialog';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -90,6 +91,9 @@ export class UI {
   private gamePreviewClose: ((markClosed?: boolean) => void) | null = null;
   private gamePreviewListeners = new Set<() => void>();
   private readonly mcpActivity: McpActivityPanel;
+  private mcpConnectionUrl: string | null = null;
+  private mcpConnect: ((url: string) => void | Promise<void>) | null = null;
+  private mcpDisconnect: (() => void) | null = null;
   private gamePreviewStatus: GamePreviewStatus = {
     state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
     noclipRequested: false, commandErrors: [], launchedAt: null, runningAt: null, error: null, consoleTail: [],
@@ -127,6 +131,7 @@ export class UI {
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
+      openMcpConnection: () => this.openMcpConnection(),
       openTerrainPanel: () => this.openTerrainPanel(),
       toggleSidebar: () => this.toggleSidebar(),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
@@ -152,6 +157,34 @@ export class UI {
 
   recordMcpActivity(entry: McpActivityEntry): void {
     this.mcpActivity.add(entry);
+  }
+
+  configureMcpConnection(
+    onConnect: (url: string) => void | Promise<void>,
+    onDisconnect: () => void,
+    currentUrl: string | null,
+  ): void {
+    this.mcpConnect = onConnect;
+    this.mcpDisconnect = onDisconnect;
+    this.setMcpConnectionUrl(currentUrl);
+  }
+
+  setMcpConnectionUrl(url: string | null): void {
+    this.mcpConnectionUrl = url;
+    const status = document.getElementById('status-mcp');
+    if (!status || url) return;
+    status.textContent = 'Connect MCP';
+    status.className = 'status-item status-mcp available';
+    status.title = 'Connect this editor to a local Q3Edit MCP companion';
+  }
+
+  private openMcpConnection(): void {
+    if (!this.mcpConnect || !this.mcpDisconnect) return;
+    openMcpConnectionDialog({
+      currentUrl: this.mcpConnectionUrl,
+      onConnect: url => this.mcpConnect!(url),
+      onDisconnect: () => this.mcpDisconnect!(),
+    });
   }
 
   // ── Menu Bar ──
@@ -1779,8 +1812,9 @@ export class UI {
       <span class="status-item" id="status-clip"></span>
       <span class="status-item" id="status-brushes">Brushes: 0</span>
       <span class="status-item" id="status-gizmo"></span>
-      <span class="status-item status-mcp" id="status-mcp"></span>
+      <button type="button" class="status-item status-mcp available" id="status-mcp">Connect MCP</button>
     `;
+    document.getElementById('status-mcp')!.addEventListener('click', () => this.openMcpConnection());
   }
 
   // ── Keyboard shortcuts ──

@@ -13,13 +13,27 @@ npm install
 npm run bridge
 ```
 
-The bridge builds Q3Edit, serves it on port 8765, and prints both URLs. Open:
+The bridge builds Q3Edit, serves it on port 8765, and prints a new pairing code
+plus two ready-to-open editor URLs:
 
 ```text
-http://127.0.0.1:8765/?editor&bridge=1
+Q3Edit pairing code: 7A91C2EF
+Production editor:   https://q3edit.com/?editor=...
+Local editor:        http://127.0.0.1:8765/?editor=...
 ```
 
-The status bar should show a green `MCP connected` indicator.
+Open the production URL to use the deployed q3edit.com UI with the MCP, files,
+compiler, and activity log still running locally. Alternatively, open the
+normal editor at q3edit.com, choose **View > Local MCP Connection...**, and
+enter the printed pairing code. The status bar also exposes the same connection
+dialog through **Connect MCP**. Your browser may ask whether q3edit.com can
+access the local network; allow it so the tab can reach the companion on
+127.0.0.1. A successful connection shows a green `MCP connected` indicator.
+
+The pairing code changes whenever the bridge starts. The editor WebSocket
+accepts only that code and the configured q3edit.com or loopback origins. MCP
+clients continue to use the loopback-only `/mcp` endpoint and do not need the
+editor pairing code.
 
 To reuse an existing build while developing the bridge:
 
@@ -32,6 +46,18 @@ The port can be changed with `--port`:
 ```bash
 npm run bridge:serve -- --port 9000
 ```
+
+For a staging deployment or self-hosted editor, set its URL and allowed origins:
+
+```bash
+npm run bridge:serve -- \
+  --editor-url 'https://staging.q3edit.com/?editor' \
+  --editor-origins https://staging.q3edit.com,https://preview.q3edit.com
+```
+
+`Q3EDIT_EDITOR_URL` and `Q3EDIT_EDITOR_ORIGINS` provide equivalent environment
+configuration. `--pairing-token` can set a fixed development code; the random
+per-start code is recommended for normal use.
 
 ## Connect Codex
 
@@ -85,6 +111,11 @@ that routing before generic skills are selected: requests to create, edit,
 inspect, texture, compile, or play the current Q3Edit map use these tools, while
 browser or computer-control tools are reserved for explicit UI testing. Users
 do not need a personal `AGENTS.md` rule.
+
+The editor page and MCP service do not need to share an origin. In the hosted
+workflow, Codex or Claude connects to `http://127.0.0.1:8765/mcp`, while the
+q3edit.com tab makes an outbound WebSocket connection to the paired local
+`/editor` endpoint. Map data is not routed through a hosted MCP service.
 
 - `editor_sessions` lists every connected browser tab with a stable session ID, filename, revision, save path, and activity timestamps. `editor_session_select` chooses the default for that MCP connection; every document-specific tool also accepts an explicit `sessionId`. When multiple editors are connected, an unscoped call fails instead of switching implicitly.
 - `activity_log` returns cursor-paginated calls made by the current MCP connection and the path to its complete append-only JSONL transcript. Summary mode omits recorded arguments/results; request full detail only when investigating a specific action. Full map text and image payloads are always omitted.

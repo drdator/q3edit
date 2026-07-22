@@ -10,11 +10,21 @@ import { WebSocketServer } from 'ws';
 import { BridgeHub } from './bridge-hub';
 import { createQ3EditMcpServer } from './mcp-server';
 import { McpActivityLog } from './activity-log';
+import {
+  allowedEditorOrigins,
+  authorizeEditorConnection,
+  createEditorPairingToken,
+  DEFAULT_PRODUCTION_EDITOR_URL,
+  editorCompanionUrls,
+} from './editor-companion';
 
 interface ServerOptions {
   host: string;
   port: number;
   logDirectory?: string;
+  editorUrl: string;
+  editorOrigins: string[];
+  pairingToken: string;
 }
 
 function optionValue(name: string): string | undefined {
@@ -26,12 +36,17 @@ const options: ServerOptions = {
   host: optionValue('--host') ?? '127.0.0.1',
   port: Number(optionValue('--port') ?? 8765),
   logDirectory: optionValue('--log-dir'),
+  editorUrl: optionValue('--editor-url') ?? process.env.Q3EDIT_EDITOR_URL ?? DEFAULT_PRODUCTION_EDITOR_URL,
+  editorOrigins: (optionValue('--editor-origins') ?? process.env.Q3EDIT_EDITOR_ORIGINS ?? '').split(',').filter(Boolean),
+  pairingToken: optionValue('--pairing-token') ?? createEditorPairingToken(),
 };
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const distPath = resolve(projectRoot, 'dist');
 const q3mapDistPath = resolve(projectRoot, 'q3map-compiler/dist');
 const activityLogPath = resolve(options.logDirectory ?? resolve(projectRoot, '.q3edit/mcp-logs'));
+const companionUrls = editorCompanionUrls(options.host, options.port, options.pairingToken, options.editorUrl);
+const permittedEditorOrigins = allowedEditorOrigins(options.host, options.port, options.editorUrl, options.editorOrigins);
 if (!existsSync(distPath)) throw new Error(`Missing ${distPath}; run npm run build first`);
 
 const hub = new BridgeHub(existsSync(q3mapDistPath));
@@ -100,12 +115,22 @@ app.use(express.static(distPath));
 
 const httpServer = app.listen(options.port, options.host, error => {
   if (error) throw error;
-  console.log(`Q3Edit live bridge: http://${options.host}:${options.port}/?editor&bridge=1`);
-  console.log(`MCP endpoint:       http://${options.host}:${options.port}/mcp`);
+  console.log(`Q3Edit pairing code: ${options.pairingToken}`);
+  console.log(`Production editor:   ${companionUrls.productionEditorUrl}`);
+  console.log(`Local editor:        ${companionUrls.localEditorUrl}`);
+  console.log(`MCP endpoint:        http://${options.host}:${options.port}/mcp`);
   console.log(`MCP activity logs:  ${activityLogPath}`);
 });
 
-const webSockets = new WebSocketServer({ server: httpServer, path: '/editor' });
+const webSockets = new WebSocketServer({
+  server: httpServer,
+  path: '/editor',
+  verifyClient: (info, done) => {
+    const authorization = authorizeEditorConnection({ requestUrl: info.req.url ?? '/editor', origin: info.origin }, options.pairingToken, permittedEditorOrigins);
+    if (!authorization.allowed) console.warn(`Rejected editor connection: ${authorization.message}`);
+    done(authorization.allowed, authorization.statusCode, authorization.message);
+  },
+});
 webSockets.on('connection', (socket, request) => {
   const url = new URL(request.url ?? '/editor', `http://${request.headers.host ?? '127.0.0.1'}`);
   hub.attachEditor(socket, url.searchParams.get('sessionId') ?? undefined);

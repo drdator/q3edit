@@ -168,6 +168,7 @@ export class LiveMapBridge {
   private suppressDocumentSync = false;
   private stopped = false;
   private compiledBsp: { revision: number; data: Uint8Array } | null = null;
+  private readonly unsubscribeDocumentChanges: () => void;
   readonly sessionId = stableEditorSessionId();
 
   constructor(
@@ -175,7 +176,7 @@ export class LiveMapBridge {
     private readonly url: string,
     private readonly controls: LiveBridgeEditorControls,
   ) {
-    editor.subscribeDocumentChanges(change => {
+    this.unsubscribeDocumentChanges = editor.subscribeDocumentChanges(change => {
       this.compiledBsp = null;
       if (this.suppressDocumentSync || this.socket?.readyState !== WebSocket.OPEN) return;
       try {
@@ -212,6 +213,7 @@ export class LiveMapBridge {
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.socket?.close();
     this.socket = null;
+    this.unsubscribeDocumentChanges();
     this.setStatus('disconnected', 'MCP disconnected');
   }
 
@@ -891,13 +893,20 @@ export class LiveMapBridge {
     if (!element) return;
     element.textContent = label;
     element.className = `status-item status-mcp ${status}`;
-    element.title = `${this.url}\nEditor session: ${this.sessionId}`;
+    const displayUrl = new URL(this.url);
+    displayUrl.searchParams.delete('token');
+    displayUrl.searchParams.delete('sessionId');
+    element.title = `${displayUrl.toString()}\nEditor session: ${this.sessionId}`;
   }
 }
 
 export function connectConfiguredLiveBridge(editor: Editor, controls: LiveBridgeEditorControls): LiveMapBridge | null {
   const url = configuredBridgeUrl();
   if (!url) return null;
+  return connectLiveBridge(editor, controls, url);
+}
+
+export function connectLiveBridge(editor: Editor, controls: LiveBridgeEditorControls, url: string): LiveMapBridge {
   const bridge = new LiveMapBridge(editor, url, controls);
   bridge.connect();
   return bridge;
