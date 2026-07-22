@@ -56,6 +56,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_capabilities` advertises the batch limit and supported operation version/types, coordinate guidance, screenshot dimensions and modes, compiler availability, and the targeted editor's active game/project and loaded asset counts.
 - `operation_schema` returns the exact discriminated JSON Schema and semantic notes for one `map_apply`/`map_preview` operation. The batch tool intentionally keeps a flat compatibility schema because some MCP hosts omit tools containing `oneOf`/`anyOf`.
 - `map_status` returns the live revision, active path, map counts, entity summaries, and diagnostic counts.
+- `editor_selection` reads whatever the user currently has selected and returns revision-safe entity, brush, patch, or face references plus combined bounds. It includes per-face texture and projection details for selected brushes by default, so an agent can diagnose and preview a targeted texture repair without asking the user to identify object indices. Use the returned revision for the subsequent `map_preview` and `map_apply` calls.
 - `map_entities` lists entity references and supports an exact classname filter.
 - `map_statistics` summarizes world bounds, structural/detail geometry, texture usage, approximate light influence, and spawn/item distribution and spacing.
 - `map_texture_review` measures brush-face projection density and reports stretched, over-tiled, suspiciously fitted, or inconsistent materials with exact face references and suggested `edit_faces` transforms.
@@ -68,7 +69,7 @@ Use `/mcp` or `claude mcp list` to confirm the connection.
 - `map_summary` is the token-efficient orientation call for iterative work: revision, file, bounds, geometry/detail totals, diagnostics, major entity classes, and spawn/item distribution without full object dumps.
 - `map_style_get`, `map_style_set`, and `map_style_review` keep a structured visual brief in worldspawn so theme, exact or folder-based texture palette, modular grid, texel-density target, lighting mood, detail density, and notes survive save/reload and different agent sessions. Guide palettes produce informational deviations; strict palettes produce warnings.
 - `map_design_review` combines editor validation, geometry and spatial design review, gameplay placement lint, jump-pad results, approximate route reachability, and compact map context in one revision-consistent response. It reports pass/needs-attention/blocked plus categorized findings without pretending the heuristics form an objective numeric quality score.
-- `map_inspect` returns properties, bounds, textures, and optional face/control-point geometry for referenced objects.
+- `map_inspect` returns properties, bounds, textures, optional brush-face material details, and optional face/control-point geometry for referenced objects.
 - `map_validate` returns current editor diagnostics.
 - `map_gameplay_lint` reports approximate embedded-entity, spawn-clearance, and pickup-support problems with implicated references.
 - `map_analyze_jump_pad` mirrors Quake III's `AimAtTarget` math for an existing `trigger_push` or proposed trigger bounds/apex. It reports velocity, timing, nominal landing, the first plausible landing surface, and approximate player-hull obstructions. The linked `target_position` is the trajectory apex, not its landing point.
@@ -235,6 +236,13 @@ Large `map_apply` and `map_preview` batches can set `responseDetail: "compact"`.
 
 Object references use the current document indices: `E1`, `E0:B2`, `E0:B2:F4`, and `E0:P0`. Face references can be inspected, queried, selected, framed, or passed to `edit_faces`. References are revision-sensitive, so call `map_status`, `map_query`, or `map_entities` again after a revision conflict.
 
+For a request such as “fix the texture on my selected brush,” call
+`editor_selection` with `detail: "faces"`. Use the returned brush reference
+with `set_texture` to change every face, or choose its returned face references
+and use `edit_faces` for a targeted material or projection fix. Preview and
+apply against the exact revision returned by `editor_selection`; if that
+revision conflicts, read the selection again before editing.
+
 Mark decorative geometry as detail before compiling so it does not unnecessarily split the BSP tree:
 
 ```json
@@ -260,7 +268,7 @@ Face texture transforms are relative. `scale: [2, 1]` makes the texture twice as
 
 A useful authoring loop is:
 
-1. Call `map_status`, `map_style_get`, `map_spatial_plan_get`, and `map_construction_paths_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its design intent, generated path sources, and available assets.
+1. Call `map_status`, `map_style_get`, `map_spatial_plan_get`, and `map_construction_paths_get`, then use `map_query`, `texture_search`, and `entity_class_search` to discover the live document, its design intent, generated path sources, and available assets. If the user refers to the current selection, call `editor_selection` first and treat its revision and references as the scope of the edit.
 2. If the composition is weak or underspecified, call `design_pattern_search` and adapt one useful pattern rather than combining many. For a substantial layout, call `map_spatial_plan_preview` before committing areas and routes. Use `create_path` when a route or repeated architectural element should follow a curve or segmented line, and `repeat_variation` for short deliberate rhythms rather than hand-authored clone batches. For complex or varied geometry, call `map_preview` and review collisions; then make one logical edit with `map_apply` and the same current revision.
 3. Call `editor_frame_objects` with created or queried references, or position an exact view with `editor_set_camera`.
 4. Call `editor_screenshot` to review the result, then iterate.

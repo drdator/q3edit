@@ -31,6 +31,17 @@ describe('MCP map inspection', () => {
 
     const detailed = inspectMapObjects(mapText, ['E0:B0'], true)[0] as { faces: unknown[] };
     expect(detailed.faces).toHaveLength(6);
+    expect(detailed.faces[0]).toMatchObject({
+      ref: 'E0:B0:F0', texture: 'common/caulk', contentFlags: 0, surfaceFlags: 0,
+    });
+    expect(detailed.faces[0]).toHaveProperty('points');
+
+    const materialDetails = inspectMapObjects(mapText, ['E0:B0'], false, true)[0] as { faces: unknown[] };
+    expect(materialDetails.faces).toHaveLength(6);
+    expect(materialDetails.faces[4]).toMatchObject({
+      ref: 'E0:B0:F4', texture: 'common/caulk', contentFlags: 0, surfaceFlags: 0,
+    });
+    expect(materialDetails.faces[4]).not.toHaveProperty('points');
 
     const face = inspectMapObjects(mapText, ['E0:B0:F4'], true)[0];
     expect(face).toMatchObject({

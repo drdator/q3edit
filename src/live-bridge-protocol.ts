@@ -112,6 +112,7 @@ export type BridgeToEditorMessage =
   | { type: 'texture_inspect'; requestId: string; name: string }
   | { type: 'entity_class_search'; requestId: string; query: string; classType?: 'point' | 'brush'; limit: number }
   | { type: 'entity_class_schema'; requestId: string; classname: string }
+  | { type: 'editor_selection'; requestId: string }
   | { type: 'editor_select'; requestId: string; refs: string[]; replace: boolean }
   | { type: 'editor_frame_objects'; requestId: string; refs: string[] }
   | { type: 'editor_set_camera'; requestId: string; position: Vec3; yaw: number; pitch: number }

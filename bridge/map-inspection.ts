@@ -2,7 +2,12 @@ import { parseMapWithDiagnostics } from '../src/mapfile';
 import type { MapDocumentRef } from '../src/map-operations';
 import { entityGroupId, groupNameMap } from '../src/named-groups';
 
-export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], includeGeometry = false): unknown[] {
+export function inspectMapObjects(
+  mapText: string,
+  refs: MapDocumentRef[],
+  includeGeometry = false,
+  includeFaces = includeGeometry,
+): unknown[] {
   const parsed = parseMapWithDiagnostics(mapText);
   const groupNames = groupNameMap(parsed.document.entities);
   return refs.map(ref => {
@@ -59,14 +64,15 @@ export function inspectMapObjects(mapText: string, refs: MapDocumentRef[], inclu
         faceCount: brush.faces.length,
         textures: [...new Set(brush.faces.map(face => face.texture))],
         group: groupId ? { id: groupId, name: groupNames.get(groupId) ?? groupId } : null,
-        ...(includeGeometry ? {
-          faces: brush.faces.map(face => ({
-            points: face.points,
+        ...(includeFaces ? {
+          faces: brush.faces.map((face, faceIndex) => ({
+            ref: `E${entityIndex}:B${objectIndex}:F${faceIndex}`,
             texture: face.texture,
             textureProjection: face.textureProjection,
             contentFlags: face.contentFlags,
             surfaceFlags: face.surfaceFlags,
             value: face.value,
+            ...(includeGeometry ? { points: face.points, polygon: face.polygon } : {}),
           })),
         } : {}),
       };

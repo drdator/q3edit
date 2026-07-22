@@ -127,6 +127,23 @@ function selectionBounds(item: SelectionItem): { mins: Vec3; maxs: Vec3 } | null
   return entityBounds(item.entity);
 }
 
+function selectionRef(editor: Editor, item: SelectionItem): string {
+  const entityIndex = editor.entities.indexOf(item.entity);
+  if (entityIndex < 0) throw new Error('The selection contains an entity that is no longer in the document');
+  if (item.type === 'entity') return `E${entityIndex}`;
+  if (item.type === 'patch') {
+    const patchIndex = item.entity.patches.indexOf(item.patch);
+    if (patchIndex < 0) throw new Error('The selection contains a patch that is no longer in the document');
+    return `E${entityIndex}:P${patchIndex}`;
+  }
+  const brushIndex = item.entity.brushes.indexOf(item.brush);
+  if (brushIndex < 0) throw new Error('The selection contains a brush that is no longer in the document');
+  if (item.type === 'brush') return `E${entityIndex}:B${brushIndex}`;
+  const faceIndex = item.brush.faces.indexOf(item.face);
+  if (faceIndex < 0) throw new Error('The selection contains a face that is no longer in the document');
+  return `E${entityIndex}:B${brushIndex}:F${faceIndex}`;
+}
+
 function configuredBridgeUrl(): string | null {
   const value = new URLSearchParams(window.location.search).get('bridge');
   if (!value) return null;
@@ -542,6 +559,30 @@ export class LiveMapBridge {
         return;
       }
       this.send({ type: 'capability_result', requestId: message.requestId, result: definition });
+      return;
+    }
+
+    if (message.type === 'editor_selection') {
+      try {
+        const items = this.editor.selection.map(item => ({
+          ref: selectionRef(this.editor, item), type: item.type, bounds: selectionBounds(item),
+        }));
+        this.send({
+          type: 'capability_result', requestId: message.requestId,
+          result: {
+            revision: this.editor.documentRevision,
+            count: items.length,
+            refs: items.map(item => item.ref),
+            items,
+            bounds: mergeBounds(items.flatMap(item => item.bounds ? [item.bounds] : [])),
+          },
+        });
+      } catch (error) {
+        this.send({
+          type: 'operation_error', requestId: message.requestId,
+          message: error instanceof Error ? error.message : String(error), revision: this.editor.documentRevision,
+        });
+      }
       return;
     }
 

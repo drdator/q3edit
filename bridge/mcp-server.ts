@@ -241,6 +241,15 @@ const mapQueryOutputSchema = z.object({
   sessionId: z.string(), revision: z.number().int().nonnegative(), count: z.number().int().nonnegative(),
   matches: z.array(mapQueryMatchSchema),
 });
+const editorSelectionOutputSchema = z.object({
+  sessionId: z.string(), revision: z.number().int().nonnegative(), count: z.number().int().nonnegative(),
+  refs: z.array(z.string()),
+  items: z.array(z.object({
+    ref: z.string(), type: z.enum(['entity', 'brush', 'face', 'patch']), bounds: nullableBounds,
+  })),
+  bounds: nullableBounds,
+  objects: z.array(z.unknown()),
+});
 const nearestNeighborSchema = z.object({ minimum: z.number(), average: z.number() }).nullable();
 const compactMapSummarySchema = z.object({
   world: z.object({ bounds: nullableBounds, size: z.array(z.number()).length(3).nullable() }),
@@ -1314,6 +1323,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       text: `# Q3Edit MCP workflow
 
 1. Resolve the intended editor with \`editor_sessions\`, then inspect \`map_status\`, \`map_summary\`, \`map_style_get\`, and \`map_spatial_plan_get\`.
+   If the user refers to their current selection, call \`editor_selection\` first and use its returned revision and references instead of guessing what they mean.
 2. Discover entity classes, textures, shaders, and exact operation schemas. Do not guess names or properties.
 3. For substantial maps, establish semantic areas, connections, height changes, routes, and landmarks before detailed geometry. Use design patterns as adaptable constraints, never fixed prefabs.
 4. Prefer angled, curved, terraced, and path-based construction where it supports the layout. Refine safe blockouts with chamfer, taper, face offset, clipping, hollowing, and CSG instead of leaving every room box-shaped.
@@ -1418,6 +1428,45 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
     try {
       const resolved = session(sessionId);
       return toolResult(hub.status(resolved));
+    } catch (error) {
+      return toolError(error);
+    }
+  });
+
+  server.registerTool('editor_selection', {
+    title: 'Inspect the current Q3Edit selection',
+    description: 'Read the objects or faces currently selected by the user. Returns revision-safe references, combined bounds, and by default per-face texture/projection details for selected brushes so the references can be passed directly to map_preview and map_apply.',
+    inputSchema: {
+      ...sessionInput,
+      detail: z.enum(['summary', 'faces', 'geometry']).optional().default('faces')
+        .describe('summary returns selection references only; faces adds brush-face material details; geometry also includes face points and polygons'),
+    },
+    outputSchema: editorSelectionOutputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ sessionId, detail }) => {
+    try {
+      const resolved = session(sessionId);
+      const selection = await hub.editorSelection(resolved) as {
+        revision: number;
+        count: number;
+        refs: MapDocumentRef[];
+        items: unknown[];
+        bounds: unknown;
+      };
+      const snapshot = hub.snapshot(resolved);
+      if (snapshot.revision !== selection.revision) {
+        throw new Error(`Selection revision ${selection.revision} is stale; the current document revision is ${snapshot.revision}`);
+      }
+      return toolResult({
+        sessionId: resolved,
+        ...selection,
+        objects: inspectMapObjects(
+          snapshot.mapText,
+          selection.refs,
+          detail === 'geometry',
+          detail !== 'summary',
+        ),
+      });
     } catch (error) {
       return toolError(error);
     }
@@ -1633,9 +1682,9 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const editor = await hub.editorCapabilities(resolved);
       return toolResult({
         sessionId: resolved,
-        protocolVersion: 3,
+        protocolVersion: 4,
         essentialTools: [
-          'map_status', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
+          'map_status', 'editor_selection', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
           'map_compile', 'map_play', 'game_command', 'game_set_view', 'game_screenshot',
         ],
         discovery: {
@@ -2071,21 +2120,22 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_inspect', {
     title: 'Inspect live map objects',
-    description: 'Return properties, bounds, textures, and optional geometry for current revision object references.',
+    description: 'Return properties, bounds, textures, optional brush-face material details, and optional geometry for current revision object references.',
     inputSchema: {
       ...sessionInput,
       refs: z.array(objectRef).min(1).max(50),
+      includeFaces: z.boolean().optional().default(false),
       includeGeometry: z.boolean().optional().default(false),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
-  }, async ({ sessionId, refs, includeGeometry }) => {
+  }, async ({ sessionId, refs, includeFaces, includeGeometry }) => {
     try {
       const resolved = session(sessionId);
       const snapshot = hub.snapshot(resolved);
       return toolResult({
         sessionId: resolved,
         revision: snapshot.revision,
-        objects: inspectMapObjects(snapshot.mapText, refs as MapDocumentRef[], includeGeometry),
+        objects: inspectMapObjects(snapshot.mapText, refs as MapDocumentRef[], includeGeometry, includeFaces || includeGeometry),
       });
     } catch (error) {
       return toolError(error);

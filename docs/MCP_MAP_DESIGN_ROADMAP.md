@@ -282,6 +282,8 @@ now completes BSP, VIS, and LIGHT with both patches intact.
 
 ### Iteration-loop reliability follow-up
 
+- [x] Expose the user's current selection as revision-scoped entity, brush,
+  patch, or face references with optional face material and geometry details.
 - [x] Advertise essential tools and document MCP client tool-inventory caching.
 - [x] Move verified game view/control tools into the early discovery set.
 - [x] Reuse the current revision's compiled BSP when explicitly requested.

@@ -125,6 +125,11 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: { classname: request.classname, type: 'point', properties: { light: { type: 'number' } } },
       }));
+    } else if (request.type === 'editor_selection') {
+      queueMicrotask(() => this.emitMessage({
+        type: 'capability_result', requestId: request.requestId,
+        result: { revision: 4, count: 0, refs: [], items: [], bounds: null },
+      }));
     } else if (request.type === 'editor_select' || request.type === 'editor_frame_objects') {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
@@ -305,6 +310,7 @@ describe('live MCP bridge', () => {
         'activity_log',
         'editor_session_select',
         'map_status',
+        'editor_selection',
         'map_undo',
         'map_redo',
         'game_command',
@@ -367,7 +373,7 @@ describe('live MCP bridge', () => {
       const applySchema = tools.tools.find(tool => tool.name === 'map_apply')?.inputSchema;
       expect(JSON.stringify(applySchema)).not.toMatch(/"(?:anyOf|oneOf)"/);
       expect(JSON.stringify(applySchema)).not.toMatch(/"items":\s*\[/);
-      for (const name of ['map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
+      for (const name of ['editor_selection', 'map_texture_review', 'map_geometry_lint', 'map_spatial_plan_get', 'design_pattern_search', 'map_spatial_plan_preview', 'map_construction_paths_get', 'map_spatial_review', 'map_style_get', 'map_style_review', 'map_gameplay_lint', 'map_analyze_jump_pad', 'map_route_lint', 'map_query']) {
         expect(tools.tools.find(tool => tool.name === name)?.outputSchema, `${name} output schema`).toBeDefined();
       }
       for (const name of ['map_play', 'game_command', 'game_set_view', 'editor_set_camera']) {
@@ -384,6 +390,11 @@ describe('live MCP bridge', () => {
 
       const status = await client.callTool({ name: 'map_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({ sessionId: 'editor-a', editorConnected: true, snapshot: { revision: 4 } });
+
+      const selection = await client.callTool({ name: 'editor_selection', arguments: {} });
+      expect(selection.structuredContent).toMatchObject({
+        sessionId: 'editor-a', revision: 4, count: 0, refs: [], items: [], bounds: null, objects: [],
+      });
 
       const undone = await client.callTool({ name: 'map_undo', arguments: { expectedRevision: 4 } });
       expect(undone.structuredContent).toMatchObject({ sessionId: 'editor-a', action: 'undo', revision: 3, canRedo: true });
@@ -471,8 +482,8 @@ describe('live MCP bridge', () => {
 
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
-        sessionId: 'editor-a', protocolVersion: 3,
-        essentialTools: expect.arrayContaining(['editor_capture', 'editor_review', 'game_set_view', 'map_undo']),
+        sessionId: 'editor-a', protocolVersion: 4,
+        essentialTools: expect.arrayContaining(['editor_selection', 'editor_capture', 'editor_review', 'game_set_view', 'map_undo']),
         operations: { version: 11, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },
         curvedGeometry: { patchPresets: ['bevel', 'endcap', 'cylinder', 'arch', 'pipe', 'ramp'] },

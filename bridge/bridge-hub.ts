@@ -218,6 +218,10 @@ export class BridgeHub {
     return this.capabilityRequest(sessionId, { type: 'entity_class_schema', requestId: randomUUID(), classname });
   }
 
+  async editorSelection(sessionId?: string): Promise<unknown> {
+    return this.capabilityRequest(sessionId, { type: 'editor_selection', requestId: randomUUID() });
+  }
+
   async selectObjects(refs: string[], replace: boolean, sessionId?: string): Promise<unknown> {
     return this.capabilityRequest(sessionId, { type: 'editor_select', requestId: randomUUID(), refs, replace });
   }
