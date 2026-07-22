@@ -25,9 +25,11 @@
     "mcp:catalog": "tsx scripts/mcp-catalog-snapshot.ts",
     "mcp:grade": "npm run mcp:catalog && mcpgrade --snapshot .q3edit/mcp-tools.json --fail-on error",
     "build:q3map": "cd q3map-compiler && make clean && make",
+    "build:bspc": "cd bspc-compiler && make clean && make",
     "build:ioq3": "./scripts/build-ioq3-web.sh",
     "stage:q3map": "node scripts/stage-q3map-assets.mjs",
-    "build:release": "npm run build:q3map && npm run build:ioq3 && npm run build && npm run stage:q3map",
+    "stage:bspc": "node scripts/stage-bspc-assets.mjs",
+    "build:release": "npm run build:q3map && npm run build:bspc && npm run build:ioq3 && npm run build && npm run stage:q3map && npm run stage:bspc",
     "assets:openarena": "./scripts/prepare-openarena-assets.sh",
     "deploy": "./infra/aws/deploy.sh"
   },

@@ -21,13 +21,16 @@ const keyEvent = (key: string, overrides: Partial<KeyboardShortcutEvent> = {}): 
 describe('CommandRegistry', () => {
   it('registers the complete editor command set without conflicts', () => {
     const noop = () => {};
+    const quickPlay = vi.fn();
+    const editor = { preferences: { quickPlay: { quality: 'normal', botsEnabled: false, botCount: 1, botSkill: 2 } } } as Editor;
     const context: EditorCommandContext = {
-      editor: {} as Editor,
+      editor,
       handleExitVertexMode: noop,
       openRotateDialog: noop,
       openScaleDialog: noop,
       compileBSP: noop,
-      quickPlay: noop,
+      quickPlay,
+      openQuickPlayOptions: noop,
       managePakFiles: noop,
       openPreferences: noop,
       openProjectSettings: noop,
@@ -53,6 +56,11 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.release-notes').label).toBe('Release Notes...');
     expect(registry.getState('view.mcp-activity').label).toBe('MCP Activity');
     expect(registry.getState('view.mcp-activity').checked).toBe(false);
+    expect(registry.getState('file.quick-play').label).toBe('Quick Play');
+    context.editor.preferences.quickPlay = { quality: 'full', botsEnabled: true, botCount: 2, botSkill: 3 };
+    expect(registry.getState('file.quick-play').label).toBe('Quick Play');
+    registry.execute('file.quick-play');
+    expect(quickPlay).toHaveBeenCalledWith();
   });
 
   it('exposes checked state for display categories, renderer modes, and lighting', () => {
@@ -60,7 +68,7 @@ describe('CommandRegistry', () => {
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
-      compileBSP: noop, quickPlay: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
+      compileBSP: noop, quickPlay: noop, openQuickPlayOptions: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
       toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
       cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,

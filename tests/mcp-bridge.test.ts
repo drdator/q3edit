@@ -165,8 +165,12 @@ class FakeEditorSocket extends EventEmitter {
       queueMicrotask(() => this.emitMessage({
         type: 'capability_result', requestId: request.requestId,
         result: {
-          success: true, quality: request.quality, bspBytes: 4096, leaked: false, pointfileLoaded: false, output: ['BSP done'],
-          ...(request.includeArtifact ? { bspBase64: Buffer.alloc(4096, 7).toString('base64') } : {}),
+          success: true, quality: request.quality, bspBytes: 4096, aasBytes: 1024,
+          leaked: false, pointfileLoaded: false, output: ['BSP done', 'AAS done'],
+          ...(request.includeArtifact ? {
+            bspBase64: Buffer.alloc(4096, 7).toString('base64'),
+            aasBase64: Buffer.alloc(1024, 5).toString('base64'),
+          } : {}),
         },
       }));
     } else if (request.type === 'map_play') {
@@ -180,7 +184,7 @@ class FakeEditorSocket extends EventEmitter {
         result: {
           mimeType: 'image/png', data: 'Z2FtZQ==', width: 1280, height: 720,
           blackFrame: false, meanLuminance: 42,
-          status: { state: 'running', message: 'Running live', mapName: 'live', noclip: true, launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [] },
+          status: { state: 'running', message: 'Running live', mapName: 'live', botNavigation: true, noclip: true, launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [] },
         },
       }));
     } else if (request.type === 'game_status' || request.type === 'game_wait_ready' || request.type === 'game_command' || request.type === 'game_set_view') {
@@ -188,7 +192,7 @@ class FakeEditorSocket extends EventEmitter {
         type: 'capability_result', requestId: request.requestId,
         result: {
           state: request.type === 'game_command' || request.type === 'game_set_view' ? 'preparing' : 'running',
-          message: 'Running live', mapName: 'live', noclip: true, noclipRequested: true, commandErrors: [],
+          message: 'Running live', mapName: 'live', botNavigation: true, noclip: true, noclipRequested: true, commandErrors: [],
           launchedAt: 'now', runningAt: 'now', error: null, consoleTail: [],
         },
       }));
@@ -519,7 +523,7 @@ describe('live MCP bridge', () => {
           controls: ['fit', 'shift', 'scale', 'rotateDegrees'],
         },
         screenshots: { maxWidth: 2048, modes: ['perspective', 'top', 'front', 'side'] },
-        compiler: { available: false, cachedPlayReuse: true, aas: false },
+        compiler: { available: false, cachedPlayReuse: true, aas: true, artifactExport: ['bsp', 'aas'] },
         editor: { project: { gameDirectory: 'baseq3' } },
       });
 
@@ -648,7 +652,7 @@ describe('live MCP bridge', () => {
         undefined,
         { onprogress: progress => compileProgress.push(progress) },
       );
-      expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, leaked: false });
+      expect(compiled.structuredContent).toMatchObject({ success: true, quality: 'fast', bspBytes: 4096, aasBytes: 1024, leaked: false });
       expect(compileProgress).toEqual([
         expect.objectContaining({ progress: 0, total: 3, message: expect.stringContaining('Checking') }),
         expect.objectContaining({ progress: 1, total: 3, message: expect.stringContaining('Compiling') }),
@@ -662,8 +666,13 @@ describe('live MCP bridge', () => {
       temporaryDirectories.push(artifactDirectory);
       const artifactPath = join(artifactDirectory, 'live.bsp');
       const compiledArtifact = await client.callTool({ name: 'map_compile', arguments: { quality: 'fast', artifactPath } });
-      expect(compiledArtifact.structuredContent).toMatchObject({ artifact: { path: artifactPath, bytes: 4096 } });
+      const aasArtifactPath = join(artifactDirectory, 'live.aas');
+      expect(compiledArtifact.structuredContent).toMatchObject({
+        artifact: { path: artifactPath, bytes: 4096 },
+        aasArtifact: { path: aasArtifactPath, bytes: 1024 },
+      });
       expect((await readFile(artifactPath)).byteLength).toBe(4096);
+      expect((await readFile(aasArtifactPath)).byteLength).toBe(1024);
 
       const played = await client.callTool({ name: 'map_play', arguments: { quality: 'fast', noclip: true } });
       expect(played.structuredContent).toMatchObject({ launch: { launched: true, noclip: true }, status: { noclip: true } });

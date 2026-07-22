@@ -31,7 +31,7 @@ export interface LiveBridgeEditorControls {
     gridSize?: number; majorGridSize?: number; axisLabels?: [string, string]; worldUnitsPerPixel?: number;
   };
   recordMcpActivity(entry: McpActivityEntry): void;
-  launchBspPreview(mapName: string, bsp: Uint8Array, noclip: boolean): void;
+  launchBspPreview(mapName: string, bsp: Uint8Array, aas: Uint8Array | null, noclip: boolean): void;
   gameStatus(): GamePreviewStatus;
   waitForGameReady(timeoutMs: number): Promise<GamePreviewStatus>;
   gameCommand(command: 'noclip' | 'restart'): GamePreviewStatus;
@@ -48,15 +48,15 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function compilerStageStatus(output: readonly string[]): Record<'bsp' | 'vis' | 'light', 'success' | 'failed' | 'skipped'> {
-  const stages: Record<'bsp' | 'vis' | 'light', 'success' | 'failed' | 'skipped'> = {
-    bsp: 'skipped', vis: 'skipped', light: 'skipped',
+function compilerStageStatus(output: readonly string[]): Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped'> {
+  const stages: Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped'> = {
+    bsp: 'skipped', vis: 'skipped', light: 'skipped', aas: 'skipped',
   };
   for (const line of output) {
     const match = /^=== Stage \d+ result: (success|failed) ===$/i.exec(line.trim());
     if (!match) continue;
     const number = Number(/^=== Stage (\d+)/.exec(line.trim())?.[1]);
-    const stage = number === 1 ? 'bsp' : number === 2 ? 'vis' : number === 3 ? 'light' : null;
+    const stage = number === 1 ? 'bsp' : number === 2 ? 'vis' : number === 3 ? 'light' : number === 4 ? 'aas' : null;
     if (stage) stages[stage] = match[1].toLowerCase() as 'success' | 'failed';
   }
   return stages;
@@ -167,7 +167,7 @@ export class LiveMapBridge {
   private reconnectTimer: number | null = null;
   private suppressDocumentSync = false;
   private stopped = false;
-  private compiledBsp: { revision: number; data: Uint8Array } | null = null;
+  private compiledBsp: { revision: number; data: Uint8Array; aas: Uint8Array | null } | null = null;
   private readonly unsubscribeDocumentChanges: () => void;
   readonly sessionId = stableEditorSessionId();
 
@@ -764,7 +764,11 @@ export class LiveMapBridge {
         });
         const leaked = Boolean(result.pointfileText);
         this.compiledBsp = result.success && result.bsp
-          ? { revision: this.editor.documentRevision, data: new Uint8Array(result.bsp) }
+          ? {
+              revision: this.editor.documentRevision,
+              data: new Uint8Array(result.bsp),
+              aas: result.aas ? new Uint8Array(result.aas) : null,
+            }
           : null;
         const compilerDiagnostics = structureCompilerOutput(
           result.output, this.editor.entities,
@@ -785,6 +789,7 @@ export class LiveMapBridge {
             success: result.success,
             quality: message.quality,
             bspBytes: result.bsp?.byteLength ?? 0,
+            aasBytes: result.aas?.byteLength ?? 0,
             leaked,
             pointfileLoaded: leaked,
             stages: compilerStageStatus(result.output),
@@ -792,6 +797,7 @@ export class LiveMapBridge {
             output: result.output,
             ...(message.includeArtifact && result.bsp ? {
               bspBase64: bytesToBase64(new Uint8Array(result.bsp)),
+              ...(result.aas ? { aasBase64: bytesToBase64(new Uint8Array(result.aas)) } : {}),
             } : {}),
           },
         });
@@ -811,10 +817,13 @@ export class LiveMapBridge {
           throw new Error('The current revision has not been compiled; call map_compile first');
         }
         const mapName = this.editor.fileName.replace(/\.map$/i, '') || 'compile';
-        this.controls.launchBspPreview(mapName, this.compiledBsp.data, message.noclip);
+        this.controls.launchBspPreview(mapName, this.compiledBsp.data, this.compiledBsp.aas, message.noclip);
         this.send({
           type: 'capability_result', requestId: message.requestId,
-          result: { launched: true, mapName, revision: this.editor.documentRevision, noclip: message.noclip },
+          result: {
+            launched: true, mapName, revision: this.editor.documentRevision, noclip: message.noclip,
+            botNavigation: this.compiledBsp.aas !== null,
+          },
         });
       } catch (error) {
         this.send({

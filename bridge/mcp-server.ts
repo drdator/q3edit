@@ -282,7 +282,7 @@ const compileOutputSchema = z.looseObject({
 });
 const gameStatusFields = {
   sessionId: z.string(), state: z.enum(['idle', 'preparing', 'loading', 'running', 'error', 'closed']), message: z.string(),
-  mapName: z.string().nullable(), noclip: z.boolean(), noclipRequested: z.boolean().optional(),
+  mapName: z.string().nullable(), botNavigation: z.boolean(), noclip: z.boolean(), noclipRequested: z.boolean().optional(),
   commandErrors: z.array(z.string()).optional(), launchedAt: z.string().nullable(), runningAt: z.string().nullable(),
   error: z.string().nullable(), consoleTail: z.array(z.string()), renderer: z.unknown().optional(),
 };
@@ -1535,8 +1535,8 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
         },
         compiler: {
           available: hub.compilerAvailable, qualities: ['fast', 'normal', 'full'],
-          preflight: 'map_compile_preflight', compilerSafeInput: true, artifactExport: true,
-          cachedPlayReuse: true, aas: false,
+          preflight: 'map_compile_preflight', compilerSafeInput: true,
+          artifactExport: ['bsp', 'aas'], cachedPlayReuse: true, aas: true,
         },
         editor,
       });
@@ -2096,11 +2096,11 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_compile', {
     title: 'Compile the live map',
-    description: 'Run the browser-based q3map toolchain against the current document and return BSP success, leak status, byte size, structured diagnostics with implicated references where possible, and complete compiler output. Fast runs BSP only; normal adds fast VIS and LIGHT; full uses configured full VIS and LIGHT settings.',
+    description: 'Run the browser-based q3map and BSPC toolchain against the current document. Returns BSP and bot-navigation AAS status and byte sizes, leak status, structured diagnostics, and compiler output. Fast skips VIS/LIGHT but still generates AAS; normal adds fast VIS/LIGHT; full uses configured full VIS/LIGHT settings.',
     inputSchema: {
       ...sessionInput,
       quality: z.enum(['fast', 'normal', 'full']).optional().default('fast'),
-      artifactPath: z.string().min(1).optional().describe('Optional local .bsp destination for the compiled artifact'),
+      artifactPath: z.string().min(1).optional().describe('Optional local .bsp destination; a sibling .aas is exported when bot navigation succeeds'),
     },
     outputSchema: compileOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -2137,14 +2137,14 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_play', {
     title: 'Compile and playtest the live map',
-    description: 'Compile and playtest the current map in Q3Edit’s browser ioquake3 preview. Set useLastCompile after map_compile or map_save_and_compile to reuse the current revision’s cached BSP. Returns compile, launch, and verified game lifecycle state.',
+    description: 'Compile and playtest the current map in Q3Edit’s browser ioquake3 preview, including generated AAS bot navigation. Set useLastCompile after map_compile or map_save_and_compile to reuse the current revision’s cached artifacts. Returns compile, launch, and verified game lifecycle state.',
     inputSchema: {
       ...sessionInput,
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
       noclip: z.boolean().optional().default(false)
         .describe('Request verified noclip after launch; defaults to false and reports an error if the game console does not confirm it'),
       useLastCompile: z.boolean().optional().default(false)
-        .describe('Reuse the cached BSP only when it belongs to the current revision; e.g. true immediately after a successful map_compile'),
+        .describe('Reuse the cached BSP and AAS only when they belong to the current revision; e.g. true immediately after a successful map_compile'),
     },
     outputSchema: mapPlayOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -2785,7 +2785,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       path: z.string().min(1).optional()
         .describe('Optional absolute .map destination, e.g. "/Users/me/maps/arena.map"; omit to use the active save path'),
       artifactPath: z.string().min(1).optional()
-        .describe('Optional absolute .bsp export destination, e.g. "/Users/me/maps/arena.bsp"; omit to retain the browser-local artifact'),
+        .describe('Optional absolute .bsp export destination; a sibling .aas is also exported when bot navigation succeeds'),
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
     },
     outputSchema: saveAndCompileOutputSchema,

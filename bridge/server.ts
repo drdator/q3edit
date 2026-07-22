@@ -44,6 +44,7 @@ const options: ServerOptions = {
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const distPath = resolve(projectRoot, 'dist');
 const q3mapDistPath = resolve(projectRoot, 'q3map-compiler/dist');
+const bspcDistPath = resolve(projectRoot, 'bspc-compiler/dist');
 const activityLogPath = resolve(options.logDirectory ?? resolve(projectRoot, '.q3edit/mcp-logs'));
 const companionUrls = editorCompanionUrls(options.host, options.port, options.pairingToken, options.editorUrl);
 const permittedEditorOrigins = allowedEditorOrigins(options.host, options.port, options.editorUrl, options.editorOrigins);
@@ -111,6 +112,8 @@ app.delete('/mcp', async (req, res) => {
 app.get('/bridge/status', (_, res) => res.json({ sessions: hub.listSessions() }));
 if (existsSync(q3mapDistPath)) app.use('/q3map-compiler/dist', express.static(q3mapDistPath));
 else console.warn(`q3map artifacts are unavailable at ${q3mapDistPath}; run npm run build:q3map to enable map_compile`);
+if (existsSync(bspcDistPath)) app.use('/bspc-compiler/dist', express.static(bspcDistPath));
+else console.warn(`BSPC artifacts are unavailable at ${bspcDistPath}; run npm run build:bspc to enable bot navigation generation`);
 app.use(express.static(distPath));
 
 const httpServer = app.listen(options.port, options.host, error => {

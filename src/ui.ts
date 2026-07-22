@@ -32,6 +32,8 @@ import 'virtual:phosphor-icons.css';
 import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
 import { openMcpConnectionDialog } from './live-bridge/connection-dialog';
+import { openQuickPlayDialog } from './quick-play-dialog';
+import type { QuickPlayPreferences } from './preferences';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -62,6 +64,9 @@ const COMMON_TEXTURES = [
 interface GamePreviewLaunch {
   mapName: string;
   bsp: Uint8Array;
+  aas: Uint8Array | null;
+  botCount: number;
+  botSkill: number;
   noclip: boolean;
   commands: Array<{ name: 'setviewpos' | 'map_restart'; args: string[] }>;
 }
@@ -95,7 +100,7 @@ export class UI {
   private mcpConnect: ((url: string) => void | Promise<void>) | null = null;
   private mcpDisconnect: (() => void) | null = null;
   private gamePreviewStatus: GamePreviewStatus = {
-    state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, noclip: false,
+    state: 'idle', message: 'No compiled BSP preview has been launched', mapName: null, botNavigation: false, noclip: false,
     noclipRequested: false, commandErrors: [], launchedAt: null, runningAt: null, error: null, consoleTail: [],
     renderer: null,
   };
@@ -124,7 +129,8 @@ export class UI {
       openRotateDialog: () => this.openRotateDialog(),
       openScaleDialog: () => this.openScaleDialog(),
       compileBSP: () => this.compileBSP(),
-      quickPlay: quality => this.compileBSP(quality),
+      quickPlay: () => this.quickPlay(),
+      openQuickPlayOptions: () => this.openQuickPlayOptions(),
       managePakFiles: () => this.onManagePakFiles?.(),
       openPreferences: () => this.openPreferences(),
       openProjectSettings: () => this.openProjectSettings(),
@@ -2482,7 +2488,25 @@ export class UI {
     });
   }
 
-  private async compileBSP(autoPlayQuality: 'fast' | 'normal' | 'full' | null = null): Promise<void> {
+  private quickPlay(preferences: QuickPlayPreferences = this.editor.preferences.quickPlay): Promise<void> {
+    return this.compileBSP(
+      preferences.quality,
+      preferences.botsEnabled ? preferences.botCount : 0,
+      preferences.botSkill,
+    );
+  }
+
+  private openQuickPlayOptions(): void {
+    openQuickPlayDialog({
+      editor: this.editor,
+    });
+  }
+
+  private async compileBSP(
+    autoPlayQuality: 'fast' | 'normal' | 'full' | null = null,
+    botCount = 0,
+    botSkill = 2,
+  ): Promise<void> {
     document.getElementById('compile-dialog')?.remove();
     const autoPlay = autoPlayQuality !== null;
     const autoPlayLabel = autoPlayQuality
@@ -2502,19 +2526,23 @@ export class UI {
     const title = document.createElement('div');
     title.id = 'compile-dialog-title';
     title.className = 'editor-dialog-title';
+    const botTitle = botCount > 0 ? `, ${botCount} ${botCount === 1 ? 'Bot' : 'Bots'}` : '';
     title.textContent = autoPlay
       ? (this.editor.isRegionActive()
-          ? `Quick Play (${autoPlayLabel}, Region)`
-          : `Quick Play (${autoPlayLabel})`)
+          ? `Quick Play (${autoPlayLabel}${botTitle}, Region)`
+          : `Quick Play (${autoPlayLabel}${botTitle})`)
       : (this.editor.isRegionActive() ? 'Compile BSP (Region)' : 'Compile BSP');
     dialog.appendChild(title);
 
     const description = document.createElement('div');
     description.className = 'editor-dialog-description';
+    const botDescription = botCount > 0
+      ? ` with ${botCount === 1 ? 'one bot opponent' : `${botCount} bot opponents`}`
+      : '';
     description.textContent = autoPlay
       ? (this.editor.isRegionActive()
-          ? `Compile the active region at ${autoPlayQuality} quality, then start it in browser ioquake3.`
-          : `Compile the current map at ${autoPlayQuality} quality, then start it in browser ioquake3.`)
+          ? `Compile the active region at ${autoPlayQuality} quality, then start it in browser ioquake3${botDescription}.`
+          : `Compile the current map at ${autoPlayQuality} quality, then start it in browser ioquake3${botDescription}.`)
       : (this.editor.isRegionActive()
           ? 'Compile the active region with the browser-based q3map toolchain.'
           : 'Compile the current map with the browser-based q3map toolchain.');
@@ -2587,7 +2615,13 @@ export class UI {
     saveBtn.textContent = 'Save .bsp';
     saveBtn.hidden = true;
 
-    buttons.append(closeBtn, runBtn, saveBtn, compileBtn);
+    const saveAasBtn = document.createElement('button');
+    saveAasBtn.type = 'button';
+    saveAasBtn.className = 'btn';
+    saveAasBtn.textContent = 'Save .aas';
+    saveAasBtn.hidden = true;
+
+    buttons.append(closeBtn, runBtn, saveAasBtn, saveBtn, compileBtn);
     dialog.appendChild(buttons);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
@@ -2632,6 +2666,7 @@ export class UI {
       qualitySelect.disabled = true;
       runBtn.hidden = true;
       saveBtn.hidden = true;
+      saveAasBtn.hidden = true;
       dialog.classList.remove('success', 'warning', 'error');
       status.textContent = compileWithRegion ? 'Compiling active region...' : 'Compiling...';
       log.textContent = '';
@@ -2679,7 +2714,10 @@ export class UI {
         } else {
           dialog.classList.add('success');
           this.editor.clearPointfile(false);
-          status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB)`;
+          const navigation = result.aas
+            ? `, bot navigation ${(result.aas.length / 1024).toFixed(1)} KB`
+            : ', bot navigation unavailable';
+          status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB${navigation})`;
           this.editor.statusMessage = 'BSP compiled successfully';
         }
 
@@ -2695,14 +2733,35 @@ export class UI {
           this.editor.statusMessage = `Saved ${baseName}.bsp`;
         };
 
+        if (result.aas) {
+          saveAasBtn.hidden = false;
+          saveAasBtn.onclick = () => {
+            const blob = new Blob([new Uint8Array(result.aas!)], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = baseName + '.aas';
+            a.click();
+            URL.revokeObjectURL(url);
+            this.editor.statusMessage = `Saved ${baseName}.aas`;
+          };
+        }
+
         runBtn.hidden = false;
         runBtn.onclick = () => {
-          this.openBspPreview(baseName, result.bsp!);
+          this.openBspPreview(baseName, result.bsp!, result.aas);
         };
 
         if (autoPlay && !dismissed) {
-          overlay.remove();
-          this.openBspPreview(baseName, result.bsp);
+          if (botCount > 0 && !result.aas) {
+            dialog.classList.remove('success');
+            dialog.classList.add('warning');
+            status.textContent = 'Compiled, but Quick Play with Bot requires successful bot navigation';
+            this.editor.statusMessage = 'Bot Quick Play stopped: AAS generation failed';
+          } else {
+            overlay.remove();
+            this.openBspPreview(baseName, result.bsp, result.aas, false, [], botCount, botSkill);
+          }
         }
       } else {
         dialog.classList.add('error');
@@ -2756,7 +2815,10 @@ export class UI {
   runGamePreviewCommand(command: 'noclip' | 'restart'): GamePreviewStatus {
     const launch = this.gamePreviewLaunch;
     if (!launch) throw new Error('No compiled BSP preview is available; call map_play first');
-    this.openBspPreview(launch.mapName, launch.bsp, command === 'noclip' ? true : launch.noclip, launch.commands);
+    this.openBspPreview(
+      launch.mapName, launch.bsp, launch.aas,
+      command === 'noclip' ? true : launch.noclip, launch.commands, launch.botCount, launch.botSkill,
+    );
     return this.getGamePreviewStatus();
   }
 
@@ -2767,15 +2829,18 @@ export class UI {
       name: 'setviewpos' as const,
       args: [...position.map(value => String(value)), String(yaw * 180 / Math.PI)],
     };
-    this.openBspPreview(launch.mapName, launch.bsp, true, [command]);
+    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, true, [command], launch.botCount, launch.botSkill);
     return this.getGamePreviewStatus();
   }
 
   openBspPreview(
     mapName: string,
     bsp: Uint8Array,
+    aas: Uint8Array | null = null,
     noclip = false,
     commands: GamePreviewLaunch['commands'] = [],
+    botCount = 0,
+    botSkill = 2,
   ): void {
     this.gamePreviewClose?.(false);
 
@@ -2784,9 +2849,15 @@ export class UI {
     bspCopy.set(bsp);
     const retainedBsp = new Uint8Array(bsp.byteLength);
     retainedBsp.set(bsp);
-    this.gamePreviewLaunch = { mapName: safeMapName, bsp: retainedBsp, noclip, commands: structuredClone(commands) };
+    const aasCopy = aas ? new Uint8Array(aas) : null;
+    const retainedAas = aas ? new Uint8Array(aas) : null;
+    this.gamePreviewLaunch = {
+      mapName: safeMapName, bsp: retainedBsp, aas: retainedAas,
+      botCount, botSkill, noclip, commands: structuredClone(commands),
+    };
     this.updateGamePreviewStatus({
-      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName, noclip: false,
+      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName,
+      botNavigation: retainedAas !== null, noclip: false,
       noclipRequested: noclip, commandErrors: [],
       launchedAt: new Date().toISOString(), runningAt: null, error: null, consoleTail: [],
       renderer: null,
@@ -2859,13 +2930,18 @@ export class UI {
       const message = event.data;
       if (message?.type === 'q3edit-player:ready' && !launchSent) {
         launchSent = true;
-        frame.contentWindow?.postMessage({
+        const launchMessage = {
           type: 'q3edit-player:launch',
           mapName: safeMapName,
           bsp: bspCopy.buffer,
+          aas: aasCopy?.buffer ?? null,
+          botCount,
+          botSkill,
           noclip,
           commands,
-        }, window.location.origin, [bspCopy.buffer]);
+        };
+        const transfer = aasCopy ? [bspCopy.buffer, aasCopy.buffer] : [bspCopy.buffer];
+        frame.contentWindow?.postMessage(launchMessage, window.location.origin, transfer);
       } else if (message?.type === 'q3edit-player:status') {
         status.textContent = message.message;
         this.updateGamePreviewStatus({ state: 'loading', message: String(message.message) });
@@ -2875,9 +2951,20 @@ export class UI {
         if (noclip && message.noclip !== true && commandErrors.length === 0) {
           commandErrors.push('Noclip was requested but the game did not confirm that it is enabled.');
         }
-        status.textContent = commandErrors.length > 0 ? `Running ${safeMapName} with command errors` : `Running ${safeMapName}`;
+        const navigationLabel = message.botNavigation === true ? ' with bot navigation' : ' without bot navigation';
+        const joinedBots = Math.max(0, Number(message.botJoinedCount) || 0);
+        const requestedBots = Math.max(0, Number(message.botCount) || 0);
+        const botLabel = requestedBots > 0
+          ? (joinedBots >= requestedBots
+              ? ` · ${requestedBots === 1 ? 'bot added' : `${requestedBots} bots added`}`
+              : ` · bot auto-fill enabled (${joinedBots}/${requestedBots})`)
+          : '';
+        status.textContent = commandErrors.length > 0
+          ? `Running ${safeMapName}${navigationLabel}${botLabel} with errors`
+          : `Running ${safeMapName}${navigationLabel}${botLabel}`;
         this.updateGamePreviewStatus({
           state: 'running', message: status.textContent, runningAt: new Date().toISOString(),
+          botNavigation: message.botNavigation === true,
           noclip: message.noclip === true,
           commandErrors,
           renderer: message.renderer ?? null,

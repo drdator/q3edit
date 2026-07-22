@@ -84,7 +84,7 @@ async function init() {
         return vp3D.capturePng(options.width, options.height, options.xray);
       },
       recordMcpActivity: entry => ui.recordMcpActivity(entry),
-      launchBspPreview: (mapName, bsp, noclip) => ui.openBspPreview(mapName, bsp, noclip),
+      launchBspPreview: (mapName, bsp, aas, noclip) => ui.openBspPreview(mapName, bsp, aas, noclip),
       gameStatus: () => ui.getGamePreviewStatus(),
       waitForGameReady: timeoutMs => ui.waitForGamePreview(timeoutMs),
       gameCommand: command => ui.runGamePreviewCommand(command),
