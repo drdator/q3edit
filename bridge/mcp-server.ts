@@ -1177,7 +1177,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_status', {
     title: 'Get live Q3Edit map status',
-    description: 'First call for live Q3Edit map authoring: return the connected editor, active map, revision, map counts, and diagnostics summary before creating or editing geometry and entities.',
+    description: 'First call for live Q3Edit authoring: return map status including the connected editor, active document, revision, object counts, and diagnostics summary before creating or editing content.',
     inputSchema: { ...sessionInput },
     outputSchema: mapStatusOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1192,7 +1192,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('editor_selection', {
     title: 'Inspect the current Q3Edit selection',
-    description: 'Read the objects or faces currently selected by the user. Returns revision-safe references, combined bounds, and by default per-face texture/projection details for selected brushes so the references can be passed directly to map_preview and map_apply.',
+    description: 'Read the current editor selection of objects or faces. Returns revision-safe references, combined bounds, and by default per-face texture/projection details for selected brushes so references can pass directly to map_preview and map_apply.',
     inputSchema: {
       ...sessionInput,
       detail: z.enum(['summary', 'faces', 'geometry']).optional().default('faces')
@@ -1234,7 +1234,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       title: `${action === 'undo' ? 'Undo' : 'Redo'} the latest Q3Edit document change`,
       description: action === 'undo'
         ? 'Reverse the latest applied editor history entry; use map_redo only to reapply a change that was already undone. Returns the new revision and history availability, and invalidates any cached compile.'
-        : 'Reapply the latest editor history entry previously reversed by map_undo; use map_undo to reverse an applied change. Returns the new revision and history availability, and invalidates any cached compile.',
+        : 'Redo the latest editor history entry previously reversed by map_undo; use map_undo to reverse an applied change. Returns the new revision and history availability, and invalidates any cached compile.',
       inputSchema: {
         ...sessionInput,
         expectedRevision: expectedRevisionSchema,
@@ -1391,7 +1391,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('editor_review', {
     title: 'Capture a multi-angle map review',
-    description: 'High-priority visual QA tool: capture consistently framed perspective and orthographic views in one call. Returns each image with shared framing plus grid and world-scale metadata for layout views.',
+    description: 'High-priority editor review tool: capture consistently framed perspective and orthographic views in one call. Returns each image with shared framing plus grid and world-scale metadata for layout views.',
     inputSchema: {
       ...sessionInput,
       views: z.array(z.enum(['perspective', 'top', 'front', 'side'])).min(1).max(4)
@@ -1454,7 +1454,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_capabilities', {
     title: 'Describe Q3Edit MCP capabilities and limits',
-    description: 'Return batch limits, supported operation versions, screenshot constraints, compiler availability, and the selected editor’s loaded project/game profile.',
+    description: 'Return MCP capabilities including batch limits, supported operation versions, screenshot constraints, compiler availability, and the selected editor’s loaded project/game profile.',
     inputSchema: { ...sessionInput },
     outputSchema: mapCapabilitiesOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1464,7 +1464,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
       const editor = await hub.editorCapabilities(resolved);
       return toolResult({
         sessionId: resolved,
-        protocolVersion: 5,
+        protocolVersion: 6,
         essentialTools: [
           'map_status', 'editor_selection', 'operation_search', 'operation_schema', 'map_preview', 'map_apply', 'map_undo', 'map_redo', 'editor_capture', 'editor_review',
           'map_compile', 'map_play', 'game_command', 'game_set_view', 'game_screenshot',
@@ -1580,7 +1580,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_entities', {
     title: 'List live map entities',
-    description: 'List entity references, classnames, property counts, geometry counts, targets, and diagnostics.',
+    description: 'List map entities with their references, classnames, property counts, geometry counts, targets, and diagnostics.',
     inputSchema: {
       ...sessionInput,
       classname: z.string().optional().describe('Optional exact classname filter'),
@@ -1599,7 +1599,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_statistics', {
     title: 'Summarize map geometry and gameplay distribution',
-    description: 'Return world bounds/size, structural versus detail geometry, texture usage, approximate light influence coverage, and spawn/item counts, bounds, class distribution, spacing, and object references.',
+    description: 'Return map statistics covering world bounds/size, structural versus detail geometry, texture usage, approximate light coverage, and spawn/item counts, class distribution, spacing, and references.',
     inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
@@ -1614,7 +1614,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_texture_review', {
     title: 'Review texture projection quality',
-    description: 'Analyze visible brush faces for low or excessive texel density, anisotropic stretching, suspicious one-repeat fitting on large faces, and inconsistent density between uses of one material. Returns exact face references, projection metrics, and suggested edit_faces transforms.',
+    description: 'Review visible brush textures for low or excessive texel density, anisotropic stretching, suspicious one-repeat fitting, and inconsistent density. Returns exact face references, projection metrics, and suggested edit_faces transforms.',
     inputSchema: {
       ...sessionInput,
       targetTexelsPerUnit: z.number().positive().optional().default(2)
@@ -1668,7 +1668,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_geometry_lint', {
     title: 'Lint geometry construction quality',
-    description: 'Find duplicate brushes, coplanar same-facing overlaps that may z-fight, sub-unit brush thickness, sliver faces, coordinates outside the compiler eighth-unit grid, and small structural brushes that are likely decorative detail. Returns exact brush or face references.',
+    description: 'Lint map geometry for duplicate brushes, coplanar overlaps, sub-unit thickness, sliver faces, off-grid coordinates, and small structural brushes likely to be detail. Returns exact brush or face references.',
     inputSchema: { ...sessionInput },
     outputSchema: geometryLintOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1815,7 +1815,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_spatial_review', {
     title: 'Review spatial design variety',
-    description: 'Measure axis-aligned geometry dominance, floor-level and brush-dimension variety, route branching, rhythm, symmetry, landmarks, silhouettes, and long flat walls. Returns transparent heuristic findings, implicated references, metrics, and corrective suggestions.',
+    description: 'Review spatial design by measuring axis alignment, level and dimension variety, route branching, rhythm, symmetry, landmarks, silhouettes, and long flat walls. Returns transparent findings, implicated references, metrics, and suggestions.',
     inputSchema: { ...sessionInput },
     outputSchema: spatialReviewOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1831,7 +1831,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_summary', {
     title: 'Get a compact map orientation summary',
-    description: 'Return a token-efficient revision snapshot with world bounds, object/detail counts, diagnostic totals, major entity classes, and spawn/item distribution. Use this between edit batches instead of dumping the full document.',
+    description: 'Return a token-efficient map summary with revision, world bounds, object/detail counts, diagnostic totals, major entity classes, and spawn/item distribution. Use this between edit batches instead of dumping the full document.',
     inputSchema: { ...sessionInput },
     outputSchema: mapSummaryOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1852,7 +1852,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_style_get', {
     title: 'Get the persistent map style brief',
-    description: 'Read the structured visual direction stored in worldspawn before substantial authoring. Returns the theme, approved texture palette, modular grid, target texel density, lighting mood, detail density, and notes without editing the map.',
+    description: 'Read the structured map style stored in worldspawn before substantial authoring. Returns its theme, approved texture palette, modular grid, target texel density, lighting mood, detail density, and notes without editing.',
     inputSchema: { ...sessionInput },
     outputSchema: styleBriefOutputSchema,
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -1934,7 +1934,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_inspect', {
     title: 'Inspect live map objects',
-    description: 'Return properties, bounds, textures, optional brush-face material details, and optional geometry for current revision object references.',
+    description: 'Inspect current-revision object references and return properties, bounds, textures, optional brush-face material details, and optional geometry.',
     inputSchema: {
       ...sessionInput,
       refs: z.array(objectRef).min(1).max(50)
@@ -1961,7 +1961,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_validate', {
     title: 'Validate live map',
-    description: 'Return all current parser, geometry, entity-link, texture, and model diagnostics from Q3Edit.',
+    description: 'Validate the live map and return all current parser, geometry, entity-link, texture, and model diagnostics from Q3Edit.',
     inputSchema: { ...sessionInput },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ sessionId }) => {
@@ -1976,7 +1976,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('diagnostic_explain', {
     title: 'Explain a compiler or design diagnostic',
-    description: 'Resolve likely source refs for a compiler warning or review finding. Returns its practical impact, implicated objects, concrete MCP tools, and previewable operation templates for addressing it.',
+    description: 'Explain a compiler or design diagnostic and resolve likely source refs. Returns its practical impact, implicated objects, concrete MCP tools, and previewable operation templates for addressing it.',
     inputSchema: {
       ...sessionInput,
       code: z.string().min(1).optional()
@@ -2040,7 +2040,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_analyze_jump_pad', {
     title: 'Analyze a Quake III jump-pad trajectory',
-    description: 'Reproduce the engine AimAtTarget velocity for an existing trigger_push or proposed trigger bounds/apex. Returns timing, velocity, nominal landing, first plausible landing surface, and approximate player-hull clearance collisions.',
+    description: 'Analyze a jump pad by reproducing the engine AimAtTarget velocity for an existing trigger_push or proposed bounds/apex. Returns timing, velocity, landing, support, and approximate player-hull collisions.',
     inputSchema: {
       ...sessionInput,
       triggerRef: z.string().regex(/^E\d+$/, 'Expected a trigger_push entity reference such as E12').optional()
@@ -2133,7 +2133,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_play', {
     title: 'Compile and playtest the live map',
-    description: 'Compile the current map and launch its BSP in Q3Edit’s browser ioquake3 preview. Set useLastCompile after map_compile or map_save_and_compile to reuse the current revision’s cached BSP. Returns compile, launch, and verified game lifecycle state.',
+    description: 'Compile and playtest the current map in Q3Edit’s browser ioquake3 preview. Set useLastCompile after map_compile or map_save_and_compile to reuse the current revision’s cached BSP. Returns compile, launch, and verified game lifecycle state.',
     inputSchema: {
       ...sessionInput,
       quality: z.enum(['fast', 'normal', 'full']).optional().default('normal'),
@@ -2199,7 +2199,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('map_query', {
     title: 'Query live map objects',
-    description: 'Find entities, brushes, faces, or patches by exact refs, classname, texture, entity property, group, and optional world-space bounds. Returns current-revision object references suitable for map_inspect or map_apply.',
+    description: 'Query entities, brushes, faces, or patches by exact refs, classname, texture, entity property, group, and optional world-space bounds. Returns current-revision references suitable for map_inspect or map_apply.',
     inputSchema: {
       ...sessionInput,
       refs: z.array(objectRef).min(1).max(500).optional()
@@ -2303,7 +2303,7 @@ export function createQ3EditMcpServer(hub: BridgeHub, activityLog?: McpActivityL
 
   server.registerTool('texture_inspect', {
     title: 'Inspect texture and shader semantics',
-    description: 'Return resolved image dimensions/source, complete parsed shader surfaceparms and q3map directives, stages and referenced images, skybox metadata, content/surface flags, transparency, emission, preview consistency, and compiler availability.',
+    description: 'Inspect one texture or shader and return its resolved image dimensions/source, surfaceparms, q3map directives, stages, skybox metadata, flags, transparency, emission, preview consistency, and compiler availability.',
     inputSchema: {
       ...sessionInput,
       name: z.string().min(1).describe('Exact texture or shader name returned by texture_search, e.g. "common/sky_space"'),

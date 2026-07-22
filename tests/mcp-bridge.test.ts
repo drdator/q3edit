@@ -503,7 +503,7 @@ describe('live MCP bridge', () => {
 
       const capabilities = await client.callTool({ name: 'map_capabilities', arguments: {} });
       expect(capabilities.structuredContent).toMatchObject({
-        sessionId: 'editor-a', protocolVersion: 5,
+        sessionId: 'editor-a', protocolVersion: 6,
         essentialTools: expect.arrayContaining(['editor_selection', 'map_preview', 'map_apply', 'editor_capture', 'editor_review', 'game_set_view', 'map_undo']),
         operations: { version: 11, maxPerBatch: 128 },
         spatialPlanning: { persistent: true, operations: ['create_area', 'connect_areas'] },

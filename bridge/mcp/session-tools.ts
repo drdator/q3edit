@@ -39,7 +39,7 @@ export function registerSessionTools(
 
   server.registerTool('activity_log', {
     title: 'Inspect this MCP session activity log',
-    description: 'Return recent tool calls from this MCP connection, including target editor session, duration, status, summarized arguments/results, and revision deltas. The complete append-only JSONL transcript is written to filePath.',
+    description: 'Return the recent MCP activity log for this connection, including target editor session, duration, status, summarized arguments/results, and revision deltas. The complete append-only JSONL transcript is written to filePath.',
     inputSchema: z.object({
       editorSessionId: editorSessionId.optional().describe('Optionally filter entries to one editor tab'),
       limit: z.number().int().min(1).max(100).optional().default(50).describe('Maximum entries in this page; defaults to 50'),

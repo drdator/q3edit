@@ -143,6 +143,10 @@ for single-view and multi-view inspection. The shared authoring workflow is
 exposed as the `q3edit://agent-workflow` MCP resource instead of being repeated
 in every tool description.
 
+`map_capabilities.protocolVersion` is 6 for this catalog contract. Version 6
+removes the deprecated screenshot aliases; use `editor_capture` for one view
+and `editor_review` for a consistently framed multi-view pass.
+
 Claude Code defers MCP definitions and searches them on demand by default.
 When Q3Edit is connected through OpenAI's Responses API rather than the Codex
 plugin, configure the MCP server entry with `defer_loading: true`; deferred
