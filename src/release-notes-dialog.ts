@@ -186,7 +186,7 @@ export const RELEASE_NOTES: readonly ReleaseNotes[] = [
 ];
 
 type ReleaseNotesReadStorage = Pick<Storage, 'getItem'>;
-type ReleaseNotesWriteStorage = Pick<Storage, 'setItem'>;
+type ReleaseNotesWriteStorage = Pick<Storage, 'setItem' | 'removeItem'>;
 
 function currentStorage(): Storage | null {
   try {
@@ -209,6 +209,17 @@ export function isReleaseNotesDismissed(
   }
 }
 
+export function areAutomaticReleaseNotesDisabled(
+  storage: ReleaseNotesReadStorage | null = currentStorage(),
+): boolean {
+  if (!storage) return false;
+  try {
+    return storage.getItem(RELEASE_NOTES_NEVER_SHOW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function dismissReleaseNotes(
   release: ReleaseNotes = RELEASE_NOTES[0],
   storage: ReleaseNotesWriteStorage | null = currentStorage(),
@@ -218,6 +229,7 @@ export function dismissReleaseNotes(
   try {
     storage.setItem(RELEASE_NOTES_DISMISSED_KEY, release.id);
     if (neverShowAgain) storage.setItem(RELEASE_NOTES_NEVER_SHOW_KEY, '1');
+    else storage.removeItem(RELEASE_NOTES_NEVER_SHOW_KEY);
   } catch {
     // The dialog remains usable when browser storage is unavailable.
   }
@@ -225,6 +237,7 @@ export function dismissReleaseNotes(
 
 export interface ReleaseNotesDialogOptions {
   showDismissCheckbox?: boolean;
+  dismissChecked?: boolean;
   onClose?: (dismissed: boolean) => void;
 }
 
@@ -289,11 +302,12 @@ export function openReleaseNotesDialog(
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
   let dismissCheckbox: HTMLInputElement | null = null;
-  if (options.showDismissCheckbox) {
+  if (options.showDismissCheckbox ?? true) {
     const dismissLabel = document.createElement('label');
     dismissLabel.className = 'release-notes-dismiss';
     dismissCheckbox = document.createElement('input');
     dismissCheckbox.type = 'checkbox';
+    dismissCheckbox.checked = options.dismissChecked ?? areAutomaticReleaseNotesDisabled();
     const dismissText = document.createElement('span');
     dismissText.textContent = 'Don’t show release notes automatically';
     dismissLabel.append(dismissCheckbox, dismissText);
@@ -304,7 +318,8 @@ export function openReleaseNotesDialog(
   const closeDialog = () => {
     const dismissed = dismissCheckbox?.checked ?? false;
     overlay.remove();
-    options.onClose?.(dismissed);
+    if (options.onClose) options.onClose(dismissed);
+    else dismissReleaseNotes(releases[0], currentStorage(), dismissed);
   };
   close.addEventListener('click', closeDialog);
   actions.appendChild(close);
@@ -323,6 +338,7 @@ export function openUnreadReleaseNotesDialog(
   if (isReleaseNotesDismissed(release, storage)) return false;
   openReleaseNotesDialog(release, {
     showDismissCheckbox: true,
+    dismissChecked: false,
     onClose: neverShowAgain => dismissReleaseNotes(release, storage, neverShowAgain),
   });
   return true;

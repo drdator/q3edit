@@ -27,6 +27,7 @@ describe('release notes', () => {
     const storage = {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
     };
 
     expect(isReleaseNotesDismissed(JULY_22_UPDATE_RELEASE_NOTES, storage)).toBe(false);
@@ -38,5 +39,9 @@ describe('release notes', () => {
     dismissReleaseNotes(JULY_22_UPDATE_RELEASE_NOTES, storage, true);
     expect(values.get(RELEASE_NOTES_NEVER_SHOW_KEY)).toBe('1');
     expect(isReleaseNotesDismissed(MCP_PREVIEW_RELEASE_NOTES, storage)).toBe(true);
+
+    dismissReleaseNotes(JULY_22_UPDATE_RELEASE_NOTES, storage, false);
+    expect(values.has(RELEASE_NOTES_NEVER_SHOW_KEY)).toBe(false);
+    expect(isReleaseNotesDismissed(MCP_PREVIEW_RELEASE_NOTES, storage)).toBe(false);
   });
 });
