@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Q3Edit release notes: local AI map authoring with Codex and Claude, browser-based Quake III editing, workflow improvements, rendering fixes, and compatibility updates.">
+  <meta name="description" content="Q3Edit release notes: bot-ready Quick Play, local AI map authoring with Codex and Claude, browser-based Quake III editing, workflow improvements, and compatibility updates.">
   <meta name="theme-color" content="#111311">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Q3Edit Release Notes">
@@ -39,6 +39,38 @@
       <div class="release-notes-history">
         <article class="release-notes-entry">
           <span class="release-notes-entry-label">Latest release</span>
+          <h2>July 22, 2026 Update</h2>
+          <p class="release-notes-entry-summary">Bot-ready Quick Play, clearer MCP onboarding, and editing refinements that make testing maps and everyday construction more dependable.</p>
+
+          <section>
+            <h3>Quick Play with bots</h3>
+            <ul>
+              <li>Generate Quake III AAS navigation alongside compiled BSP files through the bundled browser-based BSPC port, so custom maps can support bots.</li>
+              <li>Configure Quick Play quality, bot count, and bot skill once, then automatically compile, launch, and add up to three opponents with the remembered settings.</li>
+              <li>Start Quick Play from the persistent play button at the bottom of the tool strip or press F5, while keeping detailed options and manual BSP compilation available from the File menu.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3>MCP &amp; website</h3>
+            <ul>
+              <li>Open the MCP installation guide directly from the Connect MCP dialog, with the same local AI map-authoring workflow now introduced on the public landing page.</li>
+              <li>Use clearer, non-wrapping landing-page actions with consistent Phosphor icons to reach Q3Edit, the MCP setup guide, and release notes.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3>Editing refinements</h3>
+            <ul>
+              <li>Resize texture-locked brushes without stretching their materials or accumulating texture drift during a drag, for both classic and brush-primitive projections.</li>
+              <li>Selecting Move or Resize now returns to the Select tool instead of leaving a conflicting placement tool active.</li>
+              <li>Choosing a point entity class closes the Place Entity picker immediately, while filtering the list keeps it open.</li>
+            </ul>
+          </section>
+        </article>
+
+        <article class="release-notes-entry">
+          <span class="release-notes-entry-label">Previous release</span>
           <h2>July 22, 2026 — MCP Preview</h2>
           <p class="release-notes-entry-summary">A complete local AI map-authoring workflow for Codex and Claude, with live editing, richer construction tools, visual review, diagnostics, compilation, and play-preview control.</p>
 
@@ -83,7 +115,7 @@
         </article>
 
         <article class="release-notes-entry">
-          <span class="release-notes-entry-label">Previous release</span>
+          <span class="release-notes-entry-label">Earlier release</span>
           <h2>July 21, 2026 Update</h2>
           <p class="release-notes-entry-summary">A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.</p>
 

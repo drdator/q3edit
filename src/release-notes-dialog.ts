@@ -4,15 +4,51 @@ export interface ReleaseNotesSection {
 }
 
 export interface ReleaseNotes {
+  id: string;
   title: string;
   label: string;
   summary: string;
   sections: readonly ReleaseNotesSection[];
 }
 
-export const MCP_PREVIEW_RELEASE_NOTES: ReleaseNotes = {
-  title: 'July 22, 2026 — MCP Preview',
+export const RELEASE_NOTES_DISMISSED_KEY = 'q3edit.releaseNotes.dismissed';
+
+export const JULY_22_UPDATE_RELEASE_NOTES: ReleaseNotes = {
+  id: '2026-07-22-bots-and-workflow',
+  title: 'July 22, 2026 Update',
   label: 'Latest release',
+  summary: 'Bot-ready Quick Play, clearer MCP onboarding, and editing refinements that make testing maps and everyday construction more dependable.',
+  sections: [
+    {
+      title: 'Quick Play with bots',
+      items: [
+        'Generate Quake III AAS navigation alongside compiled BSP files through the bundled browser-based BSPC port, so custom maps can support bots.',
+        'Configure Quick Play quality, bot count, and bot skill once, then automatically compile, launch, and add up to three opponents with the remembered settings.',
+        'Start Quick Play from the persistent play button at the bottom of the tool strip or press F5, while keeping detailed options and manual BSP compilation available from the File menu.',
+      ],
+    },
+    {
+      title: 'MCP & website',
+      items: [
+        'Open the MCP installation guide directly from the Connect MCP dialog, with the same local AI map-authoring workflow now introduced on the public landing page.',
+        'Use clearer, non-wrapping landing-page actions with consistent Phosphor icons to reach Q3Edit, the MCP setup guide, and release notes.',
+      ],
+    },
+    {
+      title: 'Editing refinements',
+      items: [
+        'Resize texture-locked brushes without stretching their materials or accumulating texture drift during a drag, for both classic and brush-primitive projections.',
+        'Selecting Move or Resize now returns to the Select tool instead of leaving a conflicting placement tool active.',
+        'Choosing a point entity class closes the Place Entity picker immediately, while filtering the list keeps it open.',
+      ],
+    },
+  ],
+};
+
+export const MCP_PREVIEW_RELEASE_NOTES: ReleaseNotes = {
+  id: '2026-07-22-mcp-preview',
+  title: 'July 22, 2026 — MCP Preview',
+  label: 'Previous release',
   summary: 'A complete local AI map-authoring workflow for Codex and Claude, with live editing, richer construction tools, visual review, diagnostics, compilation, and play-preview control.',
   sections: [
     {
@@ -53,9 +89,10 @@ export const MCP_PREVIEW_RELEASE_NOTES: ReleaseNotes = {
   ],
 };
 
-export const LATEST_RELEASE_NOTES: ReleaseNotes = {
+export const JULY_21_RELEASE_NOTES: ReleaseNotes = {
+  id: '2026-07-21-editor-workflow',
   title: 'July 21, 2026 Update',
-  label: 'Previous release',
+  label: 'Earlier release',
   summary: 'A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.',
   sections: [
     {
@@ -83,6 +120,7 @@ export const LATEST_RELEASE_NOTES: ReleaseNotes = {
 };
 
 export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
+  id: '2026-07-editor-foundations',
   title: 'July 2026 Update',
   label: 'Earlier release',
   summary: 'A major editor update with richer Quake III compatibility, modern entity and model workflows, advanced geometry tools, camera paths, project configuration, and a more dependable editing core.',
@@ -140,13 +178,55 @@ export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
 };
 
 export const RELEASE_NOTES: readonly ReleaseNotes[] = [
+  JULY_22_UPDATE_RELEASE_NOTES,
   MCP_PREVIEW_RELEASE_NOTES,
-  LATEST_RELEASE_NOTES,
+  JULY_21_RELEASE_NOTES,
   JULY_2026_RELEASE_NOTES,
 ];
 
+type ReleaseNotesReadStorage = Pick<Storage, 'getItem'>;
+type ReleaseNotesWriteStorage = Pick<Storage, 'setItem'>;
+
+function currentStorage(): Storage | null {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function isReleaseNotesDismissed(
+  release: ReleaseNotes = RELEASE_NOTES[0],
+  storage: ReleaseNotesReadStorage | null = currentStorage(),
+): boolean {
+  if (!storage) return false;
+  try {
+    return storage.getItem(RELEASE_NOTES_DISMISSED_KEY) === release.id;
+  } catch {
+    return false;
+  }
+}
+
+export function dismissReleaseNotes(
+  release: ReleaseNotes = RELEASE_NOTES[0],
+  storage: ReleaseNotesWriteStorage | null = currentStorage(),
+): void {
+  if (!storage) return;
+  try {
+    storage.setItem(RELEASE_NOTES_DISMISSED_KEY, release.id);
+  } catch {
+    // The dialog remains usable when browser storage is unavailable.
+  }
+}
+
+export interface ReleaseNotesDialogOptions {
+  showDismissCheckbox?: boolean;
+  onClose?: (dismissed: boolean) => void;
+}
+
 export function openReleaseNotesDialog(
   releaseNotes: ReleaseNotes | readonly ReleaseNotes[] = RELEASE_NOTES,
+  options: ReleaseNotesDialogOptions = {},
 ): void {
   document.getElementById('release-notes-dialog')?.remove();
 
@@ -204,9 +284,24 @@ export function openReleaseNotesDialog(
 
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
+  let dismissCheckbox: HTMLInputElement | null = null;
+  if (options.showDismissCheckbox) {
+    const dismissLabel = document.createElement('label');
+    dismissLabel.className = 'release-notes-dismiss';
+    dismissCheckbox = document.createElement('input');
+    dismissCheckbox.type = 'checkbox';
+    const dismissText = document.createElement('span');
+    dismissText.textContent = 'Don’t show this update again';
+    dismissLabel.append(dismissCheckbox, dismissText);
+    actions.appendChild(dismissLabel);
+  }
   const close = document.createElement('button');
   close.type = 'button'; close.className = 'btn primary'; close.textContent = 'Close';
-  const closeDialog = () => overlay.remove();
+  const closeDialog = () => {
+    const dismissed = dismissCheckbox?.checked ?? false;
+    overlay.remove();
+    options.onClose?.(dismissed);
+  };
   close.addEventListener('click', closeDialog);
   actions.appendChild(close);
 
@@ -215,4 +310,18 @@ export function openReleaseNotesDialog(
     if (event.key === 'Escape') { closeDialog(); event.stopPropagation(); }
   });
   close.focus();
+}
+
+export function openUnreadReleaseNotesDialog(
+  release: ReleaseNotes = RELEASE_NOTES[0],
+  storage: (ReleaseNotesReadStorage & ReleaseNotesWriteStorage) | null = currentStorage(),
+): boolean {
+  if (isReleaseNotesDismissed(release, storage)) return false;
+  openReleaseNotesDialog(release, {
+    showDismissCheckbox: true,
+    onClose: dismissed => {
+      if (dismissed) dismissReleaseNotes(release, storage);
+    },
+  });
+  return true;
 }
