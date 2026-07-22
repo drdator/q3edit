@@ -12,6 +12,11 @@ export interface ToolbarContext {
 
 export function buildToolbar(ctx: ToolbarContext): void {
   const bar = document.getElementById('toolbar')!;
+  const toolList = document.createElement('div');
+  toolList.className = 'toolbar-tools';
+  const footer = document.createElement('div');
+  footer.className = 'toolbar-footer';
+  bar.replaceChildren(toolList, footer);
   const refreshCommandState: (() => void)[] = [];
 
   const icon = (name: string, weight: string = 'regular'): string =>
@@ -34,6 +39,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     title?: string;
     active?: boolean;
     dataset?: Record<string, string>;
+    container?: HTMLElement;
     onClick?: () => void;
   }) => {
     const btn = document.createElement('div');
@@ -62,7 +68,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
       if (opts.onClick) opts.onClick();
       else if (opts.commandId) void ctx.commands.execute(opts.commandId);
     });
-    bar.appendChild(btn);
+    (opts.container ?? toolList).appendChild(btn);
     return btn;
   };
 
@@ -282,7 +288,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     }
   }
 
-  bar.appendChild(createSeparator());
+  toolList.appendChild(createSeparator());
 
   addBtn({
     id: 'terrain-panel-toggle',
@@ -290,7 +296,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     icon: icon('mountains'),
   });
 
-  bar.appendChild(createSeparator());
+  toolList.appendChild(createSeparator());
 
   addBtn({
     id: 'gizmo-move',
@@ -303,7 +309,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     icon: icon('resize'),
   });
 
-  bar.appendChild(createSeparator());
+  toolList.appendChild(createSeparator());
 
   addBtn({
     id: 'grid-label',
@@ -329,7 +335,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     icon: `<span class="tool-label">TL</span>`,
   });
 
-  bar.appendChild(createSeparator());
+  toolList.appendChild(createSeparator());
 
   addBtn({
     id: 'invis-toggle',
@@ -337,7 +343,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     icon: icon('eye'),
   });
 
-  bar.appendChild(createSeparator());
+  toolList.appendChild(createSeparator());
 
   addBtn({
     commandId: 'csg.hollow',
@@ -352,7 +358,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     icon: icon('unite'),
   });
 
-  bar.appendChild(createSeparator());
+  toolList.appendChild(createSeparator());
 
   addBtn({
     commandId: 'edit.delete',
@@ -371,7 +377,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     icon: icon('files'),
   });
 
-  bar.appendChild(createSeparator());
+  toolList.appendChild(createSeparator());
 
   addBtn({
     commandId: 'edit.undo',
@@ -380,6 +386,15 @@ export function buildToolbar(ctx: ToolbarContext): void {
   addBtn({
     commandId: 'edit.redo',
     icon: icon('arrow-clockwise'),
+  });
+
+  footer.appendChild(createSeparator());
+
+  addBtn({
+    id: 'quick-play',
+    commandId: 'file.quick-play',
+    icon: icon('play'),
+    container: footer,
   });
 
   ctx.commands.subscribe(() => {
