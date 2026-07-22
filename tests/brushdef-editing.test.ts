@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   clipBrush,
+  cloneTextureProjection,
   computeFaceUV,
   createBoxBrush,
   type Brush,
@@ -48,6 +49,10 @@ function editorWithSelectedFace(): { editor: Editor; brush: Brush } {
 function expectUvClose(actual: [number, number], expected: [number, number]): void {
   expect(actual[0]).toBeCloseTo(expected[0], 6);
   expect(actual[1]).toBeCloseTo(expected[1], 6);
+}
+
+function uvDistance(a: [number, number], b: [number, number]): number {
+  return Math.hypot(b[0] - a[0], b[1] - a[1]);
 }
 
 describe('brushDef texture editing', () => {
@@ -167,6 +172,51 @@ describe('brushDef geometry operations', () => {
       ];
       expectUvClose(computeFaceUV(point, face, 1, 1), scaledUvs[index]);
     });
+  });
+
+  test.each([
+    ['classic', () => createBoxBrush([0, 0, 0], [64, 64, 64], 'textures/base_floor/metal')],
+    ['brush primitive', primitiveBrush],
+  ])('keeps %s texel density while resizing with texture lock', (_kind, createBrush) => {
+    const brush = createBrush();
+    const topFace = brush.faces[4];
+    const originalPoints = brush.faces.map(face =>
+      face.points.map(point => vec3Add(point, [0, 0, 0])) as [Vec3, Vec3, Vec3]
+    );
+    const textureProjections = brush.faces.map(face => cloneTextureProjection(face.textureProjection));
+    const start = topFace.points[0];
+    const end = topFace.points[1];
+    const beforeStart = computeFaceUV(start, topFace, 1, 1);
+    const beforeEnd = computeFaceUV(end, topFace, 1, 1);
+    const scale: Vec3 = [2, 1, 1];
+    const center: Vec3 = [32, 32, 32];
+
+    scaleBrushLocked(brush, originalPoints, center, scale, textureProjections);
+
+    const scaledStart: Vec3 = [-32, 0, 64];
+    const scaledEnd: Vec3 = [96, 0, 64];
+    expectUvClose(computeFaceUV(scaledStart, topFace, 1, 1), beforeStart);
+    expect(uvDistance(
+      computeFaceUV(scaledStart, topFace, 1, 1),
+      computeFaceUV(scaledEnd, topFace, 1, 1),
+    )).toBeCloseTo(uvDistance(beforeStart, beforeEnd) * 2, 6);
+  });
+
+  test('uses the drag-start texture projection for every resize update', () => {
+    const repeated = primitiveBrush();
+    const direct = primitiveBrush();
+    const originalPoints = repeated.faces.map(face =>
+      face.points.map(point => vec3Add(point, [0, 0, 0])) as [Vec3, Vec3, Vec3]
+    );
+    const textureProjections = repeated.faces.map(face => cloneTextureProjection(face.textureProjection));
+    const center: Vec3 = [32, 32, 32];
+
+    scaleBrushLocked(repeated, originalPoints, center, [1.25, 1, 1], textureProjections);
+    scaleBrushLocked(repeated, originalPoints, center, [2, 1, 1], textureProjections);
+    scaleBrushLocked(direct, originalPoints, center, [2, 1, 1], textureProjections);
+
+    expect(repeated.faces.map(face => face.textureProjection))
+      .toEqual(direct.faces.map(face => face.textureProjection));
   });
 
   test('keeps primitive projections and brush epairs through clipping', () => {

@@ -13,6 +13,7 @@ export interface EntityClassGroup {
 export interface EntityClassPickerOptions {
   idPrefix: string;
   listSize?: number;
+  confirmOnChange?: boolean;
   onConfirm?: (classname: string) => void;
   onSelectionChanged?: (classname: string) => void;
 }
@@ -159,7 +160,10 @@ export function createEntityClassPicker(editor: Editor, options: EntityClassPick
       event.preventDefault();
     }
   });
-  select.addEventListener('change', setSelection);
+  select.addEventListener('change', () => {
+    setSelection();
+    if (options.confirmOnChange && select.value) options.onConfirm?.(select.value);
+  });
   select.addEventListener('dblclick', () => { setSelection(); options.onConfirm?.(select.value); });
   select.addEventListener('keydown', event => {
     if (event.key === 'Enter' && select.value) {

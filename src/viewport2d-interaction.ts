@@ -1,6 +1,6 @@
 import { Vec3, vec3Copy, snapAxisDelta, findNearestSnap } from './math';
 import { Editor } from './editor';
-import { cloneTextureProjection, type Brush } from './brush';
+import { cloneTextureProjection, type Brush, type BrushTextureProjection } from './brush';
 import { PatchControlPoint, type Patch } from './patch';
 import { entityOrigin } from './entity';
 import { pickEdge2D, pickVertex2D } from './vertex';
@@ -40,7 +40,11 @@ export interface Viewport2DInteractionState {
   moveSnapshotTaken: boolean;
   resizing: boolean;
   resizeEdges: ResizeEdges;
-  resizeBrushes: { brush: Brush; origPoints: [Vec3, Vec3, Vec3][] }[];
+  resizeBrushes: {
+    brush: Brush;
+    origPoints: [Vec3, Vec3, Vec3][];
+    textureProjections: BrushTextureProjection[];
+  }[];
   resizePatches: { patch: Patch; origCtrl: PatchControlPoint[][] }[];
   resizeOrigMins: Vec3;
   resizeOrigMaxs: Vec3;
@@ -491,6 +495,7 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
         origPoints: brush.faces.map(f =>
           [vec3Copy(f.points[0]), vec3Copy(f.points[1]), vec3Copy(f.points[2])] as [Vec3, Vec3, Vec3]
         ),
+        textureProjections: brush.faces.map(face => cloneTextureProjection(face.textureProjection)),
       }));
       state.resizePatches = selectedPatchItems.map(({ patch }) => ({
         patch,

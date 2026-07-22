@@ -29,6 +29,7 @@ import { mirrorBrushLocked, rotateBrushLocked, scaleBrushLocked, translateBrushL
 export interface BrushScaleOriginal {
   brush: Brush;
   origPoints: [Vec3, Vec3, Vec3][];
+  textureProjections: BrushTextureProjection[];
 }
 
 export interface PatchScaleOriginal {
@@ -125,9 +126,10 @@ function scaleEditorBrush(
   originalPoints: [Vec3, Vec3, Vec3][],
   center: Vec3,
   scale: Vec3,
+  originalTextureProjections?: BrushTextureProjection[],
 ): void {
   if (editor.textureLock) {
-    scaleBrushLocked(brush, originalPoints, center, scale);
+    scaleBrushLocked(brush, originalPoints, center, scale, originalTextureProjections);
     return;
   }
   scaleBrushFaces(brush, originalPoints, center, scale);
@@ -205,8 +207,8 @@ export function scaleGeometryFromOriginals(
   scale: Vec3,
 ): void {
   editor.transact('Resize selection', () => {
-    for (const { brush, origPoints } of brushes) {
-      scaleEditorBrush(editor, brush, origPoints, origin, scale);
+    for (const { brush, origPoints, textureProjections } of brushes) {
+      scaleEditorBrush(editor, brush, origPoints, origin, scale, textureProjections);
     }
     for (const { patch, origCtrl } of patches) {
       scalePatchControlPoints(patch, origCtrl, origin, scale);
@@ -413,11 +415,14 @@ export function scaleSelection(editor: Editor, scale: Vec3): void {
     const brushItems = getSelectedBrushItems(editor);
     const patchItems = getSelectedPatchItems(editor);
     const brushOriginals = brushItems.map(({ brush }) =>
-      brush.faces.map(face => [
-        [...face.points[0]] as Vec3,
-        [...face.points[1]] as Vec3,
-        [...face.points[2]] as Vec3,
-      ] as [Vec3, Vec3, Vec3])
+      ({
+        points: brush.faces.map(face => [
+          [...face.points[0]] as Vec3,
+          [...face.points[1]] as Vec3,
+          [...face.points[2]] as Vec3,
+        ] as [Vec3, Vec3, Vec3]),
+        textureProjections: brush.faces.map(face => cloneTextureProjection(face.textureProjection)),
+      })
     );
     const patchOriginals = patchItems.map(({ patch }) =>
       patch.ctrl.map(row =>
@@ -426,9 +431,9 @@ export function scaleSelection(editor: Editor, scale: Vec3): void {
     );
 
     for (let i = 0; i < brushItems.length; i++) {
-      const origPoints = brushOriginals[i];
-      if (!origPoints) continue;
-      scaleEditorBrush(editor, brushItems[i].brush, origPoints, center, scale);
+      const original = brushOriginals[i];
+      if (!original) continue;
+      scaleEditorBrush(editor, brushItems[i].brush, original.points, center, scale, original.textureProjections);
     }
 
     for (let i = 0; i < patchItems.length; i++) {
