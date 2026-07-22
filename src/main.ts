@@ -16,6 +16,7 @@ import {
 import { TextureManager } from './textures';
 import { saveProjectConfiguration, type ProjectConfiguration } from './project-config';
 import { configuredBridgeUrl } from './live-bridge/configuration';
+import { openUnreadReleaseNotesDialog } from './release-notes-dialog';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -294,13 +295,13 @@ async function init() {
   // Hide loading screen
   setTimeout(() => {
     loadingEl.style.opacity = '0';
-    setTimeout(() => {
+    setTimeout(async () => {
       loadingEl.remove();
       if (showOpenArenaNotice) {
-        void ui.showOpenArenaNotice().then(dismissPermanently => {
-          if (dismissPermanently) dismissOpenArenaNotice();
-        });
+        const dismissPermanently = await ui.showOpenArenaNotice();
+        if (dismissPermanently) dismissOpenArenaNotice();
       }
+      openUnreadReleaseNotesDialog();
     }, 500);
   }, 500);
 }

@@ -1,152 +1,73 @@
-export interface ReleaseNotesSection {
-  title: string;
-  items: readonly string[];
+import { RELEASE_NOTES as GENERATED_RELEASE_NOTES } from 'virtual:q3edit-release-notes';
+import { releaseNotesLabel, type ReleaseNotes, type ReleaseNotesSection } from './release-notes-types';
+
+export type { ReleaseNotes, ReleaseNotesSection } from './release-notes-types';
+
+export const RELEASE_NOTES_DISMISSED_KEY = 'q3edit.releaseNotes.dismissed';
+export const RELEASE_NOTES_NEVER_SHOW_KEY = 'q3edit.releaseNotes.neverShow';
+
+export const RELEASE_NOTES: readonly ReleaseNotes[] = GENERATED_RELEASE_NOTES;
+
+type ReleaseNotesReadStorage = Pick<Storage, 'getItem'>;
+type ReleaseNotesWriteStorage = Pick<Storage, 'setItem' | 'removeItem'>;
+
+function currentStorage(): Storage | null {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
 }
 
-export interface ReleaseNotes {
-  title: string;
-  label: string;
-  summary: string;
-  sections: readonly ReleaseNotesSection[];
+export function isReleaseNotesDismissed(
+  release: ReleaseNotes = RELEASE_NOTES[0],
+  storage: ReleaseNotesReadStorage | null = currentStorage(),
+): boolean {
+  if (!storage) return false;
+  try {
+    return storage.getItem(RELEASE_NOTES_NEVER_SHOW_KEY) === '1'
+      || storage.getItem(RELEASE_NOTES_DISMISSED_KEY) === release.id;
+  } catch {
+    return false;
+  }
 }
 
-export const MCP_PREVIEW_RELEASE_NOTES: ReleaseNotes = {
-  title: 'July 22, 2026 — MCP Preview',
-  label: 'Latest release',
-  summary: 'A complete local AI map-authoring workflow for Codex and Claude, with live editing, richer construction tools, visual review, diagnostics, compilation, and play-preview control.',
-  sections: [
-    {
-      title: 'Live AI authoring',
-      items: [
-        'Connect Codex or Claude to the current Q3Edit document through the experimental local MCP companion and see atomic map edits appear immediately in every viewport.',
-        'Target multiple open editor sessions reliably by filename, revision, connection ID, and last-active time instead of depending on whichever tab connected most recently.',
-        'Use revision-checked previews, symbolic references, persistent named groups, normal undo and redo, and exact selection references for safer iterative editing.',
-        'Follow every MCP request, result, failure, and revision change in the docked activity console or its append-only local transcript.',
-      ],
-    },
-    {
-      title: 'Construction & discovery',
-      items: [
-        'Create boxes, wedges, cylinders, stairs, arbitrary convex brushes, curved patches, paths, rooms, gameplay helpers, controlled patterns, and semantic areas and connections.',
-        'Refine geometry with clipping, hollowing, CSG subtraction, chamfers, face offsets, transforms, detail or structural classification, per-face materials, and patch thickening.',
-        'Search and inspect textures, shaders, entity classes, properties, groups, spatial plans, construction paths, map objects, and the user’s current selection without guessing names or references.',
-        'Carry structured style and spatial intent between agent sessions, with texture-projection guidance and abstract design patterns that encourage more varied layouts.',
-      ],
-    },
-    {
-      title: 'Review, compile & play',
-      items: [
-        'Capture perspective, top, front, and side editor views with shared framing, coordinate overlays, sections, x-ray rendering, and optional sky, tool, group, or marker hiding.',
-        'Review geometry, textures, gameplay placement, jump trajectories, routes, spatial composition, and overall design through structured diagnostics linked back to map references.',
-        'Run compiler-safe preflight checks, save and compile maps, export BSP artifacts, reuse unchanged builds, and inspect structured BSP, VIS, and lighting results.',
-        'Launch the compiled map, wait for renderer readiness, position the game camera at coordinates, entities, or player spawns, and detect unusable black screenshots.',
-      ],
-    },
-    {
-      title: 'Local companion',
-      items: [
-        'Use the deployed q3edit.com editor while the MCP server, files, compiler, and logs remain on the user’s computer.',
-        'Pair the browser with a per-start code from the View menu or status bar; local and q3edit.com editor origins are validated before a document can connect.',
-        'Install Q3Edit plugins for Codex and Claude Code so ordinary map-editing prompts route to the MCP tools instead of generic browser automation.',
-      ],
-    },
-  ],
-};
+export function areAutomaticReleaseNotesDisabled(
+  storage: ReleaseNotesReadStorage | null = currentStorage(),
+): boolean {
+  if (!storage) return false;
+  try {
+    return storage.getItem(RELEASE_NOTES_NEVER_SHOW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
-export const LATEST_RELEASE_NOTES: ReleaseNotes = {
-  title: 'July 21, 2026 Update',
-  label: 'Previous release',
-  summary: 'A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.',
-  sections: [
-    {
-      title: 'Editing workflow',
-      items: [
-        'Edit shared entity properties across multiple selected entities from the Entity Inspector, including adding and removing keys for the whole selection.',
-        'Start marquee selections over brushes in locked groups while the locked geometry itself remains protected from selection and editing.',
-      ],
-    },
-    {
-      title: 'Workspace',
-      items: [
-        'Show or hide the right sidebar from the View menu or the top-right toolbar button, and drag its edge to choose a comfortable width.',
-        'Solo any sidebar panel to temporarily collapse the others, with sidebar visibility, width, and panel states remembered between sessions.',
-      ],
-    },
-    {
-      title: 'Rendering & Quick Play',
-      items: [
-        'Dynamic-light preview now chooses up to 16 lights by their influence on the current view, keeping large and heavily lit maps accurate as you move around.',
-        'Quick Play now resolves mixed-case shader image paths correctly, preventing fitted textures such as jump pads from compiling at the wrong scale.',
-      ],
-    },
-  ],
-};
+export function dismissReleaseNotes(
+  release: ReleaseNotes = RELEASE_NOTES[0],
+  storage: ReleaseNotesWriteStorage | null = currentStorage(),
+  neverShowAgain = false,
+): void {
+  if (!storage) return;
+  try {
+    storage.setItem(RELEASE_NOTES_DISMISSED_KEY, release.id);
+    if (neverShowAgain) storage.setItem(RELEASE_NOTES_NEVER_SHOW_KEY, '1');
+    else storage.removeItem(RELEASE_NOTES_NEVER_SHOW_KEY);
+  } catch {
+    // The dialog remains usable when browser storage is unavailable.
+  }
+}
 
-export const JULY_2026_RELEASE_NOTES: ReleaseNotes = {
-  title: 'July 2026 Update',
-  label: 'Earlier release',
-  summary: 'A major editor update with richer Quake III compatibility, modern entity and model workflows, advanced geometry tools, camera paths, project configuration, and a more dependable editing core.',
-  sections: [
-    {
-      title: 'Entities & models',
-      items: [
-        'Search game entity definitions while placing entities, then edit typed properties in the Entity Inspector.',
-        'Choose MD3 models and skins with textured, drag-to-rotate previews in both the browser and editor view.',
-        'Compile misc_model entities with Q3Map2-compatible origin, scale, yaw, pitch, and roll transforms.',
-      ],
-    },
-    {
-      title: 'Maps & assets',
-      items: [
-        'Load, edit, and round-trip classic brushes and brushDef map formats with clearer parser diagnostics.',
-        'Manage an ordered PK3 asset stack with shader-aware texture lookup and JPEG image support.',
-        'Quick Play now keeps base-game assets separate and handles browser mouse capture more reliably.',
-      ],
-    },
-    {
-      title: 'Geometry & terrain',
-      items: [
-        'Create precisely sized boxes, cylinders, cones, spheres, and pyramids with the Exact Primitive dialog.',
-        'Use expanded patch operations for rows, columns, subdivisions, caps, thickening, fitting, and alignment.',
-        'Sculpt, smooth, erode, stitch, and texture terrain with a dedicated inspector and brush controls.',
-      ],
-    },
-    {
-      title: 'Organization & paths',
-      items: [
-        'Create persistent named groups, then select, hide, lock, and manage their members from the sidebar.',
-        'Build open or closed camera splines with timing, FOV, look targets, actions, scrubbing, and looping playback.',
-        'Generate smart camera paths and func_train paths directly from the editor.',
-      ],
-    },
-    {
-      title: 'View & customization',
-      items: [
-        'Switch renderer modes, texture filtering, display categories, and a tuned dynamic-light preview.',
-        'Customize shortcuts, themes, viewport layouts, and editor defaults in global Preferences.',
-        'Keep game paths, assets, compiler options, entity sources, and overrides in separate Project Settings.',
-      ],
-    },
-    {
-      title: 'Reliability & diagnostics',
-      items: [
-        'Document revisions, unsaved-state tracking, centralized mutations, and consistent undo transactions protect edits.',
-        'Inspect map and entity diagnostics, find brushes by address, and run JSON brush macros as one undoable action.',
-        'Review live MCP tool activity, arguments, results, failures, and revision changes from the View menu.',
-        'Expanded regression coverage protects map round-tripping, geometry editing, assets, entities, and editor workflows.',
-      ],
-    },
-  ],
-};
-
-export const RELEASE_NOTES: readonly ReleaseNotes[] = [
-  MCP_PREVIEW_RELEASE_NOTES,
-  LATEST_RELEASE_NOTES,
-  JULY_2026_RELEASE_NOTES,
-];
+export interface ReleaseNotesDialogOptions {
+  dialogTitle?: string;
+  showDismissCheckbox?: boolean;
+  dismissChecked?: boolean;
+  onClose?: (dismissed: boolean) => void;
+}
 
 export function openReleaseNotesDialog(
   releaseNotes: ReleaseNotes | readonly ReleaseNotes[] = RELEASE_NOTES,
+  options: ReleaseNotesDialogOptions = {},
 ): void {
   document.getElementById('release-notes-dialog')?.remove();
 
@@ -162,7 +83,7 @@ export function openReleaseNotesDialog(
   const title = document.createElement('div');
   title.id = 'release-notes-title';
   title.className = 'editor-dialog-title';
-  title.textContent = 'Release Notes';
+  title.textContent = options.dialogTitle ?? 'Release Notes';
 
   const content = document.createElement('div');
   content.className = 'release-notes-content';
@@ -170,13 +91,17 @@ export function openReleaseNotesDialog(
     ? releaseNotes
     : [releaseNotes as ReleaseNotes];
   for (const release of releases) {
+    const releaseIndex = RELEASE_NOTES.findIndex(candidate => candidate.id === release.id);
+    const isLatestRelease = releaseIndex === 0;
     const article = document.createElement('article');
     article.className = 'release-notes-release';
+    article.classList.toggle('latest', isLatestRelease);
     const intro = document.createElement('header');
     intro.className = 'release-notes-intro';
     const label = document.createElement('span');
     label.className = 'release-notes-label';
-    label.textContent = release.label;
+    label.classList.toggle('latest', isLatestRelease);
+    label.textContent = releaseNotesLabel(releaseIndex);
     const heading = document.createElement('h2');
     heading.textContent = release.title;
     const summary = document.createElement('p');
@@ -196,7 +121,8 @@ export function openReleaseNotesDialog(
         item.textContent = itemText;
         list.appendChild(item);
       }
-      section.append(sectionTitle, list); sections.appendChild(section);
+      section.append(sectionTitle, list);
+      sections.appendChild(section);
     }
     article.append(intro, sections);
     content.appendChild(article);
@@ -204,15 +130,53 @@ export function openReleaseNotesDialog(
 
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
+  let dismissCheckbox: HTMLInputElement | null = null;
+  if (options.showDismissCheckbox ?? true) {
+    const dismissLabel = document.createElement('label');
+    dismissLabel.className = 'release-notes-dismiss';
+    dismissCheckbox = document.createElement('input');
+    dismissCheckbox.type = 'checkbox';
+    dismissCheckbox.checked = options.dismissChecked ?? areAutomaticReleaseNotesDisabled();
+    const dismissText = document.createElement('span');
+    dismissText.textContent = 'Don’t show release notes automatically';
+    dismissLabel.append(dismissCheckbox, dismissText);
+    actions.appendChild(dismissLabel);
+  }
   const close = document.createElement('button');
-  close.type = 'button'; close.className = 'btn primary'; close.textContent = 'Close';
-  const closeDialog = () => overlay.remove();
+  close.type = 'button';
+  close.className = 'btn primary';
+  close.textContent = 'Close';
+  const closeDialog = () => {
+    const dismissed = dismissCheckbox?.checked ?? false;
+    overlay.remove();
+    if (options.onClose) options.onClose(dismissed);
+    else dismissReleaseNotes(releases[0], currentStorage(), dismissed);
+  };
   close.addEventListener('click', closeDialog);
   actions.appendChild(close);
 
-  dialog.append(title, content, actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
+  dialog.append(title, content, actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
   overlay.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { closeDialog(); event.stopPropagation(); }
+    if (event.key === 'Escape') {
+      closeDialog();
+      event.stopPropagation();
+    }
   });
   close.focus();
+}
+
+export function openUnreadReleaseNotesDialog(
+  release: ReleaseNotes = RELEASE_NOTES[0],
+  storage: (ReleaseNotesReadStorage & ReleaseNotesWriteStorage) | null = currentStorage(),
+): boolean {
+  if (isReleaseNotesDismissed(release, storage)) return false;
+  openReleaseNotesDialog(RELEASE_NOTES, {
+    dialogTitle: 'Q3Edit has been updated',
+    showDismissCheckbox: true,
+    dismissChecked: false,
+    onClose: neverShowAgain => dismissReleaseNotes(release, storage, neverShowAgain),
+  });
+  return true;
 }

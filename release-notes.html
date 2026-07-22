@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Q3Edit release notes: local AI map authoring with Codex and Claude, browser-based Quake III editing, workflow improvements, rendering fixes, and compatibility updates.">
+  <meta name="description" content="Q3Edit release notes: bot-ready Quick Play, local AI map authoring with Codex and Claude, browser-based Quake III editing, workflow improvements, and compatibility updates.">
   <meta name="theme-color" content="#111311">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Q3Edit Release Notes">
@@ -37,133 +37,7 @@
       </header>
 
       <div class="release-notes-history">
-        <article class="release-notes-entry">
-          <span class="release-notes-entry-label">Latest release</span>
-          <h2>July 22, 2026 — MCP Preview</h2>
-          <p class="release-notes-entry-summary">A complete local AI map-authoring workflow for Codex and Claude, with live editing, richer construction tools, visual review, diagnostics, compilation, and play-preview control.</p>
-
-          <section>
-            <h3>Live AI authoring</h3>
-            <ul>
-              <li>Connect Codex or Claude to the current Q3Edit document through the experimental local MCP companion and see atomic map edits appear immediately in every viewport.</li>
-              <li>Target multiple open editor sessions reliably by filename, revision, connection ID, and last-active time instead of depending on whichever tab connected most recently.</li>
-              <li>Use revision-checked previews, symbolic references, persistent named groups, normal undo and redo, and exact selection references for safer iterative editing.</li>
-              <li>Follow every MCP request, result, failure, and revision change in the docked activity console or its append-only local transcript.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h3>Construction &amp; discovery</h3>
-            <ul>
-              <li>Create boxes, wedges, cylinders, stairs, arbitrary convex brushes, curved patches, paths, rooms, gameplay helpers, controlled patterns, and semantic areas and connections.</li>
-              <li>Refine geometry with clipping, hollowing, CSG subtraction, chamfers, face offsets, transforms, detail or structural classification, per-face materials, and patch thickening.</li>
-              <li>Search and inspect textures, shaders, entity classes, properties, groups, spatial plans, construction paths, map objects, and the user’s current selection without guessing names or references.</li>
-              <li>Carry structured style and spatial intent between agent sessions, with texture-projection guidance and abstract design patterns that encourage more varied layouts.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h3>Review, compile &amp; play</h3>
-            <ul>
-              <li>Capture perspective, top, front, and side editor views with shared framing, coordinate overlays, sections, x-ray rendering, and optional sky, tool, group, or marker hiding.</li>
-              <li>Review geometry, textures, gameplay placement, jump trajectories, routes, spatial composition, and overall design through structured diagnostics linked back to map references.</li>
-              <li>Run compiler-safe preflight checks, save and compile maps, export BSP artifacts, reuse unchanged builds, and inspect structured BSP, VIS, and lighting results.</li>
-              <li>Launch the compiled map, wait for renderer readiness, position the game camera at coordinates, entities, or player spawns, and detect unusable black screenshots.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h3>Local companion</h3>
-            <ul>
-              <li>Use the deployed q3edit.com editor while the MCP server, files, compiler, and logs remain on the user’s computer.</li>
-              <li>Pair the browser with a per-start code from the View menu or status bar; local and q3edit.com editor origins are validated before a document can connect.</li>
-              <li>Install Q3Edit plugins for Codex and Claude Code so ordinary map-editing prompts route to the MCP tools instead of generic browser automation.</li>
-            </ul>
-          </section>
-        </article>
-
-        <article class="release-notes-entry">
-          <span class="release-notes-entry-label">Previous release</span>
-          <h2>July 21, 2026 Update</h2>
-          <p class="release-notes-entry-summary">A focused workflow and rendering update with faster multi-object editing, a more flexible workspace, and closer agreement between the editor and Quick Play.</p>
-
-          <section>
-            <h3>Editing workflow</h3>
-            <ul>
-              <li>Edit shared entity properties across multiple selected entities from the Entity Inspector, including adding and removing keys for the whole selection.</li>
-              <li>Start marquee selections over brushes in locked groups while the locked geometry itself remains protected from selection and editing.</li>
-            </ul>
-          </section>
-          <section>
-            <h3>Workspace</h3>
-            <ul>
-              <li>Show or hide the right sidebar from the View menu or the top-right toolbar button, and drag its edge to choose a comfortable width.</li>
-              <li>Solo any sidebar panel to temporarily collapse the others, with sidebar visibility, width, and panel states remembered between sessions.</li>
-            </ul>
-          </section>
-          <section>
-            <h3>Rendering &amp; Quick Play</h3>
-            <ul>
-              <li>Dynamic-light preview now chooses up to 16 lights by their influence on the current view, keeping large and heavily lit maps accurate as you move around.</li>
-              <li>Quick Play now resolves mixed-case shader image paths correctly, preventing fitted textures such as jump pads from compiling at the wrong scale.</li>
-            </ul>
-          </section>
-        </article>
-
-        <article class="release-notes-entry">
-          <span class="release-notes-entry-label">Earlier release</span>
-          <h2>July 2026 Update</h2>
-          <p class="release-notes-entry-summary">A major editor update with richer Quake III compatibility, modern entity and model workflows, advanced geometry tools, camera paths, project configuration, and a more dependable editing core.</p>
-
-          <section>
-            <h3>Entities &amp; models</h3>
-            <ul>
-              <li>Search game entity definitions while placing entities, then edit typed properties in the Entity Inspector.</li>
-              <li>Choose MD3 models and skins with textured, drag-to-rotate previews in both the browser and editor view.</li>
-              <li>Compile misc_model entities with Q3Map2-compatible origin, scale, yaw, pitch, and roll transforms.</li>
-            </ul>
-          </section>
-          <section>
-            <h3>Maps &amp; assets</h3>
-            <ul>
-              <li>Load, edit, and round-trip classic brushes and brushDef map formats with clearer parser diagnostics.</li>
-              <li>Manage an ordered PK3 asset stack with shader-aware texture lookup and JPEG image support.</li>
-              <li>Quick Play now keeps base-game assets separate and handles browser mouse capture more reliably.</li>
-            </ul>
-          </section>
-          <section>
-            <h3>Geometry &amp; terrain</h3>
-            <ul>
-              <li>Create precisely sized boxes, cylinders, cones, spheres, and pyramids with the Exact Primitive dialog.</li>
-              <li>Use expanded patch operations for rows, columns, subdivisions, caps, thickening, fitting, and alignment.</li>
-              <li>Sculpt, smooth, erode, stitch, and texture terrain with a dedicated inspector and brush controls.</li>
-            </ul>
-          </section>
-          <section>
-            <h3>Organization &amp; paths</h3>
-            <ul>
-              <li>Create persistent named groups, then select, hide, lock, and manage their members from the sidebar.</li>
-              <li>Build open or closed camera splines with timing, FOV, look targets, actions, scrubbing, and looping playback.</li>
-              <li>Generate smart camera paths and func_train paths directly from the editor.</li>
-            </ul>
-          </section>
-          <section>
-            <h3>View &amp; customization</h3>
-            <ul>
-              <li>Switch renderer modes, texture filtering, display categories, and a tuned dynamic-light preview.</li>
-              <li>Customize shortcuts, themes, viewport layouts, and editor defaults in global Preferences.</li>
-              <li>Keep game paths, assets, compiler options, entity sources, and overrides in separate Project Settings.</li>
-            </ul>
-          </section>
-          <section>
-            <h3>Reliability &amp; diagnostics</h3>
-            <ul>
-              <li>Document revisions, unsaved-state tracking, centralized mutations, and consistent undo transactions protect edits.</li>
-              <li>Inspect map and entity diagnostics, find brushes by address, and run JSON brush macros as one undoable action.</li>
-              <li>Expanded regression coverage protects map round-tripping, geometry editing, assets, entities, and editor workflows.</li>
-            </ul>
-          </section>
-        </article>
+        <!-- Q3EDIT_RELEASE_NOTES -->
       </div>
     </div>
 
