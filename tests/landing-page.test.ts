@@ -11,4 +11,12 @@ describe('landing page', () => {
     expect(buttonRule).toContain('flex: 0 0 auto');
     expect(buttonRule).toContain('white-space: nowrap');
   });
+
+  it('uses Phosphor icons in its call-to-action buttons', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+    expect(html).toContain('class="ph ph-arrow-right"');
+    expect(html).toContain('class="ph ph-arrow-square-out"');
+    expect(html).not.toMatch(/landing-button[^>]*>[\s\S]*?<span[^>]*>[→↗]<\/span>/);
+  });
 });

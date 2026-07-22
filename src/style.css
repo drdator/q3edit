@@ -279,6 +279,10 @@ body.landing-active #app {
   transform: translateY(-2px);
 }
 
+.landing-button .ph {
+  font-size: 15px;
+}
+
 .landing-requirement {
   color: #686e65;
   font: 10px/1.4 monospace;
