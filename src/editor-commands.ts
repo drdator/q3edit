@@ -87,6 +87,7 @@ function cycleRenderSelected(context: EditorCommandContext): void {
 }
 
 function setGizmo(context: EditorCommandContext, mode: 'move' | 'scale'): void {
+  context.setTool('select');
   context.editor.gizmoMode = mode;
   context.editor.redrawRequested = true;
 }

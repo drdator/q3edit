@@ -66,13 +66,14 @@ describe('CommandRegistry', () => {
 
   it('exposes checked state for display categories, renderer modes, and lighting', () => {
     const noop = () => {};
+    const setTool = vi.fn();
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
       compileBSP: noop, quickPlay: noop, openQuickPlayOptions: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
       toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
-      cycleInvisibleMode: noop, setTool: noop, setGrid: noop, increaseGrid: noop,
+      cycleInvisibleMode: noop, setTool, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
     });
     expect(registry.getState('view.display.lights').checked).toBe(true);
@@ -84,6 +85,9 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.texture-filter.nearest').checked).toBe(true);
     registry.execute('view.dynamic-lights');
     expect(registry.getState('view.dynamic-lights').checked).toBe(true);
+    registry.execute('gizmo.scale');
+    expect(editor.gizmoMode).toBe('scale');
+    expect(setTool).toHaveBeenCalledWith('select');
     expect(registry.getState('view.sidebar').checked).toBe(true);
     registry.execute('view.sidebar');
     expect(registry.getState('view.sidebar').checked).toBe(false);

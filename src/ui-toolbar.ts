@@ -175,6 +175,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
   const entityPicker = createEntityClassPicker(ctx.editor, {
     idPrefix: 'toolbar-entity-class',
     listSize: 11,
+    confirmOnChange: true,
     onConfirm: () => closeEntityToolPanel(),
     onSelectionChanged: updateEntityToolButtonTitle,
   });
