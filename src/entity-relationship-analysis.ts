@@ -126,7 +126,7 @@ function movementPreview(editor: Editor, entity: Entity, ref: string): EntityMov
   } else if (entity.classname === 'func_bobbing') {
     const height = finite(entity.properties.height, 32);
     const flags = finite(entity.properties.spawnflags, 0);
-    const axis = flags & 2 ? 0 : flags & 1 ? 2 : 1;
+    const axis = flags & 1 ? 0 : flags & 2 ? 1 : 2;
     delta[axis] = height;
     note = `${height} unit bobbing range`;
   } else if (entity.classname === 'func_rotating') {
@@ -142,7 +142,17 @@ function movementPreview(editor: Editor, entity: Entity, ref: string): EntityMov
       note,
     };
   } else if (entity.classname === 'func_train') {
-    const targetNodes = Array.from(editor.nonWorldspawnEntities()).filter(candidate => candidate.classname === 'path_corner');
+    const pathCorners = Array.from(editor.nonWorldspawnEntities()).filter(candidate => candidate.classname === 'path_corner');
+    const byTargetname = new Map(pathCorners.flatMap(candidate =>
+      candidate.properties.targetname ? [[candidate.properties.targetname, candidate] as const] : []));
+    const targetNodes: Entity[] = [];
+    const visited = new Set<Entity>();
+    let next = entity.properties.target ? byTargetname.get(entity.properties.target) : undefined;
+    while (next && !visited.has(next)) {
+      visited.add(next);
+      targetNodes.push(next);
+      next = next.properties.target ? byTargetname.get(next.properties.target) : undefined;
+    }
     if (targetNodes.length > 0) {
       const origins = targetNodes.map(entityOrigin).filter((value): value is Vec3 => value !== null);
       if (origins.length > 0) {
@@ -266,16 +276,12 @@ export function analyzeEntityRelationships(editor: Editor): EntityRelationshipAn
       severity: 'error', code: 'missing-target', refs: [node.ref],
       message: `${node.label} targets “${node.target}”, which does not exist`,
     });
-    if (matches.length > 1) issues.push({
+    if (matches.length > 1 && /^(?:trigger_push|trigger_teleport|func_train)$/.test(node.classname)) issues.push({
       severity: 'warning', code: 'ambiguous-target', refs: [node.ref, ...matches.map(match => match.ref)],
-      message: `${node.label} targets ${matches.length} entities named “${node.target}”`,
+      message: `${node.label} chooses one of ${matches.length} entities named “${node.target}”`,
     });
     for (const target of matches) edges.push({ sourceRef: node.ref, targetRef: target.ref, value: node.target });
   }
-  for (const [name, owners] of byTargetname) if (owners.length > 1) issues.push({
-    severity: 'warning', code: 'duplicate-targetname', refs: owners.map(owner => owner.ref),
-    message: `${owners.length} entities share targetname “${name}”`,
-  });
   const incoming = new Set(edges.map(edge => edge.targetRef));
   for (const node of nodes) if (node.targetname && !incoming.has(node.ref) &&
       !/^(?:info_player_|team_|item_|weapon_|ammo_|light$)/.test(node.classname)) issues.push({

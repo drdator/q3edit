@@ -62,7 +62,7 @@ describe('map diagnostics', () => {
     editor.unsupportedMapConstructs = [{ keyword: 'customDef', line: 2, column: 1, rawSource: '' }];
     const codes = collectEditorDiagnostics(editor).map(item => item.code);
     expect(codes).toEqual(expect.arrayContaining([
-      'invalid-brush', 'missing-texture', 'broken-target', 'duplicate-targetname', 'invalid-origin', 'missing-model', 'unsupported-construct',
+      'invalid-brush', 'missing-texture', 'broken-target', 'invalid-origin', 'missing-model', 'unsupported-construct',
     ]));
     expect(collectEntityInfo(editor)[1].diagnostics.map(item => item.code)).toContain('broken-target');
   });

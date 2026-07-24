@@ -34,7 +34,10 @@ function fixtureBsp(): Uint8Array {
   view.setInt32(offsets[4] + 20, 64, true);
   view.setInt32(offsets[4] + 24, 64, true);
   view.setInt32(offsets[4] + 28, 64, true);
-  view.setInt32(offsets[4] + 36, 12, true);
+    view.setInt32(offsets[4] + 36, 12, true);
+    view.setFloat32(offsets[2], 1, true);
+    view.setInt32(offsets[3] + 4, -1, true);
+    view.setInt32(offsets[3] + 8, -1, true);
   view.setFloat32(offsets[7], -128, true);
   view.setFloat32(offsets[7] + 4, -128, true);
   view.setFloat32(offsets[7] + 8, -128, true);
@@ -80,6 +83,17 @@ describe('Quake III BSP inspection', () => {
     expect(inspection.visibility?.visibleClusters(0)).toEqual([0]);
     expect(inspection.worldBounds).toEqual({ mins: [-128, -128, -128], maxs: [128, 128, 128] });
     expect(leafAtPoint(inspection, [0, 0, 0])?.cluster).toBe(0);
+  });
+
+  it('traverses BSP nodes instead of guessing from overlapping leaf bounds', () => {
+    const inspection = parseBsp(fixtureBsp());
+    inspection.leaves = [
+      { ...inspection.leaves[0], cluster: 10 },
+      { ...inspection.leaves[0], cluster: 20 },
+    ];
+    inspection.nodes[0].children = [-1, -2];
+    expect(leafAtPoint(inspection, [16, 0, 0])?.cluster).toBe(10);
+    expect(leafAtPoint(inspection, [-16, 0, 0])?.cluster).toBe(20);
   });
 
   it('parses portal polygons and rejects unrelated text', () => {

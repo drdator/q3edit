@@ -177,13 +177,6 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
     }
   });
 
-  for (const [name, indices] of targetOwners) {
-    if (indices.length < 2) continue;
-    for (const entityIndex of indices) result.push({
-      severity: 'warning', code: 'duplicate-targetname', target: targetForEntity(entityIndex),
-      message: `${entityId(entityIndex)} shares targetname '${name}' with ${indices.length - 1} other ${indices.length === 2 ? 'entity' : 'entities'}`,
-    });
-  }
   diagnosticCache.set(editor, {
     revision: editor.documentRevision,
     textureManager: editor.textureManager,

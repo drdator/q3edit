@@ -10,7 +10,7 @@ import { createEntity } from '../src/entity';
 describe('entity relationship analysis', () => {
   it('builds a searchable graph and diagnoses missing, ambiguous, and cyclic relationships', () => {
     const editor = new Editor();
-    const trigger = createEntity('trigger_once'); trigger.properties.target = 'relay';
+    const trigger = createEntity('trigger_teleport'); trigger.properties.target = 'relay';
     const first = createEntity('target_relay', [0, 0, 32]);
     first.properties.targetname = 'relay'; first.properties.target = 'second';
     const duplicate = createEntity('target_relay', [64, 0, 32]);
@@ -23,9 +23,31 @@ describe('entity relationship analysis', () => {
     const result = analyzeEntityRelationships(editor);
     expect(result.edges.length).toBe(6);
     expect(result.issues.map(issue => issue.code)).toEqual(expect.arrayContaining([
-      'duplicate-targetname', 'ambiguous-target', 'missing-target', 'cycle',
+      'ambiguous-target', 'missing-target', 'cycle',
     ]));
     expect(result.issues.find(issue => issue.code === 'cycle')?.severity).toBe('warning');
+  });
+
+  it('uses Quake III bobbing axes and follows only a train own path chain', () => {
+    const editor = new Editor();
+    const bob = createEntity('func_bobbing');
+    bob.brushes.push(createBoxBrush([0, 0, 0], [32, 32, 32]));
+    bob.properties.spawnflags = '1';
+    bob.properties.height = '64';
+    const train = createEntity('func_train');
+    train.brushes.push(createBoxBrush([0, 0, 0], [32, 32, 32]));
+    train.properties.target = 'a';
+    const a = createEntity('path_corner', [100, 0, 0]); a.properties.targetname = 'a'; a.properties.target = 'b';
+    const b = createEntity('path_corner', [200, 0, 0]); b.properties.targetname = 'b';
+    const unrelated = createEntity('path_corner', [10_000, 0, 0]); unrelated.properties.targetname = 'other';
+    editor.entities.push(bob, train, a, b, unrelated);
+
+    const result = analyzeEntityRelationships(editor);
+    const bobbing = result.movements.find(item => item.classname === 'func_bobbing')!;
+    expect(bobbing.end.maxs).toEqual([96, 32, 32]);
+    const trainMovement = result.movements.find(item => item.classname === 'func_train')!;
+    expect(trainMovement.note).toBe('2-point train path');
+    expect(trainMovement.end.maxs[0]).toBeLessThan(1_000);
   });
 
   it('recognizes intentional train cycles and simulates delay and one-shot chains', () => {

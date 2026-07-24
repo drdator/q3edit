@@ -24,6 +24,16 @@ export interface BspLeaf extends BspBounds {
   brushCount: number;
 }
 
+export interface BspPlane {
+  normal: Vec3;
+  dist: number;
+}
+
+export interface BspNode extends BspBounds {
+  planeIndex: number;
+  children: [number, number];
+}
+
 export interface BspSurface {
   shaderIndex: number;
   shader: string;
@@ -81,6 +91,8 @@ export interface BspInspection {
   stats: BspStatistics;
   worldBounds: BspBounds | null;
   shaders: BspShader[];
+  planes: BspPlane[];
+  nodes: BspNode[];
   leaves: BspLeaf[];
   surfaces: BspSurface[];
   lightmaps: Uint8Array[];
@@ -194,6 +206,40 @@ export function parseBsp(data: Uint8Array, portalFile?: string | null): BspInspe
       name: readCString(data, offset, 64),
       surfaceFlags: view.getInt32(offset + 64, true),
       contentFlags: view.getInt32(offset + 68, true),
+    });
+  }
+
+  const planes: BspPlane[] = [];
+  const planeCount = recordCount(2, 16, 'Plane');
+  for (let index = 0; index < planeCount; index++) {
+    const offset = lumps[2].offset + index * 16;
+    planes.push({
+      normal: [
+        view.getFloat32(offset, true),
+        view.getFloat32(offset + 4, true),
+        view.getFloat32(offset + 8, true),
+      ],
+      dist: view.getFloat32(offset + 12, true),
+    });
+  }
+
+  const nodes: BspNode[] = [];
+  const nodeCount = recordCount(3, 36, 'Node');
+  for (let index = 0; index < nodeCount; index++) {
+    const offset = lumps[3].offset + index * 36;
+    nodes.push({
+      planeIndex: view.getInt32(offset, true),
+      children: [view.getInt32(offset + 4, true), view.getInt32(offset + 8, true)],
+      mins: [
+        view.getInt32(offset + 12, true),
+        view.getInt32(offset + 16, true),
+        view.getInt32(offset + 20, true),
+      ],
+      maxs: [
+        view.getInt32(offset + 24, true),
+        view.getInt32(offset + 28, true),
+        view.getInt32(offset + 32, true),
+      ],
     });
   }
 
@@ -328,8 +374,8 @@ export function parseBsp(data: Uint8Array, portalFile?: string | null): BspInspe
     bytes: data.byteLength,
     entities: countEntities(entities),
     shaders: shaderCount,
-    planes: recordCount(2, 16, 'Plane'),
-    nodes: recordCount(3, 36, 'Node'),
+    planes: planeCount,
+    nodes: nodeCount,
     leaves: leafCount,
     clusters: visibility?.clusters ?? new Set(leaves.filter(leaf => leaf.cluster >= 0).map(leaf => leaf.cluster)).size,
     portals: portals.length,
@@ -347,10 +393,25 @@ export function parseBsp(data: Uint8Array, portalFile?: string | null): BspInspe
     triangleSoupSurfaces: surfaces.filter(surface => surface.type === 'triangle-soup').length,
     flareSurfaces: surfaces.filter(surface => surface.type === 'flare').length,
   };
-  return { version, stats, worldBounds, shaders, leaves, surfaces, lightmaps, visibility, portals, warnings };
+  return { version, stats, worldBounds, shaders, planes, nodes, leaves, surfaces, lightmaps, visibility, portals, warnings };
 }
 
 export function leafAtPoint(inspection: BspInspection, point: Vec3): BspLeaf | null {
+  if (inspection.nodes.length > 0 && inspection.planes.length > 0) {
+    let child = 0;
+    const visited = new Set<number>();
+    while (child >= 0 && !visited.has(child)) {
+      visited.add(child);
+      const node = inspection.nodes[child];
+      if (!node) break;
+      const plane = inspection.planes[node.planeIndex];
+      if (!plane) break;
+      const distance = point[0] * plane.normal[0] + point[1] * plane.normal[1]
+        + point[2] * plane.normal[2] - plane.dist;
+      child = node.children[distance >= 0 ? 0 : 1];
+    }
+    if (child < 0) return inspection.leaves[-child - 1] ?? null;
+  }
   return inspection.leaves.find(leaf =>
     point[0] >= leaf.mins[0] && point[0] <= leaf.maxs[0]
     && point[1] >= leaf.mins[1] && point[1] <= leaf.maxs[1]
