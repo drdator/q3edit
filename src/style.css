@@ -3211,10 +3211,7 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
   overflow-wrap: anywhere;
   font: 10px/1.45 monospace;
 }
-.mcp-activity-entry-body pre.mcp-activity-arguments {
-  max-height: 210px;
-  overflow: auto;
-}
+.mcp-activity-entry-body pre.mcp-activity-arguments,
 .mcp-activity-entry-body pre.mcp-activity-result {
   max-height: none;
   overflow: visible;
