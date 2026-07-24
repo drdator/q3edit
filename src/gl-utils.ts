@@ -30,6 +30,7 @@ uniform float uFaceSelected;
 uniform float uUseAlpha;
 uniform float uAlphaOverride; // 0.0 = no override, >0 = forced alpha
 uniform float uSolidOverride; // 1.0 = replace texture with solid color
+uniform int uDiagnosticMode; // 0 normal, 1 lighting-only, 2 overdraw
 uniform float uDynamicLightingEnabled;
 uniform int uDynamicLightCount;
 uniform vec3 uDynamicLightPos[${DYNAMIC_LIGHT_LIMIT}];
@@ -57,10 +58,12 @@ void main() {
   color = mix(color, vec3(0.2, 0.8, 1.0), uFaceSelected * 0.35);
   // Solid cyan override (invisible faces selected in hide mode)
   color = mix(color, vec3(0.15, 0.5, 0.7) * diff, uSolidOverride);
+  if (uDiagnosticMode == 1) color = vec3(max(max(color.r, color.g), color.b));
+  if (uDiagnosticMode == 2) color = vec3(0.055, 0.01, 0.065);
 
   float alpha = mix(1.0, texColor.a, uUseAlpha);
   alpha = mix(alpha, uAlphaOverride, step(0.001, uAlphaOverride));
-  fragColor = vec4(color, alpha);
+  fragColor = vec4(color, uDiagnosticMode == 2 ? 1.0 : alpha);
 }
 `;
 

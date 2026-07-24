@@ -4,6 +4,8 @@ import { Entity, entityColor, entityOrigin, lightColorCSS } from './entity';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { Patch } from './patch';
 import { collectBrushEdges } from './vertex';
+import { leafAtPoint } from './bsp-inspection';
+import { CONTENTS_DETAIL } from './map-flags';
 
 interface GeoSnapLine {
   axis: 'h' | 'v';
@@ -44,6 +46,7 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
   ctx.ctx.fillRect(0, 0, w, h);
 
   drawGrid(ctx, w, h);
+  drawCompiledBspOverlay(ctx);
 
   for (const { entity, brush } of ctx.editor.allBrushes()) {
     if (!ctx.editor.isBrushVisible(brush, entity)) continue;
@@ -109,6 +112,45 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
   ctx.ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
+function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
+  const inspection = ctx.editor.compiledBspInspection;
+  const mode = ctx.editor.compiledBspOverlay;
+  if (!inspection || mode === 'none') return;
+  ctx.ctx.save();
+  if (mode === 'leaves' || mode === 'both' || mode === 'visible') {
+    const cameraLeaf = mode === 'visible' ? leafAtPoint(inspection, ctx.editor.camera3d.position) : null;
+    const visible = new Set(cameraLeaf && inspection.visibility
+      ? inspection.visibility.visibleClusters(cameraLeaf.cluster)
+      : []);
+    ctx.ctx.strokeStyle = mode === 'visible' ? 'rgba(92, 220, 140, 0.75)' : 'rgba(80, 190, 255, 0.55)';
+    ctx.ctx.lineWidth = 1;
+    for (const leaf of inspection.leaves) {
+      if (mode === 'visible' && !visible.has(leaf.cluster)) continue;
+      const [x0, y0] = ctx.worldToScreen(leaf.mins[ctx.axisH], leaf.maxs[ctx.axisV]);
+      const [x1, y1] = ctx.worldToScreen(leaf.maxs[ctx.axisH], leaf.mins[ctx.axisV]);
+      ctx.ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    }
+  }
+  if (mode === 'portals' || mode === 'both') {
+    ctx.ctx.strokeStyle = 'rgba(255, 178, 64, 0.8)';
+    ctx.ctx.fillStyle = 'rgba(255, 178, 64, 0.08)';
+    ctx.ctx.lineWidth = 1.5;
+    for (const portal of inspection.portals) {
+      if (portal.length < 3) continue;
+      ctx.ctx.beginPath();
+      portal.forEach((point, index) => {
+        const [x, y] = ctx.worldToScreen(point[ctx.axisH], point[ctx.axisV]);
+        if (index === 0) ctx.ctx.moveTo(x, y);
+        else ctx.ctx.lineTo(x, y);
+      });
+      ctx.ctx.closePath();
+      ctx.ctx.fill();
+      ctx.ctx.stroke();
+    }
+  }
+  ctx.ctx.restore();
+}
+
 function drawGrid(ctx: Viewport2DRenderContext, w: number, h: number): void {
   const gridSize = ctx.editor.gridSize;
   const [wMinX, wMaxY] = ctx.screenToWorld(0, 0);
@@ -164,12 +206,19 @@ function drawGrid(ctx: Viewport2DRenderContext, w: number, h: number): void {
 }
 
 function drawBrush(ctx: Viewport2DRenderContext, brush: Brush, selected: boolean): void {
-  ctx.ctx.fillStyle = selected ? 'rgba(255, 102, 0, 0.15)' : 'rgba(60, 80, 100, 0.2)';
-  ctx.ctx.strokeStyle = selected ? '#ff6600' : '#4488bb';
+  const detail = brush.faces.some(face => (face.contentFlags & CONTENTS_DETAIL) !== 0);
+  ctx.ctx.fillStyle = selected ? 'rgba(255, 102, 0, 0.15)' : detail ? 'rgba(170, 100, 210, 0.14)' : 'rgba(60, 80, 100, 0.2)';
   ctx.ctx.lineWidth = selected ? 1.5 : 1;
 
   for (const face of brush.faces) {
     if (face.polygon.length < 3) continue;
+    const shader = face.texture.toLowerCase().replace(/^textures\//, '');
+    ctx.ctx.strokeStyle = selected ? '#ff6600'
+      : shader === 'common/hint' ? '#ffb340'
+        : shader === 'common/skip' ? '#7c7c7c'
+          : shader === 'common/areaportal' ? '#4fd698'
+            : shader === 'common/clusterportal' ? '#57c5ff'
+              : detail ? '#a86fd1' : '#4488bb';
     ctx.ctx.beginPath();
     const [firstX, firstY] = ctx.worldToScreen(face.polygon[0][ctx.axisH], face.polygon[0][ctx.axisV]);
     ctx.ctx.moveTo(firstX, firstY);

@@ -55,6 +55,7 @@ export interface Viewport3DRenderContext {
   solidUseAlphaLoc: WebGLUniformLocation;
   solidAlphaOverrideLoc: WebGLUniformLocation;
   solidSolidOverrideLoc: WebGLUniformLocation;
+  solidDiagnosticModeLoc: WebGLUniformLocation;
   solidDynamicLightingEnabledLoc: WebGLUniformLocation;
   solidDynamicLightCountLoc: WebGLUniformLocation;
   solidDynamicLightPosLoc: WebGLUniformLocation;
@@ -79,6 +80,8 @@ export interface Viewport3DRenderContext {
   pointfileLineCount: number;
   pointfileMarkerVAO: WebGLVertexArrayObject;
   pointfileMarkerCount: number;
+  bspOverlayVAO: WebGLVertexArrayObject;
+  bspOverlayCount: number;
   paintPreviewVAO: WebGLVertexArrayObject;
   paintPreviewCount: number;
   lineVAO: WebGLVertexArrayObject;
@@ -128,7 +131,10 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.useProgram(ctx.solidProg);
     ctx.gl.uniformMatrix4fv(ctx.solidPVLoc, false, pv);
     ctx.gl.uniform1i(ctx.solidTexLoc, 0);
-    const dynamicLightingEnabled = ctx.editor.display.dynamicLights;
+    const diagnosticMode = ctx.editor.display.rendererMode === 'lightmap' ? 1
+      : ctx.editor.display.rendererMode === 'overdraw' ? 2 : 0;
+    ctx.gl.uniform1i(ctx.solidDiagnosticModeLoc, diagnosticMode);
+    const dynamicLightingEnabled = ctx.editor.display.dynamicLights || diagnosticMode === 1;
     const lightCandidates = dynamicLightingEnabled
       ? [...ctx.editor.pointEntities()].flatMap(entity => {
           if (entity.classname !== 'light' || !ctx.editor.isEntityVisibleIn3D(entity)) return [];
@@ -171,6 +177,15 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       ctx.gl.drawArrays(ctx.gl.TRIANGLES, group.start, group.count);
     };
 
+    if (diagnosticMode === 2) {
+      ctx.gl.disable(ctx.gl.DEPTH_TEST);
+      ctx.gl.enable(ctx.gl.BLEND);
+      ctx.gl.blendFunc(ctx.gl.ONE, ctx.gl.ONE);
+      ctx.gl.uniform1f(ctx.solidUseAlphaLoc, 0.0);
+      for (const group of ctx.drawGroups) drawGroup(group);
+      ctx.gl.disable(ctx.gl.BLEND);
+      ctx.gl.enable(ctx.gl.DEPTH_TEST);
+    } else {
     ctx.gl.uniform1f(ctx.solidUseAlphaLoc, 0.0);
     ctx.gl.uniform1f(ctx.solidAlphaOverrideLoc, 0.0);
     for (const group of ctx.drawGroups) {
@@ -199,6 +214,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     if (hasTransparent) {
       ctx.gl.disable(ctx.gl.BLEND);
       ctx.gl.depthMask(true);
+    }
     }
   }
 
@@ -270,6 +286,16 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       ctx.gl.bindVertexArray(ctx.pointfileMarkerVAO);
       ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pointfileMarkerCount);
     }
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
+  if (!isGameView && ctx.bspOverlayCount > 0) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.uniform3f(ctx.lineColorLoc, 0.25, 0.75, 1.0);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    ctx.gl.bindVertexArray(ctx.bspOverlayVAO);
+    ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.bspOverlayCount);
     ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }
 

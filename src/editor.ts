@@ -262,6 +262,7 @@ import {
 import type { BrushPrimitive } from './brush-primitives';
 import { createExactBrushPrimitive as createEditorExactBrushPrimitive, type ExactPrimitiveParameters } from './editor-primitives';
 import type { MapParseDiagnostic, UnsupportedMapConstruct } from './mapfile';
+import type { BspInspection, BspOverlayMode } from './bsp-inspection';
 import {
   beginTransaction as beginEditorTransaction,
   cancelTransaction as cancelEditorTransaction,
@@ -332,6 +333,8 @@ export class Editor {
   mapDiagnostics: MapParseDiagnostic[] = [];
   unsupportedMapConstructs: UnsupportedMapConstruct[] = [];
   originalMapSource: OriginalMapSource | null = null;
+  compiledBspInspection: BspInspection | null = null;
+  compiledBspOverlay: BspOverlayMode = 'none';
   documentRevision = 0;
   savedDocumentRevision = 0;
   documentSessionStartedAt = Date.now();

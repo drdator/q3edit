@@ -18,6 +18,7 @@ export interface EditorCommandContext {
   openPreferences: () => void;
   openProjectSettings: () => void;
   openVersionHistory?: () => void;
+  openBuildHistory?: () => void;
   openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
@@ -106,10 +107,10 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     checked: ({ editor }) => editor.display.categories[category],
     execute: ({ editor }) => editor.toggleDisplayCategory(category),
   }));
-  const rendererModes: RendererMode[] = ['wireframe', 'flat', 'textured'];
+  const rendererModes: RendererMode[] = ['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'];
   const rendererCommands: CommandDefinition<EditorCommandContext>[] = rendererModes.map((mode, index) => ({
     id: `view.renderer.${mode}`,
-    label: mode === 'flat' ? 'Flat Shaded' : mode[0].toUpperCase() + mode.slice(1),
+    label: mode === 'flat' ? 'Flat Shaded' : mode === 'lightmap' ? 'Lighting Only' : mode === 'overdraw' ? 'Overdraw' : mode[0].toUpperCase() + mode.slice(1),
     menu: menu('View', 200 + index, 'renderer', 'Renderer Mode'),
     checked: ({ editor }) => editor.display.rendererMode === mode,
     execute: ({ editor }) => editor.setRendererMode(mode),
@@ -134,6 +135,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.export-console', label: 'Export .map to Console', menu: menu('File', 60, 'export'), execute: ({ editor }) => console.log(editor.serializeMap()) },
     { id: 'file.quick-play', label: 'Quick Play', defaultShortcut: 'F5', menu: menu('File', 70, 'quick-play'), execute: ctx => ctx.quickPlay() },
     { id: 'file.quick-play-options', label: 'Quick Play Options...', menu: menu('File', 71, 'quick-play'), execute: ctx => ctx.openQuickPlayOptions() },
+    { id: 'file.build-history', label: 'Build History...', menu: menu('File', 79, 'compile'), enabled: ctx => !!ctx.openBuildHistory, execute: ctx => ctx.openBuildHistory?.() },
     { id: 'file.compile-bsp', label: 'Compile BSP...', menu: menu('File', 80, 'compile'), execute: ctx => ctx.compileBSP() },
 
     { id: 'edit.undo', label: 'Undo', defaultShortcut: 'Mod+Z', menu: menu('Edit', 0, 'history'), enabled: ({ editor }) => editor.history.canUndo, execute: ({ editor }) => editor.undo() },

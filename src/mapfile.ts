@@ -48,7 +48,7 @@ export function serializeMap(entities: Entity[], options: MapSerializeOptions = 
 
     for (let brushIndex = 0; brushIndex < entity.brushes.length; brushIndex++) {
       const brush = entity.brushes[brushIndex];
-      lines.push(brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
+      lines.push(options.compilerSafe ? `// brush ${brushIndex}` : brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
       if (brush.editorGroupId && !options.compilerSafe) lines.push(`// q3edit-group ${encodeURIComponent(brush.editorGroupId)}`);
       lines.push('{');
       serializeBrush(lines, brush, options.compilerSafe ? undefined : groupNames.get(brush.editorGroupId ?? ''), options.compilerSafe);

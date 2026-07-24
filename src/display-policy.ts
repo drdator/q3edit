@@ -7,7 +7,7 @@ export type DisplayCategory =
   | 'entities' | 'lights' | 'paths' | 'world' | 'detail' | 'water'
   | 'clip' | 'hint' | 'caulk' | 'curves' | 'names' | 'angles'
   | 'coordinates' | 'blocks';
-export type RendererMode = 'wireframe' | 'flat' | 'textured';
+export type RendererMode = 'wireframe' | 'flat' | 'textured' | 'lightmap' | 'overdraw';
 export type TextureFiltering = 'nearest' | 'linear' | 'trilinear';
 
 export interface DisplayPreferences {
@@ -44,7 +44,7 @@ export function loadDisplayPreferences(storage: Pick<Storage, 'getItem'> | null 
     for (const category of DISPLAY_CATEGORIES) {
       if (typeof parsed.categories?.[category] === 'boolean') categories[category] = parsed.categories[category];
     }
-    const rendererMode = ['wireframe', 'flat', 'textured'].includes(parsed.rendererMode ?? '')
+    const rendererMode = ['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'].includes(parsed.rendererMode ?? '')
       ? parsed.rendererMode as RendererMode : DEFAULT_DISPLAY_PREFERENCES.rendererMode;
     const textureFiltering = ['nearest', 'linear', 'trilinear'].includes(parsed.textureFiltering ?? '')
       ? parsed.textureFiltering as TextureFiltering : DEFAULT_DISPLAY_PREFERENCES.textureFiltering;

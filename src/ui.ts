@@ -36,6 +36,10 @@ import { openQuickPlayDialog } from './quick-play-dialog';
 import type { QuickPlayPreferences } from './preferences';
 import type { DocumentRecoveryService } from './document-recovery';
 import { openVersionHistoryDialog } from './version-history-dialog';
+import { BuildHistoryService, type BuildRecord } from './build-history';
+import { parseBsp, type BspInspection } from './bsp-inspection';
+import { structureCompilerOutput } from './compile-diagnostics';
+import { createBuildInspector, openBuildHistoryDialog } from './build-inspector';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -99,6 +103,7 @@ export class UI {
   private gamePreviewListeners = new Set<() => void>();
   private readonly mcpActivity: McpActivityPanel;
   private readonly recovery: DocumentRecoveryService | null;
+  private readonly buildHistory = new BuildHistoryService();
   private mcpConnectionUrl: string | null = null;
   private mcpConnect: ((url: string) => void | Promise<void>) | null = null;
   private mcpDisconnect: (() => void) | null = null;
@@ -142,6 +147,7 @@ export class UI {
       openVersionHistory: () => {
         if (this.recovery) openVersionHistoryDialog(this.recovery);
       },
+      openBuildHistory: () => { void openBuildHistoryDialog(this.editor, this.buildHistory); },
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
@@ -2592,6 +2598,10 @@ export class UI {
     log.textContent = '';
     dialog.appendChild(log);
 
+    const inspectorHost = document.createElement('div');
+    inspectorHost.className = 'compile-inspector-host';
+    dialog.appendChild(inspectorHost);
+
     const buttons = document.createElement('div');
     buttons.className = 'editor-dialog-actions compile-dialog-actions';
 
@@ -2609,6 +2619,18 @@ export class UI {
     closeBtn.onclick = () => {
       dismissed = true;
       overlay.remove();
+    };
+
+    const cancelCompileBtn = document.createElement('button');
+    cancelCompileBtn.type = 'button';
+    cancelCompileBtn.className = 'btn';
+    cancelCompileBtn.textContent = 'Cancel Compile';
+    cancelCompileBtn.hidden = true;
+    let compileAbort: AbortController | null = null;
+    cancelCompileBtn.onclick = () => {
+      cancelCompileBtn.disabled = true;
+      status.textContent = 'Cancelling compile...';
+      compileAbort?.abort();
     };
 
     const runBtn = document.createElement('button');
@@ -2629,7 +2651,7 @@ export class UI {
     saveAasBtn.textContent = 'Save .aas';
     saveAasBtn.hidden = true;
 
-    buttons.append(closeBtn, runBtn, saveAasBtn, saveBtn, compileBtn);
+    buttons.append(closeBtn, cancelCompileBtn, runBtn, saveAasBtn, saveBtn, compileBtn);
     dialog.appendChild(buttons);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
@@ -2646,6 +2668,7 @@ export class UI {
 
     const doCompile = async () => {
       const startedAt = performance.now();
+      const startedAtEpoch = Date.now();
       const compileWithRegion = this.editor.isRegionActive();
       const compileEntities = compileWithRegion
         ? this.editor.collectRegionEntities(true)
@@ -2687,15 +2710,19 @@ export class UI {
       runBtn.hidden = true;
       saveBtn.hidden = true;
       saveAasBtn.hidden = true;
+      cancelCompileBtn.hidden = false;
+      cancelCompileBtn.disabled = false;
       dialog.classList.remove('success', 'warning', 'error');
       status.textContent = compileWithRegion ? 'Compiling active region...' : 'Compiling...';
       log.textContent = '';
+      inspectorHost.replaceChildren();
 
       const mapText = compileWithRegion
         ? this.editor.serializeRegionMap(true, true)
         : this.editor.serializeCompileMap();
 
       const compile = this.editor.projectConfiguration.compile;
+      compileAbort = new AbortController();
       const result = await compileMap(mapText, {
         args: compile.bspArgs.length > 0 ? compile.bspArgs : ['-v'],
         vis: quality !== 'fast' && compile.vis,
@@ -2704,25 +2731,86 @@ export class UI {
         lightArgs: compile.lightArgs,
         shaderFiles,
         assetFiles: assetFiles.size > 0 ? assetFiles : undefined,
+        signal: compileAbort.signal,
+        reuseUnchanged: true,
         onOutput: (line) => {
           log.textContent += line + '\n';
           log.scrollTop = log.scrollHeight;
         },
       });
+      compileAbort = null;
+      cancelCompileBtn.hidden = true;
+
+      const structuredDiagnostics = structureCompilerOutput(
+        result.output,
+        compileEntities,
+        texture => this.texMgr?.isShader(texture) ?? false,
+        texture => this.texMgr?.hasTextureSource(texture) ?? true,
+      );
+      let inspection: BspInspection | null = null;
+      if (result.bsp) {
+        try {
+          inspection = parseBsp(result.bsp, result.portalFileText);
+          this.editor.compiledBspInspection = inspection;
+          this.editor.redrawRequested = true;
+        } catch (error) {
+          result.output.push(`BSP inspection failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      const durationMs = Math.round(performance.now() - startedAt);
+      const record: BuildRecord = {
+        id: `${startedAtEpoch}-${this.editor.documentRevision}`,
+        fileName: this.editor.fileName,
+        documentRevision: this.editor.documentRevision,
+        quality,
+        region: compileWithRegion,
+        settings: {
+          bspArgs: compile.bspArgs.length > 0 ? [...compile.bspArgs] : ['-v'],
+          vis: quality !== 'fast' && compile.vis,
+          visArgs: quality === 'full' ? [...compile.visArgs] : ['-fast', ...compile.visArgs],
+          light: quality !== 'fast' && compile.light,
+          lightArgs: [...compile.lightArgs],
+        },
+        startedAt: startedAtEpoch,
+        durationMs,
+        success: result.success,
+        reused: result.reused,
+        stages: result.stages,
+        statistics: inspection?.stats ?? null,
+        diagnostics: structuredDiagnostics,
+        output: result.output,
+        bsp: result.bsp,
+        aas: result.aas,
+        portalFileText: result.portalFileText,
+      };
+      await this.buildHistory.add(record);
+      const [previous, history] = await Promise.all([
+        this.buildHistory.previous(this.editor.fileName, record.id),
+        this.buildHistory.list(this.editor.fileName),
+      ]);
+      inspectorHost.replaceChildren(createBuildInspector(this.editor, record, inspection, previous, history));
 
       this.editor.activityHistory.record({
         source: 'build',
         status: result.success ? 'success' : 'error',
         category: 'build',
         title: `${activityTitle} ${result.success ? 'completed' : 'failed'}`,
-        summary: result.success
-          ? `${quality} quality · ${result.bsp ? `${(result.bsp.length / 1024).toFixed(1)} KB BSP` : 'no BSP'}${result.aas ? ` · ${(result.aas.length / 1024).toFixed(1)} KB AAS` : ' · no AAS'}${result.pointfileText ? ' · leak detected' : ''}`
-          : result.output[result.output.length - 1] ?? 'The compiler did not produce a BSP',
+        summary: result.cancelled
+          ? 'Cancelled by user'
+          : result.success
+            ? `${quality} quality${result.reused ? ' · reused unchanged artifacts' : ''} · ${result.bsp ? `${(result.bsp.length / 1024).toFixed(1)} KB BSP` : 'no BSP'}${result.aas ? ` · ${(result.aas.length / 1024).toFixed(1)} KB AAS` : ' · no AAS'}${result.pointfileText ? ' · leak detected' : ''}`
+            : result.output[result.output.length - 1] ?? 'The compiler did not produce a BSP',
         revisionBefore: this.editor.documentRevision,
         revisionAfter: this.editor.documentRevision,
         undoable: false,
-        durationMs: Math.round(performance.now() - startedAt),
-        details: result.output.length > 0 ? [{ title: 'Compiler output', value: result.output }] : undefined,
+        durationMs,
+        details: [
+          ...(structuredDiagnostics.length > 0 ? [{
+            title: 'Structured diagnostics',
+            value: structuredDiagnostics.map(item => `${item.severity}: ${item.message} · ${item.suggestion}`),
+          }] : []),
+          ...(result.output.length > 0 ? [{ title: 'Compiler output', value: result.output }] : []),
+        ],
       });
 
       return result;
@@ -2737,7 +2825,11 @@ export class UI {
       compileBtn.textContent = 'Compile';
       qualitySelect.disabled = false;
 
-      if (result.success && result.bsp) {
+      if (result.cancelled) {
+        dialog.classList.add('warning');
+        status.textContent = 'Compilation cancelled';
+        this.editor.statusMessage = 'BSP compilation cancelled';
+      } else if (result.success && result.bsp) {
         const leaked = !!result.pointfileText
           && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile');
         if (leaked) {

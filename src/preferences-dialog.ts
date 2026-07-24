@@ -167,7 +167,7 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
   }
 
   const display = section('Display & renderer');
-  const renderer = select(['wireframe', 'flat', 'textured'], preferences.display.rendererMode);
+  const renderer = select(['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'], preferences.display.rendererMode);
   const filtering = select(['nearest', 'linear', 'trilinear'], preferences.display.textureFiltering);
   const lights = checkbox(preferences.display.dynamicLights);
   display.append(labeled('Renderer', renderer), labeled('Texture filtering', filtering), labeled('Dynamic lights', lights));

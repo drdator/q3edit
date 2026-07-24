@@ -6,6 +6,7 @@ import { entityColor, entityOrigin, parseLightColor } from './entity';
 import { terrainDefCellTexture, type Patch } from './patch';
 import { DrawGroup, LightRadiusDraw } from './viewport3d-render';
 import { buildModelGeometry } from './model-geometry';
+import { bspOverlayLines } from './bsp-inspection';
 
 export interface Viewport3DGeometryContext {
   gl: WebGL2RenderingContext;
@@ -18,6 +19,7 @@ export interface Viewport3DGeometryContext {
   pathCurveSelVBO: WebGLBuffer;
   pointfileLineVBO: WebGLBuffer;
   pointfileMarkerVBO: WebGLBuffer;
+  bspOverlayVBO: WebGLBuffer;
   paintPreviewVBO: WebGLBuffer;
   lineVBO: WebGLBuffer;
   wireVBO: WebGLBuffer;
@@ -36,6 +38,7 @@ export interface Viewport3DGeometryBuild {
   pathCurveSelCount: number;
   pointfileLineCount: number;
   pointfileMarkerCount: number;
+  bspOverlayCount: number;
   paintPreviewCount: number;
   lineCount: number;
   wireCount: number;
@@ -376,6 +379,15 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pointfileMarkerVerts), ctx.gl.DYNAMIC_DRAW);
   const pointfileMarkerCount = pointfileMarkerVerts.length / 3;
 
+  const bspOverlayVerts = bspOverlayLines(
+    ctx.editor.compiledBspInspection,
+    ctx.editor.compiledBspOverlay,
+    ctx.editor.camera3d.position,
+  ).flat();
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.bspOverlayVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(bspOverlayVerts), ctx.gl.DYNAMIC_DRAW);
+  const bspOverlayCount = bspOverlayVerts.length / 3;
+
   const paintPreviewLineVerts: number[] = [];
   if (textureTerrainMode) {
     for (const target of ctx.editor.hoveredTerrainPaintTargets()) {
@@ -567,6 +579,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     pathCurveSelCount,
     pointfileLineCount,
     pointfileMarkerCount,
+    bspOverlayCount,
     paintPreviewCount,
     lineCount,
     wireCount,

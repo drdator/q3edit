@@ -169,6 +169,7 @@ self.onmessage = async (e: MessageEvent) => {
 
     // Stage 1: BSP
     emit('=== Stage 1: BSP ===')
+    const bspStartedAt = performance.now()
     const bspMod = await createModule(emit)
     setupFS(bspMod, mapText, null, options.shaderFiles, null, options.assetFiles)
 
@@ -179,39 +180,50 @@ self.onmessage = async (e: MessageEvent) => {
     const pointfileText = readTextFile(bspMod, pointfilePath)
 
     if (bspExit !== 0 || !bsp) {
-      emit('=== Stage 1 result: failed ===')
-      self.postMessage({ type: 'done', success: false, bsp: null, aas: null, pointfileText, output })
+      emit(`=== Stage 1 result: failed (${Math.round(performance.now() - bspStartedAt)} ms) ===`)
+      self.postMessage({ type: 'done', success: false, bsp: null, aas: null, portalFileText: null, pointfileText, output })
       return
     }
-    emit('=== Stage 1 result: success ===')
+    emit(`=== Stage 1 result: success (${Math.round(performance.now() - bspStartedAt)} ms) ===`)
 
     let prt: Uint8Array | null = null
     try { prt = bspMod.FS.readFile('/quake/baseq3/maps/compile.prt') } catch { /* */ }
+    const portalFileText = prt ? new TextDecoder().decode(prt) : null
 
     // Stage 2: Vis
     if (options.vis !== false && prt) {
       emit('')
       emit('=== Stage 2: Vis ===')
+      const visStartedAt = performance.now()
       const visMod = await createModule(emit)
       setupFS(visMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
 
       const visExit = runQ3Map(visMod, ['-vis', ...(options.visArgs || []), bspPath], emit)
       try { bsp = visMod.FS.readFile(bspPath) } catch { /* */ }
       if (visExit !== 0) emit('Warning: vis pass failed, continuing without PVS')
-      emit(`=== Stage 2 result: ${visExit === 0 ? 'success' : 'failed'} ===`)
+      emit(`=== Stage 2 result: ${visExit === 0 ? 'success' : 'failed'} (${Math.round(performance.now() - visStartedAt)} ms) ===`)
+    } else {
+      emit('')
+      emit('=== Stage 2: Vis ===')
+      emit('=== Stage 2 result: skipped (0 ms) ===')
     }
 
     // Stage 3: Light
     if (options.light !== false) {
       emit('')
       emit('=== Stage 3: Light ===')
+      const lightStartedAt = performance.now()
       const lightMod = await createModule(emit)
       setupFS(lightMod, mapText, bsp, options.shaderFiles, prt, options.assetFiles)
 
       const lightExit = runQ3Map(lightMod, ['-light', ...(options.lightArgs || []), bspPath], emit)
       try { bsp = lightMod.FS.readFile(bspPath) } catch { /* */ }
       if (lightExit !== 0) emit('Warning: light pass failed, using unlit BSP')
-      emit(`=== Stage 3 result: ${lightExit === 0 ? 'success' : 'failed'} ===`)
+      emit(`=== Stage 3 result: ${lightExit === 0 ? 'success' : 'failed'} (${Math.round(performance.now() - lightStartedAt)} ms) ===`)
+    } else {
+      emit('')
+      emit('=== Stage 3: Light ===')
+      emit('=== Stage 3 result: skipped (0 ms) ===')
     }
 
     // Stage 4: AAS bot navigation
@@ -219,6 +231,7 @@ self.onmessage = async (e: MessageEvent) => {
     if (options.aas !== false) {
       emit('')
       emit('=== Stage 4: Bot navigation ===')
+      const aasStartedAt = performance.now()
       try {
         const bspcMod = await createBspcModule(emit)
         setupFS(bspcMod, null, bsp, undefined, null, undefined)
@@ -228,16 +241,20 @@ self.onmessage = async (e: MessageEvent) => {
           aas = null
           emit('Warning: bot navigation generation failed; the BSP can still be played without bots')
         }
-        emit(`=== Stage 4 result: ${aas ? 'success' : 'failed'} ===`)
+        emit(`=== Stage 4 result: ${aas ? 'success' : 'failed'} (${Math.round(performance.now() - aasStartedAt)} ms) ===`)
       } catch (error) {
         emit(`Warning: bot navigation generation failed: ${error instanceof Error ? error.message : String(error)}`)
-        emit('=== Stage 4 result: failed ===')
+        emit(`=== Stage 4 result: failed (${Math.round(performance.now() - aasStartedAt)} ms) ===`)
       }
+    } else {
+      emit('')
+      emit('=== Stage 4: Bot navigation ===')
+      emit('=== Stage 4 result: skipped (0 ms) ===')
     }
 
-    self.postMessage({ type: 'done', success: true, bsp, aas, pointfileText, output })
+    self.postMessage({ type: 'done', success: true, bsp, aas, portalFileText, pointfileText, output })
   } catch (error) {
     emit(`Compiler worker error: ${error instanceof Error ? error.message : String(error)}`)
-    self.postMessage({ type: 'done', success: false, bsp: null, aas: null, pointfileText: null, output })
+    self.postMessage({ type: 'done', success: false, bsp: null, aas: null, portalFileText: null, pointfileText: null, output })
   }
 }
