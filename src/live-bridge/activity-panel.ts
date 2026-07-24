@@ -75,6 +75,16 @@ function compactButton(label: string, title: string, onClick: () => void): HTMLB
   return element;
 }
 
+function activitySelect(select: HTMLSelectElement): HTMLElement {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'mcp-activity-select';
+  const caret = document.createElement('i');
+  caret.className = 'ph ph-caret-down';
+  caret.setAttribute('aria-hidden', 'true');
+  wrapper.append(select, caret);
+  return wrapper;
+}
+
 function formatRevision(entry: McpActivityEntry): string {
   if (entry.revisionBefore === null && entry.revisionAfter === null) return 'No document revision';
   if (entry.revisionBefore === entry.revisionAfter) return `Revision ${entry.revisionAfter}`;
@@ -150,7 +160,7 @@ export class McpActivityPanel {
     this.kind = document.createElement('select');
     this.kind.setAttribute('aria-label', 'Filter by tool kind');
     this.kind.innerHTML = '<option value="all">All calls</option><option value="action">Actions</option><option value="read">Read-only</option>';
-    controls.append(this.search, this.status, this.kind);
+    controls.append(this.search, activitySelect(this.status), activitySelect(this.kind));
 
     this.summary = document.createElement('div');
     this.summary.className = 'mcp-activity-summary';
