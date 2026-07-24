@@ -2,6 +2,7 @@ import type { Editor } from './editor';
 import { cloneMapSnapshot, type MapSnapshot } from './history';
 
 export interface TransactionOptions {
+  auxiliary?: unknown;
   coalesceKey?: string;
   coalesceWindowMs?: number;
 }

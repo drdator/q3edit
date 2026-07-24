@@ -6,6 +6,7 @@ export interface HistoryEntry {
   entities: MapSnapshot;
   revision: number;
   label: string;
+  auxiliary?: unknown;
   coalesceKey?: string;
   committedAt: number;
 }
@@ -14,9 +15,11 @@ export interface HistoryResult {
   entities: MapSnapshot;
   revision: number;
   label: string;
+  auxiliary?: unknown;
 }
 
 export interface HistoryRecordOptions {
+  auxiliary?: unknown;
   coalesceKey?: string;
   coalesceWindowMs?: number;
 }
@@ -55,6 +58,7 @@ export class History {
       entities: cloneMapSnapshot(entities),
       revision,
       label,
+      auxiliary: options.auxiliary === undefined ? undefined : structuredClone(options.auxiliary),
       coalesceKey: options.coalesceKey,
       committedAt: now,
     });
@@ -64,28 +68,44 @@ export class History {
     this.redoStack.length = 0;
   }
 
-  undo(currentEntities: Entity[], currentRevision: number): HistoryResult | null {
+  undo(currentEntities: Entity[], currentRevision: number, currentAuxiliary?: unknown): HistoryResult | null {
     if (this.undoStack.length === 0) return null;
     const entry = this.undoStack.pop()!;
     this.redoStack.push({
       entities: cloneMapSnapshot(currentEntities),
       revision: currentRevision,
       label: entry.label,
+      auxiliary: entry.auxiliary === undefined || currentAuxiliary === undefined
+        ? undefined
+        : structuredClone(currentAuxiliary),
       committedAt: Date.now(),
     });
-    return { entities: entry.entities, revision: entry.revision, label: entry.label };
+    return {
+      entities: entry.entities,
+      revision: entry.revision,
+      label: entry.label,
+      auxiliary: entry.auxiliary === undefined ? undefined : structuredClone(entry.auxiliary),
+    };
   }
 
-  redo(currentEntities: Entity[], currentRevision: number): HistoryResult | null {
+  redo(currentEntities: Entity[], currentRevision: number, currentAuxiliary?: unknown): HistoryResult | null {
     if (this.redoStack.length === 0) return null;
     const entry = this.redoStack.pop()!;
     this.undoStack.push({
       entities: cloneMapSnapshot(currentEntities),
       revision: currentRevision,
       label: entry.label,
+      auxiliary: entry.auxiliary === undefined || currentAuxiliary === undefined
+        ? undefined
+        : structuredClone(currentAuxiliary),
       committedAt: Date.now(),
     });
-    return { entities: entry.entities, revision: entry.revision, label: entry.label };
+    return {
+      entities: entry.entities,
+      revision: entry.revision,
+      label: entry.label,
+      auxiliary: entry.auxiliary === undefined ? undefined : structuredClone(entry.auxiliary),
+    };
   }
 
   breakCoalescing(): void {

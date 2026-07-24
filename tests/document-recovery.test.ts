@@ -18,6 +18,10 @@ class MemoryRecoveryStorage implements DocumentRecoveryStorage {
 
   async save(snapshot: DocumentRecoverySnapshot): Promise<void> {
     this.snapshot = structuredClone(snapshot);
+    await this.updateHistory(snapshot);
+  }
+
+  async updateHistory(snapshot: DocumentRecoverySnapshot): Promise<void> {
     const index = this.snapshots.findIndex(candidate => candidate.snapshotId === snapshot.snapshotId);
     if (index >= 0) this.snapshots[index] = structuredClone(snapshot);
     else this.snapshots.push(structuredClone(snapshot));
@@ -125,6 +129,23 @@ describe('document recovery', () => {
     expect((await recovery.storageUsage()).snapshots).toBe(6);
   });
 
+  it('does not replace the latest recovery state when protecting an older version', async () => {
+    const editor = new Editor();
+    const storage = new MemoryRecoveryStorage();
+    const recovery = new DocumentRecoveryService(editor, 'editor-session', storage);
+    editor.transact('First', () => { editor.worldspawn.properties.message = 'first'; });
+    await recovery.flush();
+    const first = (await recovery.listVersions())[0];
+    editor.transact('Second', () => { editor.worldspawn.properties.message = 'second'; });
+    await recovery.flush();
+    const latestId = storage.snapshot?.snapshotId;
+
+    await recovery.setProtected(first.snapshotId, true);
+
+    expect(storage.snapshot?.snapshotId).toBe(latestId);
+    expect((await recovery.listVersions()).find(item => item.snapshotId === first.snapshotId)?.protected).toBe(true);
+  });
+
   it('restores an earlier version as an undoable change', async () => {
     const editor = new Editor();
     editor.worldspawn.properties.message = 'before';
@@ -140,5 +161,23 @@ describe('document recovery', () => {
     expect(editor.history.canUndo).toBe(true);
     editor.undo();
     expect(editor.worldspawn.properties.message).toBe('after');
+  });
+
+  it('restores filename and source metadata through undo and redo', async () => {
+    const editor = new Editor();
+    editor.fileName = 'before.map';
+    const storage = new MemoryRecoveryStorage();
+    const recovery = new DocumentRecoveryService(editor, 'editor-session', storage);
+    const checkpoint = await recovery.createCheckpoint('Before');
+    editor.fileName = 'after.map';
+    editor.originalMapSource = null;
+    editor.transact('Change', () => { editor.worldspawn.properties.message = 'after'; });
+
+    recovery.restoreVersion({ ...checkpoint, fileName: 'checkpoint.map' });
+    expect(editor.fileName).toBe('checkpoint.map');
+    editor.undo();
+    expect(editor.fileName).toBe('after.map');
+    editor.redo();
+    expect(editor.fileName).toBe('checkpoint.map');
   });
 });

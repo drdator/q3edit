@@ -23,6 +23,31 @@ export interface MapSaveSafety {
 
 type ParsedMapResult = ReturnType<typeof parseMapWithDiagnostics>;
 
+export interface DocumentHistoryAuxiliary {
+  fileName: string;
+  originalMapSource: OriginalMapSource | null;
+  mapDiagnostics: Editor['mapDiagnostics'];
+  unsupportedMapConstructs: Editor['unsupportedMapConstructs'];
+}
+
+export function captureDocumentHistoryAuxiliary(editor: Editor): DocumentHistoryAuxiliary {
+  return {
+    fileName: editor.fileName,
+    originalMapSource: editor.originalMapSource ? structuredClone(editor.originalMapSource) : null,
+    mapDiagnostics: structuredClone(editor.mapDiagnostics),
+    unsupportedMapConstructs: structuredClone(editor.unsupportedMapConstructs),
+  };
+}
+
+function restoreDocumentHistoryAuxiliary(editor: Editor, value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const auxiliary = value as DocumentHistoryAuxiliary;
+  editor.fileName = auxiliary.fileName;
+  editor.originalMapSource = auxiliary.originalMapSource ? structuredClone(auxiliary.originalMapSource) : null;
+  editor.mapDiagnostics = structuredClone(auxiliary.mapDiagnostics);
+  editor.unsupportedMapConstructs = structuredClone(auxiliary.unsupportedMapConstructs);
+}
+
 function parseMapInWorker(text: string): Promise<ParsedMapResult> {
   if (typeof Worker === 'undefined') return Promise.resolve(parseMapWithDiagnostics(text));
   return new Promise((resolve, reject) => {
@@ -66,9 +91,14 @@ export function analyzeMapSaveSafety(editor: Editor): MapSaveSafety {
 export function undo(editor: Editor): void {
   commitTransaction(editor);
   const previousRevision = editor.documentRevision;
-  const prev = editor.history.undo(editor.entities, editor.documentRevision);
+  const prev = editor.history.undo(
+    editor.entities,
+    editor.documentRevision,
+    captureDocumentHistoryAuxiliary(editor),
+  );
   if (prev) {
     editor.entities = prev.entities;
+    restoreDocumentHistoryAuxiliary(editor, prev.auxiliary);
     editor.restoreDocumentRevision(prev.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Undo: ${prev.label}`;
@@ -79,9 +109,14 @@ export function undo(editor: Editor): void {
 export function redo(editor: Editor): void {
   commitTransaction(editor);
   const previousRevision = editor.documentRevision;
-  const next = editor.history.redo(editor.entities, editor.documentRevision);
+  const next = editor.history.redo(
+    editor.entities,
+    editor.documentRevision,
+    captureDocumentHistoryAuxiliary(editor),
+  );
   if (next) {
     editor.entities = next.entities;
+    restoreDocumentHistoryAuxiliary(editor, next.auxiliary);
     editor.restoreDocumentRevision(next.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Redo: ${next.label}`;

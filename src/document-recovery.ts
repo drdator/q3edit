@@ -1,6 +1,9 @@
 import type { Editor } from './editor';
 import { isActivityEntry, type ActivityEntry } from './activity-history';
-import type { OriginalMapSource } from './editor-document';
+import {
+  captureDocumentHistoryAuxiliary,
+  type OriginalMapSource,
+} from './editor-document';
 import { parseMapWithDiagnostics } from './mapfile';
 
 const DB_NAME = 'q3edit-recovery';
@@ -48,6 +51,7 @@ export interface DocumentRecoverySnapshot {
 export interface DocumentRecoveryStorage {
   load(editorSessionId: string): Promise<DocumentRecoverySnapshot | null>;
   save(snapshot: DocumentRecoverySnapshot): Promise<void>;
+  updateHistory(snapshot: DocumentRecoverySnapshot): Promise<void>;
   remove(editorSessionId: string): Promise<void>;
   list?(editorSessionId: string): Promise<DocumentRecoverySnapshot[]>;
   removeSnapshot?(snapshotId: string): Promise<void>;
@@ -150,6 +154,17 @@ export class IndexedDbDocumentRecoveryStorage implements DocumentRecoveryStorage
     try {
       const transaction = database.transaction([STORE_NAME, HISTORY_STORE_NAME], 'readwrite');
       transaction.objectStore(STORE_NAME).put(snapshot);
+      transaction.objectStore(HISTORY_STORE_NAME).put(snapshot);
+      await transactionComplete(transaction);
+    } finally {
+      database.close();
+    }
+  }
+
+  async updateHistory(snapshot: DocumentRecoverySnapshot): Promise<void> {
+    const database = await openDatabase();
+    try {
+      const transaction = database.transaction(HISTORY_STORE_NAME, 'readwrite');
       transaction.objectStore(HISTORY_STORE_NAME).put(snapshot);
       await transactionComplete(transaction);
     } finally {
@@ -296,7 +311,7 @@ export class DocumentRecoveryService {
     const snapshot = (await this.listVersions()).find(candidate => candidate.snapshotId === snapshotId);
     if (!snapshot) return;
     snapshot.protected = protectedSnapshot;
-    await this.storage.save(snapshot);
+    await this.storage.updateHistory(snapshot);
     await this.prune();
   }
 
@@ -312,15 +327,15 @@ export class DocumentRecoveryService {
     const parsed = parseMapWithDiagnostics(snapshot.mapText);
     this.editor.transact(`Restore ${snapshot.label}`, () => {
       this.editor.entities = parsed.document.entities;
-    });
-    this.editor.fileName = snapshot.fileName || currentFileName;
-    this.editor.originalMapSource = snapshot.originalMapSource ? structuredClone(snapshot.originalMapSource) : null;
-    this.editor.mapDiagnostics = parsed.diagnostics;
-    this.editor.unsupportedMapConstructs = snapshot.originalMapSource?.unsupportedConstructs
-      ? structuredClone(snapshot.originalMapSource.unsupportedConstructs)
-      : [];
-    this.editor.clearSelection();
-    this.editor.redrawRequested = true;
+      this.editor.fileName = snapshot.fileName || currentFileName;
+      this.editor.originalMapSource = snapshot.originalMapSource ? structuredClone(snapshot.originalMapSource) : null;
+      this.editor.mapDiagnostics = parsed.diagnostics;
+      this.editor.unsupportedMapConstructs = snapshot.originalMapSource?.unsupportedConstructs
+        ? structuredClone(snapshot.originalMapSource.unsupportedConstructs)
+        : [];
+      this.editor.clearSelection();
+      this.editor.redrawRequested = true;
+    }, { auxiliary: captureDocumentHistoryAuxiliary(this.editor) });
     this.editor.statusMessage = `Restored ${snapshot.label} as an undoable change`;
   }
 
