@@ -19,6 +19,7 @@ export interface EditorCommandContext {
   openProjectSettings: () => void;
   openVersionHistory?: () => void;
   openBuildHistory?: () => void;
+  openReleasePackage?: () => void;
   openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
@@ -130,6 +131,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.version-history', label: 'Version History...', menu: menu('File', 25, 'open-save'), enabled: ctx => !!ctx.openVersionHistory, execute: ctx => ctx.openVersionHistory?.() },
     { id: 'file.manage-paks', label: 'Manage PK3 Files...', menu: menu('File', 30, 'assets'), execute: ctx => ctx.managePakFiles() },
     { id: 'file.project-settings', label: 'Project Settings...', menu: menu('File', 35, 'assets'), execute: ctx => ctx.openProjectSettings() },
+    { id: 'file.release-package', label: 'Build Release PK3...', menu: menu('File', 38, 'assets'), enabled: ctx => !!ctx.openReleasePackage, execute: ctx => ctx.openReleasePackage?.() },
     { id: 'file.import-prefab', label: 'Import Prefab...', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },
     { id: 'file.save-prefab', label: 'Save Selection as Prefab', menu: menu('File', 50, 'prefab'), enabled: hasSelection, execute: ({ editor }) => editor.saveSelectionAsPrefab() },
     { id: 'file.export-console', label: 'Export .map to Console', menu: menu('File', 60, 'export'), execute: ({ editor }) => console.log(editor.serializeMap()) },

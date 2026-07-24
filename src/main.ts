@@ -92,6 +92,7 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor, recovery);
+  ui.configureEditorCapture(() => vp3D.capturePng(1024, 768));
   if (recoveredDocument) {
     editor.statusMessage = editor.hasUnsavedChanges
       ? `Recovered unsaved changes to ${editor.fileName}`

@@ -259,7 +259,7 @@
         return basename.replace(/[^a-zA-Z0-9._-]/g, '_');
       }
 
-      async function loadLaunchAssets() {
+      async function loadLaunchAssets(launch) {
         const stored = await loadStoredConfiguration();
 
         // A retail pak0 and OpenArena's pak0 have the same filename. Mixing the
@@ -270,12 +270,17 @@
           (archive) => safeFileName(archive.name).toLowerCase() === 'pak0.pk3',
         );
         if (hasRetailBase) {
-          return { archives: stored.archives, gameDir: 'baseq3' };
+          const archives = launch.packagePk3
+            ? stored.archives.filter((archive) => /^pak[0-9]+\.pk3$/i.test(safeFileName(archive.name)))
+            : stored.archives;
+          if (launch.packagePk3) archives.push({ name: `${launch.mapName}.pk3`, data: launch.packagePk3 });
+          return { archives, gameDir: 'baseq3' };
         }
 
         if (stored.openArenaEnabled) {
           const archives = await loadOpenArenaArchives();
-          archives.push(...stored.archives);
+          if (launch.packagePk3) archives.push({ name: `${launch.mapName}.pk3`, data: launch.packagePk3 });
+          else archives.push(...stored.archives);
           return { archives, gameDir: 'baseoa' };
         }
 
@@ -305,7 +310,7 @@
       async function start(launch) {
         try {
           setStatus('Preparing browser-local PK3 files...');
-          const assets = await loadLaunchAssets();
+          const assets = await loadLaunchAssets(launch);
           setStatus('Loading ioquake3 WebAssembly runtime...');
           const ioquake3 = (await import('./ioquake3.js')).default;
           const availableBotNames = assets.gameDir === 'baseoa'
@@ -408,7 +413,8 @@
           command && ['setviewpos', 'map_restart'].includes(command.name) &&
           Array.isArray(command.args) && command.args.every(argument => typeof argument === 'string')
         ) : [];
-        void start({ mapName, bsp, aas, botCount, botSkill, noclip: event.data.noclip === true, commands });
+        const packagePk3 = event.data.packagePk3 instanceof ArrayBuffer ? event.data.packagePk3 : null;
+        void start({ mapName, bsp, aas, packagePk3, botCount, botSkill, noclip: event.data.noclip === true, commands });
       });
 
       window.addEventListener('error', (event) => fail(event.error ?? event.message));

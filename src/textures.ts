@@ -565,6 +565,10 @@ export class TextureManager {
     return null;
   }
 
+  getAssetIndex(): AssetIndex {
+    return this.assets;
+  }
+
   isShader(name: string): boolean {
     return this.shaderNames.has(name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, ''));
   }

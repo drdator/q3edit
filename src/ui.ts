@@ -40,6 +40,7 @@ import { BuildHistoryService, type BuildRecord } from './build-history';
 import { parseBsp, type BspInspection } from './bsp-inspection';
 import { structureCompilerOutput } from './compile-diagnostics';
 import { createBuildInspector, openBuildHistoryDialog } from './build-inspector';
+import { openReleasePackageDialog } from './release-package-dialog';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -75,6 +76,7 @@ interface GamePreviewLaunch {
   botSkill: number;
   noclip: boolean;
   commands: Array<{ name: 'setviewpos' | 'map_restart'; args: string[] }>;
+  packagePk3: Uint8Array | null;
 }
 
 export class UI {
@@ -104,6 +106,7 @@ export class UI {
   private readonly mcpActivity: McpActivityPanel;
   private readonly recovery: DocumentRecoveryService | null;
   private readonly buildHistory = new BuildHistoryService();
+  private captureEditorLevelshot: (() => { mimeType: string; data: string; width: number; height: number }) | null = null;
   private mcpConnectionUrl: string | null = null;
   private mcpConnect: ((url: string) => void | Promise<void>) | null = null;
   private mcpDisconnect: (() => void) | null = null;
@@ -148,6 +151,19 @@ export class UI {
         if (this.recovery) openVersionHistoryDialog(this.recovery);
       },
       openBuildHistory: () => { void openBuildHistoryDialog(this.editor, this.buildHistory); },
+      openReleasePackage: () => {
+        if (!this.texMgr || !this.captureEditorLevelshot) {
+          this.editor.statusMessage = 'Release packaging is available after editor assets finish loading';
+          return;
+        }
+        void openReleasePackageDialog({
+          editor: this.editor,
+          textureManager: this.texMgr,
+          buildHistory: this.buildHistory,
+          captureLevelshot: this.captureEditorLevelshot,
+          playPackage: (mapName, bsp, aas, pk3) => this.openBspPreview(mapName, bsp, aas, false, [], 0, 2, pk3),
+        });
+      },
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
@@ -187,6 +203,10 @@ export class UI {
     this.mcpConnect = onConnect;
     this.mcpDisconnect = onDisconnect;
     this.setMcpConnectionUrl(currentUrl);
+  }
+
+  configureEditorCapture(capture: () => { mimeType: string; data: string; width: number; height: number }): void {
+    this.captureEditorLevelshot = capture;
   }
 
   setMcpConnectionUrl(url: string | null): void {
@@ -2944,7 +2964,7 @@ export class UI {
     if (!launch) throw new Error('No compiled BSP preview is available; call map_play first');
     this.openBspPreview(
       launch.mapName, launch.bsp, launch.aas,
-      command === 'noclip' ? true : launch.noclip, launch.commands, launch.botCount, launch.botSkill,
+      command === 'noclip' ? true : launch.noclip, launch.commands, launch.botCount, launch.botSkill, launch.packagePk3,
     );
     return this.getGamePreviewStatus();
   }
@@ -2956,7 +2976,7 @@ export class UI {
       name: 'setviewpos' as const,
       args: [...position.map(value => String(value)), String(yaw * 180 / Math.PI)],
     };
-    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, true, [command], launch.botCount, launch.botSkill);
+    this.openBspPreview(launch.mapName, launch.bsp, launch.aas, true, [command], launch.botCount, launch.botSkill, launch.packagePk3);
     return this.getGamePreviewStatus();
   }
 
@@ -2968,6 +2988,7 @@ export class UI {
     commands: GamePreviewLaunch['commands'] = [],
     botCount = 0,
     botSkill = 2,
+    packagePk3: Uint8Array | null = null,
   ): void {
     this.gamePreviewClose?.(false);
 
@@ -2978,9 +2999,12 @@ export class UI {
     retainedBsp.set(bsp);
     const aasCopy = aas ? new Uint8Array(aas) : null;
     const retainedAas = aas ? new Uint8Array(aas) : null;
+    const packageCopy = packagePk3 ? new Uint8Array(packagePk3) : null;
+    const retainedPackage = packagePk3 ? new Uint8Array(packagePk3) : null;
     this.gamePreviewLaunch = {
       mapName: safeMapName, bsp: retainedBsp, aas: retainedAas,
       botCount, botSkill, noclip, commands: structuredClone(commands),
+      packagePk3: retainedPackage,
     };
     this.updateGamePreviewStatus({
       state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName,
@@ -3066,8 +3090,13 @@ export class UI {
           botSkill,
           noclip,
           commands,
+          packagePk3: packageCopy?.buffer ?? null,
         };
-        const transfer = aasCopy ? [bspCopy.buffer, aasCopy.buffer] : [bspCopy.buffer];
+        const transfer = [
+          bspCopy.buffer,
+          ...(aasCopy ? [aasCopy.buffer] : []),
+          ...(packageCopy ? [packageCopy.buffer] : []),
+        ];
         frame.contentWindow?.postMessage(launchMessage, window.location.origin, transfer);
       } else if (message?.type === 'q3edit-player:status') {
         status.textContent = message.message;
