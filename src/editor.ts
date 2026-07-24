@@ -3,6 +3,7 @@ import { Brush, BrushFace, computeBrushGeometry, brushCenter, BrushValidationRes
 import { Entity, createEntity, createWorldspawn } from './entity';
 import { Patch } from './patch';
 import { History } from './history';
+import { ActivityHistory } from './activity-history';
 import { TextureManager } from './textures';
 import type { ModelManager } from './model-manager';
 import { DEFAULT_DISPLAY_PREFERENCES, saveDisplayPreferences, setDisplayCategory, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
@@ -270,6 +271,7 @@ import {
 
 export interface EditorDocumentChange {
   label: string;
+  previousRevision: number | null;
   revision: number;
 }
 
@@ -323,6 +325,7 @@ export class Editor {
   modelManager: ModelManager | null = null;
   display = structuredClone(DEFAULT_DISPLAY_PREFERENCES);
   history = new History();
+  readonly activityHistory = new ActivityHistory();
   fileName = 'untitled.map';
   clipboardText = '';
   mapDiagnostics: MapParseDiagnostic[] = [];
@@ -884,13 +887,25 @@ export class Editor {
     return () => this.documentSessionListeners.delete(listener);
   }
 
-  notifyDocumentChanged(label: string): void {
-    const change = { label, revision: this.documentRevision };
+  notifyDocumentChanged(label: string, previousRevision: number | null = null): void {
+    const change = { label, previousRevision, revision: this.documentRevision };
+    if (!label.startsWith('MCP:')) {
+      this.activityHistory.record({
+        source: 'edit',
+        status: 'success',
+        category: 'change',
+        title: label,
+        revisionBefore: previousRevision,
+        revisionAfter: this.documentRevision,
+        undoable: true,
+      });
+    }
     for (const listener of this.documentChangeListeners) listener(change);
   }
 
   beginDocumentSession(startedAt = Date.now()): void {
     this.documentSessionStartedAt = startedAt;
+    this.activityHistory.startDocumentSession();
     for (const listener of this.documentSessionListeners) listener(startedAt);
     for (const listener of this.documentStateChangeListeners) listener();
   }

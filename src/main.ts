@@ -53,6 +53,20 @@ async function init() {
   const recovery = new DocumentRecoveryService(editor, currentEditorSessionId());
   setLoadingStatus('Checking for recovered work...');
   const recoveredDocument = await recovery.restore();
+  if (recoveredDocument) {
+    editor.activityHistory.record({
+      source: 'system',
+      status: 'success',
+      category: 'system',
+      title: 'Recovered browser session',
+      summary: editor.hasUnsavedChanges
+        ? `Restored unsaved changes to ${editor.fileName}`
+        : `Restored ${editor.fileName}`,
+      revisionBefore: editor.documentRevision,
+      revisionAfter: editor.documentRevision,
+      undoable: false,
+    });
+  }
   recovery.start();
   window.addEventListener('beforeunload', event => {
     if (!editor.hasUnsavedChanges) return;

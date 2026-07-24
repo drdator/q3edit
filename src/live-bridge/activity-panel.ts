@@ -1,4 +1,11 @@
 import type { McpActivityEntry } from './protocol';
+import {
+  filterActivity,
+  summarizeActivity,
+  type ActivityEntry,
+  type ActivityFilter,
+  type ActivityHistory,
+} from '../activity-history';
 
 export interface McpActivityFilter {
   query: string;
@@ -90,10 +97,13 @@ function activitySelect(select: HTMLSelectElement): HTMLElement {
   return wrapper;
 }
 
-function formatRevision(entry: McpActivityEntry): string {
+function formatRevision(entry: ActivityEntry): string {
   if (entry.revisionBefore === null && entry.revisionAfter === null) return 'No document revision';
   if (entry.revisionBefore === entry.revisionAfter) return `Revision ${entry.revisionAfter}`;
-  const delta = entry.revisionDelta === null ? '' : ` (${entry.revisionDelta > 0 ? '+' : ''}${entry.revisionDelta})`;
+  const revisionDelta = entry.revisionBefore === null || entry.revisionAfter === null
+    ? null
+    : entry.revisionAfter - entry.revisionBefore;
+  const delta = revisionDelta === null ? '' : ` (${revisionDelta > 0 ? '+' : ''}${revisionDelta})`;
   return `Revision ${entry.revisionBefore ?? '—'} → ${entry.revisionAfter ?? '—'}${delta}`;
 }
 
@@ -103,42 +113,38 @@ function prettyJson(value: unknown): string {
 }
 
 export interface McpActivityPanelOptions {
+  history: ActivityHistory;
   initialVisible?: boolean;
   initialHeight?: number;
-  initialDocumentSessionStartedAt?: number;
   onVisibilityChange?: (visible: boolean) => void;
   onHeightChange?: (height: number, committed: boolean) => void;
   onLayoutChange?: () => void;
 }
 
 export class McpActivityPanel {
-  private entries = new Map<string, McpActivityEntry>();
-  private dismissedIds = new Set<string>();
   private expandedIds = new Set<string>();
   private readonly root: HTMLElement;
   private readonly search: HTMLInputElement;
-  private readonly status: HTMLSelectElement;
+  private readonly source: HTMLSelectElement;
   private readonly kind: HTMLSelectElement;
   private readonly summary: HTMLElement;
   private readonly list: HTMLElement;
   private readonly resizer: HTMLElement;
   private visible: boolean;
   private height: number;
-  private documentSessionStartedAt: number;
   private followTail = true;
 
-  constructor(private readonly options: McpActivityPanelOptions = {}) {
+  constructor(private readonly options: McpActivityPanelOptions) {
     const root = document.getElementById('mcp-activity-panel');
     if (!root) throw new Error('Missing #mcp-activity-panel');
     this.root = root;
     this.visible = options.initialVisible ?? false;
     this.height = clampMcpActivityPanelHeight(options.initialHeight ?? DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT, window.innerHeight);
-    this.documentSessionStartedAt = options.initialDocumentSessionStartedAt ?? 0;
 
     this.resizer = document.createElement('div');
     this.resizer.className = 'mcp-activity-resizer';
     this.resizer.setAttribute('role', 'separator');
-    this.resizer.setAttribute('aria-label', 'Resize MCP activity panel');
+    this.resizer.setAttribute('aria-label', 'Resize Activity panel');
     this.resizer.setAttribute('aria-orientation', 'horizontal');
     this.resizer.tabIndex = 0;
     this.resizer.title = 'Drag to resize. Double-click to reset.';
@@ -149,7 +155,7 @@ export class McpActivityPanel {
     identity.className = 'mcp-activity-identity';
     const title = document.createElement('strong');
     title.id = 'mcp-activity-title';
-    title.textContent = 'MCP Activity';
+    title.textContent = 'Activity';
     const live = document.createElement('span');
     live.className = 'mcp-activity-live';
     live.textContent = 'LIVE';
@@ -161,23 +167,30 @@ export class McpActivityPanel {
     this.search.className = 'mcp-activity-search';
     this.search.type = 'search';
     this.search.placeholder = 'Filter activity…';
-    this.search.setAttribute('aria-label', 'Filter MCP activity');
-    this.status = document.createElement('select');
-    this.status.setAttribute('aria-label', 'Filter by status');
-    this.status.innerHTML = '<option value="all">All statuses</option><option value="success">Success</option><option value="error">Errors</option>';
+    this.search.setAttribute('aria-label', 'Filter activity');
+    this.source = document.createElement('select');
+    this.source.setAttribute('aria-label', 'Filter by source');
+    this.source.innerHTML = [
+      '<option value="all">All sources</option>',
+      '<option value="edit">Editor</option>',
+      '<option value="mcp">MCP</option>',
+      '<option value="file">Files</option>',
+      '<option value="build">Build</option>',
+      '<option value="system">System</option>',
+    ].join('');
     this.kind = document.createElement('select');
-    this.kind.setAttribute('aria-label', 'Filter by tool kind');
-    this.kind.innerHTML = '<option value="all">All calls</option><option value="action">Actions</option><option value="read">Read-only</option>';
-    controls.append(this.search, activitySelect(this.status), activitySelect(this.kind));
+    this.kind.setAttribute('aria-label', 'Filter by activity kind');
+    this.kind.innerHTML = '<option value="all">All activity</option><option value="changes">Changes</option><option value="errors">Errors</option><option value="reads">Read-only</option>';
+    controls.append(this.search, activitySelect(this.source), activitySelect(this.kind));
 
     this.summary = document.createElement('div');
     this.summary.className = 'mcp-activity-summary';
     const actions = document.createElement('div');
     actions.className = 'mcp-activity-panel-actions';
-    const clear = compactButton('Clear', 'Clear the panel view without deleting the bridge JSONL transcript', () => this.clear());
-    const close = compactButton('×', 'Close MCP Activity', () => this.close());
+    const clear = compactButton('Clear', 'Clear this document session’s activity history', () => this.clear());
+    const close = compactButton('×', 'Close Activity', () => this.close());
     close.classList.add('mcp-activity-close');
-    close.setAttribute('aria-label', 'Close MCP Activity');
+    close.setAttribute('aria-label', 'Close Activity');
     actions.append(clear, close);
     header.append(identity, controls, this.summary, actions);
 
@@ -188,7 +201,7 @@ export class McpActivityPanel {
     this.root.setAttribute('aria-labelledby', 'mcp-activity-title');
 
     this.search.addEventListener('input', () => this.render());
-    this.status.addEventListener('change', () => this.render());
+    this.source.addEventListener('change', () => this.render());
     this.kind.addEventListener('change', () => this.render());
     this.list.addEventListener('scroll', () => {
       this.followTail = isMcpActivityAtTail(this.list);
@@ -202,29 +215,9 @@ export class McpActivityPanel {
     });
     this.setupResize();
     window.addEventListener('resize', () => this.setHeight(this.height, false));
+    this.options.history.subscribe(() => this.render());
     this.applyVisibility(false);
     this.setHeight(this.height, false);
-    this.render();
-  }
-
-  add(entry: McpActivityEntry): void {
-    if (!isMcpActivityInDocumentSession(entry, this.documentSessionStartedAt)) return;
-    if (this.dismissedIds.has(entry.id)) return;
-    this.entries.set(entry.id, entry);
-    while (this.entries.size > 1_000) {
-      const oldestId = this.entries.keys().next().value!;
-      this.entries.delete(oldestId);
-      this.expandedIds.delete(oldestId);
-    }
-    this.render();
-  }
-
-  startDocumentSession(startedAt: number): void {
-    this.documentSessionStartedAt = startedAt;
-    this.entries.clear();
-    this.dismissedIds.clear();
-    this.expandedIds.clear();
-    this.followTail = true;
     this.render();
   }
 
@@ -255,11 +248,9 @@ export class McpActivityPanel {
   }
 
   private clear(): void {
-    for (const id of this.entries.keys()) this.dismissedIds.add(id);
-    this.entries.clear();
     this.expandedIds.clear();
     this.followTail = true;
-    this.render();
+    this.options.history.clear();
   }
 
   private applyVisibility(notify: boolean): void {
@@ -318,11 +309,11 @@ export class McpActivityPanel {
   private render(): void {
     const previousScrollTop = this.list.scrollTop;
     const shouldFollowTail = this.followTail;
-    const all = [...this.entries.values()];
-    const totals = summarizeMcpActivity(all);
+    const all = this.options.history.list();
+    const totals = summarizeActivity(all);
     this.summary.innerHTML = '';
     for (const [label, value] of [
-      ['Calls', totals.total], ['Actions', totals.actions], ['Errors', totals.errors], ['Revisions', totals.revisions],
+      ['Events', totals.total], ['Changes', totals.changes], ['Errors', totals.errors], ['Revisions', totals.revisions],
     ] as const) {
       const item = document.createElement('span');
       const number = document.createElement('strong'); number.textContent = String(value);
@@ -330,26 +321,26 @@ export class McpActivityPanel {
       item.append(number, caption); this.summary.appendChild(item);
     }
 
-    const filtered = filterMcpActivity(all, {
+    const filtered = filterActivity(all, {
       query: this.search.value,
-      status: this.status.value as McpActivityFilter['status'],
-      kind: this.kind.value as McpActivityFilter['kind'],
+      source: this.source.value as ActivityFilter['source'],
+      kind: this.kind.value as ActivityFilter['kind'],
     });
     this.list.innerHTML = '';
     if (filtered.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'mcp-activity-empty';
-      empty.textContent = all.length === 0 ? 'No MCP calls have been received yet.' : 'No calls match the current filters.';
+      empty.textContent = all.length === 0 ? 'No activity has been recorded yet.' : 'No activity matches the current filters.';
       this.list.appendChild(empty);
       this.restoreScrollPosition(shouldFollowTail, previousScrollTop);
       return;
     }
     for (const entry of filtered) {
-      const details = document.createElement('details');
-      details.className = `mcp-activity-entry ${entry.status} ${entry.readOnly ? 'read-only' : 'action'}`;
-      details.open = this.expandedIds.has(entry.id);
-      details.addEventListener('toggle', () => {
-        if (details.open) this.expandedIds.add(entry.id);
+      const rowDetails = document.createElement('details');
+      rowDetails.className = `mcp-activity-entry ${entry.status} ${entry.source} ${entry.category}${entry.historical ? ' historical' : ''}`;
+      rowDetails.open = this.expandedIds.has(entry.id);
+      rowDetails.addEventListener('toggle', () => {
+        if (rowDetails.open) this.expandedIds.add(entry.id);
         else this.expandedIds.delete(entry.id);
         if (this.followTail) this.scrollToTail();
       });
@@ -361,20 +352,33 @@ export class McpActivityPanel {
         hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
       });
       const badge = document.createElement('span');
-      badge.className = 'mcp-activity-kind'; badge.textContent = entry.readOnly ? 'READ' : 'ACTION';
-      const tool = document.createElement('strong'); tool.textContent = entry.tool;
+      badge.className = 'mcp-activity-kind'; badge.textContent = entry.source.toUpperCase();
+      const tool = document.createElement('strong'); tool.textContent = entry.title;
       const revision = document.createElement('span'); revision.className = 'mcp-activity-revision'; revision.textContent = formatRevision(entry);
-      const duration = document.createElement('span'); duration.className = 'mcp-activity-duration'; duration.textContent = `${entry.durationMs} ms`;
+      const duration = document.createElement('span');
+      duration.className = 'mcp-activity-duration';
+      duration.textContent = entry.durationMs === undefined ? '—' : `${entry.durationMs} ms`;
       row.append(timestamp, badge, tool, revision, duration);
       const body = document.createElement('div'); body.className = 'mcp-activity-entry-body';
       const meta = document.createElement('div'); meta.className = 'mcp-activity-meta';
-      meta.textContent = `${entry.status.toUpperCase()} · Editor ${entry.editorSessionId ?? 'unscoped'} · MCP ${entry.mcpSessionId}`;
-      const argumentsTitle = document.createElement('h3'); argumentsTitle.textContent = 'Arguments';
-      const argumentsJson = document.createElement('pre'); argumentsJson.className = 'mcp-activity-arguments'; argumentsJson.textContent = prettyJson(entry.arguments);
-      const resultTitle = document.createElement('h3'); resultTitle.textContent = 'Result';
-      const resultJson = document.createElement('pre'); resultJson.className = 'mcp-activity-result'; resultJson.textContent = prettyJson(entry.result);
-      body.append(meta, argumentsTitle, argumentsJson, resultTitle, resultJson);
-      details.append(row, body); this.list.appendChild(details);
+      meta.textContent = [
+        entry.status.toUpperCase(),
+        entry.historical ? 'Before reload' : 'Current session',
+        entry.undoable ? 'Undoable' : 'Not undoable',
+      ].join(' · ');
+      body.append(meta);
+      if (entry.summary) {
+        const summary = document.createElement('p');
+        summary.className = 'mcp-activity-description';
+        summary.textContent = entry.summary;
+        body.append(summary);
+      }
+      for (const detail of entry.details ?? []) {
+        const detailTitle = document.createElement('h3'); detailTitle.textContent = detail.title;
+        const detailValue = document.createElement('pre'); detailValue.textContent = prettyJson(detail.value);
+        body.append(detailTitle, detailValue);
+      }
+      rowDetails.append(row, body); this.list.appendChild(rowDetails);
     }
     this.restoreScrollPosition(shouldFollowTail, previousScrollTop);
   }

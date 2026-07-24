@@ -9,25 +9,27 @@ import {
 
 export function undo(editor: Editor): void {
   commitTransaction(editor);
+  const previousRevision = editor.documentRevision;
   const prev = editor.history.undo(editor.entities, editor.documentRevision);
   if (prev) {
     editor.entities = prev.entities;
     editor.restoreDocumentRevision(prev.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Undo: ${prev.label}`;
-    editor.notifyDocumentChanged(`Undo: ${prev.label}`);
+    editor.notifyDocumentChanged(`Undo: ${prev.label}`, previousRevision);
   }
 }
 
 export function redo(editor: Editor): void {
   commitTransaction(editor);
+  const previousRevision = editor.documentRevision;
   const next = editor.history.redo(editor.entities, editor.documentRevision);
   if (next) {
     editor.entities = next.entities;
     editor.restoreDocumentRevision(next.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Redo: ${next.label}`;
-    editor.notifyDocumentChanged(`Redo: ${next.label}`);
+    editor.notifyDocumentChanged(`Redo: ${next.label}`, previousRevision);
   }
 }
 
@@ -53,6 +55,18 @@ export function loadMap(editor: Editor, text: string): void {
   editor.redrawRequested = true;
   editor.markDocumentSaved();
   editor.beginDocumentSession();
+  editor.activityHistory.record({
+    source: 'file',
+    status: result.diagnostics.some(diagnostic => diagnostic.severity === 'error') ? 'error' : 'success',
+    category: 'file',
+    title: `Opened ${editor.fileName}`,
+    summary: result.diagnostics.length > 0
+      ? `${result.errors.length} errors and ${result.warnings.length} warnings`
+      : undefined,
+    revisionBefore: null,
+    revisionAfter: editor.documentRevision,
+    undoable: false,
+  });
   if (result.diagnostics.length === 0) {
     editor.statusMessage = 'Map loaded';
     return;
@@ -106,6 +120,15 @@ export function newMap(editor: Editor): void {
   editor.redrawRequested = true;
   editor.statusMessage = 'New map';
   editor.beginDocumentSession();
+  editor.activityHistory.record({
+    source: 'file',
+    status: 'success',
+    category: 'file',
+    title: 'Created new map',
+    revisionBefore: null,
+    revisionAfter: editor.documentRevision,
+    undoable: false,
+  });
 }
 
 export function saveMapToFile(editor: Editor): void {
@@ -119,6 +142,15 @@ export function saveMapToFile(editor: Editor): void {
   URL.revokeObjectURL(url);
   editor.markDocumentSaved();
   editor.statusMessage = `Saved ${editor.fileName}`;
+  editor.activityHistory.record({
+    source: 'file',
+    status: 'success',
+    category: 'file',
+    title: `Saved ${editor.fileName}`,
+    revisionBefore: editor.documentRevision,
+    revisionAfter: editor.documentRevision,
+    undoable: false,
+  });
 }
 
 export function openMapFromFile(editor: Editor): void {
