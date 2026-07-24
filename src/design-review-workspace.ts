@@ -231,6 +231,10 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
   root.className = 'design-review-workspace';
   const controls = document.createElement('div');
   controls.className = 'design-review-controls';
+  const filterControls = document.createElement('div');
+  filterControls.className = 'design-review-filter-controls';
+  const overlayControls = document.createElement('div');
+  overlayControls.className = 'design-review-overlay-controls';
   const source = select('current', [
     ['current', 'Current map'],
     ['preview', editor.pendingReviewMapText ? 'Unapplied MCP preview' : 'No unapplied preview available'],
@@ -378,13 +382,13 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
     activeRun = historySelect.value ? history.find(item => item.id === historySelect.value) ?? null : history[0] ?? activeRun;
     render();
   };
-  controls.append(source, view, severity, type, area, group, objectKind, historySelect, runButton, button('Export', () => {
+  filterControls.append(source, view, severity, type, area, group, objectKind, historySelect, runButton, button('Export', () => {
     if (activeRun) downloadReview(editor, activeRun);
   }));
   const acknowledgedLabel = document.createElement('label');
   acknowledgedLabel.className = 'design-review-checkbox';
   acknowledgedLabel.append(showAcknowledged, document.createTextNode('Show acknowledged'));
-  controls.appendChild(acknowledgedLabel);
+  overlayControls.appendChild(acknowledgedLabel);
   for (const [mode, label] of [
     ['spawns', 'Spawns'], ['items', 'Items'], ['routes', 'Routes'], ['jumps', 'Jump paths'], ['lights', 'Light coverage'], ['sight', 'Sight/distance'],
   ]) {
@@ -398,8 +402,9 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
     const labelElement = document.createElement('label');
     labelElement.className = 'design-review-checkbox';
     labelElement.append(checkbox, document.createTextNode(label));
-    controls.appendChild(labelElement);
+    overlayControls.appendChild(labelElement);
   }
+  controls.append(filterControls, overlayControls);
   for (const element of [view, severity, type, area, group, objectKind, showAcknowledged]) element.onchange = render;
   root.append(controls, content);
   render();

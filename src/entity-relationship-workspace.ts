@@ -68,6 +68,7 @@ export function createEntityRelationshipWorkspace(editor: Editor): HTMLElement {
   root.className = 'entity-relationship-workspace';
   let analysis = analyzeEntityRelationships(editor);
   const controls = document.createElement('div'); controls.className = 'entity-logic-controls';
+  const filterControls = document.createElement('div'); filterControls.className = 'entity-logic-filter-controls';
   const query = document.createElement('input'); query.type = 'search'; query.placeholder = 'Search class, name, target, group, or area…';
   const severity = select([['all', 'All severities'], ['error', 'Errors'], ['warning', 'Warnings'], ['info', 'Info']]);
   const groupValues = [...new Set(analysis.nodes.map(node => node.groupName).filter((value): value is string => Boolean(value)))].sort();
@@ -81,9 +82,10 @@ export function createEntityRelationshipWorkspace(editor: Editor): HTMLElement {
     input.onchange = () => { overlayState[key] = input.checked; updateOverlay(); };
     const wrapper = document.createElement('label'); wrapper.append(input, document.createTextNode(label)); overlayControls.appendChild(wrapper);
   }
-  controls.append(query, severity, group, area, button('Refresh', () => {
+  filterControls.append(query, severity, group, area, button('Refresh', () => {
     analysis = analyzeEntityRelationships(editor); render(); updateOverlay();
-  }), overlayControls);
+  }));
+  controls.append(filterControls, overlayControls);
 
   const summary = document.createElement('div'); summary.className = 'diagnostics-summary entity-logic-summary';
   const content = document.createElement('div'); content.className = 'entity-logic-content';
