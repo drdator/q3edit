@@ -9,8 +9,9 @@ import {
 } from './diagnostics';
 import type { Editor } from './editor';
 import { createDesignReviewWorkspace } from './design-review-workspace';
+import { createEntityRelationshipWorkspace } from './entity-relationship-workspace';
 
-export type DiagnosticsTab = 'map' | 'design-review' | 'entities' | 'find' | 'brush-macros';
+export type DiagnosticsTab = 'map' | 'design-review' | 'entity-logic' | 'entities' | 'find' | 'brush-macros';
 
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
   const result = document.createElement('button');
@@ -54,6 +55,10 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
 
   const render = () => {
     content.innerHTML = '';
+    if (activeTab !== 'entity-logic' && editor.entityRelationshipOverlayLines.length > 0) {
+      editor.entityRelationshipOverlayLines = [];
+      editor.redrawRequested = true;
+    }
     content.setAttribute('aria-labelledby', `diagnostics-tab-${activeTab}`);
     for (const tabButton of tabs.children) {
       const element = tabButton as HTMLElement;
@@ -83,6 +88,8 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
       content.append(summary, heading, list, classes);
     } else if (activeTab === 'design-review') {
       content.appendChild(createDesignReviewWorkspace(editor));
+    } else if (activeTab === 'entity-logic') {
+      content.appendChild(createEntityRelationshipWorkspace(editor));
     } else if (activeTab === 'entities') {
       const list = document.createElement('div'); list.className = 'entity-info-list';
       for (const info of collectEntityInfo(editor, diagnostics)) {
@@ -130,7 +137,7 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
     }
   };
 
-  for (const [tab, label] of [['map', 'Map Info'], ['design-review', 'Design Review'], ['entities', 'Entity Info'], ['find', 'Find Brush'], ['brush-macros', 'Brush Macros']] as const) {
+  for (const [tab, label] of [['map', 'Map Info'], ['design-review', 'Design Review'], ['entity-logic', 'Entity Logic'], ['entities', 'Entity Info'], ['find', 'Find Brush'], ['brush-macros', 'Brush Macros']] as const) {
     const tabButton = button(label, () => { activeTab = tab; render(); });
     tabButton.id = `diagnostics-tab-${tab}`;
     tabButton.classList.add('diagnostics-tab');
@@ -149,7 +156,12 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
     activeTab = tabButtons[next].dataset.tab as DiagnosticsTab;
     render(); tabButtons[next].focus(); event.preventDefault();
   });
-  const actions = document.createElement('div'); actions.className = 'editor-dialog-actions'; actions.appendChild(button('Close', () => overlay.remove()));
+  const close = () => {
+    editor.entityRelationshipOverlayLines = [];
+    editor.redrawRequested = true;
+    overlay.remove();
+  };
+  const actions = document.createElement('div'); actions.className = 'editor-dialog-actions'; actions.appendChild(button('Close', close));
   dialog.append(title, tabs, content, actions); overlay.appendChild(dialog); document.body.appendChild(overlay); render();
-  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { overlay.remove(); event.stopPropagation(); } });
+  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { close(); event.stopPropagation(); } });
 }

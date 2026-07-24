@@ -348,6 +348,8 @@ export class Editor {
   compiledBspOverlay: BspOverlayMode = 'none';
   designReviewOverlayLines: Vec3[] = [];
   textureAxisOverlayLines: Vec3[] = [];
+  entityRelationshipOverlayLines: Vec3[] = [];
+  runtimeEntityMessages: string[] = [];
   pendingReviewMapText: string | null = null;
   documentRevision = 0;
   savedDocumentRevision = 0;

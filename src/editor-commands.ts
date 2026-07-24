@@ -22,7 +22,7 @@ export interface EditorCommandContext {
   openReleasePackage?: () => void;
   openOrganization?: () => void;
   openSurfaceAlignment?: () => void;
-  openDiagnostics: (tab: 'map' | 'design-review' | 'entities' | 'find' | 'brush-macros') => void;
+  openDiagnostics: (tab: 'map' | 'design-review' | 'entity-logic' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
   openMcpConnection: () => void;
@@ -293,6 +293,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'view.snap-mode', label: ({ editor }) => `Grid Snap: ${editor.gridSnapMode === 'off' ? 'Off' : editor.gridSnapMode === 'abs' ? 'Absolute' : 'Relative'}`, checked: ({ editor }) => editor.gridSnapMode !== 'off', execute: ctx => ctx.toggleSnap() },
     { id: 'terrain.open-panel', label: 'Open Terrain Panel', execute: ctx => ctx.openTerrainPanel() },
     { id: 'tools.map-info', label: 'Map Info & Diagnostics...', defaultShortcut: 'M', menu: menu('Tools', 300, 'diagnostics'), execute: ctx => ctx.openDiagnostics('map') },
+    { id: 'tools.entity-logic', label: 'Entity Logic...', menu: menu('Tools', 305, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entity-logic') },
     { id: 'tools.entity-info', label: 'Entity Info...', defaultShortcut: 'Mod+L', menu: menu('Tools', 310, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entities') },
     { id: 'tools.find-brush', label: 'Find Brush...', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
     { id: 'tools.brush-macros', label: 'Brush Macros...', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },

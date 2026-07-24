@@ -3004,6 +3004,7 @@ export class UI {
     packagePk3: Uint8Array | null = null,
   ): void {
     this.gamePreviewClose?.(false);
+    this.editor.runtimeEntityMessages = [];
 
     const safeMapName = mapName.replace(/[^a-zA-Z0-9_-]/g, '') || 'compile';
     const bspCopy = new Uint8Array(bsp.byteLength);
@@ -3138,10 +3139,17 @@ export class UI {
           commandErrors,
           renderer: message.renderer ?? null,
         });
+        this.editor.runtimeEntityMessages.push(...commandErrors);
         this.editor.statusMessage = `Running ${safeMapName} in browser ioquake3`;
       } else if (message?.type === 'q3edit-player:console') {
         const line = String(message.message ?? '').trim();
-        if (line) this.updateGamePreviewStatus({ consoleTail: [...this.gamePreviewStatus.consoleTail, line].slice(-80) });
+        if (line) {
+          this.updateGamePreviewStatus({ consoleTail: [...this.gamePreviewStatus.consoleTail, line].slice(-80) });
+          if (/(?:error|warning|couldn't find|unknown target|entity|trigger|teleport|train|door)/i.test(line)) {
+            this.editor.runtimeEntityMessages.push(line);
+            this.editor.runtimeEntityMessages = this.editor.runtimeEntityMessages.slice(-80);
+          }
+        }
       } else if (message?.type === 'q3edit-player:capture') {
         const captured = message.captured === true;
         dialog.classList.toggle('captured', captured);
@@ -3153,6 +3161,7 @@ export class UI {
         dialog.classList.add('error');
         status.textContent = `Could not start: ${message.message}`;
         this.updateGamePreviewStatus({ state: 'error', message: String(message.message), error: String(message.message) });
+        this.editor.runtimeEntityMessages.push(String(message.message));
         this.editor.statusMessage = `ioquake3 failed: ${message.message}`;
       }
     };
