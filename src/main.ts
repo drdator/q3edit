@@ -20,6 +20,7 @@ import { openUnreadReleaseNotesDialog } from './release-notes-dialog';
 import { DocumentRecoveryService } from './document-recovery';
 import { currentEditorSessionId } from './editor-session';
 import { installDialogEscapeDismissal } from './dialog-dismissal';
+import { startupDialogsEnabled } from './startup-options';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -49,6 +50,7 @@ function setLoadingStatus(msg: string) {
 // ── Bootstrap ──
 
 async function init() {
+  const showStartupDialogs = startupDialogsEnabled(window.location.search);
   installDialogEscapeDismissal();
   const editor = new Editor();
   editor.createDefaultMap();
@@ -310,7 +312,10 @@ async function init() {
       : await loadOpenArenaEnabled();
     const names = await rebuildWithStoredPaks();
     ui.setTextureAssetStatus(describeAssetStack(names, openArenaEnabled), names);
-    showOpenArenaNotice = openArenaEnabled && names.length === 0 && !isOpenArenaNoticeDismissed();
+    showOpenArenaNotice = showStartupDialogs
+      && openArenaEnabled
+      && names.length === 0
+      && !isOpenArenaNoticeDismissed();
     setLoadingStatus('Ready');
   } catch (err) {
     console.warn('Failed to load texture assets:', err);
@@ -324,16 +329,18 @@ async function init() {
     loadingEl.style.opacity = '0';
     setTimeout(async () => {
       loadingEl.remove();
+      document.documentElement.dataset.editorReady = 'true';
       if (showOpenArenaNotice) {
         const dismissPermanently = await ui.showOpenArenaNotice();
         if (dismissPermanently) dismissOpenArenaNotice();
       }
-      openUnreadReleaseNotesDialog();
+      if (showStartupDialogs) openUnreadReleaseNotesDialog();
     }, 500);
   }, 500);
 }
 
 function startEditor(): void {
+  document.documentElement.dataset.editorReady = 'false';
   document.documentElement.classList.remove('landing-active');
   document.body.classList.remove('landing-active');
   document.getElementById('landing')?.remove();
