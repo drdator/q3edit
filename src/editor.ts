@@ -6,6 +6,7 @@ import { History } from './history';
 import { ActivityHistory } from './activity-history';
 import { TextureManager } from './textures';
 import type { ModelManager } from './model-manager';
+import { MapSpatialIndex, type MapSpatialEntry } from './map-spatial-index';
 import { DEFAULT_DISPLAY_PREFERENCES, saveDisplayPreferences, setDisplayCategory, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 import { DEFAULT_GLOBAL_PREFERENCES, loadGlobalPreferences, saveGlobalPreferences, type GlobalPreferences } from './preferences';
 import { DEFAULT_PROJECT_CONFIGURATION, loadProjectConfiguration, resolveProjectPreferences, type ProjectConfiguration } from './project-config';
@@ -278,6 +279,7 @@ import {
   beginTransaction as beginEditorTransaction,
   cancelTransaction as cancelEditorTransaction,
   commitTransaction as commitEditorTransaction,
+  hasActiveTransaction as hasActiveEditorTransaction,
   transact as transactEditorDocument,
   type TransactionOptions,
 } from './editor-transactions';
@@ -358,6 +360,8 @@ export class Editor {
   private documentChangeListeners = new Set<(change: EditorDocumentChange) => void>();
   private documentStateChangeListeners = new Set<() => void>();
   private documentSessionListeners = new Set<(startedAt: number) => void>();
+  private cachedSpatialIndex: MapSpatialIndex | null = null;
+  private cachedSpatialIndexRevision = -1;
 
   // Drag state for brush creation
   creating = false;
@@ -1067,6 +1071,25 @@ export class Editor {
 
   *nonWorldspawnEntities(): Iterable<Entity> {
     yield* iterateNonWorldspawnEntities(this);
+  }
+
+  spatialIndex(): MapSpatialIndex {
+    if (!this.cachedSpatialIndex || this.cachedSpatialIndexRevision !== this.documentRevision || hasActiveEditorTransaction(this)) {
+      this.cachedSpatialIndex = new MapSpatialIndex(this);
+      this.cachedSpatialIndexRevision = this.documentRevision;
+    }
+    return this.cachedSpatialIndex;
+  }
+
+  spatialCandidates2D(
+    axisH: number,
+    axisV: number,
+    minH: number,
+    minV: number,
+    maxH: number,
+    maxV: number,
+  ): MapSpatialEntry[] {
+    return this.spatialIndex().queryBounds2D(axisH, axisV, minH, minV, maxH, maxV);
   }
 
   // ── Point entities (non-worldspawn, no brushes/patches) ──

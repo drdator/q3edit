@@ -22,7 +22,7 @@ export interface EditorCommandContext {
   openReleasePackage?: () => void;
   openOrganization?: () => void;
   openSurfaceAlignment?: () => void;
-  openDiagnostics: (tab: 'map' | 'design-review' | 'entity-logic' | 'entities' | 'find' | 'brush-macros') => void;
+  openDiagnostics: (tab: 'map' | 'design-review' | 'entity-logic' | 'performance' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
   openMcpConnection: () => void;

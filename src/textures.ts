@@ -362,6 +362,22 @@ export class TextureManager {
     return this.cache.get(name.toLowerCase().replace(/\\/g, '/')) ?? null;
   }
 
+  memoryStats(): { loadedTextures: number; loadingTextures: number; estimatedGpuBytes: number; thumbnails: number } {
+    const unique = new Set<TextureInfo>(this.cache.values());
+    unique.add(this.white); unique.add(this.missing);
+    return {
+      loadedTextures: unique.size,
+      loadingTextures: this.loading.size,
+      estimatedGpuBytes: [...unique].reduce((sum, texture) =>
+        sum + Math.round(texture.width * texture.height * 4 * 4 / 3), 0),
+      thumbnails: this.thumbnailCache.size,
+    };
+  }
+
+  assetMemoryStats(): ReturnType<AssetIndex['memoryStats']> {
+    return this.assets.memoryStats();
+  }
+
   registerTexture(name: string, glTexture: WebGLTexture, width: number, height: number): void {
     this.cache.set(name, { glTexture, width, height });
   }

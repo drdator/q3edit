@@ -21,6 +21,7 @@
     "build": "npm run typecheck && vite build",
     "check": "npm test && npm run build",
     "fixtures:maps": "./scripts/fetch-map-compatibility-fixtures.sh",
+    "benchmark:maps": "tsx scripts/benchmark-complex-maps.ts --all",
     "bridge": "npm run build && tsx bridge/server.ts",
     "bridge:serve": "tsx bridge/server.ts",
     "mcp:call": "tsx scripts/mcp-call.ts",

@@ -103,22 +103,30 @@ export function createEntityRelationshipWorkspace(editor: Editor): HTMLElement {
     }
     content.innerHTML = '';
     const normalized = query.value.trim().toLowerCase();
-    const issues = analysis.issues.filter(issue =>
+    const matchingIssues = analysis.issues.filter(issue =>
       (severity.value === 'all' || issue.severity === severity.value) &&
       (!normalized || `${issue.message} ${issue.refs.join(' ')}`.toLowerCase().includes(normalized)));
+    const issues = matchingIssues.slice(0, 250);
     const issueSection = document.createElement('section');
     issueSection.appendChild(Object.assign(document.createElement('h3'), { textContent: `Relationship diagnostics (${issues.length})` }));
     if (issues.length === 0) issueSection.appendChild(Object.assign(document.createElement('p'), { textContent: 'No matching relationship issues.' }));
     else for (const issue of issues) issueSection.appendChild(issueRow(editor, issue));
+    if (matchingIssues.length > issues.length) issueSection.appendChild(Object.assign(document.createElement('p'), {
+      textContent: `${matchingIssues.length - issues.length} additional issues omitted; narrow the search or filters.`,
+    }));
 
-    const nodes = analysis.nodes.filter(node => {
+    const matchingNodes = analysis.nodes.filter(node => {
       if (group.value !== 'all' && node.groupName !== group.value) return false;
       if (area.value !== 'all' && node.areaId !== area.value) return false;
       return !normalized || `${node.label} ${node.target ?? ''} ${node.targetname ?? ''} ${node.groupName ?? ''} ${node.areaId ?? ''}`.toLowerCase().includes(normalized);
     });
+    const nodes = matchingNodes.slice(0, 400);
     const graphSection = document.createElement('section');
     graphSection.appendChild(Object.assign(document.createElement('h3'), { textContent: `Target graph (${nodes.length} nodes)` }));
     for (const node of nodes) graphSection.appendChild(nodeRow(editor, node, analysis));
+    if (matchingNodes.length > nodes.length) graphSection.appendChild(Object.assign(document.createElement('p'), {
+      textContent: `${matchingNodes.length - nodes.length} additional nodes omitted; narrow the search, group, or area filter.`,
+    }));
 
     const runtimeSection = document.createElement('section');
     runtimeSection.appendChild(Object.assign(document.createElement('h3'), { textContent: 'Movement and activation simulation' }));

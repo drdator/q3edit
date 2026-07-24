@@ -8,6 +8,45 @@ import { DrawGroup, LightRadiusDraw } from './viewport3d-render';
 import { buildModelGeometry } from './model-geometry';
 import { bspOverlayLines } from './bsp-inspection';
 
+const faceVertexCache = new WeakMap<BrushFace, { signature: string; vertices: number[] }>();
+const patchVertexCache = new WeakMap<Patch, { tessVerts: Patch['tessVerts']; tessIndices: Patch['tessIndices']; vertices: number[] }>();
+const patchWireCache = new WeakMap<Patch, { tessVerts: Patch['tessVerts']; vertices: number[] }>();
+
+function cachedFaceVertices(face: BrushFace, textureWidth: number, textureHeight: number): number[] {
+  const projection = face.textureProjection.kind === 'classic'
+    ? `${face.textureProjection.offsetX},${face.textureProjection.offsetY},${face.textureProjection.rotation},${face.textureProjection.scaleX},${face.textureProjection.scaleY}`
+    : face.textureProjection.matrix.flat().join(',');
+  const signature = `${textureWidth}:${textureHeight}:${projection}:${face.polygon.flat().join(',')}:${face.plane.normal.join(',')}`;
+  const cached = faceVertexCache.get(face);
+  if (cached?.signature === signature) return cached.vertices;
+  const vertices: number[] = [];
+  const normal = face.plane.normal;
+  for (let index = 1; index < face.polygon.length - 1; index++) {
+    for (const point of [face.polygon[0], face.polygon[index], face.polygon[index + 1]]) {
+      const [u, v] = computeFaceUV(point, face, textureWidth, textureHeight);
+      vertices.push(point[0], point[1], point[2], normal[0], normal[1], normal[2], u, v);
+    }
+  }
+  faceVertexCache.set(face, { signature, vertices });
+  return vertices;
+}
+
+function cachedPatchVertices(patch: Patch): number[] {
+  const cached = patchVertexCache.get(patch);
+  if (cached?.tessVerts === patch.tessVerts && cached.tessIndices === patch.tessIndices) return cached.vertices;
+  const vertices: number[] = [];
+  for (const index of patch.tessIndices) {
+    const vertex = patch.tessVerts[index];
+    vertices.push(
+      vertex.position[0], vertex.position[1], vertex.position[2],
+      vertex.normal[0], vertex.normal[1], vertex.normal[2],
+      vertex.uv[0], vertex.uv[1],
+    );
+  }
+  patchVertexCache.set(patch, { tessVerts: patch.tessVerts, tessIndices: patch.tessIndices, vertices });
+  return vertices;
+}
+
 export interface Viewport3DGeometryContext {
   gl: WebGL2RenderingContext;
   editor: Editor;
@@ -51,6 +90,17 @@ export interface Viewport3DGeometryBuild {
 export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewport3DGeometryBuild {
   const tm = ctx.editor.textureManager;
   const textureTerrainMode = ctx.editor.patchEditMode && ctx.editor.terrainBrushMode === 'texture';
+  const cubicClip = ctx.editor.cubicClipBounds();
+  const spatialBounds = cubicClip ?? ctx.editor.regionBounds;
+  const spatialCandidates = spatialBounds
+    ? ctx.editor.spatialCandidates2D(0, 1, spatialBounds.mins[0], spatialBounds.mins[1], spatialBounds.maxs[0], spatialBounds.maxs[1])
+    : null;
+  const brushCandidates = spatialCandidates
+    ? spatialCandidates.flatMap(candidate => candidate.kind === 'brush' ? [{ entity: candidate.entity, brush: candidate.brush }] : [])
+    : [...ctx.editor.allBrushes()];
+  const patchCandidates = spatialCandidates
+    ? spatialCandidates.flatMap(candidate => candidate.kind === 'patch' ? [{ entity: candidate.entity, patch: candidate.patch }] : [])
+    : [...ctx.editor.allPatches()];
   const facesByTex = new Map<string, { verts: number[]; selected: boolean; faceSelected: boolean }[]>();
   const appendBoundsWireframe = (verts: number[], mins: Vec3, maxs: Vec3) => {
     const corners: Vec3[] = [
@@ -86,6 +136,12 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
       }
       return;
     }
+    const cached = patchWireCache.get(patch);
+    if (cached?.tessVerts === patch.tessVerts) {
+      verts.push(...cached.vertices);
+      return;
+    }
+    const start = verts.length;
     const n = patch.subdivisions + 1;
     const subCols = (patch.width - 1) / 2;
     const subRows = (patch.height - 1) / 2;
@@ -109,6 +165,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
         }
       }
     }
+    patchWireCache.set(patch, { tessVerts: patch.tessVerts, vertices: verts.slice(start) });
   };
 
   const addFace = (face: BrushFace, selected: boolean, faceSelected: boolean) => {
@@ -121,24 +178,14 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
       facesByTex.set(key, group);
     }
 
-    const n = face.plane.normal;
     const texInfo = tm?.getIfLoaded(face.texture);
     const tw = texInfo?.width ?? 64;
     const th = texInfo?.height ?? 64;
-
-    const verts: number[] = [];
-    for (let i = 1; i < face.polygon.length - 1; i++) {
-      const tri = [face.polygon[0], face.polygon[i], face.polygon[i + 1]];
-      for (const v of tri) {
-        const [u, uv] = computeFaceUV(v, face, tw, th);
-        verts.push(v[0], v[1], v[2], n[0], n[1], n[2], u, uv);
-      }
-    }
+    const verts = cachedFaceVertices(face, tw, th);
     group.push({ verts, selected, faceSelected });
   };
 
   const clipBoxVerts: number[] = [];
-  const cubicClip = ctx.editor.cubicClipBounds();
   if (cubicClip) {
     appendBoundsWireframe(clipBoxVerts, cubicClip.mins, cubicClip.maxs);
   }
@@ -146,7 +193,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(clipBoxVerts), ctx.gl.DYNAMIC_DRAW);
   const clipBoxCount = clipBoxVerts.length / 3;
 
-  for (const { entity, brush } of ctx.editor.allBrushes()) {
+  for (const { entity, brush } of brushCandidates) {
     if (!ctx.editor.isBrushVisibleIn3D(brush, entity)) continue;
     const brushSelected = ctx.editor.isSelected(brush, entity);
     for (const face of brush.faces) {
@@ -157,7 +204,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     }
   }
 
-  for (const { entity, patch } of ctx.editor.allPatches()) {
+  for (const { entity, patch } of patchCandidates) {
     if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
     const patchSelected = ctx.editor.isPatchSelected(patch, entity);
     const shaderSelected = patchSelected && !textureTerrainMode;
@@ -198,20 +245,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
       group = [];
       facesByTex.set(key, group);
     }
-    const verts: number[] = [];
-    for (let ti = 0; ti < patch.tessIndices.length; ti += 3) {
-      const i0 = patch.tessIndices[ti];
-      const i1 = patch.tessIndices[ti + 1];
-      const i2 = patch.tessIndices[ti + 2];
-      for (const idx of [i0, i1, i2]) {
-        const v = patch.tessVerts[idx];
-        verts.push(
-          v.position[0], v.position[1], v.position[2],
-          v.normal[0], v.normal[1], v.normal[2],
-          v.uv[0], v.uv[1],
-        );
-      }
-    }
+    const verts = cachedPatchVertices(patch);
     group.push({ verts, selected: shaderSelected, faceSelected: false });
   }
 
@@ -407,7 +441,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   const wireVerts: number[] = [...modelWireVerts];
   const faceSelLineVerts: number[] = [];
 
-  for (const { entity, brush } of ctx.editor.allBrushes()) {
+  for (const { entity, brush } of brushCandidates) {
     if (!ctx.editor.isBrushVisibleIn3D(brush, entity)) continue;
     const brushSelected = ctx.editor.isSelected(brush, entity);
     for (const face of brush.faces) {
@@ -427,7 +461,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     }
   }
 
-  for (const { entity, patch } of ctx.editor.allPatches()) {
+  for (const { entity, patch } of patchCandidates) {
     if (!ctx.editor.isPatchVisibleIn3D(patch, entity)) continue;
     if (textureTerrainMode && ctx.editor.isPatchSelected(patch, entity)) {
       appendBoundsWireframe(selLineVerts, patch.mins, patch.maxs);

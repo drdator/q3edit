@@ -556,6 +556,34 @@ body.landing-active #app {
   }
 }
 
+.performance-workspace { display: grid; gap: 10px; min-height: 0; overflow: auto; }
+.performance-summary { grid-template-columns: repeat(6, minmax(80px, 1fr)); }
+.performance-current-memory,
+.performance-results section { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 10px; background: var(--bg); border: 1px solid var(--border-dark); }
+.performance-current-memory h3,
+.performance-results h3 { flex-basis: 100%; margin: 0; color: var(--text); font-size: 14px; }
+.performance-current-memory span,
+.performance-memory span { display: grid; gap: 3px; min-width: 130px; color: var(--text-dim); }
+.performance-current-memory strong,
+.performance-memory strong { color: var(--text); }
+.performance-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.performance-controls select {
+  min-width: 150px;
+  padding: 6px 28px 6px 8px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-light);
+}
+.performance-controls > span { color: var(--text-dim); }
+.performance-results { display: grid; gap: 10px; min-height: 0; }
+.performance-memory { display: contents; }
+.performance-table { width: 100%; border-collapse: collapse; background: var(--bg); }
+.performance-table th,
+.performance-table td { padding: 6px 8px; text-align: left; border: 1px solid var(--border-dark); }
+.performance-table th { color: var(--text); background: var(--panel); }
+.performance-table tr.over-budget td:nth-child(4) { color: var(--error, #e06c75); }
+.performance-table tr.pass td:nth-child(4) { color: #76c98b; }
+
 @media (max-width: 760px) {
   .landing-nav-links {
     gap: 20px;
@@ -2883,6 +2911,19 @@ body.sidepanel-resizing * {
 .entity-logic-node > span { color: var(--text-dim); }
 .entity-logic-runtime-row { display: flex; align-items: center; gap: 7px; padding: 5px 0; border-bottom: 1px solid var(--border-dark); }
 .entity-logic-content details { margin: 6px 0; }
+.brush-item,
+.diagnostic-row,
+.entity-info-row,
+.entity-logic-node,
+.entity-logic-issue,
+.mcp-activity-entry {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
+}
+.mcp-activity-load-earlier {
+  display: block;
+  margin: 8px auto;
+}
 @media (max-width: 900px) {
   .entity-logic-summary { grid-template-columns: repeat(3, minmax(80px, 1fr)); }
   .entity-logic-content { grid-template-columns: 1fr; }

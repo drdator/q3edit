@@ -56,6 +56,24 @@ export interface DocumentObjectReference {
 export function entityId(entityIndex: number): string { return `E${entityIndex}`; }
 export function brushId(entityIndex: number, brushIndex: number): string { return `E${entityIndex}:B${brushIndex}`; }
 
+const diagnosticCache = new WeakMap<Editor, {
+  revision: number;
+  textureManager: Editor['textureManager'];
+  modelManager: Editor['modelManager'];
+  diagnostics: EditorDiagnostic[];
+}>();
+const brushValidationCache = new WeakMap<Brush, { signature: string; result: ReturnType<typeof validateBrush> }>();
+
+function cachedBrushValidation(brush: Brush): ReturnType<typeof validateBrush> {
+  const signature = brush.faces.map(face =>
+    `${face.points.flat().join(',')}:${face.plane.normal.join(',')}:${face.plane.dist}`).join('|');
+  const cached = brushValidationCache.get(brush);
+  if (cached?.signature === signature) return cached.result;
+  const result = validateBrush(brush);
+  brushValidationCache.set(brush, { signature, result });
+  return result;
+}
+
 export function documentObjectReferences(editor: Pick<Editor, 'entities'>): DocumentObjectReference[] {
   const result: DocumentObjectReference[] = [];
   editor.entities.forEach((entity, entityIndex) => {
@@ -82,6 +100,10 @@ export function findDocumentObject(editor: Pick<Editor, 'entities'>, query: stri
 function targetForEntity(entityIndex: number): DiagnosticTarget { return { kind: 'entity', entityIndex }; }
 
 export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
+  const cached = diagnosticCache.get(editor);
+  if (cached?.revision === editor.documentRevision &&
+      cached.textureManager === editor.textureManager &&
+      cached.modelManager === editor.modelManager) return cached.diagnostics;
   const result: EditorDiagnostic[] = editor.mapDiagnostics.map(diagnostic => ({
     severity: diagnostic.severity,
     code: 'map-parse',
@@ -119,7 +141,7 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
     }
 
     entity.brushes.forEach((brush, brushIndex) => {
-      const validation = validateBrush(brush);
+      const validation = cachedBrushValidation(brush);
       if (!validation.valid) result.push({
         severity: 'error', code: 'invalid-brush', target: { kind: 'brush', entityIndex, brushIndex },
         message: `${brushId(entityIndex, brushIndex)} is invalid: ${validation.issues.join('; ')}`,
@@ -162,6 +184,12 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
       message: `${entityId(entityIndex)} shares targetname '${name}' with ${indices.length - 1} other ${indices.length === 2 ? 'entity' : 'entities'}`,
     });
   }
+  diagnosticCache.set(editor, {
+    revision: editor.documentRevision,
+    textureManager: editor.textureManager,
+    modelManager: editor.modelManager,
+    diagnostics: result,
+  });
   return result;
 }
 

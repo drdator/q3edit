@@ -21,6 +21,25 @@ export interface MapSaveSafety {
   reasons: string[];
 }
 
+type ParsedMapResult = ReturnType<typeof parseMapWithDiagnostics>;
+
+function parseMapInWorker(text: string): Promise<ParsedMapResult> {
+  if (typeof Worker === 'undefined') return Promise.resolve(parseMapWithDiagnostics(text));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./map-parser-worker.ts', import.meta.url), { type: 'module' });
+    const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`;
+    worker.onmessage = (event: MessageEvent<{ requestId: string; result?: ParsedMapResult; error?: string }>) => {
+      if (event.data.requestId !== requestId) return;
+      worker.terminate();
+      if (event.data.error) reject(new Error(event.data.error));
+      else if (event.data.result) resolve(event.data.result);
+      else reject(new Error('Map parser worker returned no result'));
+    };
+    worker.onerror = event => { worker.terminate(); reject(new Error(event.message || 'Map parser worker failed')); };
+    worker.postMessage({ requestId, text });
+  });
+}
+
 export function analyzeMapSaveSafety(editor: Editor): MapSaveSafety {
   const source = editor.originalMapSource;
   if (!source) {
@@ -81,8 +100,7 @@ export function serializeCompileMap(editor: Editor): string {
   return serializeEntities(editor.entities, { compilerSafe: true });
 }
 
-export function loadMap(editor: Editor, text: string): void {
-  const result = parseMapWithDiagnostics(text);
+function applyParsedMap(editor: Editor, text: string, result: ParsedMapResult): void {
   editor.transact('Open map', () => {
     editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
   });
@@ -127,6 +145,15 @@ export function loadMap(editor: Editor, text: string): void {
   const first = result.diagnostics[0];
   editor.statusMessage = `Map loaded with ${counts} (line ${first.line}, column ${first.column}: ${first.message})`;
   console.warn('Map parse diagnostics', result.diagnostics);
+}
+
+export function loadMap(editor: Editor, text: string): void {
+  applyParsedMap(editor, text, parseMapWithDiagnostics(text));
+}
+
+export async function loadMapAsync(editor: Editor, text: string): Promise<void> {
+  editor.statusMessage = 'Parsing map in background…';
+  applyParsedMap(editor, text, await parseMapInWorker(text));
 }
 
 export function restoreRecoveredMap(
@@ -234,7 +261,9 @@ export function openMapFromFile(editor: Editor): void {
     editor.fileName = file.name;
     const reader = new FileReader();
     reader.onload = () => {
-      loadMap(editor, reader.result as string);
+      void loadMapAsync(editor, reader.result as string).catch(error => {
+        editor.statusMessage = `Could not open map: ${error instanceof Error ? error.message : String(error)}`;
+      });
     };
     reader.readAsText(file);
   };
