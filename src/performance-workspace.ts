@@ -1,6 +1,7 @@
 import {
   collectComplexMapCounts,
   runComplexMapBenchmark,
+  runCurrentMapBenchmark,
   type ComplexMapBenchmarkReport,
   type ComplexMapFixtureSize,
 } from './complex-map-performance';
@@ -44,10 +45,11 @@ export function createPerformanceWorkspace(editor: Editor): HTMLElement {
     <span>Compile worker <strong>isolated and released after each build</strong></span>`;
   const controls = document.createElement('div'); controls.className = 'performance-controls';
   const fixture = document.createElement('select');
+  fixture.appendChild(Object.assign(document.createElement('option'), { value: 'current', textContent: 'Current map (detached copy)' }));
   for (const value of ['small', 'medium', 'large', 'stress'] as ComplexMapFixtureSize[]) {
     fixture.appendChild(Object.assign(document.createElement('option'), { value, textContent: `${value[0].toUpperCase()}${value.slice(1)} fixture` }));
   }
-  fixture.value = current.brushes > 2_048 ? 'stress' : current.brushes > 512 ? 'large' : current.brushes > 64 ? 'medium' : 'small';
+  fixture.value = 'current';
   const run = document.createElement('button'); run.type = 'button'; run.className = 'btn primary'; run.textContent = 'Run benchmark';
   const exportButton = document.createElement('button'); exportButton.type = 'button'; exportButton.className = 'btn'; exportButton.textContent = 'Export report'; exportButton.disabled = true;
   const status = document.createElement('span'); status.textContent = 'Benchmarks use generated maps and do not alter the current document.';
@@ -69,11 +71,11 @@ export function createPerformanceWorkspace(editor: Editor): HTMLElement {
         <span>Decoded models <strong>${bytes(report.memory.models?.estimatedBytes)}</strong></span>
       </div>`;
     const table = document.createElement('table'); table.className = 'performance-table';
-    table.innerHTML = '<thead><tr><th>Workload</th><th>Measured</th><th>Budget</th><th>Status</th><th>Detail</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Workload</th><th>Measured</th><th>Budget</th><th>Class</th><th>Status</th><th>Detail</th></tr></thead>';
     const body = document.createElement('tbody');
     for (const item of report.metrics) {
       const row = document.createElement('tr'); row.className = item.status;
-      row.innerHTML = `<td>${item.name}</td><td>${item.milliseconds.toFixed(2)} ms</td><td>${item.budgetMilliseconds.toFixed(1)} ms</td><td>${item.status}</td><td>${item.detail ?? ''}</td>`;
+      row.innerHTML = `<td>${item.name}</td><td>${item.milliseconds.toFixed(2)} ms</td><td>${item.budgetMilliseconds.toFixed(1)} ms</td><td>${item.budgetClass}</td><td>${item.status}</td><td>${item.detail ?? ''}</td>`;
       body.appendChild(row);
     }
     table.appendChild(body);
@@ -83,7 +85,9 @@ export function createPerformanceWorkspace(editor: Editor): HTMLElement {
     run.disabled = true; status.textContent = 'Running…';
     requestAnimationFrame(() => {
       try {
-        report = runComplexMapBenchmark(fixture.value as ComplexMapFixtureSize);
+        report = fixture.value === 'current'
+          ? runCurrentMapBenchmark(editor)
+          : runComplexMapBenchmark(fixture.value as ComplexMapFixtureSize);
         const over = report.metrics.filter(item => item.status === 'over-budget').length;
         status.textContent = over ? `${over} workload${over === 1 ? '' : 's'} over budget` : 'All measured workloads are within budget';
         exportButton.disabled = false; render();

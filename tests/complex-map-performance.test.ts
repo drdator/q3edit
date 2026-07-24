@@ -3,6 +3,7 @@ import { createBoxBrush } from '../src/brush';
 import {
   collectComplexMapCounts,
   createComplexMapFixture,
+  runCurrentMapBenchmark,
   runComplexMapBenchmark,
 } from '../src/complex-map-performance';
 import { Editor } from '../src/editor';
@@ -14,8 +15,9 @@ describe('complex map scalability', () => {
   it('defines repeatable fixture sizes with useful workload counts', () => {
     const small = createComplexMapFixture('small');
     const medium = createComplexMapFixture('medium');
-    expect(collectComplexMapCounts(small)).toMatchObject({ brushes: 64, faces: 384 });
-    expect(collectComplexMapCounts(medium)).toMatchObject({ brushes: 512, faces: 3_072 });
+    expect(collectComplexMapCounts(small)).toMatchObject({ brushes: 64 });
+    expect(collectComplexMapCounts(medium)).toMatchObject({ brushes: 512 });
+    expect(collectComplexMapCounts(small).faces).toBeGreaterThan(384);
     expect(collectComplexMapCounts(medium).patchControlPoints).toBeGreaterThan(0);
   });
 
@@ -41,7 +43,24 @@ describe('complex map scalability', () => {
       'save serialization', 'compile preparation',
     ]));
     expect(report.metrics.every(item => item.budgetMilliseconds > 0 && Number.isFinite(item.milliseconds))).toBe(true);
+    expect(report.metrics.find(item => item.name === 'viewport geometry preparation')).toMatchObject({
+      budgetMilliseconds: 16.7,
+      budgetClass: 'frame',
+    });
+    expect(report.metrics.find(item => item.name === 'indexed picking')).toMatchObject({
+      budgetMilliseconds: 2,
+      budgetClass: 'interaction',
+    });
     expect(report.memory.spatialIndexBytes).toBeGreaterThan(0);
+  });
+
+  it('benchmarks a detached copy of the current map', () => {
+    const editor = createComplexMapFixture('small');
+    const before = editor.serializeMap();
+    const report = runCurrentMapBenchmark(editor);
+    expect(report.fixture).toBe('current');
+    expect(report.counts.brushes).toBe(64);
+    expect(editor.serializeMap()).toBe(before);
   });
 
   it('renders bounded chronological activity windows', () => {

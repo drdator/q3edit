@@ -39,6 +39,19 @@ export class History {
     label: string,
     options: HistoryRecordOptions = {},
   ): void {
+    this.recordSnapshot(cloneMapSnapshot(entities), revision, label, options);
+  }
+
+  /**
+   * Records an already detached snapshot without cloning it again.
+   * The caller transfers ownership and must not mutate the snapshot afterwards.
+   */
+  recordSnapshot(
+    entities: MapSnapshot,
+    revision: number,
+    label: string,
+    options: HistoryRecordOptions = {},
+  ): void {
     const now = Date.now();
     const previous = this.undoStack[this.undoStack.length - 1];
     const coalesceWindowMs = options.coalesceWindowMs ?? 750;
@@ -55,7 +68,7 @@ export class History {
     }
 
     this.undoStack.push({
-      entities: cloneMapSnapshot(entities),
+      entities,
       revision,
       label,
       auxiliary: options.auxiliary === undefined ? undefined : structuredClone(options.auxiliary),

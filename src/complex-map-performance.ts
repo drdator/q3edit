@@ -1,10 +1,11 @@
 import { computeFaceUV, createBoxBrush } from './brush';
+import { createBrushPrimitive, createWedgeBrush } from './brush-primitives';
 import { collectEditorDiagnostics } from './diagnostics';
 import { Editor, type SelectionItem } from './editor';
 import { createEntity } from './entity';
 import { MapSpatialIndex } from './map-spatial-index';
 import { parseMapWithDiagnostics, serializeMap } from './mapfile';
-import { createFlatPatch } from './patch';
+import { createCylinderPatch, createFlatPatch } from './patch';
 
 export type ComplexMapFixtureSize = 'small' | 'medium' | 'large' | 'stress';
 
@@ -22,6 +23,7 @@ export interface ComplexMapBenchmarkMetric {
   name: string;
   milliseconds: number;
   budgetMilliseconds: number;
+  budgetClass: 'setup' | 'load' | 'frame' | 'interaction' | 'command' | 'analysis';
   status: 'pass' | 'over-budget';
   detail?: string;
 }
@@ -38,7 +40,7 @@ export interface ComplexMapMemoryReport {
 }
 
 export interface ComplexMapBenchmarkReport {
-  fixture: ComplexMapFixtureSize;
+  fixture: ComplexMapFixtureSize | 'current';
   generatedAt: string;
   counts: ComplexMapCounts;
   metrics: ComplexMapBenchmarkMetric[];
@@ -53,11 +55,11 @@ const FIXTURE_BRUSHES: Record<ComplexMapFixtureSize, number> = {
   stress: 6_000,
 };
 
-const BUDGET_MULTIPLIER: Record<ComplexMapFixtureSize, number> = {
-  small: 1,
-  medium: 3,
-  large: 10,
-  stress: 25,
+const LOAD_BUDGETS: Record<ComplexMapFixtureSize, number> = {
+  small: 100,
+  medium: 300,
+  large: 1_000,
+  stress: 3_000,
 };
 
 function elapsed(action: () => void): number {
@@ -66,12 +68,18 @@ function elapsed(action: () => void): number {
   return performance.now() - started;
 }
 
-function metric(name: string, milliseconds: number, baseBudget: number, size: ComplexMapFixtureSize, detail?: string): ComplexMapBenchmarkMetric {
-  const budgetMilliseconds = baseBudget * BUDGET_MULTIPLIER[size];
+function metric(
+  name: string,
+  milliseconds: number,
+  budgetMilliseconds: number,
+  budgetClass: ComplexMapBenchmarkMetric['budgetClass'],
+  detail?: string,
+): ComplexMapBenchmarkMetric {
   return {
     name,
     milliseconds,
     budgetMilliseconds,
+    budgetClass,
     status: milliseconds <= budgetMilliseconds ? 'pass' : 'over-budget',
     detail,
   };
@@ -88,9 +96,21 @@ export function createComplexMapFixture(size: ComplexMapFixtureSize): Editor {
     const x = (index % columns) * 80;
     const y = Math.floor(index / columns) * 80;
     const height = 32 + (index % 5) * 16;
-    editor.worldspawn.brushes.push(createBoxBrush([x, y, 0], [x + 64, y + 64, height], textures[index % textures.length]));
+    const mins: [number, number, number] = [x, y, 0];
+    const maxs: [number, number, number] = [x + 64, y + 64, height];
+    const texture = textures[index % textures.length];
+    const brush = index % 37 === 0
+      ? createBrushPrimitive('cylinder', mins, maxs, texture, 2, 8)
+      : index % 29 === 0
+        ? createWedgeBrush(mins, maxs, texture, index % 2 === 0 ? 'x+' : 'y+')
+        : index % 43 === 0
+          ? createBrushPrimitive('pyramid', mins, maxs, texture, 2, 4)
+          : createBoxBrush(mins, maxs, texture);
+    editor.worldspawn.brushes.push(brush);
     if (index % 128 === 0) {
-      editor.worldspawn.patches.push(createFlatPatch([x, y, height], [x + 128, y + 128, height + 32], 'gothic_trim/metal'));
+      editor.worldspawn.patches.push(index % 256 === 0
+        ? createCylinderPatch([x, y, height], [x + 128, y + 128, height + 64], 'gothic_trim/metal')
+        : createFlatPatch([x, y, height], [x + 128, y + 128, height + 32], 'gothic_trim/metal'));
     }
     if (index % 64 === 0) {
       const light = createEntity('light', [x + 32, y + 32, height + 96]);
@@ -160,6 +180,28 @@ function heapMemory(): { used: number | null; limit: number | null } {
 export function runComplexMapBenchmark(size: ComplexMapFixtureSize = 'medium'): ComplexMapBenchmarkReport {
   let editor!: Editor;
   const generationMs = elapsed(() => { editor = createComplexMapFixture(size); });
+  return benchmarkEditor(editor, size, size, generationMs);
+}
+
+function sizeForBrushCount(brushes: number): ComplexMapFixtureSize {
+  return brushes > FIXTURE_BRUSHES.large ? 'stress'
+    : brushes > FIXTURE_BRUSHES.medium ? 'large'
+      : brushes > FIXTURE_BRUSHES.small ? 'medium'
+        : 'small';
+}
+
+/** Benchmarks a detached reload of the current map without modifying the open document. */
+export function runCurrentMapBenchmark(editor: Editor): ComplexMapBenchmarkReport {
+  const counts = collectComplexMapCounts(editor);
+  return benchmarkEditor(editor, sizeForBrushCount(counts.brushes), 'current', 0);
+}
+
+function benchmarkEditor(
+  editor: Editor,
+  size: ComplexMapFixtureSize,
+  fixture: ComplexMapBenchmarkReport['fixture'],
+  generationMs: number,
+): ComplexMapBenchmarkReport {
   let mapText = '';
   const saveMs = elapsed(() => { mapText = serializeMap(editor.entities); });
   let parsed!: ReturnType<typeof parseMapWithDiagnostics>;
@@ -170,25 +212,39 @@ export function runComplexMapBenchmark(size: ComplexMapFixtureSize = 'medium'): 
   const geometryMs = elapsed(() => { renderValues = generateRenderBuffers(loaded); });
   let index!: MapSpatialIndex;
   const indexMs = elapsed(() => { index = new MapSpatialIndex(loaded); });
-  const center = Math.sqrt(FIXTURE_BRUSHES[size]) * 40;
+  const center = Math.sqrt(Math.max(1, collectComplexMapCounts(loaded).brushes)) * 40;
+  const mapBounds = Array.from(loaded.allBrushes()).reduce<{ mins: [number, number, number]; maxs: [number, number, number] } | null>(
+    (bounds, { brush }) => bounds ? {
+      mins: bounds.mins.map((value, axis) => Math.min(value, brush.mins[axis])) as [number, number, number],
+      maxs: bounds.maxs.map((value, axis) => Math.max(value, brush.maxs[axis])) as [number, number, number],
+    } : { mins: [...brush.mins], maxs: [...brush.maxs] },
+    null,
+  );
+  const pickCenter = mapBounds
+    ? [(mapBounds.mins[0] + mapBounds.maxs[0]) / 2, (mapBounds.mins[1] + mapBounds.maxs[1]) / 2]
+    : [center, center];
   const brushEntries = index.entries.filter(entry => entry.kind === 'brush');
   let linearCandidateCount = 0;
   const linearPickMs = elapsed(() => {
     for (let repeat = 0; repeat < 200; repeat++) {
-      const x = center + repeat % 8;
+      const x = pickCenter[0] + repeat % 8;
       linearCandidateCount += brushEntries.filter(entry =>
-        x >= entry.mins[0] && x <= entry.maxs[0] && center >= entry.mins[1] && center <= entry.maxs[1]).length;
+        x >= entry.mins[0] && x <= entry.maxs[0] && pickCenter[1] >= entry.mins[1] && pickCenter[1] <= entry.maxs[1]).length;
     }
   }) / 200;
   let candidateCount = 0;
   const pickMs = elapsed(() => {
     for (let repeat = 0; repeat < 200; repeat++) {
-      candidateCount += index.queryPoint2D(0, 1, center + repeat % 8, center).length;
+      candidateCount += index.queryPoint2D(0, 1, pickCenter[0] + repeat % 8, pickCenter[1]).length;
     }
   }) / 200;
   let selectedCount = 0;
   const selectionMs = elapsed(() => {
-    selectedCount = index.queryBounds2D(0, 1, 0, 0, 1_024, 1_024).length;
+    selectedCount = index.queryBounds2D(
+      0, 1,
+      pickCenter[0] - 512, pickCenter[1] - 512,
+      pickCenter[0] + 512, pickCenter[1] + 512,
+    ).length;
   });
   const selection = Array.from(loaded.allBrushes()).slice(0, 64)
     .map(({ entity, brush }): SelectionItem => ({ type: 'brush', entity, brush }));
@@ -211,25 +267,25 @@ export function runComplexMapBenchmark(size: ComplexMapFixtureSize = 'medium'): 
   const heap = heapMemory();
   const counts = collectComplexMapCounts(loaded);
   return {
-    fixture: size,
+    fixture,
     generatedAt: new Date().toISOString(),
     counts,
     metrics: [
-      metric('fixture generation', generationMs, 25, size),
-      metric('initial load', loadMs, 30, size),
-      metric('parse and geometry calculation', parseMs, 25, size, `${parsed.diagnostics.length} parser diagnostics`),
-      metric('asset discovery', assetDiscoveryMs, 2, size),
-      metric('viewport geometry preparation', geometryMs, 18, size, `${renderValues.toLocaleString()} vertex values`),
-      metric('spatial index rebuild', indexMs, 8, size, `${index.entries.length.toLocaleString()} indexed objects`),
-      metric('indexed picking', pickMs, 0.5, size,
+      metric('fixture generation', generationMs, LOAD_BUDGETS[size], 'setup'),
+      metric('initial load', loadMs, LOAD_BUDGETS[size], 'load'),
+      metric('parse and geometry calculation', parseMs, LOAD_BUDGETS[size], 'load', `${parsed.diagnostics.length} parser diagnostics`),
+      metric('asset discovery', assetDiscoveryMs, Math.max(16.7, LOAD_BUDGETS[size] / 10), 'load'),
+      metric('viewport geometry preparation', geometryMs, 16.7, 'frame', `${renderValues.toLocaleString()} vertex values`),
+      metric('spatial index rebuild', indexMs, Math.max(16.7, LOAD_BUDGETS[size] / 5), 'load', `${index.entries.length.toLocaleString()} indexed objects`),
+      metric('indexed picking', pickMs, 2, 'interaction',
         `${Math.round(candidateCount / 200)} indexed candidates / ${Math.round(linearCandidateCount / 200)} linear hits · ${linearPickMs.toFixed(3)} ms linear baseline · ${Math.max(1, linearPickMs / Math.max(0.0001, pickMs)).toFixed(1)}× faster`),
-      metric('region selection', selectionMs, 1, size, `${selectedCount.toLocaleString()} candidates`),
-      metric('transform 64 brushes', transformMs, 8, size),
-      metric('undo', undoMs, 8, size),
-      metric('redo', redoMs, 8, size),
-      metric('diagnostics', diagnosticsMs, 18, size, `${diagnosticCount} findings`),
-      metric('save serialization', saveMs, 18, size, `${mapText.length.toLocaleString()} characters`),
-      metric('compile preparation', compilePreparationMs, 20, size, `${compileBytes.toLocaleString()} bytes`),
+      metric('region selection', selectionMs, 16.7, 'interaction', `${selectedCount.toLocaleString()} candidates`),
+      metric('transform 64 brushes', transformMs, 100, 'command'),
+      metric('undo', undoMs, 100, 'command'),
+      metric('redo', redoMs, 100, 'command'),
+      metric('diagnostics', diagnosticsMs, LOAD_BUDGETS[size], 'analysis', `${diagnosticCount} findings`),
+      metric('save serialization', saveMs, LOAD_BUDGETS[size], 'command', `${mapText.length.toLocaleString()} characters`),
+      metric('compile preparation', compilePreparationMs, LOAD_BUDGETS[size], 'command', `${compileBytes.toLocaleString()} bytes`),
     ],
     memory: {
       mapTextBytes: new TextEncoder().encode(mapText).byteLength,
