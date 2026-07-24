@@ -4,6 +4,9 @@ Q3Edit can run as a local web app connected to a Model Context Protocol server. 
 
 This is an experimental local workflow. The bridge currently trusts local clients and accepts arbitrary local paths in `map_open` and `map_save`.
 
+For browser automation, open `/?editor&startupDialogs=0` and wait for
+`html[data-editor-ready="true"]` before capturing the editor.
+
 ## Start the bridge
 
 From the repository root:
