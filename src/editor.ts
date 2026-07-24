@@ -56,6 +56,7 @@ import {
   newMap as createNewMap,
   openMapFromFile as openEditorMapFromFile,
   redo as redoDocument,
+  restoreRecoveredMap as restoreRecoveredEditorMap,
   saveMapToFile as saveEditorMapToFile,
   serializeMap as serializeEditorMap,
   serializeCompileMap as serializeEditorCompileMap,
@@ -328,8 +329,11 @@ export class Editor {
   unsupportedMapConstructs: UnsupportedMapConstruct[] = [];
   documentRevision = 0;
   savedDocumentRevision = 0;
+  documentSessionStartedAt = Date.now();
   private nextDocumentRevision = 1;
   private documentChangeListeners = new Set<(change: EditorDocumentChange) => void>();
+  private documentStateChangeListeners = new Set<() => void>();
+  private documentSessionListeners = new Set<(startedAt: number) => void>();
 
   // Drag state for brush creation
   creating = false;
@@ -870,9 +874,25 @@ export class Editor {
     return () => this.documentChangeListeners.delete(listener);
   }
 
+  subscribeDocumentStateChanges(listener: () => void): () => void {
+    this.documentStateChangeListeners.add(listener);
+    return () => this.documentStateChangeListeners.delete(listener);
+  }
+
+  subscribeDocumentSessions(listener: (startedAt: number) => void): () => void {
+    this.documentSessionListeners.add(listener);
+    return () => this.documentSessionListeners.delete(listener);
+  }
+
   notifyDocumentChanged(label: string): void {
     const change = { label, revision: this.documentRevision };
     for (const listener of this.documentChangeListeners) listener(change);
+  }
+
+  beginDocumentSession(startedAt = Date.now()): void {
+    this.documentSessionStartedAt = startedAt;
+    for (const listener of this.documentSessionListeners) listener(startedAt);
+    for (const listener of this.documentStateChangeListeners) listener();
   }
 
   /** Internal history hook: restore the identity associated with a snapshot. */
@@ -881,9 +901,18 @@ export class Editor {
     this.nextDocumentRevision = Math.max(this.nextDocumentRevision, revision + 1);
   }
 
+  restoreDocumentState(documentRevision: number, savedDocumentRevision: number, sessionStartedAt: number): void {
+    this.documentRevision = documentRevision;
+    this.savedDocumentRevision = savedDocumentRevision;
+    this.documentSessionStartedAt = sessionStartedAt;
+    this.nextDocumentRevision = Math.max(this.nextDocumentRevision, documentRevision + 1, savedDocumentRevision + 1);
+    this.history.breakCoalescing();
+  }
+
   markDocumentSaved(): void {
     this.savedDocumentRevision = this.documentRevision;
     this.history.breakCoalescing();
+    for (const listener of this.documentStateChangeListeners) listener();
   }
 
   beginTransaction(label: string, options: TransactionOptions = {}): void {
@@ -930,6 +959,23 @@ export class Editor {
 
   loadMap(text: string): void {
     loadEditorMap(this, text);
+  }
+
+  restoreRecoveredMap(
+    text: string,
+    fileName: string,
+    documentRevision: number,
+    savedDocumentRevision: number,
+    documentSessionStartedAt: number,
+  ): void {
+    restoreRecoveredEditorMap(
+      this,
+      text,
+      fileName,
+      documentRevision,
+      savedDocumentRevision,
+      documentSessionStartedAt,
+    );
   }
 
   newMap(): void {

@@ -52,6 +52,7 @@ export function loadMap(editor: Editor, text: string): void {
   editor.clearHiddenState();
   editor.redrawRequested = true;
   editor.markDocumentSaved();
+  editor.beginDocumentSession();
   if (result.diagnostics.length === 0) {
     editor.statusMessage = 'Map loaded';
     return;
@@ -68,6 +69,29 @@ export function loadMap(editor: Editor, text: string): void {
   console.warn('Map parse diagnostics', result.diagnostics);
 }
 
+export function restoreRecoveredMap(
+  editor: Editor,
+  text: string,
+  fileName: string,
+  documentRevision: number,
+  savedDocumentRevision: number,
+  documentSessionStartedAt: number,
+): void {
+  const result = parseMapWithDiagnostics(text);
+  editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
+  editor.mapDiagnostics = result.diagnostics;
+  editor.unsupportedMapConstructs = result.unsupportedConstructs;
+  editor.fileName = fileName;
+  editor.selection = [];
+  editor.regionBounds = null;
+  editor.clearPointfile(false);
+  resetEditorStateAfterDocumentReplacement(editor);
+  editor.restoreDocumentState(documentRevision, savedDocumentRevision, documentSessionStartedAt);
+  editor.statusMessage = editor.hasUnsavedChanges
+    ? `Recovered unsaved changes to ${fileName}`
+    : `Restored ${fileName}`;
+}
+
 export function newMap(editor: Editor): void {
   editor.transact('New map', () => {
     editor.entities = [createWorldspawn()];
@@ -81,6 +105,7 @@ export function newMap(editor: Editor): void {
   editor.clearHiddenState();
   editor.redrawRequested = true;
   editor.statusMessage = 'New map';
+  editor.beginDocumentSession();
 }
 
 export function saveMapToFile(editor: Editor): void {

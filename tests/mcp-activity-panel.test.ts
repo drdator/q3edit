@@ -3,6 +3,7 @@ import {
   clampMcpActivityPanelHeight,
   filterMcpActivity,
   isMcpActivityAtTail,
+  isMcpActivityInDocumentSession,
   resizedMcpActivityPanelHeight,
   summarizeMcpActivity,
 } from '../src/live-bridge';
@@ -52,5 +53,12 @@ describe('MCP activity panel helpers', () => {
     expect(isMcpActivityAtTail({ scrollTop: 0, scrollHeight: 100, clientHeight: 100 })).toBe(true);
     expect(isMcpActivityAtTail({ scrollTop: 376, scrollHeight: 500, clientHeight: 100 })).toBe(true);
     expect(isMcpActivityAtTail({ scrollTop: 300, scrollHeight: 500, clientHeight: 100 })).toBe(false);
+  });
+
+  it('keeps replayed activity scoped to the current document session', () => {
+    const boundary = Date.parse('2026-07-21T08:00:01.000Z');
+    expect(isMcpActivityInDocumentSession(entry({ timestamp: '2026-07-21T08:00:00.000Z' }), boundary)).toBe(false);
+    expect(isMcpActivityInDocumentSession(entry({ timestamp: '2026-07-21T08:00:01.000Z' }), boundary)).toBe(true);
+    expect(isMcpActivityInDocumentSession(entry({ timestamp: 'not-a-date' }), boundary)).toBe(true);
   });
 });

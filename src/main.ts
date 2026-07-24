@@ -17,6 +17,8 @@ import { TextureManager } from './textures';
 import { saveProjectConfiguration, type ProjectConfiguration } from './project-config';
 import { configuredBridgeUrl } from './live-bridge/configuration';
 import { openUnreadReleaseNotesDialog } from './release-notes-dialog';
+import { DocumentRecoveryService } from './document-recovery';
+import { currentEditorSessionId } from './editor-session';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -48,6 +50,10 @@ function setLoadingStatus(msg: string) {
 async function init() {
   const editor = new Editor();
   editor.createDefaultMap();
+  const recovery = new DocumentRecoveryService(editor, currentEditorSessionId());
+  setLoadingStatus('Checking for recovered work...');
+  const recoveredDocument = await recovery.restore();
+  recovery.start();
   window.addEventListener('beforeunload', event => {
     if (!editor.hasUnsavedChanges) return;
     event.preventDefault();
@@ -68,6 +74,11 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor);
+  if (recoveredDocument) {
+    editor.statusMessage = editor.hasUnsavedChanges
+      ? `Recovered unsaved changes to ${editor.fileName}`
+      : `Restored ${editor.fileName}`;
+  }
   const initialBridgeUrl = configuredBridgeUrl();
   const bridgeControls = {
       setCamera: (position, yaw, pitch) => vp3D.setCamera(position, yaw, pitch),

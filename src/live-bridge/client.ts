@@ -1,6 +1,7 @@
 import { collectEditorDiagnostics, collectEntityInfo, collectMapInfo } from '../diagnostics';
 import { Editor, type SelectionItem } from '../editor';
 import type { Vec3 } from '../math';
+import { currentEditorSessionId } from '../editor-session';
 import type { BridgeToEditorMessage, EditorScreenshotOptions, EditorToBridgeMessage, GamePreviewStatus, GameScreenshot, LiveMapSnapshot, McpActivityEntry, ScreenshotBounds } from './protocol';
 import { applyMapOperations } from '../map-operations';
 import { getEntityClassRegistry } from '../entity-definitions';
@@ -145,23 +146,6 @@ function selectionRef(editor: Editor, item: SelectionItem): string {
   return `E${entityIndex}:B${brushIndex}:F${faceIndex}`;
 }
 
-const EDITOR_SESSION_STORAGE_KEY = 'q3edit.mcpEditorSessionId';
-
-function stableEditorSessionId(): string {
-  try {
-    const existing = window.sessionStorage.getItem(EDITOR_SESSION_STORAGE_KEY);
-    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-    // sessionStorage survives reloads but can be copied into a duplicated tab.
-    // A fresh navigation gets a new identity; reload/back-forward keeps routing stable.
-    if (existing && navigation?.type !== 'navigate') return existing;
-    const created = globalThis.crypto?.randomUUID?.() ?? `editor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    window.sessionStorage.setItem(EDITOR_SESSION_STORAGE_KEY, created);
-    return created;
-  } catch {
-    return globalThis.crypto?.randomUUID?.() ?? `editor-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
-}
-
 export class LiveMapBridge {
   private socket: WebSocket | null = null;
   private reconnectTimer: number | null = null;
@@ -169,7 +153,7 @@ export class LiveMapBridge {
   private stopped = false;
   private compiledBsp: { revision: number; data: Uint8Array; aas: Uint8Array | null } | null = null;
   private readonly unsubscribeDocumentChanges: () => void;
-  readonly sessionId = stableEditorSessionId();
+  readonly sessionId = currentEditorSessionId();
 
   constructor(
     private readonly editor: Editor,
@@ -350,6 +334,7 @@ export class LiveMapBridge {
           this.editor.clearHiddenState();
           this.editor.redrawRequested = true;
         });
+        this.editor.beginDocumentSession();
         this.compiledBsp = null;
         this.editor.statusMessage = `MCP created ${message.template} map ${message.fileName}`;
         this.send({ type: 'document_replaced', requestId: message.requestId, snapshot: this.snapshot() });

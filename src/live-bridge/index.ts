@@ -8,6 +8,7 @@ export {
   DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT,
   filterMcpActivity,
   isMcpActivityAtTail,
+  isMcpActivityInDocumentSession,
   MAX_MCP_ACTIVITY_PANEL_HEIGHT,
   MCP_ACTIVITY_TAIL_THRESHOLD,
   MIN_MCP_ACTIVITY_PANEL_HEIGHT,
