@@ -325,7 +325,7 @@ body.landing-active #app {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin: 15px 4% 0;
+  margin: 6px 4% 0;
   color: #656b63;
   font: 9px/1 monospace;
   letter-spacing: 0.08em;
