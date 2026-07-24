@@ -3102,6 +3102,25 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
   border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark);
   font: inherit;
 }
+.mcp-activity-select {
+  position: relative;
+  display: block;
+  min-width: 105px;
+}
+.mcp-activity-select select {
+  width: 100%;
+  padding-right: 27px;
+  appearance: none;
+}
+.mcp-activity-select > .ph {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: var(--text);
+  font-size: 11px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
 .mcp-activity-controls input:focus,
 .mcp-activity-controls select:focus { outline: 1px solid color-mix(in srgb, var(--accent) 65%, transparent); }
 .mcp-activity-summary {
@@ -3192,10 +3211,7 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
   overflow-wrap: anywhere;
   font: 10px/1.45 monospace;
 }
-.mcp-activity-entry-body pre.mcp-activity-arguments {
-  max-height: 210px;
-  overflow: auto;
-}
+.mcp-activity-entry-body pre.mcp-activity-arguments,
 .mcp-activity-entry-body pre.mcp-activity-result {
   max-height: none;
   overflow: visible;
@@ -3207,7 +3223,7 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
 @media (max-width: 680px) {
   .mcp-activity-panel-header { flex-wrap: wrap; }
   .mcp-activity-controls { flex-basis: calc(100% - 150px); }
-  .mcp-activity-controls select { max-width: 105px; }
+  .mcp-activity-select { max-width: 105px; }
   .mcp-activity-entry > summary { grid-template-columns: 64px 50px 1fr 56px; }
   .mcp-activity-revision { display: none; }
 }

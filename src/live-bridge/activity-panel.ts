@@ -65,6 +65,11 @@ export function summarizeMcpActivity(entries: McpActivityEntry[]): {
   };
 }
 
+export function isMcpActivityInDocumentSession(entry: McpActivityEntry, startedAt: number): boolean {
+  const timestamp = Date.parse(entry.timestamp);
+  return !Number.isFinite(timestamp) || timestamp >= startedAt;
+}
+
 function compactButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
   const element = document.createElement('button');
   element.type = 'button';
@@ -73,6 +78,16 @@ function compactButton(label: string, title: string, onClick: () => void): HTMLB
   element.title = title;
   element.addEventListener('click', onClick);
   return element;
+}
+
+function activitySelect(select: HTMLSelectElement): HTMLElement {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'mcp-activity-select';
+  const caret = document.createElement('i');
+  caret.className = 'ph ph-caret-down';
+  caret.setAttribute('aria-hidden', 'true');
+  wrapper.append(select, caret);
+  return wrapper;
 }
 
 function formatRevision(entry: McpActivityEntry): string {
@@ -90,6 +105,7 @@ function prettyJson(value: unknown): string {
 export interface McpActivityPanelOptions {
   initialVisible?: boolean;
   initialHeight?: number;
+  initialDocumentSessionStartedAt?: number;
   onVisibilityChange?: (visible: boolean) => void;
   onHeightChange?: (height: number, committed: boolean) => void;
   onLayoutChange?: () => void;
@@ -108,6 +124,7 @@ export class McpActivityPanel {
   private readonly resizer: HTMLElement;
   private visible: boolean;
   private height: number;
+  private documentSessionStartedAt: number;
   private followTail = true;
 
   constructor(private readonly options: McpActivityPanelOptions = {}) {
@@ -116,6 +133,7 @@ export class McpActivityPanel {
     this.root = root;
     this.visible = options.initialVisible ?? false;
     this.height = clampMcpActivityPanelHeight(options.initialHeight ?? DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT, window.innerHeight);
+    this.documentSessionStartedAt = options.initialDocumentSessionStartedAt ?? 0;
 
     this.resizer = document.createElement('div');
     this.resizer.className = 'mcp-activity-resizer';
@@ -150,7 +168,7 @@ export class McpActivityPanel {
     this.kind = document.createElement('select');
     this.kind.setAttribute('aria-label', 'Filter by tool kind');
     this.kind.innerHTML = '<option value="all">All calls</option><option value="action">Actions</option><option value="read">Read-only</option>';
-    controls.append(this.search, this.status, this.kind);
+    controls.append(this.search, activitySelect(this.status), activitySelect(this.kind));
 
     this.summary = document.createElement('div');
     this.summary.className = 'mcp-activity-summary';
@@ -190,6 +208,7 @@ export class McpActivityPanel {
   }
 
   add(entry: McpActivityEntry): void {
+    if (!isMcpActivityInDocumentSession(entry, this.documentSessionStartedAt)) return;
     if (this.dismissedIds.has(entry.id)) return;
     this.entries.set(entry.id, entry);
     while (this.entries.size > 1_000) {
@@ -197,6 +216,15 @@ export class McpActivityPanel {
       this.entries.delete(oldestId);
       this.expandedIds.delete(oldestId);
     }
+    this.render();
+  }
+
+  startDocumentSession(startedAt: number): void {
+    this.documentSessionStartedAt = startedAt;
+    this.entries.clear();
+    this.dismissedIds.clear();
+    this.expandedIds.clear();
+    this.followTail = true;
     this.render();
   }
 

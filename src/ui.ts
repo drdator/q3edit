@@ -111,6 +111,7 @@ export class UI {
     this.mcpActivity = new McpActivityPanel({
       initialVisible: this.editor.preferences.mcpActivity.visible,
       initialHeight: this.editor.preferences.mcpActivity.height,
+      initialDocumentSessionStartedAt: this.editor.documentSessionStartedAt,
       onVisibilityChange: visible => {
         this.editor.preferences.mcpActivity.visible = visible;
         this.editor.persistCurrentPreferences();
@@ -123,6 +124,7 @@ export class UI {
       },
       onLayoutChange: () => { this.editor.redrawRequested = true; },
     });
+    this.editor.subscribeDocumentSessions(startedAt => this.mcpActivity.startDocumentSession(startedAt));
     this.commands = createEditorCommandRegistry({
       editor: this.editor,
       handleExitVertexMode: () => this.handleExitVertexMode(),
