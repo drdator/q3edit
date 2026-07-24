@@ -1,4 +1,5 @@
 import type { BuildHistoryService } from './build-history';
+import type { BuildRecord } from './build-history';
 import type { Editor } from './editor';
 import {
   buildReleasePackage,
@@ -94,6 +95,10 @@ function button(label: string, action: () => void): HTMLButtonElement {
   return result;
 }
 
+export function selectReleaseBuild(builds: readonly BuildRecord[], documentRevision: number): BuildRecord | null {
+  return builds.find(record => record.success && record.bsp && record.documentRevision === documentRevision) ?? null;
+}
+
 function base64Bytes(data: string): Uint8Array {
   const binary = atob(data);
   return Uint8Array.from(binary, character => character.charCodeAt(0));
@@ -145,7 +150,9 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   document.getElementById('release-package-dialog')?.remove();
   const { editor, textureManager, buildHistory } = options;
   const mapName = editor.fileName.replace(/\.map$/i, '').replace(/[^a-zA-Z0-9_-]/g, '') || 'release';
-  const build = (await buildHistory.list(editor.fileName)).find(record => record.success && record.bsp) ?? null;
+  const builds = await buildHistory.list(editor.fileName);
+  const build = selectReleaseBuild(builds, editor.documentRevision);
+  const staleBuild = builds.find(record => record.success && record.bsp) ?? null;
   const stored = readStored(editor, mapName);
   let levelshot: Uint8Array | null = null;
   let levelshotExtension: 'png' | 'jpg' = 'png';
@@ -165,7 +172,9 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   description.className = 'editor-dialog-description';
   description.textContent = build
     ? `Using ${build.quality} build from ${new Date(build.startedAt).toLocaleString()}${build.documentRevision === editor.documentRevision ? '' : ` (revision ${build.documentRevision}; current is ${editor.documentRevision})`}.`
-    : 'Compile the map successfully before building a release package.';
+    : staleBuild
+      ? `The newest successful build is revision ${staleBuild.documentRevision}, but the current map is revision ${editor.documentRevision}. Compile the current map before packaging.`
+      : 'Compile the map successfully before building a release package.';
 
   const body = document.createElement('div');
   body.className = 'release-package-body';
@@ -308,7 +317,7 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
         includeSourceMap: includeSource.checked ? editor.serializeMap() : null,
         allowUnlicensed: allowUnlicensed.checked,
       });
-      packageStatus.textContent = `Validated ${packageResult.report.entries.length} files · ${(packageResult.pk3.byteLength / 1024 / 1024).toFixed(2)} MB PK3`;
+      packageStatus.textContent = `Archive validated: ${packageResult.report.entries.length} files · ${(packageResult.pk3.byteLength / 1024 / 1024).toFixed(2)} MB PK3`;
       packageStatus.className = 'success';
       packageEntries.replaceChildren(...packageResult.report.entries.map(entry => {
         const row = document.createElement('div');

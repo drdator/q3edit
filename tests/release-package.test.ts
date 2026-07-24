@@ -58,8 +58,57 @@ describe('release packaging', () => {
     expect(files['maps/test_map.bsp']).toBeTruthy();
     expect(files['scripts/test_map.arena']).toBeTruthy();
     expect(files['textures/custom/wall.tga']).toBeTruthy();
-    expect(first.report.isolatedValidation.valid).toBe(true);
+    expect(first.report.archiveValidation.valid).toBe(true);
     expect(serializeArena('test_map', input.metadata)).toContain('type "ffa team"');
+  });
+
+  it('never packages base-game archives even when they contain a license file', () => {
+    const assets = new AssetIndex([archive('pak0.pk3', {
+      'textures/base/wall.tga': 'image',
+      'COPYING': 'base game license',
+    })]);
+    const world = createEntity('worldspawn');
+    world.brushes.push(createBoxBrush([0, 0, 0], [64, 64, 64], 'base/wall'));
+    const textures = {
+      getShaderSourcePath: () => null,
+      getShaderMetadata: () => null,
+      findImageFile: () => ['textures/base/wall.tga', strToU8('image')],
+    } as never;
+    const result = buildReleasePackage({
+      mapName: 'base_test', bsp: strToU8('bsp'), entities: [world], assets, textures,
+      metadata: { title: '', gameTypes: ['ffa'], botSupport: false, recommendedPlayers: '', author: '', description: '' },
+    });
+    expect(result.report.manifest.dependencies[0].disposition).toBe('base-game');
+    expect(unzipSync(result.pk3)['textures/base/wall.tga']).toBeUndefined();
+  });
+
+  it('includes both music tracks and materials referenced by skins', () => {
+    const assets = new AssetIndex([archive('custom.pk3', {
+      'models/custom/object.md3': 'not needed for skin parsing',
+      'models/custom/object.skin': 'body,textures/custom/body',
+      'textures/custom/body.tga': 'image',
+      'sound/music/intro.ogg': 'intro',
+      'sound/music/loop.ogg': 'loop',
+      'COPYING': 'redistributable',
+    })]);
+    const entity = createEntity('misc_model');
+    entity.properties.model = 'models/custom/object.md3';
+    entity.properties.skin = 'models/custom/object.skin';
+    entity.properties.music = 'music/intro.ogg music/loop.ogg';
+    const textures = {
+      getShaderSourcePath: () => null,
+      getShaderMetadata: () => null,
+      findImageFile: (name: string) => name === 'textures/custom/body'
+        ? ['textures/custom/body.tga', strToU8('image')]
+        : null,
+    } as never;
+    const manifest = scanProjectAssets([entity], assets, textures);
+    expect(manifest.dependencies.map(item => item.resolvedPath)).toEqual(expect.arrayContaining([
+      'models/custom/object.skin',
+      'textures/custom/body.tga',
+      'sound/music/intro.ogg',
+      'sound/music/loop.ogg',
+    ]));
   });
 
   it('blocks missing and unlicensed dependencies by default', () => {

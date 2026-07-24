@@ -3,6 +3,7 @@ import type { AssetIndex, AssetKind, IndexedAsset } from './asset-index';
 import { normalizeAssetPath } from './asset-index';
 import type { Entity } from './entity';
 import type { TextureManager } from './textures';
+import { decodeMd3 } from './md3';
 
 export interface ArenaMetadata {
   title: string;
@@ -64,7 +65,7 @@ export interface PackageReport {
   entries: Array<{ path: string; bytes: number }>;
   totalBytes: number;
   manifest: ProjectAssetManifest;
-  isolatedValidation: { valid: boolean; errors: string[]; retailDependencies: string[] };
+  archiveValidation: { valid: boolean; errors: string[]; baseGameDependencies: string[] };
 }
 
 export interface ReleasePackageResult {
@@ -107,6 +108,13 @@ function candidates(path: string, kind: AssetDependency['kind']): string[] {
     const root = normalized.startsWith('sound/') ? normalized : `sound/${normalized}`;
     return extension ? [normalized, root] : SOUND_EXTENSIONS.flatMap(ext => [normalized + ext, root + ext]);
   }
+  if (kind === 'model') {
+    const withExtension = /\.md3$/i.test(normalized) ? normalized : `${normalized}.md3`;
+    return withExtension.startsWith('models/') ? [withExtension] : [withExtension, `models/${withExtension}`];
+  }
+  if (kind === 'skin') {
+    return normalized.startsWith('models/') ? [normalized] : [normalized, `models/${normalized}`];
+  }
   return [normalized];
 }
 
@@ -118,10 +126,14 @@ function resolveDependency(
   licenses: Map<string, IndexedAsset[]>,
 ): AssetDependency {
   const requested = cleanReference(requestedPath);
-  const asset = candidates(requested, kind).map(path => assets.get(path)).find((value): value is IndexedAsset => value !== null) ?? null;
+  const candidatePaths = candidates(requested, kind);
+  const matched = candidatePaths
+    .map(path => ({ path, asset: assets.get(path) }))
+    .find((value): value is { path: string; asset: IndexedAsset } => value.asset !== null) ?? null;
+  const asset = matched?.asset ?? null;
   const sources = asset ? assets.getSources(asset.normalizedPath) : [];
   const archive = asset?.source.archiveName ?? null;
-  const baseGame = archive ? isBaseGameArchive(archive) && !licenses.has(archive) : false;
+  const baseGame = archive ? isBaseGameArchive(archive) : false;
   const licensed = archive ? baseGame || licenses.has(archive) : false;
   return {
     requestedPath: requested,
@@ -130,7 +142,9 @@ function resolveDependency(
     disposition: !asset ? 'missing' : baseGame ? 'base-game' : licensed ? 'redistributable' : 'unlicensed',
     archive,
     licensed,
-    caseMismatch: Boolean(asset && requested.includes('.') && normalizeAssetPath(requested) === asset.normalizedPath && requested !== asset.path),
+    caseMismatch: Boolean(asset && matched
+      && normalizeAssetPath(matched.path) === asset.normalizedPath
+      && matched.path !== asset.path),
     ambiguous: sources.length > 1,
     duplicateSources: sources.map(source => `${source.archiveName}:${source.path}`),
     usedBy,
@@ -157,6 +171,21 @@ export function scanProjectAssets(
     refs.push(usedBy);
     textureRefs.set(texture, refs);
   };
+  const addSkinMaterials = (dependency: AssetDependency, usedBy: string) => {
+    if (!dependency.resolvedPath) return;
+    const text = assets.readText(dependency.resolvedPath);
+    if (!text) return;
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.replace(/\/\/.*$/, '').trim();
+      const comma = trimmed.indexOf(',');
+      if (comma <= 0) continue;
+      const surface = trimmed.slice(0, comma).trim();
+      const material = trimmed.slice(comma + 1).trim();
+      if (surface && material && !surface.toLowerCase().startsWith('tag_')) {
+        addTexture(material, `${usedBy}:${surface}`);
+      }
+    }
+  };
 
   entities.forEach((entity, entityIndex) => {
     entity.brushes.forEach((brush, brushIndex) => brush.faces.forEach((face, faceIndex) =>
@@ -166,9 +195,42 @@ export function scanProjectAssets(
       if (!value || key.startsWith('_q3edit_')) continue;
       const usedBy = [`E${entityIndex}:${key}`];
       if (key === 'model' && !value.startsWith('*')) mergeDependency(dependencies, resolveDependency(value, 'model', usedBy, assets, licenses));
-      else if (key === 'skin') mergeDependency(dependencies, resolveDependency(value, 'skin', usedBy, assets, licenses));
+      else if (key === 'skin' || key === '_skin') mergeDependency(dependencies, resolveDependency(value, 'skin', usedBy, assets, licenses));
       else if (/^(?:noise|sound|soundLoop|soundStart|soundEnd)$/i.test(key)) mergeDependency(dependencies, resolveDependency(value, 'sound', usedBy, assets, licenses));
-      else if (/^music$/i.test(key)) mergeDependency(dependencies, resolveDependency(value.split(/\s+/)[0], 'music', usedBy, assets, licenses));
+      else if (/^music$/i.test(key)) {
+        for (const track of value.split(/\s+/).filter(Boolean)) {
+          mergeDependency(dependencies, resolveDependency(track, 'music', usedBy, assets, licenses));
+        }
+      }
+    }
+
+    const modelPath = entity.properties.model;
+    if (modelPath && !modelPath.startsWith('*')) {
+      const modelDependency = resolveDependency(modelPath, 'model', [`E${entityIndex}:model`], assets, licenses);
+      if (modelDependency.resolvedPath) {
+        const bytes = assets.readBytes(modelDependency.resolvedPath);
+        if (bytes) {
+          try {
+            const model = decodeMd3(bytes);
+            for (const surface of model.surfaces) {
+              for (const material of surface.shaders.filter(Boolean)) {
+                addTexture(material, `E${entityIndex}:model:${surface.name}`);
+              }
+            }
+          } catch {
+            // The model dependency itself remains in the manifest; compiler/model
+            // diagnostics report malformed MD3 data with more useful context.
+          }
+        }
+        const explicitSkin = entity.properties.skin || entity.properties._skin;
+        const defaultSkin = modelDependency.resolvedPath.replace(/\.md3$/i, '_default.skin');
+        const skinPath = explicitSkin || (assets.get(defaultSkin) ? defaultSkin : '');
+        if (skinPath) {
+          const skinDependency = resolveDependency(skinPath, 'skin', [`E${entityIndex}:skin`], assets, licenses);
+          mergeDependency(dependencies, skinDependency);
+          addSkinMaterials(skinDependency, `E${entityIndex}:skin`);
+        }
+      }
     }
   });
 
@@ -281,10 +343,10 @@ export function buildReleasePackage(input: ReleasePackageInput): ReleasePackageR
     entries: sortedBeforeReport.map(([path, data]) => ({ path, bytes: data.byteLength })),
     totalBytes: sortedBeforeReport.reduce((sum, [, data]) => sum + data.byteLength, 0),
     manifest,
-    isolatedValidation: {
+    archiveValidation: {
       valid: true,
       errors: [] as string[],
-      retailDependencies: manifest.dependencies.filter(item => item.disposition === 'base-game').map(item => item.requestedPath),
+      baseGameDependencies: manifest.dependencies.filter(item => item.disposition === 'base-game').map(item => item.requestedPath),
     },
   };
   addEntry(entries, reportPath, JSON.stringify(preliminary, null, 2));
@@ -303,8 +365,8 @@ export function buildReleasePackage(input: ReleasePackageInput): ReleasePackageR
     ...preliminary,
     entries: sorted.map(([path, data]) => ({ path, bytes: data.byteLength })),
     totalBytes: sorted.reduce((sum, [, data]) => sum + data.byteLength, 0),
-    isolatedValidation: { ...preliminary.isolatedValidation, valid: validationErrors.length === 0, errors: validationErrors },
+    archiveValidation: { ...preliminary.archiveValidation, valid: validationErrors.length === 0, errors: validationErrors },
   };
-  if (!report.isolatedValidation.valid) throw new Error(validationErrors.join('\n'));
+  if (!report.archiveValidation.valid) throw new Error(validationErrors.join('\n'));
   return { pk3, report, arenaText };
 }
