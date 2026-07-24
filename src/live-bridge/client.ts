@@ -49,16 +49,16 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function compilerStageStatus(output: readonly string[]): Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped'> {
-  const stages: Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped'> = {
+function compilerStageStatus(output: readonly string[]): Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped' | 'reused'> {
+  const stages: Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped' | 'reused'> = {
     bsp: 'skipped', vis: 'skipped', light: 'skipped', aas: 'skipped',
   };
   for (const line of output) {
-    const match = /^=== Stage \d+ result: (success|failed|skipped)(?: \(\d+ ms\))? ===$/i.exec(line.trim());
+    const match = /^=== Stage \d+ result: (success|failed|skipped|reused)(?: \(\d+ ms\))? ===$/i.exec(line.trim());
     if (!match) continue;
     const number = Number(/^=== Stage (\d+)/.exec(line.trim())?.[1]);
     const stage = number === 1 ? 'bsp' : number === 2 ? 'vis' : number === 3 ? 'light' : number === 4 ? 'aas' : null;
-    if (stage) stages[stage] = match[1].toLowerCase() as 'success' | 'failed' | 'skipped';
+    if (stage) stages[stage] = match[1].toLowerCase() as 'success' | 'failed' | 'skipped' | 'reused';
   }
   return stages;
 }

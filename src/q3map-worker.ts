@@ -152,6 +152,9 @@ self.onmessage = async (e: MessageEvent) => {
       aas?: boolean
       shaderFiles?: Record<string, string>
       assetFiles?: [string, Uint8Array][]
+      reuseBsp?: Uint8Array
+      reusePrt?: Uint8Array | null
+      reusePointfileText?: string | null
     }
   }
 
@@ -169,25 +172,27 @@ self.onmessage = async (e: MessageEvent) => {
 
     // Stage 1: BSP
     emit('=== Stage 1: BSP ===')
-    const bspStartedAt = performance.now()
-    const bspMod = await createModule(emit)
-    setupFS(bspMod, mapText, null, options.shaderFiles, null, options.assetFiles)
-
-    const bspExit = runQ3Map(bspMod, [...(options.args || []), mapPath], emit)
-
-    let bsp: Uint8Array | null = null
-    try { bsp = bspMod.FS.readFile(bspPath) } catch { /* */ }
-    const pointfileText = readTextFile(bspMod, pointfilePath)
-
-    if (bspExit !== 0 || !bsp) {
-      emit(`=== Stage 1 result: failed (${Math.round(performance.now() - bspStartedAt)} ms) ===`)
-      self.postMessage({ type: 'done', success: false, bsp: null, aas: null, portalFileText: null, pointfileText, output })
-      return
+    let bsp: Uint8Array | null = options.reuseBsp ? new Uint8Array(options.reuseBsp) : null
+    let prt: Uint8Array | null = options.reusePrt ? new Uint8Array(options.reusePrt) : null
+    let pointfileText = options.reusePointfileText ?? null
+    if (bsp) {
+      emit('=== Stage 1 result: reused (0 ms) ===')
+    } else {
+      const bspStartedAt = performance.now()
+      const bspMod = await createModule(emit)
+      setupFS(bspMod, mapText, null, options.shaderFiles, null, options.assetFiles)
+      const bspExit = runQ3Map(bspMod, [...(options.args || []), mapPath], emit)
+      try { bsp = bspMod.FS.readFile(bspPath) } catch { /* */ }
+      pointfileText = readTextFile(bspMod, pointfilePath)
+      if (bspExit !== 0 || !bsp) {
+        emit(`=== Stage 1 result: failed (${Math.round(performance.now() - bspStartedAt)} ms) ===`)
+        self.postMessage({ type: 'done', success: false, bsp: null, aas: null, portalFileText: null, pointfileText, output })
+        return
+      }
+      emit(`=== Stage 1 result: success (${Math.round(performance.now() - bspStartedAt)} ms) ===`)
+      try { prt = bspMod.FS.readFile('/quake/baseq3/maps/compile.prt') } catch { /* */ }
     }
-    emit(`=== Stage 1 result: success (${Math.round(performance.now() - bspStartedAt)} ms) ===`)
-
-    let prt: Uint8Array | null = null
-    try { prt = bspMod.FS.readFile('/quake/baseq3/maps/compile.prt') } catch { /* */ }
+    const bspStage = new Uint8Array(bsp)
     const portalFileText = prt ? new TextDecoder().decode(prt) : null
 
     // Stage 2: Vis
@@ -252,7 +257,7 @@ self.onmessage = async (e: MessageEvent) => {
       emit('=== Stage 4 result: skipped (0 ms) ===')
     }
 
-    self.postMessage({ type: 'done', success: true, bsp, aas, portalFileText, pointfileText, output })
+    self.postMessage({ type: 'done', success: true, bsp, bspStage, prtData: prt, aas, portalFileText, pointfileText, output })
   } catch (error) {
     emit(`Compiler worker error: ${error instanceof Error ? error.message : String(error)}`)
     self.postMessage({ type: 'done', success: false, bsp: null, aas: null, portalFileText: null, pointfileText: null, output })

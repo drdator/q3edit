@@ -6,6 +6,7 @@ import {
   selectedTextureDensityReport,
   setTextureDensity,
   transferFaceProjection,
+  wrapTextureSelection,
 } from '../src/editor-textures';
 import { alignSelectedPatchBoundaries, naturalizeSelectedPatchesByDistance } from '../src/editor-patch';
 import { createFlatPatch } from '../src/patch';
@@ -41,6 +42,18 @@ describe('advanced surface alignment', () => {
     expect(target.textureProjection.kind).toBe('classic');
   });
 
+  it('wraps only a closed face loop from one convex brush', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_wall/metal');
+    editor.worldspawn.brushes.push(brush);
+    const sideFaces = brush.faces.filter(face => Math.abs(face.plane.normal[2]) < 0.5);
+    editor.selection = sideFaces.map(face => ({ type: 'face' as const, entity: editor.worldspawn, brush, face }));
+    expect(wrapTextureSelection(editor)).toBe(3);
+    editor.selection = editor.selection.slice(0, 3);
+    expect(wrapTextureSelection(editor)).toBe(0);
+    expect(editor.statusMessage).toMatch(/closed convex loop/i);
+  });
+
   it('sets and reports consistent texel density without changing projection formats', () => {
     const editor = new Editor();
     const { brush, source, target } = adjacentFaces();
@@ -72,5 +85,18 @@ describe('advanced surface alignment', () => {
     expect(second.ctrl.map(row => row[0].uv)).not.toEqual([[9, 9], [9, 9], [9, 9]]);
     naturalizeSelectedPatchesByDistance(editor, 64);
     expect(first.ctrl[0][first.width - 1].uv[0]).toBeCloseTo(2, 4);
+  });
+
+  it('refuses to align unrelated patch boundaries', () => {
+    const editor = new Editor();
+    const first = createFlatPatch([0, 0, 0], [128, 128, 0], 'base_floor/stone');
+    const second = createFlatPatch([1_024, 0, 0], [1_152, 128, 0], 'base_floor/stone');
+    editor.worldspawn.patches.push(first, second);
+    editor.selection = [
+      { type: 'patch', entity: editor.worldspawn, patch: first },
+      { type: 'patch', entity: editor.worldspawn, patch: second },
+    ];
+    expect(alignSelectedPatchBoundaries(editor)).toBe(false);
+    expect(editor.statusMessage).toMatch(/units apart/i);
   });
 });

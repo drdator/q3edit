@@ -57,7 +57,9 @@ function select(options: readonly string[], value: string): HTMLSelectElement {
   for (const option of options) {
     const item = document.createElement('option');
     item.value = option;
-    item.textContent = option.replace(/-/g, ' ').replace(/^./, letter => letter.toUpperCase());
+    item.textContent = option === 'lightmap'
+      ? 'Lighting Only (Editor Preview)'
+      : option.replace(/-/g, ' ').replace(/^./, letter => letter.toUpperCase());
     item.selected = option === value;
     control.appendChild(item);
   }

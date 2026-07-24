@@ -2748,6 +2748,7 @@ body.sidepanel-resizing * {
 .build-stage-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
 .build-stage-list > div { display: flex; min-width: 130px; justify-content: space-between; gap: 10px; padding: 7px; background: var(--bg); border: 1px solid var(--border-dark); }
 .build-stage-list .success strong { color: #62b965; }
+.build-stage-list .reused strong { color: #7fc9e8; }
 .build-stage-list .failed strong { color: #ff6666; }
 .build-diagnostic-list, .build-history-list { display: flex; flex-direction: column; gap: 5px; }
 .build-diagnostic-row, .build-history-list article { padding: 8px; background: var(--bg); border: 1px solid var(--border-dark); }

@@ -181,6 +181,18 @@ function appendCircle(lines: Vec3[], center: Vec3, radius: number, plane: 0 | 1 
   }
 }
 
+function appendBounds(lines: Vec3[], mins: Vec3, maxs: Vec3): void {
+  const corners: Vec3[] = [
+    [mins[0], mins[1], mins[2]], [maxs[0], mins[1], mins[2]],
+    [maxs[0], maxs[1], mins[2]], [mins[0], maxs[1], mins[2]],
+    [mins[0], mins[1], maxs[2]], [maxs[0], mins[1], maxs[2]],
+    [maxs[0], maxs[1], maxs[2]], [mins[0], maxs[1], maxs[2]],
+  ];
+  for (const [from, to] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]) {
+    lines.push(corners[from], corners[to]);
+  }
+}
+
 function refCenter(editor: Editor, ref: string): Vec3 | null {
   const object = refObject(editor, ref) as { mins?: Vec3; maxs?: Vec3; properties?: Record<string, string> } | null;
   if (!object) return null;
@@ -202,7 +214,14 @@ function reviewOverlayLines(
   modes: Set<string>,
 ): Vec3[] {
   const lines: Vec3[] = [];
-  if (modes.has('spawns')) for (const spawn of run.statistics.spawns.objects) appendCross(lines, spawn.origin, 28);
+  if (modes.has('spawns')) for (const spawn of run.statistics.spawns.objects) {
+    appendCross(lines, spawn.origin, 28);
+    appendBounds(
+      lines,
+      [spawn.origin[0] - 15, spawn.origin[1] - 15, spawn.origin[2] - 24],
+      [spawn.origin[0] + 15, spawn.origin[1] + 15, spawn.origin[2] + 32],
+    );
+  }
   if (modes.has('items')) for (const item of run.statistics.items.objects) appendCross(lines, item.origin, 16);
   if (modes.has('routes')) for (const edge of run.routes.connectivity.edges) {
     const from = refCenter(editor, edge.from);
@@ -219,7 +238,15 @@ function reviewOverlayLines(
   if (modes.has('jumps')) for (const jump of run.routes.jumpPads) {
     for (let index = 0; index + 1 < jump.trajectory.length; index++) lines.push(jump.trajectory[index].position, jump.trajectory[index + 1].position);
     appendCross(lines, jump.apex, 20);
-    if (jump.landing.supported) appendCross(lines, jump.landing.origin, 20);
+    for (const collision of jump.clearance.collisions) appendCross(lines, collision.position, 12);
+    if (jump.landing.supported) {
+      appendCross(lines, jump.landing.origin, 20);
+      appendBounds(
+        lines,
+        [jump.landing.origin[0] - 15, jump.landing.origin[1] - 15, jump.landing.origin[2] - 24],
+        [jump.landing.origin[0] + 15, jump.landing.origin[1] + 15, jump.landing.origin[2] + 32],
+      );
+    }
   }
   if (modes.has('lights')) for (const light of run.statistics.lighting.lights) {
     appendCircle(lines, light.origin, light.radius, 0);
@@ -428,7 +455,7 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
   acknowledgedLabel.append(showAcknowledged, document.createTextNode('Show acknowledged'));
   overlayControls.appendChild(acknowledgedLabel);
   for (const [mode, label] of [
-    ['spawns', 'Spawns'], ['items', 'Items'], ['routes', 'Routes'], ['jumps', 'Jump paths'], ['lights', 'Light coverage'], ['sight', 'Sight/distance'],
+    ['spawns', 'Spawns & hulls'], ['items', 'Items'], ['routes', 'Routes'], ['jumps', 'Jump paths & collisions'], ['lights', 'Light coverage'], ['sight', 'Spawn/item links'],
   ]) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';

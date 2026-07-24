@@ -120,7 +120,12 @@ export function alignSelectedPatchBoundaries(editor: Editor): boolean {
       const distance = endpointDistance(source, target, reverse);
       if (!best || distance < best.distance) best = { source, target, reverse, distance };
     }
-    if (!best) return false;
+    if (!best || best.distance > 2) {
+      editor.statusMessage = best
+        ? `Selected patch boundaries are ${best.distance.toFixed(2)} units apart`
+        : 'No corresponding patch boundaries found';
+      return false;
+    }
     const source = best.source;
     const target = best.reverse ? [...best.target].reverse() : best.target;
     target.forEach((point, index) => {

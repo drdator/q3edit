@@ -65,7 +65,7 @@ export function openSurfaceAlignmentDialog(editor: Editor): void {
     transfer.appendChild(transferActions);
 
     const manipulator = document.createElement('section');
-    manipulator.innerHTML = '<h3>Interactive projection manipulator</h3>';
+    manipulator.innerHTML = '<h3>Live projection controls</h3>';
     const sliderGrid = document.createElement('div');
     sliderGrid.className = 'surface-slider-grid';
     const shiftU = document.createElement('input'); shiftU.type = 'range'; shiftU.min = '-128'; shiftU.max = '128'; shiftU.step = '1'; shiftU.value = '0';

@@ -33,7 +33,7 @@ export interface CompileOptions {
 
 export interface CompileStageResult {
   stage: 'bsp' | 'vis' | 'light' | 'aas'
-  status: 'success' | 'failed' | 'skipped'
+  status: 'success' | 'failed' | 'skipped' | 'reused'
   durationMs: number
 }
 
@@ -50,6 +50,12 @@ export interface CompileResult {
 }
 
 let lastSuccessfulCompile: { key: string; result: CompileResult } | null = null
+let lastBspStage: {
+  key: string
+  bsp: Uint8Array
+  prt: Uint8Array | null
+  pointfileText: string | null
+} | null = null
 
 function hashBytes(hash: number, bytes: Uint8Array): number {
   for (const byte of bytes) hash = Math.imul(hash ^ byte, 16777619)
@@ -75,6 +81,19 @@ function compileKey(mapText: string, options: CompileOptions): string {
   return hash.toString(16).padStart(8, '0')
 }
 
+function bspStageKey(mapText: string, options: CompileOptions): string {
+  let hash = hashBytes(2166136261, new TextEncoder().encode(mapText))
+  hash = hashBytes(hash, new TextEncoder().encode(JSON.stringify({
+    args: options.args ?? [],
+    shaderFiles: options.shaderFiles ?? {},
+  })))
+  for (const [path, bytes] of [...(options.assetFiles?.entries() ?? [])].sort(([a], [b]) => a.localeCompare(b))) {
+    hash = hashBytes(hash, new TextEncoder().encode(path))
+    hash = hashBytes(hash, bytes)
+  }
+  return hash.toString(16).padStart(8, '0')
+}
+
 function parseStages(output: readonly string[]): CompileStageResult[] {
   const starts = new Map<number, CompileStageResult['stage']>()
   const stages: CompileStageResult[] = []
@@ -86,7 +105,7 @@ function parseStages(output: readonly string[]): CompileStageResult[] {
         : start[2].toLowerCase() as CompileStageResult['stage'])
       continue
     }
-    const result = /^=== Stage (\d+) result: (success|failed|skipped)(?: \((\d+) ms\))? ===$/i.exec(line.trim())
+    const result = /^=== Stage (\d+) result: (success|failed|skipped|reused)(?: \((\d+) ms\))? ===$/i.exec(line.trim())
     if (!result) continue
     const stage = starts.get(Number(result[1]))
     if (stage) stages.push({
@@ -127,6 +146,7 @@ export function compileMap(
   options: CompileOptions = {}
 ): Promise<CompileResult> {
   const key = compileKey(mapText, options)
+  const bspKey = bspStageKey(mapText, options)
   if (options.reuseUnchanged !== false && lastSuccessfulCompile?.key === key) {
     const result = lastSuccessfulCompile.result
     options.onOutput?.('Reused unchanged compile artifacts')
@@ -169,6 +189,14 @@ export function compileMap(
         options.onOutput?.(e.data.line)
       } else if (e.data.type === 'done') {
         worker.terminate()
+        if (e.data.bspStage && e.data.success) {
+          lastBspStage = {
+            key: bspKey,
+            bsp: e.data.bspStage,
+            prt: e.data.prtData ?? null,
+            pointfileText: e.data.pointfileText ?? null,
+          }
+        }
         finish({
           success: e.data.success,
           cancelled: false,
@@ -208,6 +236,15 @@ export function compileMap(
         aas: options.aas,
         shaderFiles: options.shaderFiles,
         assetFiles,
+        reuseBsp: options.reuseUnchanged !== false && lastBspStage?.key === bspKey
+          ? lastBspStage.bsp
+          : undefined,
+        reusePrt: options.reuseUnchanged !== false && lastBspStage?.key === bspKey
+          ? lastBspStage.prt
+          : undefined,
+        reusePointfileText: options.reuseUnchanged !== false && lastBspStage?.key === bspKey
+          ? lastBspStage.pointfileText
+          : undefined,
       },
     })
   })

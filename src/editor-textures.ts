@@ -482,6 +482,32 @@ export function alignFaceChain(editor: Editor): number {
 }
 
 export function wrapTextureSelection(editor: Editor): number {
+  const faceItems = editor.selection.filter(item => item.type === 'face');
+  const faces = faceItems.map(item => item.face);
+  if (faces.length < 3 || new Set(faceItems.map(item => item.brush)).size !== 1) {
+    editor.statusMessage = 'Select at least three faces from one convex brush loop';
+    return 0;
+  }
+  const adjacency = new Map(faces.map(face => [
+    face,
+    faces.filter(candidate => candidate !== face && sharedVertices(face, candidate).length >= 2),
+  ]));
+  if ([...adjacency.values()].some(neighbors => neighbors.length !== 2)) {
+    editor.statusMessage = 'Selected faces do not form one closed convex loop';
+    return 0;
+  }
+  const visited = new Set<BrushFace>();
+  const queue = [faces[0]];
+  while (queue.length > 0) {
+    const face = queue.shift()!;
+    if (visited.has(face)) continue;
+    visited.add(face);
+    queue.push(...adjacency.get(face)!);
+  }
+  if (visited.size !== faces.length) {
+    editor.statusMessage = 'Selected faces contain disconnected loops';
+    return 0;
+  }
   return alignFaceChain(editor);
 }
 
@@ -560,8 +586,30 @@ export function textureAxisLines(editor: Editor): Vec3[] {
     if (face.polygon.length < 3) continue;
     const center = [0, 1, 2].map(axis => face.polygon.reduce((sum, point) => sum + point[axis], 0) / face.polygon.length) as Vec3;
     const [s, t] = textureAxisFromPlane(face.plane.normal);
-    lines.push(center, center.map((value, axis) => value + s[axis] * 64) as Vec3);
-    lines.push(center, center.map((value, axis) => value + t[axis] * 64) as Vec3);
+    const [width, height] = faceTextureDimensions(editor, face);
+    let u: Vec3;
+    let v: Vec3;
+    let uLength: number;
+    let vLength: number;
+    if (face.textureProjection.kind === 'classic') {
+      const radians = face.textureProjection.rotation * Math.PI / 180;
+      const cosine = Math.cos(radians);
+      const sine = Math.sin(radians);
+      u = s.map((value, axis) => cosine * value - sine * t[axis]) as Vec3;
+      v = s.map((value, axis) => sine * value + cosine * t[axis]) as Vec3;
+      uLength = width * Math.abs(face.textureProjection.scaleX || 0.5);
+      vLength = height * Math.abs(face.textureProjection.scaleY || 0.5);
+    } else {
+      const [uRow, vRow] = face.textureProjection.matrix;
+      u = s.map((value, axis) => value * uRow[0] + t[axis] * uRow[1]) as Vec3;
+      v = s.map((value, axis) => value * vRow[0] + t[axis] * vRow[1]) as Vec3;
+      uLength = 1 / Math.max(1e-9, vec3Length(u));
+      vLength = 1 / Math.max(1e-9, vec3Length(v));
+    }
+    u = vec3Scale(u, 1 / Math.max(1e-9, vec3Length(u)));
+    v = vec3Scale(v, 1 / Math.max(1e-9, vec3Length(v)));
+    lines.push(center, center.map((value, axis) => value + u[axis] * Math.min(512, uLength)) as Vec3);
+    lines.push(center, center.map((value, axis) => value + v[axis] * Math.min(512, vLength)) as Vec3);
   }
   return lines;
 }
