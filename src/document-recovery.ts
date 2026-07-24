@@ -1,4 +1,5 @@
 import type { Editor } from './editor';
+import { isActivityEntry, type ActivityEntry } from './activity-history';
 
 const DB_NAME = 'q3edit-recovery';
 const DB_VERSION = 1;
@@ -15,6 +16,7 @@ export interface DocumentRecoverySnapshot {
   savedDocumentRevision: number;
   documentSessionStartedAt: number;
   updatedAt: number;
+  activityEntries?: ActivityEntry[];
 }
 
 export interface DocumentRecoveryStorage {
@@ -68,7 +70,9 @@ function isRecoverySnapshot(value: unknown): value is DocumentRecoverySnapshot {
     && typeof snapshot.documentSessionStartedAt === 'number'
     && Number.isFinite(snapshot.documentSessionStartedAt)
     && typeof snapshot.updatedAt === 'number'
-    && Number.isFinite(snapshot.updatedAt);
+    && Number.isFinite(snapshot.updatedAt)
+    && (snapshot.activityEntries === undefined
+      || (Array.isArray(snapshot.activityEntries) && snapshot.activityEntries.every(isActivityEntry)));
 }
 
 export class IndexedDbDocumentRecoveryStorage implements DocumentRecoveryStorage {
@@ -120,6 +124,7 @@ export function createDocumentRecoverySnapshot(
     savedDocumentRevision: editor.savedDocumentRevision,
     documentSessionStartedAt: editor.documentSessionStartedAt,
     updatedAt,
+    activityEntries: editor.activityHistory.snapshot(),
   };
 }
 
@@ -131,6 +136,7 @@ export function restoreDocumentRecoverySnapshot(editor: Editor, snapshot: Docume
     snapshot.savedDocumentRevision,
     snapshot.documentSessionStartedAt,
   );
+  editor.activityHistory.restore(snapshot.activityEntries ?? []);
 }
 
 export class DocumentRecoveryService {
@@ -138,6 +144,7 @@ export class DocumentRecoveryService {
   private writeChain: Promise<void> = Promise.resolve();
   private unsubscribeDocumentChanges: (() => void) | null = null;
   private unsubscribeDocumentState: (() => void) | null = null;
+  private unsubscribeActivity: (() => void) | null = null;
   private readonly onPageHide = () => { void this.flush(); };
   private readonly onVisibilityChange = () => {
     if (globalThis.document?.visibilityState === 'hidden') void this.flush();
@@ -177,6 +184,7 @@ export class DocumentRecoveryService {
     if (this.unsubscribeDocumentChanges) return;
     this.unsubscribeDocumentChanges = this.editor.subscribeDocumentChanges(() => this.schedule());
     this.unsubscribeDocumentState = this.editor.subscribeDocumentStateChanges(() => this.schedule());
+    this.unsubscribeActivity = this.editor.activityHistory.subscribe(() => this.schedule());
     globalThis.window?.addEventListener('pagehide', this.onPageHide);
     globalThis.document?.addEventListener('visibilitychange', this.onVisibilityChange);
     this.schedule();
@@ -210,8 +218,10 @@ export class DocumentRecoveryService {
     this.timer = null;
     this.unsubscribeDocumentChanges?.();
     this.unsubscribeDocumentState?.();
+    this.unsubscribeActivity?.();
     this.unsubscribeDocumentChanges = null;
     this.unsubscribeDocumentState = null;
+    this.unsubscribeActivity = null;
     globalThis.window?.removeEventListener('pagehide', this.onPageHide);
     globalThis.document?.removeEventListener('visibilitychange', this.onVisibilityChange);
   }

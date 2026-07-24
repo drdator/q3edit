@@ -109,14 +109,14 @@ export class UI {
     this.editor = editor;
     this.propertiesPanel = new PropertiesPanel(editor);
     this.mcpActivity = new McpActivityPanel({
+      history: this.editor.activityHistory,
       initialVisible: this.editor.preferences.mcpActivity.visible,
       initialHeight: this.editor.preferences.mcpActivity.height,
-      initialDocumentSessionStartedAt: this.editor.documentSessionStartedAt,
       onVisibilityChange: visible => {
         this.editor.preferences.mcpActivity.visible = visible;
         this.editor.persistCurrentPreferences();
         this.commands.notifyStateChanged();
-        this.editor.statusMessage = `${visible ? 'Opened' : 'Closed'} MCP Activity`;
+        this.editor.statusMessage = `${visible ? 'Opened' : 'Closed'} Activity`;
       },
       onHeightChange: (height, committed) => {
         this.editor.preferences.mcpActivity.height = height;
@@ -124,7 +124,6 @@ export class UI {
       },
       onLayoutChange: () => { this.editor.redrawRequested = true; },
     });
-    this.editor.subscribeDocumentSessions(startedAt => this.mcpActivity.startDocumentSession(startedAt));
     this.commands = createEditorCommandRegistry({
       editor: this.editor,
       handleExitVertexMode: () => this.handleExitVertexMode(),
@@ -164,7 +163,7 @@ export class UI {
   }
 
   recordMcpActivity(entry: McpActivityEntry): void {
-    this.mcpActivity.add(entry);
+    this.editor.activityHistory.recordMcp(entry, this.editor.documentSessionStartedAt);
   }
 
   configureMcpConnection(
@@ -2639,6 +2638,7 @@ export class UI {
     compileBtn.focus();
 
     const doCompile = async () => {
+      const startedAt = performance.now();
       const compileWithRegion = this.editor.isRegionActive();
       const compileEntities = compileWithRegion
         ? this.editor.collectRegionEntities(true)
@@ -2663,6 +2663,17 @@ export class UI {
       }
       const shaderFiles = this.texMgr?.getShaderFiles();
       const quality = autoPlayQuality ?? qualitySelect.value;
+      const activityTitle = autoPlay ? 'Quick Play build' : 'BSP compilation';
+      this.editor.activityHistory.record({
+        source: 'build',
+        status: 'info',
+        category: 'build',
+        title: `Started ${activityTitle}`,
+        summary: `${quality} quality${compileWithRegion ? ' · active region' : ''}`,
+        revisionBefore: this.editor.documentRevision,
+        revisionAfter: this.editor.documentRevision,
+        undoable: false,
+      });
       compileBtn.disabled = true;
       compileBtn.textContent = 'Compiling...';
       qualitySelect.disabled = true;
@@ -2690,6 +2701,21 @@ export class UI {
           log.textContent += line + '\n';
           log.scrollTop = log.scrollHeight;
         },
+      });
+
+      this.editor.activityHistory.record({
+        source: 'build',
+        status: result.success ? 'success' : 'error',
+        category: 'build',
+        title: `${activityTitle} ${result.success ? 'completed' : 'failed'}`,
+        summary: result.success
+          ? `${quality} quality · ${result.bsp ? `${(result.bsp.length / 1024).toFixed(1)} KB BSP` : 'no BSP'}${result.aas ? ` · ${(result.aas.length / 1024).toFixed(1)} KB AAS` : ' · no AAS'}${result.pointfileText ? ' · leak detected' : ''}`
+          : result.output[result.output.length - 1] ?? 'The compiler did not produce a BSP',
+        revisionBefore: this.editor.documentRevision,
+        revisionAfter: this.editor.documentRevision,
+        undoable: false,
+        durationMs: Math.round(performance.now() - startedAt),
+        details: result.output.length > 0 ? [{ title: 'Compiler output', value: result.output }] : undefined,
       });
 
       return result;

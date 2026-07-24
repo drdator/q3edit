@@ -3015,7 +3015,7 @@ button.diagnostic-row:hover { border-color: var(--accent); }
 .release-notes-dismiss input:hover { border-color: var(--accent-dim); }
 .release-notes-dismiss input:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 
-/* ── MCP activity ── */
+/* ── Activity history ── */
 .mcp-activity-panel {
   position: relative;
   z-index: 30;
@@ -3184,7 +3184,9 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
 .mcp-activity-entry > summary::-webkit-details-marker { display: none; }
 .mcp-activity-entry > summary:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .mcp-activity-entry.error > summary { box-shadow: inset 2px 0 #e35d62; }
-.mcp-activity-entry.action:not(.error) > summary { box-shadow: inset 2px 0 var(--accent); }
+.mcp-activity-entry.change:not(.error) > summary { box-shadow: inset 2px 0 var(--accent); }
+.mcp-activity-entry.build:not(.error) > summary { box-shadow: inset 2px 0 #76a9dc; }
+.mcp-activity-entry.historical { opacity: .78; }
 .mcp-activity-entry time,
 .mcp-activity-duration,
 .mcp-activity-revision { color: var(--text-dim); }
@@ -3197,9 +3199,13 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
   font-size: 8px;
   letter-spacing: .05em;
 }
-.mcp-activity-entry.action .mcp-activity-kind { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border-dark)); }
+.mcp-activity-entry.edit .mcp-activity-kind { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border-dark)); }
+.mcp-activity-entry.mcp .mcp-activity-kind { color: #8fdf9a; border-color: rgba(100, 190, 110, .45); }
+.mcp-activity-entry.file .mcp-activity-kind { color: #d2b37b; border-color: rgba(210, 179, 123, .45); }
+.mcp-activity-entry.build .mcp-activity-kind { color: #91bee9; border-color: rgba(118, 169, 220, .5); }
 .mcp-activity-entry-body { padding: 7px 10px 10px; border-top: 1px solid var(--border-dark); }
 .mcp-activity-meta { margin-bottom: 8px; color: var(--text-dim); overflow-wrap: anywhere; }
+.mcp-activity-description { margin: 0 0 8px; color: var(--text); overflow-wrap: anywhere; }
 .mcp-activity-entry-body h3 { margin: 9px 0 4px; color: var(--text-bright); font-size: 10px; }
 .mcp-activity-entry-body pre {
   margin: 0;

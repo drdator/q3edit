@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('document recovery', () => {
-  it('restores map content, filename, revisions, dirty state, and the activity boundary', () => {
+  it('restores map content, filename, revisions, dirty state, and historical activity', () => {
     const source = new Editor();
     source.createDefaultMap();
     source.fileName = 'recovery-test.map';
@@ -50,6 +50,13 @@ describe('document recovery', () => {
     expect(restored.documentSessionStartedAt).toBe(123_456);
     expect(restored.hasUnsavedChanges).toBe(true);
     expect(restored.statusMessage).toBe('Recovered unsaved changes to recovery-test.map');
+    expect(restored.activityHistory.list()).toEqual([
+      expect.objectContaining({
+        title: 'Change message',
+        historical: true,
+        undoable: false,
+      }),
+    ]);
   });
 
   it('debounces edits and updates the snapshot after an explicit save', async () => {
@@ -66,6 +73,9 @@ describe('document recovery', () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(storage.snapshot?.mapText).toContain('"message" "Autosaved"');
     expect(storage.snapshot?.documentRevision).not.toBe(storage.snapshot?.savedDocumentRevision);
+    expect(storage.snapshot?.activityEntries).toEqual([
+      expect.objectContaining({ title: 'Edit map', historical: false, undoable: true }),
+    ]);
 
     editor.markDocumentSaved();
     await vi.advanceTimersByTimeAsync(50);
