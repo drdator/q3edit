@@ -142,6 +142,7 @@ body.landing-active #app {
 
 .landing-brand {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 11px;
   font: 700 16px/1 monospace;
@@ -161,10 +162,12 @@ body.landing-active #app {
 }
 
 .landing-nav-link {
+  flex-shrink: 0;
   color: var(--landing-muted);
   font: 600 11px/1 monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
   transition: color 160ms ease;
 }
 
@@ -553,6 +556,17 @@ body.landing-active #app {
   }
 }
 
+@media (max-width: 760px) {
+  .landing-nav-links {
+    gap: 20px;
+  }
+
+  .landing-nav-mcp,
+  .landing-nav-github {
+    display: none;
+  }
+}
+
 @media (max-width: 620px) {
   .landing-nav,
   .landing-hero,
@@ -563,11 +577,6 @@ body.landing-active #app {
 
   .landing-nav {
     height: 72px;
-  }
-
-  .landing-nav-mcp,
-  .landing-nav-github {
-    display: none;
   }
 
   .landing-hero {
@@ -622,6 +631,12 @@ body.landing-active #app {
 
   .release-notes-entry {
     padding: 40px 0 44px;
+  }
+}
+
+@media (max-width: 420px) {
+  .landing-nav-release-notes {
+    display: none;
   }
 }
 
