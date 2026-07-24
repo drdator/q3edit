@@ -20,6 +20,7 @@ export interface EditorCommandContext {
   openVersionHistory?: () => void;
   openBuildHistory?: () => void;
   openReleasePackage?: () => void;
+  openOrganization?: () => void;
   openDiagnostics: (tab: 'map' | 'design-review' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
@@ -163,6 +164,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'groups.create', label: 'Create Named Group...', menu: menu('Groups', 0, 'manage'), execute: ({ editor }) => {
       const name = globalThis.prompt?.('Named group', 'Group'); if (name) editor.createNamedGroup(name);
     } },
+    { id: 'groups.organization', label: 'Map Organization...', menu: menu('Groups', 5, 'manage'), enabled: ctx => !!ctx.openOrganization, execute: ctx => ctx.openOrganization?.() },
     { id: 'groups.add-selection', label: 'Add Selection to Group...', menu: menu('Groups', 10, 'membership'), enabled: hasSelection, execute: ({ editor }) => {
       const groups = editor.namedGroups();
       const name = globalThis.prompt?.(`Group name (${groups.map(group => group.name).join(', ')})`, groups[0]?.name ?? '');

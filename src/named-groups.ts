@@ -8,6 +8,7 @@ export const GROUP_ID_KEY = '_q3edit_group_id';
 export const GROUP_NAME_KEY = 'group';
 export const GROUP_HIDDEN_KEY = '_q3edit_hidden';
 export const GROUP_LOCKED_KEY = '_q3edit_locked';
+export const GROUP_PARENT_KEY = '_q3edit_parent_group';
 export const Q3RADIANT_NAMED_GROUP_SERIALIZATION =
   'Q3Radiant group_info/group epairs with q3edit-group comment fallback for classic brushes and terrain' as const;
 
@@ -16,6 +17,7 @@ export interface NamedGroup {
   name: string;
   hidden: boolean;
   locked: boolean;
+  parentId?: string;
   entity: Entity;
 }
 
@@ -35,6 +37,7 @@ export function listNamedGroups(entities: Entity[]): NamedGroup[] {
     name: entity.properties[GROUP_NAME_KEY]?.trim() || 'Unnamed Group',
     hidden: parseBoolean(entity.properties[GROUP_HIDDEN_KEY]),
     locked: parseBoolean(entity.properties[GROUP_LOCKED_KEY]),
+    parentId: entity.properties[GROUP_PARENT_KEY] || undefined,
     entity,
   }));
 }
@@ -133,13 +136,43 @@ export function countNamedGroupMembers(entities: Entity[], id: string): number {
 export function isObjectInHiddenGroup(editor: Editor, object: Entity | Brush | Patch, owner?: Entity): boolean {
   const own = namedGroupForId(editor.entities, objectGroupId(object));
   const inherited = owner && owner !== object ? namedGroupForId(editor.entities, entityGroupId(owner)) : null;
-  return !!(own?.hidden || inherited?.hidden);
+  return groupStateInherited(editor.entities, own, 'hidden') || groupStateInherited(editor.entities, inherited, 'hidden');
 }
 
 export function isObjectInLockedGroup(editor: Editor, object: Entity | Brush | Patch, owner?: Entity): boolean {
   const own = namedGroupForId(editor.entities, objectGroupId(object));
   const inherited = owner && owner !== object ? namedGroupForId(editor.entities, entityGroupId(owner)) : null;
-  return !!(own?.locked || inherited?.locked);
+  return groupStateInherited(editor.entities, own, 'locked') || groupStateInherited(editor.entities, inherited, 'locked');
+}
+
+function groupStateInherited(entities: Entity[], group: NamedGroup | null, key: 'hidden' | 'locked'): boolean {
+  const visited = new Set<string>();
+  let current = group;
+  while (current && !visited.has(current.id)) {
+    if (current[key]) return true;
+    visited.add(current.id);
+    current = namedGroupForId(entities, current.parentId);
+  }
+  return false;
+}
+
+export function setNamedGroupParent(editor: Editor, id: string, parentId?: string): void {
+  const group = namedGroupForId(editor.entities, id);
+  if (!group || parentId === id) return;
+  if (parentId && !namedGroupForId(editor.entities, parentId)) return;
+  let ancestor = parentId ? namedGroupForId(editor.entities, parentId) : null;
+  const visited = new Set<string>();
+  while (ancestor && !visited.has(ancestor.id)) {
+    if (ancestor.id === id) { editor.statusMessage = 'Group hierarchy cannot contain a cycle'; return; }
+    visited.add(ancestor.id);
+    ancestor = namedGroupForId(editor.entities, ancestor.parentId);
+  }
+  editor.transact('Move named group', () => {
+    if (parentId) group.entity.properties[GROUP_PARENT_KEY] = parentId;
+    else delete group.entity.properties[GROUP_PARENT_KEY];
+    editor.redrawRequested = true;
+    editor.statusMessage = parentId ? `Moved ${group.name} into ${namedGroupForId(editor.entities, parentId)?.name}` : `Moved ${group.name} to the root`;
+  });
 }
 
 function setItemGroup(item: SelectionItem, groupId: string | undefined): void {
@@ -189,6 +222,7 @@ export function deleteNamedGroup(editor: Editor, id: string): void {
   const group = namedGroupForId(editor.entities, id); if (!group) return;
   editor.transact('Delete named group', () => {
     for (const entity of editor.entities) {
+      if (entity.properties[GROUP_PARENT_KEY] === id) delete entity.properties[GROUP_PARENT_KEY];
       if (entity.properties[GROUP_ID_KEY] === id) delete entity.properties[GROUP_ID_KEY];
       for (const brush of entity.brushes) if (brush.editorGroupId === id) brush.editorGroupId = undefined;
       for (const patch of entity.patches) if (patch.editorGroupId === id) patch.editorGroupId = undefined;

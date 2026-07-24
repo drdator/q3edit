@@ -175,6 +175,7 @@ import {
   selectNamedGroup as selectEditorNamedGroup,
   setNamedGroupHidden as setEditorNamedGroupHidden,
   setNamedGroupLocked as setEditorNamedGroupLocked,
+  setNamedGroupParent as setEditorNamedGroupParent,
   type NamedGroup,
 } from './named-groups';
 import {
@@ -826,6 +827,7 @@ export class Editor {
   selectNamedGroup(id: string): void { selectEditorNamedGroup(this, id); }
   setNamedGroupHidden(id: string, hidden: boolean): void { setEditorNamedGroupHidden(this, id, hidden); }
   setNamedGroupLocked(id: string, locked: boolean): void { setEditorNamedGroupLocked(this, id, locked); }
+  setNamedGroupParent(id: string, parentId?: string): void { setEditorNamedGroupParent(this, id, parentId); }
 
   connectSelectedEntities(): void {
     connectEditorSelectedEntities(this);

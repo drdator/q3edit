@@ -41,6 +41,8 @@ import { parseBsp, type BspInspection } from './bsp-inspection';
 import { structureCompilerOutput } from './compile-diagnostics';
 import { createBuildInspector, openBuildHistoryDialog } from './build-inspector';
 import { openReleasePackageDialog } from './release-package-dialog';
+import { MapOrganizationController, type NavigationState } from './map-organization';
+import { openMapOrganizationDialog } from './map-organization-dialog';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -107,6 +109,7 @@ export class UI {
   private readonly recovery: DocumentRecoveryService | null;
   private readonly buildHistory = new BuildHistoryService();
   private captureEditorLevelshot: (() => { mimeType: string; data: string; width: number; height: number }) | null = null;
+  private organization: MapOrganizationController | null = null;
   private mcpConnectionUrl: string | null = null;
   private mcpConnect: ((url: string) => void | Promise<void>) | null = null;
   private mcpDisconnect: (() => void) | null = null;
@@ -164,6 +167,9 @@ export class UI {
           playPackage: (mapName, bsp, aas, pk3) => this.openBspPreview(mapName, bsp, aas, false, [], 0, 2, pk3),
         });
       },
+      openOrganization: () => {
+        if (this.organization) openMapOrganizationDialog(this.editor, this.organization);
+      },
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
@@ -207,6 +213,10 @@ export class UI {
 
   configureEditorCapture(capture: () => { mimeType: string; data: string; width: number; height: number }): void {
     this.captureEditorLevelshot = capture;
+  }
+
+  configureNavigation(capture: () => NavigationState, restore: (state: NavigationState) => void): void {
+    this.organization = new MapOrganizationController(this.editor, capture, restore);
   }
 
   setMcpConnectionUrl(url: string | null): void {
@@ -1952,6 +1962,7 @@ export class UI {
   // ── Update UI state ──
 
   update(): void {
+    this.organization?.observe();
     const e = this.editor;
     this.commands.notifyStateChanged();
     this.updateTerrainPanel();

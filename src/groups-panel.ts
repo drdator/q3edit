@@ -44,9 +44,34 @@ export function buildGroupsPanel(container: HTMLElement, editor: Editor): void {
     return;
   }
 
-  for (const group of groups) {
+  const ordered = [...groups].sort((a, b) => {
+    const path = (id: string): string => {
+      const names: string[] = [];
+      const visited = new Set<string>();
+      let current = groups.find(group => group.id === id);
+      while (current && !visited.has(current.id)) {
+        names.unshift(current.name.toLowerCase());
+        visited.add(current.id);
+        current = groups.find(group => group.id === current?.parentId);
+      }
+      return names.join('/');
+    };
+    return path(a.id).localeCompare(path(b.id));
+  });
+  const depth = (id: string): number => {
+    let result = 0;
+    const visited = new Set<string>();
+    let current = groups.find(group => group.id === id);
+    while (current?.parentId && !visited.has(current.id)) {
+      visited.add(current.id); result++;
+      current = groups.find(group => group.id === current?.parentId);
+    }
+    return result;
+  };
+  for (const group of ordered) {
     const item = document.createElement('div');
     item.className = 'named-group-item';
+    item.style.setProperty('--group-depth', String(depth(group.id)));
     const name = document.createElement('input');
     name.type = 'text';
     name.className = 'named-group-name';
@@ -58,7 +83,8 @@ export function buildGroupsPanel(container: HTMLElement, editor: Editor): void {
     const meta = document.createElement('div');
     meta.className = 'named-group-meta';
     const members = countNamedGroupMembers(editor.entities, group.id);
-    meta.textContent = `${members} member${members === 1 ? '' : 's'} · ${group.hidden ? 'hidden' : 'visible'} · ${group.locked ? 'locked' : 'unlocked'}`;
+    const parent = groups.find(candidate => candidate.id === group.parentId);
+    meta.textContent = `${members} member${members === 1 ? '' : 's'} · ${group.hidden ? 'hidden' : 'visible'} · ${group.locked ? 'locked' : 'unlocked'}${parent ? ` · in ${parent.name}` : ''}`;
     item.appendChild(meta);
 
     const actions = document.createElement('div');

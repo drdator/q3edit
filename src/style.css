@@ -2814,6 +2814,32 @@ body.sidepanel-resizing * {
 .design-review-finding-detail { color: var(--text-dim); }
 .design-review-finding-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .design-review-finding-actions .btn { padding: 3px 7px; }
+
+.named-group-item { margin-left: calc(var(--group-depth, 0) * 12px); }
+.map-organization-dialog { width: min(1100px, calc(100vw - 60px)); height: min(800px, calc(100vh - 60px)); }
+.map-organization-content { min-height: 0; overflow: auto; padding: 12px; background: var(--bg); }
+.map-organization-content h3 { margin: 16px 0 8px; color: var(--text); font-size: 14px; }
+.map-organization-content > p { margin-bottom: 12px; color: var(--text-dim); line-height: 1.4; }
+.organization-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.organization-toolbar input, .organization-toolbar select,
+.organization-filter-grid input, .organization-filter-grid select {
+  min-width: 150px;
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-light);
+  box-shadow: inset 1px 1px 0 var(--border-dark);
+}
+.organization-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--border-dark); border-bottom-width: 0; }
+.organization-row:last-child { border-bottom-width: 1px; }
+.organization-row > div:first-child { display: grid; gap: 3px; }
+.organization-row span { color: var(--text-dim); }
+.organization-row > div:last-child { display: flex; align-items: center; gap: 5px; }
+.organization-row select { min-width: 180px; }
+.organization-filter-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 7px; margin-bottom: 8px; }
+.organization-kind-filters { grid-column: 1 / -1; display: flex; gap: 12px; color: var(--text-dim); text-transform: capitalize; }
+.organization-kind-filters label { display: flex; align-items: center; gap: 4px; }
+.organization-filter-status { padding: 8px; margin-bottom: 8px; color: var(--accent); background: var(--panel); border: 1px solid var(--border-dark); }
 .build-history-list article { display: flex; flex-direction: column; gap: 2px; }
 .build-history-list span { color: var(--text-dim); }
 .build-history-dialog { display: flex; width: min(1100px, calc(100vw - 48px)); height: min(780px, calc(100vh - 48px)); flex-direction: column; }
