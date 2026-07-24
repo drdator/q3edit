@@ -156,10 +156,7 @@ export class McpActivityPanel {
     const title = document.createElement('strong');
     title.id = 'mcp-activity-title';
     title.textContent = 'Activity';
-    const live = document.createElement('span');
-    live.className = 'mcp-activity-live';
-    live.textContent = 'LIVE';
-    identity.append(title, live);
+    identity.append(title);
 
     const controls = document.createElement('div');
     controls.className = 'mcp-activity-controls';

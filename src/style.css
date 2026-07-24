@@ -3076,14 +3076,6 @@ body.mcp-activity-resizing * { cursor: row-resize !important; }
   font-size: 11px;
   letter-spacing: .02em;
 }
-.mcp-activity-live {
-  padding: 1px 6px;
-  color: #8fdf9a;
-  background: rgba(70, 150, 80, 0.14);
-  border: 1px solid rgba(100, 190, 110, 0.45);
-  font-size: 9px;
-  letter-spacing: .08em;
-}
 .mcp-activity-controls {
   display: grid;
   flex: 1 1 420px;
