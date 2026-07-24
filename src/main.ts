@@ -19,6 +19,7 @@ import { configuredBridgeUrl } from './live-bridge/configuration';
 import { openUnreadReleaseNotesDialog } from './release-notes-dialog';
 import { DocumentRecoveryService } from './document-recovery';
 import { currentEditorSessionId } from './editor-session';
+import { installDialogEscapeDismissal } from './dialog-dismissal';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -48,6 +49,7 @@ function setLoadingStatus(msg: string) {
 // ── Bootstrap ──
 
 async function init() {
+  installDialogEscapeDismissal();
   const editor = new Editor();
   editor.createDefaultMap();
   const recovery = new DocumentRecoveryService(editor, currentEditorSessionId());
