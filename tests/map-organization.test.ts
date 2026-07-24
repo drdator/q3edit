@@ -40,14 +40,30 @@ describe('large-map organization', () => {
     organization.saveBookmark('Overview');
 
     const data = readOrganization(editor);
-    expect(data.selectionSets[0]).toMatchObject({ name: 'Wall face', refs: ['E0:B0:F0'] });
-    expect(data.visibilityPresets[0].hiddenRefs).toEqual(['E0:B0']);
+    expect(data.selectionSets[0].name).toBe('Wall face');
+    expect(data.selectionSets[0].refs[0]).toMatch(/^E0:B0:F0@@/);
+    expect(data.visibilityPresets[0].hiddenRefs[0]).toMatch(/^E0:B0@@/);
     expect(data.filterPresets[0].filter.texture).toBe('metal');
     expect(data.bookmarks[0].navigation.views2d.yz.zoom).toBe(9);
 
     editor.selection = [];
     organization.restoreSelectionSet(data.selectionSets[0]);
     expect(editor.selection[0]?.type).toBe('face');
+  });
+
+  it('does not silently retarget persistent sets after object indices change', () => {
+    const editor = new Editor();
+    const saved = createBoxBrush([128, 0, 0], [192, 64, 64], 'base_wall/metal');
+    editor.worldspawn.brushes.push(saved);
+    editor.selection = [{ type: 'brush', entity: editor.worldspawn, brush: saved }];
+    const organization = controller(editor);
+    organization.saveSelectionSet('Saved brush');
+    editor.worldspawn.brushes.unshift(createBoxBrush([0, 0, 0], [64, 64, 64], 'base_floor/stone'));
+    editor.selection = [];
+
+    organization.restoreSelectionSet(readOrganization(editor).selectionSets[0]);
+
+    expect(editor.selection).toEqual([{ type: 'brush', entity: editor.worldspawn, brush: saved }]);
   });
 
   it('filters objects with AND/OR semantics and aggregate object kinds', () => {

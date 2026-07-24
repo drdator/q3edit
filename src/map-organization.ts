@@ -88,6 +88,46 @@ function id(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+const SIGNATURE_SEPARATOR = '@@';
+
+function hash(value: string): string {
+  let result = 2166136261;
+  for (let index = 0; index < value.length; index++) {
+    result = Math.imul(result ^ value.charCodeAt(index), 16777619);
+  }
+  return (result >>> 0).toString(36);
+}
+
+function itemSignature(item: SelectionItem): string {
+  if (item.type === 'entity') {
+    return hash(JSON.stringify({
+      kind: 'entity',
+      classname: item.entity.classname,
+      brushes: item.entity.brushes.map(brush => [brush.mins, brush.maxs]),
+      patches: item.entity.patches.map(patch => [patch.mins, patch.maxs]),
+    }));
+  }
+  if (item.type === 'patch') {
+    return hash(JSON.stringify({
+      kind: 'patch',
+      controlPoints: item.patch.ctrl.map(row => row.map(point => point.xyz)),
+    }));
+  }
+  if (item.type === 'face') {
+    return hash(JSON.stringify({ kind: 'face', points: item.face.points }));
+  }
+  return hash(JSON.stringify({
+    kind: 'brush',
+    faces: item.brush.faces.map(face => face.points),
+    mins: item.brush.mins,
+    maxs: item.brush.maxs,
+  }));
+}
+
+function signedRef(ref: string, item: SelectionItem): string {
+  return `${ref}${SIGNATURE_SEPARATOR}${itemSignature(item)}`;
+}
+
 function normalizeData(value: unknown): OrganizationData {
   const source = value && typeof value === 'object' ? value as Partial<OrganizationData> : {};
   return {
@@ -111,28 +151,40 @@ function writeOrganization(editor: Editor, label: string, data: OrganizationData
   });
 }
 
-export function selectionRefs(editor: Editor): string[] {
+export function selectionRefs(editor: Editor, persistent = false): string[] {
   const refs: string[] = [];
   for (const item of editor.selection) {
     const entityIndex = editor.entities.indexOf(item.entity);
     if (entityIndex < 0) continue;
-    if (item.type === 'entity') refs.push(`E${entityIndex}`);
+    if (item.type === 'entity') {
+      const ref = `E${entityIndex}`;
+      refs.push(persistent ? signedRef(ref, item) : ref);
+    }
     else if (item.type === 'patch') {
       const patchIndex = item.entity.patches.indexOf(item.patch);
-      if (patchIndex >= 0) refs.push(`E${entityIndex}:P${patchIndex}`);
+      if (patchIndex >= 0) {
+        const ref = `E${entityIndex}:P${patchIndex}`;
+        refs.push(persistent ? signedRef(ref, item) : ref);
+      }
     } else {
       const brushIndex = item.entity.brushes.indexOf(item.brush);
       if (brushIndex < 0) continue;
       if (item.type === 'face') {
         const faceIndex = item.brush.faces.indexOf(item.face);
-        if (faceIndex >= 0) refs.push(`E${entityIndex}:B${brushIndex}:F${faceIndex}`);
-      } else refs.push(`E${entityIndex}:B${brushIndex}`);
+        if (faceIndex >= 0) {
+          const ref = `E${entityIndex}:B${brushIndex}:F${faceIndex}`;
+          refs.push(persistent ? signedRef(ref, item) : ref);
+        }
+      } else {
+        const ref = `E${entityIndex}:B${brushIndex}`;
+        refs.push(persistent ? signedRef(ref, item) : ref);
+      }
     }
   }
   return [...new Set(refs)];
 }
 
-function resolveRef(editor: Editor, ref: string): SelectionItem[] {
+function resolvePositionalRef(editor: Editor, ref: string): SelectionItem[] {
   if (ref.startsWith('G:')) {
     const groupId = ref.slice(2);
     const result: SelectionItem[] = [];
@@ -163,18 +215,54 @@ function resolveRef(editor: Editor, ref: string): SelectionItem[] {
   return [{ type: 'entity', entity }];
 }
 
+function allPositionalItems(editor: Editor): SelectionItem[] {
+  const result: SelectionItem[] = [];
+  editor.entities.forEach(entity => {
+    result.push({ type: 'entity', entity });
+    entity.brushes.forEach(brush => {
+      result.push({ type: 'brush', entity, brush });
+      brush.faces.forEach(face => result.push({ type: 'face', entity, brush, face }));
+    });
+    entity.patches.forEach(patch => result.push({ type: 'patch', entity, patch }));
+  });
+  return result;
+}
+
+function resolveRef(editor: Editor, encodedRef: string): SelectionItem[] {
+  const [ref, expectedSignature] = encodedRef.split(SIGNATURE_SEPARATOR, 2);
+  const direct = resolvePositionalRef(editor, ref);
+  if (!expectedSignature) return direct;
+  if (direct.length === 1 && itemSignature(direct[0]) === expectedSignature) return direct;
+  const matches = allPositionalItems(editor).filter(item => itemSignature(item) === expectedSignature);
+  return matches.length === 1 ? matches : [];
+}
+
 function setSelection(editor: Editor, refs: string[]): void {
   editor.selection = refs.flatMap(ref => resolveRef(editor, ref));
   editor.redrawRequested = true;
   if (editor.selection.length > 0) editor.centerOnSelection();
 }
 
-function hiddenRefs(editor: Editor): string[] {
+function hiddenRefs(editor: Editor, persistent = false): string[] {
   const refs: string[] = [];
   editor.entities.forEach((entity, entityIndex) => {
-    if (editor.hiddenEntities.has(entity)) refs.push(`E${entityIndex}`);
-    entity.brushes.forEach((brush, brushIndex) => { if (editor.hiddenBrushes.has(brush)) refs.push(`E${entityIndex}:B${brushIndex}`); });
-    entity.patches.forEach((patch, patchIndex) => { if (editor.hiddenPatches.has(patch)) refs.push(`E${entityIndex}:P${patchIndex}`); });
+    if (editor.hiddenEntities.has(entity)) {
+      const item: SelectionItem = { type: 'entity', entity };
+      const ref = `E${entityIndex}`;
+      refs.push(persistent ? signedRef(ref, item) : ref);
+    }
+    entity.brushes.forEach((brush, brushIndex) => {
+      if (!editor.hiddenBrushes.has(brush)) return;
+      const item: SelectionItem = { type: 'brush', entity, brush };
+      const ref = `E${entityIndex}:B${brushIndex}`;
+      refs.push(persistent ? signedRef(ref, item) : ref);
+    });
+    entity.patches.forEach((patch, patchIndex) => {
+      if (!editor.hiddenPatches.has(patch)) return;
+      const item: SelectionItem = { type: 'patch', entity, patch };
+      const ref = `E${entityIndex}:P${patchIndex}`;
+      refs.push(persistent ? signedRef(ref, item) : ref);
+    });
   });
   return refs;
 }
@@ -281,6 +369,7 @@ export class MapOrganizationController {
   private recentSelectionIndex = -1;
   private recentLocations: NavigationState[] = [];
   private recentLocationIndex = -1;
+  private diagnosticIndex = -1;
   private lastSelectionSignature = '';
   private lastLocationAt = 0;
 
@@ -293,7 +382,7 @@ export class MapOrganizationController {
   data(): OrganizationData { return readOrganization(this.editor); }
 
   saveSelectionSet(name: string, groupId?: string): void {
-    const refs = groupId ? [`G:${groupId}`] : selectionRefs(this.editor);
+    const refs = groupId ? [`G:${groupId}`] : selectionRefs(this.editor, true);
     if (!name.trim() || refs.length === 0) return;
     const data = this.data();
     data.selectionSets.push({ id: id('selection'), name: name.trim(), refs });
@@ -311,7 +400,7 @@ export class MapOrganizationController {
     if (!name.trim()) return;
     const data = this.data();
     data.visibilityPresets.push({
-      id: id('visibility'), name: name.trim(), hiddenRefs: hiddenRefs(this.editor),
+      id: id('visibility'), name: name.trim(), hiddenRefs: hiddenRefs(this.editor, true),
       groups: listNamedGroups(this.editor.entities).map(group => ({ id: group.id, hidden: group.hidden, locked: group.locked })),
     });
     writeOrganization(this.editor, 'Save visibility preset', data);
@@ -426,6 +515,20 @@ export class MapOrganizationController {
     if (this.recentLocations.length === 0) return;
     this.recentLocationIndex = Math.max(0, Math.min(this.recentLocations.length - 1, this.recentLocationIndex + direction));
     this.restoreNavigation(this.recentLocations[this.recentLocationIndex]);
+  }
+
+  navigateDiagnostic(direction: -1 | 1): void {
+    const refs = collectEditorDiagnostics(this.editor).flatMap(diagnostic => {
+      const target = diagnostic.target;
+      if (!target) return [];
+      if (target.kind === 'entity') return [`E${target.entityIndex}`];
+      if (target.kind === 'patch') return [`E${target.entityIndex}:P${target.patchIndex}`];
+      return [`E${target.entityIndex}:B${target.brushIndex}`];
+    });
+    const unique = [...new Set(refs)];
+    if (unique.length === 0) return;
+    this.diagnosticIndex = (this.diagnosticIndex + direction + unique.length) % unique.length;
+    setSelection(this.editor, [unique[this.diagnosticIndex]]);
   }
 
   selectRefs(refs: string[]): void { setSelection(this.editor, refs); }

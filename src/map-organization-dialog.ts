@@ -206,6 +206,8 @@ export function openMapOrganizationDialog(editor: Editor, controller: MapOrganiz
       button('Next Selection', () => controller.navigateRecentSelection(-1)),
       button('Previous Location', () => controller.navigateRecentLocation(1)),
       button('Next Location', () => controller.navigateRecentLocation(-1)),
+      button('Previous Diagnostic', () => controller.navigateDiagnostic(-1)),
+      button('Next Diagnostic', () => controller.navigateDiagnostic(1)),
     );
     content.appendChild(document.createElement('h3')).textContent = 'Recent navigation';
     content.appendChild(recent);

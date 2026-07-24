@@ -1,10 +1,15 @@
 import { reviewMap, type DesignFinding } from '../bridge/design-review';
 import { collectMapStatistics, type MapStatistics } from '../bridge/map-statistics';
 import { lintRoutes, type RouteLintResult } from '../bridge/route-lint';
-import { reviewTextureQuality, type TextureReviewIssue } from '../bridge/texture-review';
+import {
+  reviewTextureQuality,
+  textureNamesForReview,
+  type TextureDimensions,
+  type TextureReviewIssue,
+} from '../bridge/texture-review';
 import { collectEditorDiagnostics, collectMapInfo } from './diagnostics';
 import { selectDocumentRef } from './document-navigation';
-import type { Editor } from './editor';
+import { Editor } from './editor';
 import { entityOrigin } from './entity';
 import type { Vec3 } from './math';
 import { listNamedGroups } from './named-groups';
@@ -20,6 +25,7 @@ interface ReviewFinding {
   message: string;
   refs: string[];
   details?: string;
+  sourceSignature?: string;
 }
 
 interface ReviewRun {
@@ -78,7 +84,24 @@ function refObject(editor: Editor, ref: string): unknown {
 }
 
 function sourceSignature(editor: Editor, finding: ReviewFinding): string {
+  if (finding.sourceSignature) return finding.sourceSignature;
   return JSON.stringify(finding.refs.map(ref => refObject(editor, ref)));
+}
+
+function reviewedTextureDimensions(editor: Editor, mapText: string): Map<string, TextureDimensions> {
+  const dimensions = new Map<string, TextureDimensions>();
+  if (!editor.textureManager) return dimensions;
+  for (const name of textureNamesForReview(mapText)) {
+    const inspected = editor.textureManager.inspectTexture(name);
+    const image = inspected.image as { width?: number | null; height?: number | null } | null;
+    if (!image?.width || !image.height) continue;
+    dimensions.set(name.toLowerCase().replace(/\\/g, '/').replace(/^textures\//, ''), {
+      width: image.width,
+      height: image.height,
+      verified: true,
+    });
+  }
+  return dimensions;
 }
 
 function lightingFindings(statistics: MapStatistics): ReviewFinding[] {
@@ -103,11 +126,17 @@ function normalizeReviewResult(value: Record<string, unknown>): DesignFinding[] 
   return findings?.sample ?? [];
 }
 
-function runReview(editor: Editor, mapText: string, source: ReviewRun['source']): ReviewRun {
-  const diagnostics = collectEditorDiagnostics(editor);
-  const mapInfo = collectMapInfo(editor, diagnostics);
+export function runDesignReview(editor: Editor, mapText: string, source: ReviewRun['source']): ReviewRun {
+  const reviewedEditor = source === 'current' ? editor : new Editor();
+  if (source === 'preview') {
+    reviewedEditor.textureManager = editor.textureManager;
+    reviewedEditor.modelManager = editor.modelManager;
+    reviewedEditor.loadMap(mapText);
+  }
+  const diagnostics = collectEditorDiagnostics(reviewedEditor);
+  const mapInfo = collectMapInfo(reviewedEditor, diagnostics);
   const combined = reviewMap(mapText, mapInfo, diagnostics, 'full');
-  const texture = reviewTextureQuality(mapText, new Map(), { limit: Number.MAX_SAFE_INTEGER });
+  const texture = reviewTextureQuality(mapText, reviewedTextureDimensions(editor, mapText), { limit: Number.MAX_SAFE_INTEGER });
   const statistics = collectMapStatistics(mapText);
   const routes = lintRoutes(mapText);
   const findings: ReviewFinding[] = [
@@ -118,6 +147,9 @@ function runReview(editor: Editor, mapText: string, source: ReviewRun['source'])
     })),
     ...lightingFindings(statistics),
   ];
+  for (const finding of findings) {
+    finding.sourceSignature = JSON.stringify(finding.refs.map(ref => refObject(reviewedEditor, ref)));
+  }
   const status = findings.some(item => item.severity === 'error') ? 'blocked'
     : findings.some(item => item.severity === 'warning') ? 'needs-attention'
       : 'pass';
@@ -338,7 +370,13 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
       }
       const actions = document.createElement('div');
       actions.className = 'design-review-finding-actions';
-      for (const ref of finding.refs.slice(0, 8)) actions.appendChild(button(ref, () => selectDocumentRef(editor, ref as never)));
+      if (activeRun.source === 'current') {
+        for (const ref of finding.refs.slice(0, 8)) actions.appendChild(button(ref, () => selectDocumentRef(editor, ref as never)));
+      } else if (finding.refs.length > 0) {
+        const previewRefs = document.createElement('span');
+        previewRefs.textContent = `Preview refs: ${finding.refs.slice(0, 8).join(', ')}`;
+        actions.appendChild(previewRefs);
+      }
       if (unchanged) actions.appendChild(button('Reopen', () => {
         suppressions = suppressions.filter(item => item.key !== key); writeJson(suppressKey, suppressions); render();
       }));
@@ -358,7 +396,7 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
   const executeReview = () => {
     const reviewSource = source.value as ReviewRun['source'];
     const mapText = reviewSource === 'preview' ? editor.pendingReviewMapText! : editor.serializeMap();
-    activeRun = runReview(editor, mapText, reviewSource);
+    activeRun = runDesignReview(editor, mapText, reviewSource);
     history = [activeRun, ...history].slice(0, 10);
     writeJson(historyKey, history);
     historySelect.replaceChildren(...[
