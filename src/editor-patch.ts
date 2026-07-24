@@ -15,6 +15,7 @@ import { stitchSelectedTerrainControlSeams } from './editor-terrain';
 import {
   createPatchMatrix, cyclePatchCap, deletePatchColumns, deletePatchRows, fitPatchUV, insertPatchColumns,
   insertPatchRows, invertPatch, naturalizePatchUV, redispersePatchColumns,
+  naturalizePatchUVByDistance,
   redispersePatchRows, thickenPatch, transformPatchUV, transposePatch,
 } from './patch-operations';
 import { convertTerrainToBezierPatch, isTerrainMesh } from './terrain-model';
@@ -87,6 +88,78 @@ export function applyPatchOperation(editor: Editor, operation: PatchOperation): 
   editor.transact(`Patch ${operation}`, () => {
     for (const item of items) operations[operation](item.patch);
     editor.redrawRequested = true; editor.statusMessage = `Patch: ${operation}`;
+  });
+}
+
+type PatchEdge = Array<Patch['ctrl'][number][number]>;
+
+function patchEdges(patch: Patch): PatchEdge[] {
+  return [
+    patch.ctrl[0],
+    patch.ctrl[patch.height - 1],
+    patch.ctrl.map(row => row[0]),
+    patch.ctrl.map(row => row[patch.width - 1]),
+  ];
+}
+
+function endpointDistance(a: PatchEdge, b: PatchEdge, reverse: boolean): number {
+  const first = reverse ? b[b.length - 1] : b[0];
+  const last = reverse ? b[0] : b[b.length - 1];
+  return Math.hypot(...a[0].xyz.map((value, axis) => value - first.xyz[axis]))
+    + Math.hypot(...a[a.length - 1].xyz.map((value, axis) => value - last.xyz[axis]));
+}
+
+export function alignSelectedPatchBoundaries(editor: Editor): boolean {
+  const items = getSelectedPatchItems(editor);
+  if (items.length !== 2 || items.some(item => isTerrainMesh(item.patch))) return false;
+  return editor.transact('Align patch UV boundary', () => {
+    const sourceEdges = patchEdges(items[0].patch);
+    const targetEdges = patchEdges(items[1].patch);
+    let best: { source: PatchEdge; target: PatchEdge; reverse: boolean; distance: number } | null = null;
+    for (const source of sourceEdges) for (const target of targetEdges) for (const reverse of [false, true]) {
+      const distance = endpointDistance(source, target, reverse);
+      if (!best || distance < best.distance) best = { source, target, reverse, distance };
+    }
+    if (!best) return false;
+    const source = best.source;
+    const target = best.reverse ? [...best.target].reverse() : best.target;
+    target.forEach((point, index) => {
+      const position = index / Math.max(1, target.length - 1) * (source.length - 1);
+      const lower = Math.floor(position); const upper = Math.min(source.length - 1, Math.ceil(position));
+      const blend = position - lower;
+      point.uv = source[lower].uv.map((value, axis) => value + (source[upper].uv[axis] - value) * blend) as [number, number];
+    });
+    tessellatePatch(items[1].patch);
+    editor.redrawRequested = true;
+    editor.statusMessage = `Aligned patch UV boundary (${best.distance.toFixed(2)} endpoint units)`;
+    return true;
+  });
+}
+
+export function copySelectedPatchUV(editor: Editor): number {
+  const items = getSelectedPatchItems(editor);
+  if (items.length < 2 || items.some(item => isTerrainMesh(item.patch))) return 0;
+  return editor.transact('Copy patch UV parameters', () => {
+    const source = items[0].patch;
+    for (const { patch } of items.slice(1)) {
+      for (let row = 0; row < patch.height; row++) for (let col = 0; col < patch.width; col++) {
+        const sourceRow = Math.round(row / Math.max(1, patch.height - 1) * (source.height - 1));
+        const sourceCol = Math.round(col / Math.max(1, patch.width - 1) * (source.width - 1));
+        patch.ctrl[row][col].uv = [...source.ctrl[sourceRow][sourceCol].uv];
+      }
+      tessellatePatch(patch);
+    }
+    editor.redrawRequested = true;
+    return items.length - 1;
+  });
+}
+
+export function naturalizeSelectedPatchesByDistance(editor: Editor, unitsPerRepeat: number): void {
+  const items = getSelectedPatchItems(editor);
+  if (!items.length || !Number.isFinite(unitsPerRepeat) || unitsPerRepeat <= 0) return;
+  editor.transact('Natural patch UV by distance', () => {
+    for (const item of items) naturalizePatchUVByDistance(item.patch, unitsPerRepeat);
+    editor.redrawRequested = true;
   });
 }
 

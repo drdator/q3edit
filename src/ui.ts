@@ -43,6 +43,7 @@ import { createBuildInspector, openBuildHistoryDialog } from './build-inspector'
 import { openReleasePackageDialog } from './release-package-dialog';
 import { MapOrganizationController, type NavigationState } from './map-organization';
 import { openMapOrganizationDialog } from './map-organization-dialog';
+import { openSurfaceAlignmentDialog } from './surface-alignment-dialog';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -170,6 +171,7 @@ export class UI {
       openOrganization: () => {
         if (this.organization) openMapOrganizationDialog(this.editor, this.organization);
       },
+      openSurfaceAlignment: () => openSurfaceAlignmentDialog(this.editor),
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),

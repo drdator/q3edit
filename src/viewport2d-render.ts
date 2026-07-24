@@ -115,7 +115,7 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
 function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
   const inspection = ctx.editor.compiledBspInspection;
   const mode = ctx.editor.compiledBspOverlay;
-  if ((!inspection || mode === 'none') && ctx.editor.designReviewOverlayLines.length === 0) return;
+  if ((!inspection || mode === 'none') && ctx.editor.designReviewOverlayLines.length === 0 && ctx.editor.textureAxisOverlayLines.length === 0) return;
   ctx.ctx.save();
   if (inspection && (mode === 'leaves' || mode === 'both' || mode === 'visible')) {
     const cameraLeaf = mode === 'visible' ? leafAtPoint(inspection, ctx.editor.camera3d.position) : null;
@@ -148,13 +148,14 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
       ctx.ctx.stroke();
     }
   }
-  if (ctx.editor.designReviewOverlayLines.length > 0) {
+  const editorOverlayLines = [...ctx.editor.designReviewOverlayLines, ...ctx.editor.textureAxisOverlayLines];
+  if (editorOverlayLines.length > 0) {
     ctx.ctx.strokeStyle = 'rgba(255, 176, 48, 0.9)';
     ctx.ctx.lineWidth = 1.5;
     ctx.ctx.beginPath();
-    for (let index = 0; index + 1 < ctx.editor.designReviewOverlayLines.length; index += 2) {
-      const first = ctx.editor.designReviewOverlayLines[index];
-      const second = ctx.editor.designReviewOverlayLines[index + 1];
+    for (let index = 0; index + 1 < editorOverlayLines.length; index += 2) {
+      const first = editorOverlayLines[index];
+      const second = editorOverlayLines[index + 1];
       const [x0, y0] = ctx.worldToScreen(first[ctx.axisH], first[ctx.axisV]);
       const [x1, y1] = ctx.worldToScreen(second[ctx.axisH], second[ctx.axisV]);
       ctx.ctx.moveTo(x0, y0);

@@ -386,6 +386,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     ctx.editor.camera3d.position,
     ),
     ...ctx.editor.designReviewOverlayLines,
+    ...ctx.editor.textureAxisOverlayLines,
   ].flat();
   ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.bspOverlayVBO);
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(bspOverlayVerts), ctx.gl.DYNAMIC_DRAW);

@@ -81,13 +81,20 @@ import {
 } from './editor-pointfile';
 import {
   fitTexture as fitEditorTexture,
+  alignFaceChain as alignEditorFaceChain,
+  copyProjectionFromFirst as copyEditorProjectionFromFirst,
+  fitTextureByMapUnits as fitEditorTextureByMapUnits,
   getTextureFaces as collectTextureFaces,
   replaceTextures as replaceEditorTextures,
   resetTextureAlignment as resetEditorTextureAlignment,
   rotateTexture as rotateEditorTexture,
   scaleTexture as scaleEditorTexture,
   setTexture as setEditorTexture,
+  setTextureDensity as setEditorTextureDensity,
+  selectedTextureDensityReport as getEditorTextureDensityReport,
   shiftTexture as shiftEditorTexture,
+  textureAxisLines as getEditorTextureAxisLines,
+  wrapTextureSelection as wrapEditorTextureSelection,
   type TextureReplaceMatch,
   type TextureReplaceScope,
 } from './editor-textures';
@@ -105,6 +112,7 @@ import {
 } from './editor-vertex';
 import {
   changeSubdivisions as changeEditorPatchSubdivisions,
+  alignSelectedPatchBoundaries as alignEditorPatchBoundaries,
   applyPatchOperation as applyEditorPatchOperation,
   convertSelectedTerrainToPatch as convertEditorTerrainToPatch,
   createMatrixPatch as createEditorMatrixPatch,
@@ -113,11 +121,13 @@ import {
   type PatchOperation,
   clearControlPointSelection as clearEditorControlPointSelection,
   createPatch as createEditorPatch,
+  copySelectedPatchUV as copyEditorPatchUV,
   enterPatchEditMode as enterEditorPatchEditMode,
   exitPatchEditMode as exitEditorPatchEditMode,
   isControlPointSelected as isEditorControlPointSelected,
   moveSelectedControlPoints as moveEditorSelectedControlPoints,
   patchControlSelectionCenter as getEditorPatchControlSelectionCenter,
+  naturalizeSelectedPatchesByDistance as naturalizeEditorPatchesByDistance,
   selectControlPoint as selectEditorControlPoint,
 } from './editor-patch';
 import {
@@ -337,6 +347,7 @@ export class Editor {
   compiledBspInspection: BspInspection | null = null;
   compiledBspOverlay: BspOverlayMode = 'none';
   designReviewOverlayLines: Vec3[] = [];
+  textureAxisOverlayLines: Vec3[] = [];
   pendingReviewMapText: string | null = null;
   documentRevision = 0;
   savedDocumentRevision = 0;
@@ -1215,6 +1226,17 @@ export class Editor {
   fitTexture(): void {
     fitEditorTexture(this);
   }
+
+  copyTextureProjection(mode: 'world' | 'local' = 'world'): number { return copyEditorProjectionFromFirst(this, mode); }
+  alignTextureFaceChain(): number { return alignEditorFaceChain(this); }
+  wrapTextureSelection(): number { return wrapEditorTextureSelection(this); }
+  setTextureDensity(value: number): void { setEditorTextureDensity(this, value); }
+  textureDensityReport(): ReturnType<typeof getEditorTextureDensityReport> { return getEditorTextureDensityReport(this); }
+  fitTextureByMapUnits(units: number): void { fitEditorTextureByMapUnits(this, units); }
+  updateTextureAxisOverlay(): void { this.textureAxisOverlayLines = getEditorTextureAxisLines(this); this.redrawRequested = true; }
+  alignPatchBoundaries(): boolean { return alignEditorPatchBoundaries(this); }
+  copyPatchUV(): number { return copyEditorPatchUV(this); }
+  naturalizePatchesByDistance(units: number): void { naturalizeEditorPatchesByDistance(this, units); }
 
   // ── Vertex editing ──
 

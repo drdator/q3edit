@@ -21,6 +21,7 @@ export interface EditorCommandContext {
   openBuildHistory?: () => void;
   openReleasePackage?: () => void;
   openOrganization?: () => void;
+  openSurfaceAlignment?: () => void;
   openDiagnostics: (tab: 'map' | 'design-review' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
@@ -295,6 +296,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tools.entity-info', label: 'Entity Info...', defaultShortcut: 'Mod+L', menu: menu('Tools', 310, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entities') },
     { id: 'tools.find-brush', label: 'Find Brush...', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
     { id: 'tools.brush-macros', label: 'Brush Macros...', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },
+    { id: 'tools.surface-alignment', label: 'Surface Alignment...', menu: menu('Tools', 340, 'surface'), enabled: ctx => (hasSelectedFaces(ctx) || hasSelectedPatches(ctx) || ctx.editor.textureDensityReport() !== null) && !!ctx.openSurfaceAlignment, execute: ctx => ctx.openSurfaceAlignment?.() },
 
     { id: 'texture.fit', label: 'Fit Texture', defaultShortcut: 'Mod+Shift+F', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture() },
     { id: 'texture.reset', label: 'Reset Texture Alignment', defaultShortcut: 'Mod+Shift+N', enabled: hasSelectedFaces, execute: ({ editor }) => editor.resetTextureAlignment() },

@@ -2840,6 +2840,25 @@ body.sidepanel-resizing * {
 .organization-kind-filters { grid-column: 1 / -1; display: flex; gap: 12px; color: var(--text-dim); text-transform: capitalize; }
 .organization-kind-filters label { display: flex; align-items: center; gap: 4px; }
 .organization-filter-status { padding: 8px; margin-bottom: 8px; color: var(--accent); background: var(--panel); border: 1px solid var(--border-dark); }
+
+.surface-alignment-dialog { width: min(980px, calc(100vw - 60px)); }
+.surface-alignment-body { display: grid; gap: 10px; min-height: 0; overflow: auto; }
+.surface-alignment-body section { padding: 12px; background: var(--bg); border: 1px solid var(--border-dark); }
+.surface-alignment-body h3 { margin: 0 0 10px; color: var(--text); font-size: 14px; }
+.surface-alignment-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 7px; }
+.surface-alignment-field { display: grid; gap: 5px; min-width: 155px; color: var(--text-dim); }
+.surface-alignment-field input, .surface-alignment-field select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-light);
+  box-shadow: inset 1px 1px 0 var(--border-dark);
+}
+.surface-alignment-field input[type="range"] { padding: 5px 0; box-shadow: none; accent-color: var(--accent); }
+.surface-slider-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.surface-alignment-status { padding: 9px; color: var(--accent); background: var(--panel); border: 1px solid var(--border-dark); }
 .build-history-list article { display: flex; flex-direction: column; gap: 2px; }
 .build-history-list span { color: var(--text-dim); }
 .build-history-dialog { display: flex; width: min(1100px, calc(100vw - 48px)); height: min(780px, calc(100vh - 48px)); flex-direction: column; }
