@@ -17,6 +17,7 @@ export interface EditorCommandContext {
   managePakFiles: () => void | Promise<void>;
   openPreferences: () => void;
   openProjectSettings: () => void;
+  openVersionHistory?: () => void;
   openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
@@ -125,6 +126,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.new', label: 'New', defaultShortcut: 'Mod+N', menu: menu('File', 0, 'document'), execute: ({ editor }) => { editor.newMap(); editor.createDefaultMap(); } },
     { id: 'file.open', label: 'Open...', defaultShortcut: 'Mod+O', menu: menu('File', 10, 'open-save'), execute: ({ editor }) => editor.openMapFromFile() },
     { id: 'file.save', label: 'Save', defaultShortcut: 'Mod+S', menu: menu('File', 20, 'open-save'), execute: ({ editor }) => editor.saveMapToFile() },
+    { id: 'file.version-history', label: 'Version History...', menu: menu('File', 25, 'open-save'), enabled: ctx => !!ctx.openVersionHistory, execute: ctx => ctx.openVersionHistory?.() },
     { id: 'file.manage-paks', label: 'Manage PK3 Files...', menu: menu('File', 30, 'assets'), execute: ctx => ctx.managePakFiles() },
     { id: 'file.project-settings', label: 'Project Settings...', menu: menu('File', 35, 'assets'), execute: ctx => ctx.openProjectSettings() },
     { id: 'file.import-prefab', label: 'Import Prefab...', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },

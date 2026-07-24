@@ -10,6 +10,7 @@ import { Editor } from '../src/editor';
 
 class MemoryRecoveryStorage implements DocumentRecoveryStorage {
   snapshot: DocumentRecoverySnapshot | null = null;
+  snapshots: DocumentRecoverySnapshot[] = [];
 
   async load(editorSessionId: string): Promise<DocumentRecoverySnapshot | null> {
     return this.snapshot?.editorSessionId === editorSessionId ? structuredClone(this.snapshot) : null;
@@ -17,10 +18,24 @@ class MemoryRecoveryStorage implements DocumentRecoveryStorage {
 
   async save(snapshot: DocumentRecoverySnapshot): Promise<void> {
     this.snapshot = structuredClone(snapshot);
+    const index = this.snapshots.findIndex(candidate => candidate.snapshotId === snapshot.snapshotId);
+    if (index >= 0) this.snapshots[index] = structuredClone(snapshot);
+    else this.snapshots.push(structuredClone(snapshot));
   }
 
   async remove(editorSessionId: string): Promise<void> {
     if (this.snapshot?.editorSessionId === editorSessionId) this.snapshot = null;
+  }
+
+  async list(editorSessionId: string): Promise<DocumentRecoverySnapshot[]> {
+    return this.snapshots
+      .filter(snapshot => snapshot.editorSessionId === editorSessionId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map(snapshot => structuredClone(snapshot));
+  }
+
+  async removeSnapshot(snapshotId: string): Promise<void> {
+    this.snapshots = this.snapshots.filter(snapshot => snapshot.snapshotId !== snapshotId);
   }
 }
 
@@ -81,5 +96,49 @@ describe('document recovery', () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(storage.snapshot?.documentRevision).toBe(storage.snapshot?.savedDocumentRevision);
     recovery.dispose();
+  });
+
+  it('keeps bounded automatic history while retaining protected checkpoints', async () => {
+    const editor = new Editor();
+    const storage = new MemoryRecoveryStorage();
+    const recovery = new DocumentRecoveryService(editor, 'editor-session', storage, 50, 5);
+
+    for (let revision = 0; revision < 7; revision++) {
+      editor.transact(`Edit ${revision}`, () => {
+        editor.worldspawn.properties.message = String(revision);
+      });
+      await recovery.flush();
+    }
+    const checkpoint = await recovery.createCheckpoint('Before risky edit');
+    editor.transact('Final edit', () => {
+      editor.worldspawn.properties.message = 'final';
+    });
+    await recovery.flush();
+
+    const versions = await recovery.listVersions();
+    expect(versions.filter(snapshot => !snapshot.protected)).toHaveLength(5);
+    expect(versions).toContainEqual(expect.objectContaining({
+      snapshotId: checkpoint.snapshotId,
+      label: 'Before risky edit',
+      protected: true,
+    }));
+    expect((await recovery.storageUsage()).snapshots).toBe(6);
+  });
+
+  it('restores an earlier version as an undoable change', async () => {
+    const editor = new Editor();
+    editor.worldspawn.properties.message = 'before';
+    const storage = new MemoryRecoveryStorage();
+    const recovery = new DocumentRecoveryService(editor, 'editor-session', storage);
+    const checkpoint = await recovery.createCheckpoint('Before');
+    editor.transact('Change', () => {
+      editor.worldspawn.properties.message = 'after';
+    });
+
+    recovery.restoreVersion(checkpoint);
+    expect(editor.worldspawn.properties.message).toBe('before');
+    expect(editor.history.canUndo).toBe(true);
+    editor.undo();
+    expect(editor.worldspawn.properties.message).toBe('after');
   });
 });

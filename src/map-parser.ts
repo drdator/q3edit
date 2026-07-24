@@ -22,6 +22,7 @@ export interface MapParseDiagnostic {
 export interface UnsupportedMapConstruct {
   keyword: string;
   line: number;
+  endLine?: number;
   column: number;
   /** Diagnostic capture only; it is not attached to or re-serialized with the document. */
   rawSource: string;
@@ -190,6 +191,7 @@ class MapParser {
       this.unsupportedConstructs.push({
         keyword: marker.value,
         line: marker.line,
+        endLine: closingBrace.line,
         column: marker.column,
         rawSource: this.source.slice(openingBrace.offset, closingBrace.endOffset),
       });

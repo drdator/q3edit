@@ -62,6 +62,7 @@ import {
   serializeMap as serializeEditorMap,
   serializeCompileMap as serializeEditorCompileMap,
   undo as undoDocument,
+  type OriginalMapSource,
 } from './editor-document';
 import {
   copySelection as copyEditorSelection,
@@ -330,6 +331,7 @@ export class Editor {
   clipboardText = '';
   mapDiagnostics: MapParseDiagnostic[] = [];
   unsupportedMapConstructs: UnsupportedMapConstruct[] = [];
+  originalMapSource: OriginalMapSource | null = null;
   documentRevision = 0;
   savedDocumentRevision = 0;
   documentSessionStartedAt = Date.now();
@@ -982,6 +984,7 @@ export class Editor {
     documentRevision: number,
     savedDocumentRevision: number,
     documentSessionStartedAt: number,
+    originalMapSource: OriginalMapSource | null = null,
   ): void {
     restoreRecoveredEditorMap(
       this,
@@ -990,6 +993,7 @@ export class Editor {
       documentRevision,
       savedDocumentRevision,
       documentSessionStartedAt,
+      originalMapSource,
     );
   }
 

@@ -91,7 +91,7 @@ async function init() {
   const vp3D = new Viewport3D(tdCanvas, editor);
 
   // Create UI
-  const ui = new UI(editor);
+  const ui = new UI(editor, recovery);
   if (recoveredDocument) {
     editor.statusMessage = editor.hasUnsavedChanges
       ? `Recovered unsaved changes to ${editor.fileName}`

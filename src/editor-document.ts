@@ -7,6 +7,43 @@ import {
   resetEditorStateAfterDocumentReplacement,
 } from './editor-transactions';
 
+export interface OriginalMapSource {
+  text: string;
+  revision: number;
+  unsupportedConstructs: Editor['unsupportedMapConstructs'];
+  hasComments: boolean;
+}
+
+export interface MapSaveSafety {
+  safe: boolean;
+  preservesOriginalText: boolean;
+  requiresReviewedExport: boolean;
+  reasons: string[];
+}
+
+export function analyzeMapSaveSafety(editor: Editor): MapSaveSafety {
+  const source = editor.originalMapSource;
+  if (!source) {
+    return { safe: true, preservesOriginalText: false, requiresReviewedExport: false, reasons: [] };
+  }
+  if (editor.documentRevision === source.revision) {
+    return { safe: true, preservesOriginalText: true, requiresReviewedExport: false, reasons: [] };
+  }
+  const reasons: string[] = [];
+  if (source.unsupportedConstructs.length > 0) {
+    reasons.push(`${source.unsupportedConstructs.length} unsupported map block${source.unsupportedConstructs.length === 1 ? '' : 's'} cannot be merged safely after editing`);
+  }
+  if (source.hasComments) {
+    reasons.push('source comments and formatting will be normalized');
+  }
+  return {
+    safe: reasons.length === 0,
+    preservesOriginalText: false,
+    requiresReviewedExport: reasons.length > 0,
+    reasons,
+  };
+}
+
 export function undo(editor: Editor): void {
   commitTransaction(editor);
   const previousRevision = editor.documentRevision;
@@ -34,6 +71,9 @@ export function redo(editor: Editor): void {
 }
 
 export function serializeMap(editor: Editor): string {
+  if (editor.originalMapSource?.revision === editor.documentRevision) {
+    return editor.originalMapSource.text;
+  }
   return serializeEntities(editor.entities);
 }
 
@@ -54,6 +94,12 @@ export function loadMap(editor: Editor, text: string): void {
   editor.clearHiddenState();
   editor.redrawRequested = true;
   editor.markDocumentSaved();
+  editor.originalMapSource = {
+    text,
+    revision: editor.documentRevision,
+    unsupportedConstructs: structuredClone(result.unsupportedConstructs),
+    hasComments: /(^|\n)\s*\/\//.test(text),
+  };
   editor.beginDocumentSession();
   editor.activityHistory.record({
     source: 'file',
@@ -90,11 +136,13 @@ export function restoreRecoveredMap(
   documentRevision: number,
   savedDocumentRevision: number,
   documentSessionStartedAt: number,
+  originalMapSource: OriginalMapSource | null = null,
 ): void {
   const result = parseMapWithDiagnostics(text);
   editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
   editor.mapDiagnostics = result.diagnostics;
   editor.unsupportedMapConstructs = result.unsupportedConstructs;
+  editor.originalMapSource = originalMapSource ? structuredClone(originalMapSource) : null;
   editor.fileName = fileName;
   editor.selection = [];
   editor.regionBounds = null;
@@ -112,6 +160,7 @@ export function newMap(editor: Editor): void {
   });
   editor.mapDiagnostics = [];
   editor.unsupportedMapConstructs = [];
+  editor.originalMapSource = null;
   editor.fileName = 'untitled.map';
   editor.selection = [];
   editor.regionBounds = null;
@@ -132,6 +181,21 @@ export function newMap(editor: Editor): void {
 }
 
 export function saveMapToFile(editor: Editor): void {
+  const safety = analyzeMapSaveSafety(editor);
+  if (safety.requiresReviewedExport) {
+    const constructs = editor.originalMapSource?.unsupportedConstructs
+      .map(construct => `• ${construct.keyword} at line ${construct.line}`)
+      .join('\n') ?? '';
+    const approved = globalThis.confirm?.(
+      `This map cannot be saved without normalizing source content:\n\n${safety.reasons.map(reason => `• ${reason}`).join('\n')}` +
+      `${constructs ? `\n\nAffected constructs:\n${constructs}` : ''}` +
+      '\n\nChoose OK to export the editable content without the unsupported source, or Cancel to keep the original intact.',
+    ) ?? false;
+    if (!approved) {
+      editor.statusMessage = 'Save cancelled to prevent map data loss';
+      return;
+    }
+  }
   const data = serializeMap(editor);
   const blob = new Blob([data], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
@@ -140,6 +204,13 @@ export function saveMapToFile(editor: Editor): void {
   link.download = editor.fileName;
   link.click();
   URL.revokeObjectURL(url);
+  editor.originalMapSource = {
+    text: data,
+    revision: editor.documentRevision,
+    unsupportedConstructs: [],
+    hasComments: /(^|\n)\s*\/\//.test(data),
+  };
+  editor.unsupportedMapConstructs = [];
   editor.markDocumentSaved();
   editor.statusMessage = `Saved ${editor.fileName}`;
   editor.activityHistory.record({
@@ -176,6 +247,7 @@ export function createDefaultMap(editor: Editor): void {
   editor.entities = [createWorldspawn()];
   editor.mapDiagnostics = [];
   editor.unsupportedMapConstructs = [];
+  editor.originalMapSource = null;
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();

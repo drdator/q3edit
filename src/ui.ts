@@ -34,6 +34,8 @@ import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live
 import { openMcpConnectionDialog } from './live-bridge/connection-dialog';
 import { openQuickPlayDialog } from './quick-play-dialog';
 import type { QuickPlayPreferences } from './preferences';
+import type { DocumentRecoveryService } from './document-recovery';
+import { openVersionHistoryDialog } from './version-history-dialog';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -96,6 +98,7 @@ export class UI {
   private gamePreviewClose: ((markClosed?: boolean) => void) | null = null;
   private gamePreviewListeners = new Set<() => void>();
   private readonly mcpActivity: McpActivityPanel;
+  private readonly recovery: DocumentRecoveryService | null;
   private mcpConnectionUrl: string | null = null;
   private mcpConnect: ((url: string) => void | Promise<void>) | null = null;
   private mcpDisconnect: (() => void) | null = null;
@@ -105,8 +108,9 @@ export class UI {
     renderer: null,
   };
 
-  constructor(editor: Editor) {
+  constructor(editor: Editor, recovery: DocumentRecoveryService | null = null) {
     this.editor = editor;
+    this.recovery = recovery;
     this.propertiesPanel = new PropertiesPanel(editor);
     this.mcpActivity = new McpActivityPanel({
       history: this.editor.activityHistory,
@@ -135,6 +139,9 @@ export class UI {
       managePakFiles: () => this.onManagePakFiles?.(),
       openPreferences: () => this.openPreferences(),
       openProjectSettings: () => this.openProjectSettings(),
+      openVersionHistory: () => {
+        if (this.recovery) openVersionHistoryDialog(this.recovery);
+      },
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),

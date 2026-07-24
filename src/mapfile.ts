@@ -177,7 +177,7 @@ function quoteMapString(value: string): string {
 
 function fmtNum(value: number): string {
   if (Number.isInteger(value)) return value.toString();
-  return value.toFixed(9).replace(/\.?0+$/, '');
+  return value.toFixed(12).replace(/\.?0+$/, '');
 }
 
 function defaultTerrainSurface(patch: Patch): TerrainDefSurface {
