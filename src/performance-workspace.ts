@@ -52,7 +52,7 @@ export function createPerformanceWorkspace(editor: Editor): HTMLElement {
   fixture.value = 'current';
   const run = document.createElement('button'); run.type = 'button'; run.className = 'btn primary'; run.textContent = 'Run benchmark';
   const exportButton = document.createElement('button'); exportButton.type = 'button'; exportButton.className = 'btn'; exportButton.textContent = 'Export report'; exportButton.disabled = true;
-  const status = document.createElement('span'); status.textContent = 'Benchmarks use generated maps and do not alter the current document.';
+  const status = document.createElement('span'); status.textContent = 'Benchmarks run on a detached map and do not alter the current document.';
   controls.append(fixture, run, exportButton, status);
   const results = document.createElement('div'); results.className = 'performance-results';
   let report: ComplexMapBenchmarkReport | null = null;
