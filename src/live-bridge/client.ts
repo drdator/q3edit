@@ -279,6 +279,7 @@ export class LiveMapBridge {
         preview.projectConfiguration = structuredClone(this.editor.projectConfiguration);
         preview.display = structuredClone(this.editor.display);
         const result = applyMapOperations(preview, message.operations, message.label);
+        this.editor.pendingReviewMapText = preview.serializeMap();
         const diagnostics = collectEditorDiagnostics(preview);
         const objects = result.created.map(ref => {
           const item = selectionForRef(preview, ref);

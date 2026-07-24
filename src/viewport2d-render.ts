@@ -115,9 +115,9 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
 function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
   const inspection = ctx.editor.compiledBspInspection;
   const mode = ctx.editor.compiledBspOverlay;
-  if (!inspection || mode === 'none') return;
+  if ((!inspection || mode === 'none') && ctx.editor.designReviewOverlayLines.length === 0) return;
   ctx.ctx.save();
-  if (mode === 'leaves' || mode === 'both' || mode === 'visible') {
+  if (inspection && (mode === 'leaves' || mode === 'both' || mode === 'visible')) {
     const cameraLeaf = mode === 'visible' ? leafAtPoint(inspection, ctx.editor.camera3d.position) : null;
     const visible = new Set(cameraLeaf && inspection.visibility
       ? inspection.visibility.visibleClusters(cameraLeaf.cluster)
@@ -131,7 +131,7 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
       ctx.ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     }
   }
-  if (mode === 'portals' || mode === 'both') {
+  if (inspection && (mode === 'portals' || mode === 'both')) {
     ctx.ctx.strokeStyle = 'rgba(255, 178, 64, 0.8)';
     ctx.ctx.fillStyle = 'rgba(255, 178, 64, 0.08)';
     ctx.ctx.lineWidth = 1.5;
@@ -147,6 +147,20 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
       ctx.ctx.fill();
       ctx.ctx.stroke();
     }
+  }
+  if (ctx.editor.designReviewOverlayLines.length > 0) {
+    ctx.ctx.strokeStyle = 'rgba(255, 176, 48, 0.9)';
+    ctx.ctx.lineWidth = 1.5;
+    ctx.ctx.beginPath();
+    for (let index = 0; index + 1 < ctx.editor.designReviewOverlayLines.length; index += 2) {
+      const first = ctx.editor.designReviewOverlayLines[index];
+      const second = ctx.editor.designReviewOverlayLines[index + 1];
+      const [x0, y0] = ctx.worldToScreen(first[ctx.axisH], first[ctx.axisV]);
+      const [x1, y1] = ctx.worldToScreen(second[ctx.axisH], second[ctx.axisV]);
+      ctx.ctx.moveTo(x0, y0);
+      ctx.ctx.lineTo(x1, y1);
+    }
+    ctx.ctx.stroke();
   }
   ctx.ctx.restore();
 }

@@ -335,6 +335,8 @@ export class Editor {
   originalMapSource: OriginalMapSource | null = null;
   compiledBspInspection: BspInspection | null = null;
   compiledBspOverlay: BspOverlayMode = 'none';
+  designReviewOverlayLines: Vec3[] = [];
+  pendingReviewMapText: string | null = null;
   documentRevision = 0;
   savedDocumentRevision = 0;
   documentSessionStartedAt = Date.now();

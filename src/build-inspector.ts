@@ -12,30 +12,9 @@ import type { BuildHistoryService } from './build-history';
 import type { StructuredCompilerDiagnostic } from './compile-diagnostics';
 import type { Editor } from './editor';
 import type { MapDocumentRef } from './map-operations';
+import { selectDocumentRef } from './document-navigation';
 
 type BuildTab = 'summary' | 'diagnostics' | 'bsp-vis' | 'lightmaps' | 'history';
-
-function selectRef(editor: Editor, ref: MapDocumentRef): boolean {
-  const match = /^E(\d+)(?::B(\d+)(?::F(\d+))?|:P(\d+))?$/.exec(ref);
-  if (!match) return false;
-  const entity = editor.entities[Number(match[1])];
-  if (!entity) return false;
-  if (match[4] !== undefined) {
-    const patch = entity.patches[Number(match[4])];
-    if (!patch) return false;
-    editor.selectPatchDirect(entity, patch);
-  } else if (match[2] !== undefined) {
-    const brush = entity.brushes[Number(match[2])];
-    if (!brush) return false;
-    if (match[3] !== undefined) {
-      const face = brush.faces[Number(match[3])];
-      if (!face) return false;
-      editor.selectFace(entity, brush, face);
-    } else editor.selectBrushDirect(entity, brush);
-  } else editor.selectEntity(entity);
-  editor.centerOnSelection();
-  return true;
-}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -117,7 +96,7 @@ function diagnosticList(editor: Editor, diagnostics: StructuredCompilerDiagnosti
     suggestion.textContent = diagnostic.suggestion;
     const refs = document.createElement('div');
     refs.className = 'build-diagnostic-refs';
-    for (const ref of diagnostic.refs.slice(0, 20)) refs.appendChild(button(ref, () => selectRef(editor, ref)));
+    for (const ref of diagnostic.refs.slice(0, 20)) refs.appendChild(button(ref, () => selectDocumentRef(editor, ref)));
     if (diagnostic.refs.length > 20) refs.append(`+${diagnostic.refs.length - 20} more`);
     row.append(heading, message, suggestion, refs);
     list.appendChild(row);

@@ -379,11 +379,14 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pointfileMarkerVerts), ctx.gl.DYNAMIC_DRAW);
   const pointfileMarkerCount = pointfileMarkerVerts.length / 3;
 
-  const bspOverlayVerts = bspOverlayLines(
+  const bspOverlayVerts = [
+    ...bspOverlayLines(
     ctx.editor.compiledBspInspection,
     ctx.editor.compiledBspOverlay,
     ctx.editor.camera3d.position,
-  ).flat();
+    ),
+    ...ctx.editor.designReviewOverlayLines,
+  ].flat();
   ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.bspOverlayVBO);
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(bspOverlayVerts), ctx.gl.DYNAMIC_DRAW);
   const bspOverlayCount = bspOverlayVerts.length / 3;

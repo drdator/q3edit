@@ -8,8 +8,9 @@ import {
   type EditorDiagnostic,
 } from './diagnostics';
 import type { Editor } from './editor';
+import { createDesignReviewWorkspace } from './design-review-workspace';
 
-export type DiagnosticsTab = 'map' | 'entities' | 'find' | 'brush-macros';
+export type DiagnosticsTab = 'map' | 'design-review' | 'entities' | 'find' | 'brush-macros';
 
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
   const result = document.createElement('button');
@@ -80,6 +81,8 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
       const classesTitle = document.createElement('summary'); classesTitle.textContent = `Entity class breakdown (${info.entityClasses.length})`; classes.appendChild(classesTitle);
       for (const item of info.entityClasses) { const row = document.createElement('div'); row.textContent = `${item.classname}: ${item.count}`; classes.appendChild(row); }
       content.append(summary, heading, list, classes);
+    } else if (activeTab === 'design-review') {
+      content.appendChild(createDesignReviewWorkspace(editor));
     } else if (activeTab === 'entities') {
       const list = document.createElement('div'); list.className = 'entity-info-list';
       for (const info of collectEntityInfo(editor, diagnostics)) {
@@ -127,7 +130,7 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
     }
   };
 
-  for (const [tab, label] of [['map', 'Map Info'], ['entities', 'Entity Info'], ['find', 'Find Brush'], ['brush-macros', 'Brush Macros']] as const) {
+  for (const [tab, label] of [['map', 'Map Info'], ['design-review', 'Design Review'], ['entities', 'Entity Info'], ['find', 'Find Brush'], ['brush-macros', 'Brush Macros']] as const) {
     const tabButton = button(label, () => { activeTab = tab; render(); });
     tabButton.id = `diagnostics-tab-${tab}`;
     tabButton.classList.add('diagnostics-tab');

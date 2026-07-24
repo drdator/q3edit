@@ -20,7 +20,7 @@ export interface EditorCommandContext {
   openVersionHistory?: () => void;
   openBuildHistory?: () => void;
   openReleasePackage?: () => void;
-  openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
+  openDiagnostics: (tab: 'map' | 'design-review' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
   openMcpConnection: () => void;

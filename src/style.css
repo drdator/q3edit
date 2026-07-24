@@ -2791,6 +2791,29 @@ body.sidepanel-resizing * {
 .release-dependency-list .base-game strong { color: var(--text-dim); }
 .release-package-entries > div { padding: 5px 8px; border-bottom: 1px solid var(--border-dark); }
 .release-package-body .success { color: var(--success); }
+
+.design-review-workspace { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.design-review-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; background: var(--panel); border-bottom: 1px solid var(--border-dark); }
+.design-review-controls select { min-width: 130px; }
+.design-review-checkbox { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); white-space: nowrap; }
+.design-review-checkbox input { accent-color: var(--accent); }
+.design-review-content { min-height: 0; overflow: auto; padding: 10px; }
+.design-review-summary { display: grid; grid-template-columns: repeat(6, minmax(80px, 1fr)); gap: 6px; margin-bottom: 10px; }
+.design-review-summary > div { display: flex; justify-content: space-between; gap: 8px; padding: 8px; background: var(--panel); border: 1px solid var(--border-dark); text-transform: capitalize; }
+.design-review-summary strong { color: var(--accent); }
+.design-review-detail { padding: 10px; background: var(--panel); border: 1px solid var(--border-dark); }
+.design-review-detail p + p { margin-top: 7px; }
+.design-review-findings { display: grid; gap: 6px; }
+.design-review-finding { padding: 9px 10px; background: var(--panel); border: 1px solid var(--border-dark); border-left: 3px solid var(--text-muted); }
+.design-review-finding.error { border-left-color: var(--danger); }
+.design-review-finding.warning { border-left-color: var(--accent); }
+.design-review-finding.info { border-left-color: #58a6d8; }
+.design-review-finding.acknowledged { opacity: 0.65; }
+.design-review-finding > div:first-child { display: flex; justify-content: space-between; gap: 12px; text-transform: capitalize; }
+.design-review-finding > p { margin: 6px 0; line-height: 1.4; }
+.design-review-finding-detail { color: var(--text-dim); }
+.design-review-finding-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.design-review-finding-actions .btn { padding: 3px 7px; }
 .build-history-list article { display: flex; flex-direction: column; gap: 2px; }
 .build-history-list span { color: var(--text-dim); }
 .build-history-dialog { display: flex; width: min(1100px, calc(100vw - 48px)); height: min(780px, calc(100vh - 48px)); flex-direction: column; }
