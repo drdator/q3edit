@@ -45,6 +45,13 @@ export interface MapParseResult {
 
 const AUTO_GENERATED_COMMENT = /^(brush|entity|patch) \d+$/;
 const GROUP_MEMBERSHIP_COMMENT = /^q3edit-group\s+(.+)$/;
+const OBJECT_ID_COMMENT = /^q3edit-id\s+(.+)$/;
+const FACE_ID_COMMENT = /^q3edit-face\s+(.+)$/;
+
+function decodeCommentValue(value: string): string {
+  try { return decodeURIComponent(value); }
+  catch { return value; }
+}
 
 class MapParser {
   private index = 0;
@@ -95,16 +102,18 @@ class MapParser {
     };
     let pendingComment: MapToken | undefined;
     let pendingGroupId: string | undefined;
+    let pendingObjectId: string | undefined;
 
     while (this.current().kind !== 'eof') {
       const token = this.current();
       if (token.kind === 'comment') {
         const membership = token.value.match(GROUP_MEMBERSHIP_COMMENT);
         if (membership) {
-          try { pendingGroupId = decodeURIComponent(membership[1]); }
-          catch { pendingGroupId = membership[1]; }
+          pendingGroupId = decodeCommentValue(membership[1]);
         } else {
-          pendingComment = token;
+          const objectId = token.value.match(OBJECT_ID_COMMENT);
+          if (objectId) pendingObjectId = decodeCommentValue(objectId[1]);
+          else pendingComment = token;
         }
         this.index++;
         continue;
@@ -116,6 +125,7 @@ class MapParser {
       if (token.kind === 'string') {
         pendingComment = undefined;
         pendingGroupId = undefined;
+        pendingObjectId = undefined;
         this.parseProperty(entity);
         continue;
       }
@@ -124,12 +134,15 @@ class MapParser {
           ? pendingComment.value
           : undefined;
         pendingComment = undefined;
-        this.parseEntityBlock(entity, brushName, pendingGroupId);
+        this.parseEntityBlock(entity, brushName, pendingGroupId, pendingObjectId);
         pendingGroupId = undefined;
+        pendingObjectId = undefined;
         continue;
       }
 
       pendingComment = undefined;
+      pendingGroupId = undefined;
+      pendingObjectId = undefined;
       this.report('warning', token, `Ignored unexpected entity content '${token.value}'`);
       this.skipLine(token.line);
     }
@@ -152,25 +165,43 @@ class MapParser {
     if (key.value === 'classname') entity.classname = value.value;
   }
 
-  private parseEntityBlock(entity: Entity, brushName?: string, editorGroupId?: string): void {
+  private parseEntityBlock(
+    entity: Entity,
+    brushName?: string,
+    editorGroupId?: string,
+    editorObjectId?: string,
+  ): void {
     const openIndex = this.index;
     const openingBrace = this.tokens[openIndex];
     const closeIndex = this.findClosingBrace(openIndex);
     this.index++;
-    this.skipComments();
+    let leadingFaceObjectId: string | undefined;
+    while (this.current().kind === 'comment') {
+      const faceId = this.current().value.match(FACE_ID_COMMENT);
+      if (faceId) leadingFaceObjectId = decodeCommentValue(faceId[1]);
+      this.index++;
+    }
     const marker = this.current();
 
     if (marker.kind === 'word' && marker.value === 'patchDef2') {
       this.index++;
       const patch = this.parsePatchDef2(closeIndex);
-      if (patch) { patch.editorGroupId = editorGroupId ?? patch.editorGroupId; entity.patches.push(patch); }
+      if (patch) {
+        patch.editorGroupId = editorGroupId ?? patch.editorGroupId;
+        patch.editorObjectId = editorObjectId;
+        entity.patches.push(patch);
+      }
       this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
       return;
     }
     if (marker.kind === 'word' && marker.value === 'terrainDef') {
       this.index++;
       const patch = this.parseTerrainDef(closeIndex);
-      if (patch) { patch.editorGroupId = editorGroupId; entity.patches.push(patch); }
+      if (patch) {
+        patch.editorGroupId = editorGroupId;
+        patch.editorObjectId = editorObjectId;
+        entity.patches.push(patch);
+      }
       this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
       return;
     }
@@ -180,6 +211,7 @@ class MapParser {
       if (brush) {
         if (brushName) brush.name = brushName;
         brush.editorGroupId = editorGroupId ?? brush.properties?._q3edit_group_id;
+        brush.editorObjectId = editorObjectId;
         entity.brushes.push(brush);
       }
       this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
@@ -200,19 +232,31 @@ class MapParser {
       return;
     }
 
-    const brush = this.parseClassicBrush(closeIndex, openingBrace);
+    const brush = this.parseClassicBrush(closeIndex, openingBrace, leadingFaceObjectId);
     if (brush) {
       if (brushName) brush.name = brushName;
       brush.editorGroupId = editorGroupId;
+      brush.editorObjectId = editorObjectId;
       entity.brushes.push(brush);
     }
     this.index = Math.min(closeIndex + 1, this.tokens.length - 1);
   }
 
-  private parseClassicBrush(closeIndex: number, openingBrace: MapToken): Brush | null {
+  private parseClassicBrush(
+    closeIndex: number,
+    openingBrace: MapToken,
+    leadingFaceObjectId?: string,
+  ): Brush | null {
     const faces: BrushFace[] = [];
+    let nextFaceObjectId = leadingFaceObjectId;
     while (this.index < closeIndex && this.current().kind !== 'eof') {
-      this.skipComments();
+      let editorObjectId = nextFaceObjectId;
+      nextFaceObjectId = undefined;
+      while (this.current().kind === 'comment') {
+        const faceId = this.current().value.match(FACE_ID_COMMENT);
+        if (faceId) editorObjectId = decodeCommentValue(faceId[1]);
+        this.index++;
+      }
       if (this.index >= closeIndex) break;
       const token = this.current();
       if (token.kind !== 'paren-open') {
@@ -221,7 +265,10 @@ class MapParser {
         continue;
       }
       const face = this.parseClassicFace(closeIndex);
-      if (face) faces.push(face);
+      if (face) {
+        face.editorObjectId = editorObjectId;
+        faces.push(face);
+      }
       else this.skipToNextFace(closeIndex);
     }
 
@@ -283,7 +330,12 @@ class MapParser {
     const properties: Record<string, string> = {};
 
     while (this.index < limit && this.current().kind !== 'eof') {
-      this.skipComments();
+      let editorObjectId: string | undefined;
+      while (this.current().kind === 'comment') {
+        const faceId = this.current().value.match(FACE_ID_COMMENT);
+        if (faceId) editorObjectId = decodeCommentValue(faceId[1]);
+        this.index++;
+      }
       const token = this.current();
       if (token.kind === 'brace-close') {
         this.index++;
@@ -308,7 +360,10 @@ class MapParser {
         continue;
       }
       const face = this.parseBrushDefFace(limit);
-      if (face) faces.push(face);
+      if (face) {
+        face.editorObjectId = editorObjectId;
+        faces.push(face);
+      }
       else this.skipLine(token.line);
     }
 

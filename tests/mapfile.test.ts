@@ -374,4 +374,29 @@ this is not a brush face
     expect(result.diagnostics).toEqual([]);
     expect(result.document.entities[0].properties.message).toBe(entity.properties.message);
   });
+
+  test('round-trips editor object identities without exposing them to the compiler', () => {
+    const entity = createEntity('worldspawn');
+    entity.properties._q3edit_object_id = 'entity-id';
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    brush.editorObjectId = 'brush-id';
+    brush.faces[0].editorObjectId = 'face-id';
+    const patch = createFlatPatch([0, 0, 64], [64, 64, 64], 'common/caulk');
+    patch.editorObjectId = 'patch-id';
+    entity.brushes.push(brush);
+    entity.patches.push(patch);
+
+    const editable = serializeMap([entity]);
+    const compiled = serializeMap([entity], { compilerSafe: true });
+    const reopened = parseMap(editable)[0];
+
+    expect(reopened.properties._q3edit_object_id).toBe('entity-id');
+    expect(reopened.brushes[0].editorObjectId).toBe('brush-id');
+    expect(reopened.brushes[0].faces[0].editorObjectId).toBe('face-id');
+    expect(reopened.patches[0].editorObjectId).toBe('patch-id');
+    expect(compiled).not.toContain('entity-id');
+    expect(compiled).not.toContain('brush-id');
+    expect(compiled).not.toContain('face-id');
+    expect(compiled).not.toContain('patch-id');
+  });
 });

@@ -1,4 +1,5 @@
 import type { Editor } from './editor';
+import { deduplicateEditorObjectIds } from './editor-object-ids';
 import { cloneMapSnapshot, type MapSnapshot } from './history';
 
 export interface TransactionOptions {
@@ -24,6 +25,7 @@ function documentsEqual(left: MapSnapshot, right: MapSnapshot): boolean {
 }
 
 export function resetEditorStateAfterDocumentReplacement(editor: Editor): void {
+  editor.invalidateSpatialIndex();
   editor.selection = [];
   editor.clearHiddenState();
   editor.vertexMode = false;
@@ -66,6 +68,7 @@ export function commitTransaction(editor: Editor): boolean {
   if (active.depth > 0) return false;
   activeTransactions.delete(editor);
 
+  deduplicateEditorObjectIds(editor.entities);
   if (!active.options.assumeChanged && documentsEqual(active.before, editor.entities)) return false;
 
   editor.history.recordSnapshot(active.before, active.beforeRevision, active.label, active.options);

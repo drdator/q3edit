@@ -44,7 +44,9 @@ describe('entity relationship analysis', () => {
 
     const result = analyzeEntityRelationships(editor);
     const bobbing = result.movements.find(item => item.classname === 'func_bobbing')!;
+    expect(bobbing.start.mins).toEqual([-64, 0, 0]);
     expect(bobbing.end.maxs).toEqual([96, 32, 32]);
+    expect(bobbing.note).toBe('64 unit amplitude (128 unit sweep)');
     const trainMovement = result.movements.find(item => item.classname === 'func_train')!;
     expect(trainMovement.note).toBe('2-point train path');
     expect(trainMovement.end.maxs[0]).toBeLessThan(1_000);

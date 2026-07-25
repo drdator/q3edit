@@ -250,7 +250,10 @@ export function removeSelectionFromNamedGroups(editor: Editor): void {
 
 export function selectNamedGroup(editor: Editor, id: string): void {
   const group = namedGroupForId(editor.entities, id);
-  if (group?.locked) { editor.statusMessage = `Group ${group.name} is locked`; return; }
+  if (groupStateInherited(editor.entities, group, 'locked')) {
+    editor.statusMessage = `Group ${group?.name ?? id} is locked`;
+    return;
+  }
   const selection: SelectionItem[] = [];
   for (const entity of editor.entities) {
     if (isGroupInfoEntity(entity)) continue;

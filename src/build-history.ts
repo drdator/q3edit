@@ -11,6 +11,7 @@ export interface BuildRecord {
   id: string;
   fileName: string;
   documentRevision: number;
+  compileSourceFingerprint?: string;
   quality: string;
   region: boolean;
   settings?: {
@@ -123,8 +124,11 @@ export class BuildHistoryService {
     for (const old of records.slice(this.limit)) await this.storage.remove(old.id);
   }
 
-  async previous(fileName: string, excludingId?: string): Promise<BuildRecord | null> {
-    return (await this.list(fileName)).find(record => record.id !== excludingId) ?? null;
+  async previous(fileName: string, currentId?: string): Promise<BuildRecord | null> {
+    const records = await this.list(fileName);
+    if (!currentId) return records[0] ?? null;
+    const currentIndex = records.findIndex(record => record.id === currentId);
+    return currentIndex >= 0 ? records[currentIndex + 1] ?? null : records[0] ?? null;
   }
 
   async clear(): Promise<void> {
@@ -134,4 +138,15 @@ export class BuildHistoryService {
   async remove(id: string): Promise<void> {
     await this.storage.remove(id);
   }
+}
+
+export function buildSourceFingerprint(source: string): string {
+  let first = 2166136261;
+  let second = 2246822519;
+  for (let index = 0; index < source.length; index++) {
+    const code = source.charCodeAt(index);
+    first = Math.imul(first ^ code, 16777619);
+    second = Math.imul(second ^ code, 3266489917);
+  }
+  return `${source.length.toString(36)}-${(first >>> 0).toString(36)}-${(second >>> 0).toString(36)}`;
 }

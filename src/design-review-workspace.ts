@@ -28,7 +28,7 @@ interface ReviewFinding {
   sourceSignature?: string;
 }
 
-interface ReviewRun {
+export interface ReviewRun {
   id: string;
   timestamp: number;
   revision: number;
@@ -37,6 +37,11 @@ interface ReviewRun {
   findings: ReviewFinding[];
   statistics: MapStatistics;
   routes: RouteLintResult;
+}
+
+export function precedingReviewRun(history: readonly ReviewRun[], activeId: string): ReviewRun | null {
+  const activeIndex = history.findIndex(item => item.id === activeId);
+  return activeIndex >= 0 ? history[activeIndex + 1] ?? null : null;
 }
 
 interface Suppression {
@@ -346,7 +351,7 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
       warning: activeRun.findings.filter(item => item.severity === 'warning').length,
       info: activeRun.findings.filter(item => item.severity === 'info').length,
     };
-    const previous = history.find(item => item.id !== activeRun!.id);
+    const previous = precedingReviewRun(history, activeRun.id);
     const previousKeys = new Set(previous?.findings.map(findingKey) ?? []);
     const currentKeys = new Set(activeRun.findings.map(findingKey));
     const summary = document.createElement('div');

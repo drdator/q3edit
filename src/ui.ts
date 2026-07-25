@@ -36,7 +36,7 @@ import { openQuickPlayDialog } from './quick-play-dialog';
 import type { QuickPlayPreferences } from './preferences';
 import type { DocumentRecoveryService } from './document-recovery';
 import { openVersionHistoryDialog } from './version-history-dialog';
-import { BuildHistoryService, type BuildRecord } from './build-history';
+import { buildSourceFingerprint, BuildHistoryService, type BuildRecord } from './build-history';
 import { parseBsp, type BspInspection } from './bsp-inspection';
 import { structureCompilerOutput } from './compile-diagnostics';
 import { createBuildInspector, openBuildHistoryDialog } from './build-inspector';
@@ -2753,6 +2753,7 @@ export class UI {
       const mapText = compileWithRegion
         ? this.editor.serializeRegionMap(true, true)
         : this.editor.serializeCompileMap();
+      const compiledDocumentRevision = this.editor.documentRevision;
 
       const compile = this.editor.projectConfiguration.compile;
       compileAbort = new AbortController();
@@ -2792,9 +2793,10 @@ export class UI {
       }
       const durationMs = Math.round(performance.now() - startedAt);
       const record: BuildRecord = {
-        id: `${startedAtEpoch}-${this.editor.documentRevision}`,
+        id: `${startedAtEpoch}-${compiledDocumentRevision}`,
         fileName: this.editor.fileName,
-        documentRevision: this.editor.documentRevision,
+        documentRevision: compiledDocumentRevision,
+        compileSourceFingerprint: buildSourceFingerprint(mapText),
         quality,
         region: compileWithRegion,
         settings: {

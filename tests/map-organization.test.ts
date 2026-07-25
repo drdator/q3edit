@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createBoxBrush } from '../src/brush';
 import { Editor } from '../src/editor';
+import { createEntity } from '../src/entity';
 import {
   applyObjectFilter,
   collectFilterObjects,
@@ -41,8 +42,8 @@ describe('large-map organization', () => {
 
     const data = readOrganization(editor);
     expect(data.selectionSets[0].name).toBe('Wall face');
-    expect(data.selectionSets[0].refs[0]).toMatch(/^E0:B0:F0@@/);
-    expect(data.visibilityPresets[0].hiddenRefs[0]).toMatch(/^E0:B0@@/);
+    expect(data.selectionSets[0].refs[0]).toMatch(/^OF:/);
+    expect(data.visibilityPresets[0].hiddenRefs[0]).toMatch(/^OB:/);
     expect(data.filterPresets[0].filter.texture).toBe('metal');
     expect(data.bookmarks[0].navigation.views2d.yz.zoom).toBe(9);
 
@@ -64,6 +65,58 @@ describe('large-map organization', () => {
     organization.restoreSelectionSet(readOrganization(editor).selectionSets[0]);
 
     expect(editor.selection).toEqual([{ type: 'brush', entity: editor.worldspawn, brush: saved }]);
+  });
+
+  it('keeps persistent selections attached after movement and same-class entity reordering', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    const first = createEntity('light', [0, 0, 64]);
+    const second = createEntity('light', [256, 0, 64]);
+    editor.worldspawn.brushes.push(brush);
+    editor.entities.push(first, second);
+    const organization = controller(editor);
+
+    editor.selection = [{ type: 'brush', entity: editor.worldspawn, brush }];
+    organization.saveSelectionSet('Moving brush');
+    editor.moveSelection([128, 0, 0]);
+    editor.selection = [];
+    organization.restoreSelectionSet(readOrganization(editor).selectionSets[0]);
+    expect(editor.selection).toEqual([{ type: 'brush', entity: editor.worldspawn, brush }]);
+
+    editor.duplicateSelection();
+    const duplicate = editor.selection[0];
+    expect(duplicate?.type === 'brush' ? duplicate.brush.editorObjectId : null)
+      .not.toBe(brush.editorObjectId);
+    editor.selection = [];
+    organization.restoreSelectionSet(readOrganization(editor).selectionSets[0]);
+    expect(editor.selection).toEqual([{ type: 'brush', entity: editor.worldspawn, brush }]);
+
+    editor.selection = [{ type: 'entity', entity: second }];
+    organization.saveSelectionSet('Second light');
+    editor.entities.splice(1, 2, second, first);
+    editor.selection = [];
+    organization.restoreSelectionSet(readOrganization(editor).selectionSets[1]);
+    expect(editor.selection).toEqual([{ type: 'entity', entity: second }]);
+  });
+
+  it('preserves persistent face references through map serialization', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    editor.worldspawn.brushes.push(brush);
+    editor.selection = [{ type: 'face', entity: editor.worldspawn, brush, face: brush.faces[2] }];
+    controller(editor).saveSelectionSet('Serialized face');
+
+    const reopened = new Editor();
+    reopened.loadMap(editor.serializeMap());
+    const organization = controller(reopened);
+    organization.restoreSelectionSet(readOrganization(reopened).selectionSets[0]);
+
+    expect(reopened.selection).toEqual([{
+      type: 'face',
+      entity: reopened.worldspawn,
+      brush: reopened.worldspawn.brushes[0],
+      face: reopened.worldspawn.brushes[0].faces[2],
+    }]);
   });
 
   it('filters objects with AND/OR semantics and aggregate object kinds', () => {
@@ -95,5 +148,13 @@ describe('large-map organization', () => {
     expect(brush.editorGroupId).toBe(child.id);
     expect(isObjectInHiddenGroup(editor, brush, editor.worldspawn)).toBe(true);
     expect(editor.worldspawn.brushes).toContain(brush);
+    expect(collectFilterObjects(editor).find(item => item.kind === 'brush')?.visible).toBe(false);
+
+    editor.setNamedGroupHidden(parent.id, false);
+    editor.setNamedGroupLocked(parent.id, true);
+    editor.selection = [];
+    editor.selectNamedGroup(child.id);
+    expect(editor.selection).toEqual([]);
+    expect(editor.statusMessage).toContain('locked');
   });
 });

@@ -1,5 +1,4 @@
-import type { BuildHistoryService } from './build-history';
-import type { BuildRecord } from './build-history';
+import { buildSourceFingerprint, type BuildHistoryService, type BuildRecord } from './build-history';
 import type { Editor } from './editor';
 import {
   buildReleasePackage,
@@ -95,8 +94,16 @@ function button(label: string, action: () => void): HTMLButtonElement {
   return result;
 }
 
-export function selectReleaseBuild(builds: readonly BuildRecord[], documentRevision: number): BuildRecord | null {
-  return builds.find(record => record.success && record.bsp && record.documentRevision === documentRevision) ?? null;
+export function selectReleaseBuild(
+  builds: readonly BuildRecord[],
+  documentRevision: number,
+  compileSourceFingerprint?: string,
+): BuildRecord | null {
+  return builds.find(record =>
+    record.success && record.bsp && !record.region &&
+    (record.compileSourceFingerprint !== undefined
+      ? compileSourceFingerprint !== undefined && record.compileSourceFingerprint === compileSourceFingerprint
+      : record.documentRevision === documentRevision)) ?? null;
 }
 
 function base64Bytes(data: string): Uint8Array {
@@ -151,12 +158,12 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   const { editor, textureManager, buildHistory } = options;
   const mapName = editor.fileName.replace(/\.map$/i, '').replace(/[^a-zA-Z0-9_-]/g, '') || 'release';
   const builds = await buildHistory.list(editor.fileName);
-  const build = selectReleaseBuild(builds, editor.documentRevision);
-  const staleBuild = builds.find(record => record.success && record.bsp) ?? null;
+  const compileFingerprint = buildSourceFingerprint(editor.serializeCompileMap());
+  const build = selectReleaseBuild(builds, editor.documentRevision, compileFingerprint);
+  const staleBuild = builds.find(record => record.success && record.bsp && !record.region) ?? null;
   const stored = readStored(editor, mapName);
   let levelshot: Uint8Array | null = null;
   let levelshotExtension: 'png' | 'jpg' = 'png';
-  let packageResult: ReleasePackageResult | null = null;
 
   const overlay = document.createElement('div');
   overlay.id = 'release-package-dialog';
@@ -303,7 +310,7 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
     if (!build?.bsp) return null;
     saveMetadata();
     try {
-      packageResult = buildReleasePackage({
+      const packageResult = buildReleasePackage({
         mapName,
         bsp: build.bsp,
         aas: build.aas,
@@ -332,7 +339,6 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
       });
       return packageResult;
     } catch (error) {
-      packageResult = null;
       packageStatus.textContent = error instanceof Error ? error.message : String(error);
       packageStatus.className = 'error';
       return null;
@@ -342,12 +348,12 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
   const playButton = button('Quick Play Package', () => {
-    const result = packageResult ?? buildPackage();
+    const result = buildPackage();
     if (result && build?.bsp) options.playPackage(mapName, build.bsp, build.aas, result.pk3);
   });
   playButton.disabled = !build;
   const reportButton = button('Export Report', () => {
-    const result = packageResult ?? buildPackage();
+    const result = buildPackage();
     if (result) download(JSON.stringify(result.report, null, 2), `${mapName}-package-report.json`, 'application/json');
   });
   reportButton.disabled = !build;

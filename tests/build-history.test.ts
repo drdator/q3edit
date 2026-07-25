@@ -38,5 +38,8 @@ describe('build history', () => {
     await history.add(record('previous', 1));
     expect((await history.list('map.map')).map(item => item.id)).toEqual(['current', 'previous']);
     expect((await history.previous('map.map', 'current'))?.id).toBe('previous');
+
+    await history.add(record('newest', 4));
+    expect((await history.previous('map.map', 'current'))?.id).toBe('previous');
   });
 });

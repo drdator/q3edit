@@ -127,8 +127,17 @@ function movementPreview(editor: Editor, entity: Entity, ref: string): EntityMov
     const height = finite(entity.properties.height, 32);
     const flags = finite(entity.properties.spawnflags, 0);
     const axis = flags & 1 ? 0 : flags & 2 ? 1 : 2;
-    delta[axis] = height;
-    note = `${height} unit bobbing range`;
+    const negative = bounds.mins.map((value, currentAxis) => value - (currentAxis === axis ? height : 0)) as Vec3;
+    const negativeMaxs = bounds.maxs.map((value, currentAxis) => value - (currentAxis === axis ? height : 0)) as Vec3;
+    const positive = bounds.mins.map((value, currentAxis) => value + (currentAxis === axis ? height : 0)) as Vec3;
+    const positiveMaxs = bounds.maxs.map((value, currentAxis) => value + (currentAxis === axis ? height : 0)) as Vec3;
+    return {
+      ref,
+      classname: entity.classname,
+      start: { mins: negative, maxs: negativeMaxs },
+      end: { mins: positive, maxs: positiveMaxs },
+      note: `${height} unit amplitude (${height * 2} unit sweep)`,
+    };
   } else if (entity.classname === 'func_rotating') {
     note = 'Rotating swept bounds (conservative)';
     const center = entityDisplayOrigin(entity) ?? bounds.mins.map((value, axis) => (value + bounds.maxs[axis]) / 2) as Vec3;

@@ -28,6 +28,8 @@ export interface DocumentHistoryAuxiliary {
   originalMapSource: OriginalMapSource | null;
   mapDiagnostics: Editor['mapDiagnostics'];
   unsupportedMapConstructs: Editor['unsupportedMapConstructs'];
+  savedDocumentRevision: number;
+  documentSessionStartedAt: number;
 }
 
 export function captureDocumentHistoryAuxiliary(editor: Editor): DocumentHistoryAuxiliary {
@@ -36,6 +38,8 @@ export function captureDocumentHistoryAuxiliary(editor: Editor): DocumentHistory
     originalMapSource: editor.originalMapSource ? structuredClone(editor.originalMapSource) : null,
     mapDiagnostics: structuredClone(editor.mapDiagnostics),
     unsupportedMapConstructs: structuredClone(editor.unsupportedMapConstructs),
+    savedDocumentRevision: editor.savedDocumentRevision,
+    documentSessionStartedAt: editor.documentSessionStartedAt,
   };
 }
 
@@ -46,6 +50,20 @@ function restoreDocumentHistoryAuxiliary(editor: Editor, value: unknown): void {
   editor.originalMapSource = auxiliary.originalMapSource ? structuredClone(auxiliary.originalMapSource) : null;
   editor.mapDiagnostics = structuredClone(auxiliary.mapDiagnostics);
   editor.unsupportedMapConstructs = structuredClone(auxiliary.unsupportedMapConstructs);
+  editor.savedDocumentRevision = auxiliary.savedDocumentRevision;
+  editor.documentSessionStartedAt = auxiliary.documentSessionStartedAt;
+}
+
+const pendingMapLoads = new WeakMap<Editor, number>();
+
+function beginMapLoad(editor: Editor): number {
+  const request = (pendingMapLoads.get(editor) ?? 0) + 1;
+  pendingMapLoads.set(editor, request);
+  return request;
+}
+
+function invalidatePendingMapLoad(editor: Editor): void {
+  beginMapLoad(editor);
 }
 
 function parseMapInWorker(text: string): Promise<ParsedMapResult> {
@@ -135,10 +153,12 @@ export function serializeCompileMap(editor: Editor): string {
   return serializeEntities(editor.entities, { compilerSafe: true });
 }
 
-function applyParsedMap(editor: Editor, text: string, result: ParsedMapResult): void {
+function applyParsedMap(editor: Editor, text: string, result: ParsedMapResult, fileName?: string): void {
+  const auxiliary = captureDocumentHistoryAuxiliary(editor);
   editor.transact('Open map', () => {
     editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
-  });
+  }, { auxiliary, assumeChanged: true });
+  if (fileName) editor.fileName = fileName;
   editor.mapDiagnostics = result.diagnostics;
   editor.unsupportedMapConstructs = result.unsupportedConstructs;
   editor.selection = [];
@@ -183,12 +203,26 @@ function applyParsedMap(editor: Editor, text: string, result: ParsedMapResult): 
 }
 
 export function loadMap(editor: Editor, text: string): void {
+  invalidatePendingMapLoad(editor);
   applyParsedMap(editor, text, parseMapWithDiagnostics(text));
 }
 
-export async function loadMapAsync(editor: Editor, text: string): Promise<void> {
+async function loadMapAsyncForRequest(
+  editor: Editor,
+  text: string,
+  request: number,
+  fileName?: string,
+): Promise<boolean> {
+  if (pendingMapLoads.get(editor) !== request) return false;
   editor.statusMessage = 'Parsing map in background…';
-  applyParsedMap(editor, text, await parseMapInWorker(text));
+  const result = await parseMapInWorker(text);
+  if (pendingMapLoads.get(editor) !== request) return false;
+  applyParsedMap(editor, text, result, fileName);
+  return true;
+}
+
+export async function loadMapAsync(editor: Editor, text: string, fileName?: string): Promise<boolean> {
+  return loadMapAsyncForRequest(editor, text, beginMapLoad(editor), fileName);
 }
 
 export function restoreRecoveredMap(
@@ -200,6 +234,7 @@ export function restoreRecoveredMap(
   documentSessionStartedAt: number,
   originalMapSource: OriginalMapSource | null = null,
 ): void {
+  invalidatePendingMapLoad(editor);
   const result = parseMapWithDiagnostics(text);
   editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
   editor.mapDiagnostics = result.diagnostics;
@@ -217,9 +252,11 @@ export function restoreRecoveredMap(
 }
 
 export function newMap(editor: Editor): void {
+  invalidatePendingMapLoad(editor);
+  const auxiliary = captureDocumentHistoryAuxiliary(editor);
   editor.transact('New map', () => {
     editor.entities = [createWorldspawn()];
-  });
+  }, { auxiliary, assumeChanged: true });
   editor.mapDiagnostics = [];
   editor.unsupportedMapConstructs = [];
   editor.originalMapSource = null;
@@ -293,12 +330,17 @@ export function openMapFromFile(editor: Editor): void {
   input.onchange = () => {
     const file = input.files?.[0];
     if (!file) return;
-    editor.fileName = file.name;
+    const request = beginMapLoad(editor);
     const reader = new FileReader();
     reader.onload = () => {
-      void loadMapAsync(editor, reader.result as string).catch(error => {
+      void loadMapAsyncForRequest(editor, reader.result as string, request, file.name).catch(error => {
+        if (pendingMapLoads.get(editor) !== request) return;
         editor.statusMessage = `Could not open map: ${error instanceof Error ? error.message : String(error)}`;
       });
+    };
+    reader.onerror = () => {
+      if (pendingMapLoads.get(editor) !== request) return;
+      editor.statusMessage = `Could not read ${file.name}`;
     };
     reader.readAsText(file);
   };
@@ -336,6 +378,7 @@ export function createDefaultMap(editor: Editor): void {
   light.properties['light'] = '300';
   editor.entities.push(light);
 
+  editor.invalidateSpatialIndex();
   editor.redrawRequested = true;
   editor.statusMessage = 'Default map created';
 }

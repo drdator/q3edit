@@ -1073,6 +1073,11 @@ export class Editor {
     yield* iterateNonWorldspawnEntities(this);
   }
 
+  invalidateSpatialIndex(): void {
+    this.cachedSpatialIndex = null;
+    this.cachedSpatialIndexRevision = -1;
+  }
+
   spatialIndex(): MapSpatialIndex {
     if (!this.cachedSpatialIndex || this.cachedSpatialIndexRevision !== this.documentRevision || hasActiveEditorTransaction(this)) {
       this.cachedSpatialIndex = new MapSpatialIndex(this);
