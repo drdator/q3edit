@@ -398,6 +398,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tools.reload-assets', label: 'Reload Assets', menu: menu('Tools', 290, 'assets'), enabled: ctx => !!ctx.reloadAssets, execute: ctx => ctx.reloadAssets?.() },
 
     { id: 'texture.fit', label: 'Fit Texture', defaultShortcut: 'Mod+Shift+F', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture() },
+    { id: 'texture.fit-width', label: 'Fit Texture Width', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture('width') },
+    { id: 'texture.fit-height', label: 'Fit Texture Height', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture('height') },
     { id: 'texture.reset', label: 'Reset Texture Alignment', defaultShortcut: 'Mod+Shift+N', enabled: hasSelectedFaces, execute: ({ editor }) => editor.resetTextureAlignment() },
     { id: 'texture.rotate-positive', label: 'Rotate Texture Clockwise', defaultShortcut: 'Shift+PageUp', enabled: hasSelectedFaces, execute: ({ editor }) => editor.rotateTexture(15) },
     { id: 'texture.rotate-positive-fine', label: 'Rotate Texture Clockwise (Fine)', defaultShortcut: 'Mod+Shift+PageUp', enabled: hasSelectedFaces, execute: ({ editor }) => editor.rotateTexture(1) },

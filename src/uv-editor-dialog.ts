@@ -252,6 +252,8 @@ export function openUvEditorDialog(editor: Editor): void {
   actions.append(
     button('Reset', () => { editor.resetTextureAlignment(); draw(); }),
     button('Fit', () => { editor.fitTexture(); draw(); }),
+    button('Fit Width', () => { editor.fitTexture('width'); draw(); }),
+    button('Fit Height', () => { editor.fitTexture('height'); draw(); }),
     button('Close', close, true),
   );
   dialog.append(title, description, body, actions);
