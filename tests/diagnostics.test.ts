@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createBoxBrush } from '../src/brush';
 import {
+  applyDiagnosticFixes,
   brushId,
   collectEditorDiagnostics,
   collectEntityInfo,
@@ -8,6 +9,7 @@ import {
   documentObjectReferences,
   findDocumentObject,
   navigateToDiagnostic,
+  type EditorDiagnostic,
 } from '../src/diagnostics';
 import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
@@ -84,5 +86,53 @@ describe('map diagnostics', () => {
     expect(editor.selection[0]).toMatchObject({ type: 'brush', brush });
     expect(center).toHaveBeenCalled();
     expect(editor.history.canUndo).toBe(false);
+  });
+
+  it('applies safe fixes together as one undoable transaction', () => {
+    const editor = new Editor();
+    const world = createEntity('worldspawn');
+    const light = createEntity('light');
+    light.properties.classname = 'wrong';
+    light.properties.origin = 'invalid';
+    light.properties.target = 'missing';
+    light.brushes.push(createBoxBrush([0, 0, 0], [16, 16, 16], 'missing/wall'));
+    editor.entities = [world, light];
+    editor.textureManager = {
+      hasTextureSource: (texture: string) => texture === 'common/caulk',
+    } as unknown as Editor['textureManager'];
+
+    const fixes = collectEditorDiagnostics(editor).filter(diagnostic => diagnostic.fix && !diagnostic.fix.destructive);
+    const result = applyDiagnosticFixes(editor, fixes);
+
+    expect(result.fixed).toBe(4);
+    expect(light.properties.classname).toBe('light');
+    expect(light.properties.origin).toBe('0 0 0');
+    expect(light.properties.target).toBeUndefined();
+    expect(light.brushes[0].faces.every(face => face.texture === 'common/caulk')).toBe(true);
+    expect(editor.history.undoCount).toBe(1);
+    editor.undo();
+    expect(editor.entities[1].properties.classname).toBe('wrong');
+    expect(editor.entities[1].properties.origin).toBe('invalid');
+    expect(editor.entities[1].properties.target).toBe('missing');
+  });
+
+  it('deletes multiple invalid objects using their original references', () => {
+    const editor = new Editor();
+    const world = createEntity('worldspawn');
+    world.brushes.push(
+      createBoxBrush([0, 0, 0], [16, 16, 16]),
+      createBoxBrush([32, 0, 0], [48, 16, 16]),
+    );
+    editor.entities = [world];
+    const diagnostics: EditorDiagnostic[] = [0, 1].map(brushIndex => ({
+      severity: 'error',
+      code: 'invalid-brush',
+      message: 'Invalid',
+      target: { kind: 'brush', entityIndex: 0, brushIndex },
+      fix: { kind: 'delete-brush', label: 'Delete invalid brush', destructive: true },
+    }));
+
+    expect(applyDiagnosticFixes(editor, diagnostics).fixed).toBe(2);
+    expect(world.brushes).toHaveLength(0);
   });
 });

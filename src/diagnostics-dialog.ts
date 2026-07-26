@@ -3,6 +3,7 @@ import {
   collectEditorDiagnostics,
   collectEntityInfo,
   collectMapInfo,
+  applyDiagnosticFixes,
   findDocumentObject,
   navigateToDiagnostic,
   type EditorDiagnostic,
@@ -11,6 +12,7 @@ import type { Editor } from './editor';
 import { createDesignReviewWorkspace } from './design-review-workspace';
 import { createEntityRelationshipWorkspace } from './entity-relationship-workspace';
 import { createPerformanceWorkspace } from './performance-workspace';
+import { saveProjectConfiguration } from './project-config';
 
 export type DiagnosticsTab = 'map' | 'design-review' | 'entity-logic' | 'performance' | 'entities' | 'find' | 'brush-macros';
 
@@ -32,14 +34,36 @@ function chooseFile(): Promise<string | null> {
   });
 }
 
-function diagnosticRow(editor: Editor, diagnostic: EditorDiagnostic): HTMLElement {
-  const row = document.createElement(diagnostic.target ? 'button' : 'div');
+function diagnosticRow(
+  editor: Editor,
+  diagnostic: EditorDiagnostic,
+  selected: Set<EditorDiagnostic>,
+  onSelectionChange: () => void,
+  onMute: () => void,
+): HTMLElement {
+  const row = document.createElement('div');
   row.className = `diagnostic-row ${diagnostic.severity}`;
   const severity = document.createElement('span'); severity.className = 'diagnostic-severity'; severity.textContent = diagnostic.severity;
   const message = document.createElement('span');
   message.textContent = `${diagnostic.message}${diagnostic.line ? ` (line ${diagnostic.line}:${diagnostic.column})` : ''}`;
-  row.append(severity, message);
-  if (row instanceof HTMLButtonElement) row.onclick = () => navigateToDiagnostic(editor, diagnostic);
+  const actions = document.createElement('span');
+  actions.className = 'diagnostic-row-actions';
+  if (diagnostic.fix) {
+    const choose = document.createElement('input');
+    choose.type = 'checkbox';
+    choose.checked = selected.has(diagnostic);
+    choose.title = diagnostic.fix.label;
+    choose.setAttribute('aria-label', `Select fix: ${diagnostic.fix.label}`);
+    choose.onchange = () => {
+      if (choose.checked) selected.add(diagnostic);
+      else selected.delete(diagnostic);
+      onSelectionChange();
+    };
+    actions.append(choose);
+  }
+  if (diagnostic.target) actions.append(button('Locate', () => navigateToDiagnostic(editor, diagnostic)));
+  actions.append(button('Mute type', onMute));
+  row.append(severity, message, actions);
   return row;
 }
 
@@ -53,6 +77,7 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
   const tabs = document.createElement('div'); tabs.className = 'diagnostics-tabs';
   tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Diagnostics views');
   const content = document.createElement('div'); content.id = 'diagnostics-content'; content.className = 'diagnostics-content'; content.setAttribute('role', 'tabpanel');
+  const selectedFixes = new Set<EditorDiagnostic>();
 
   const render = () => {
     content.innerHTML = '';
@@ -68,7 +93,10 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
       element.setAttribute('aria-selected', String(selected));
       element.tabIndex = selected ? 0 : -1;
     }
-    const diagnostics = collectEditorDiagnostics(editor);
+    const allDiagnostics = collectEditorDiagnostics(editor);
+    const mutedCodes = new Set(editor.projectConfiguration.diagnostics.mutedCodes);
+    const diagnostics = allDiagnostics.filter(diagnostic => !mutedCodes.has(diagnostic.code));
+    for (const selected of selectedFixes) if (!diagnostics.includes(selected)) selectedFixes.delete(selected);
     if (activeTab === 'map') {
       const info = collectMapInfo(editor, diagnostics);
       const summary = document.createElement('div'); summary.className = 'diagnostics-summary';
@@ -83,10 +111,57 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
       const list = document.createElement('div'); list.className = 'diagnostics-list';
       if (diagnostics.length === 0) { const empty = document.createElement('p'); empty.textContent = 'No issues found.'; list.appendChild(empty); }
       else {
-        for (const diagnostic of diagnostics.slice(0, 500)) list.appendChild(diagnosticRow(editor, diagnostic));
+        const fixBar = document.createElement('div');
+        fixBar.className = 'diagnostic-fix-bar';
+        const fixStatus = document.createElement('span');
+        const updateFixStatus = () => {
+          fixStatus.textContent = `${selectedFixes.size} ${selectedFixes.size === 1 ? 'fix' : 'fixes'} selected`;
+          applySelected.disabled = selectedFixes.size === 0;
+        };
+        const applySelected = button('Apply selected fixes', () => {
+          applyDiagnosticFixes(editor, [...selectedFixes]);
+          selectedFixes.clear();
+          render();
+        }, true);
+        const selectSafe = button('Select safe fixes', () => {
+          for (const diagnostic of diagnostics) {
+            if (diagnostic.fix && !diagnostic.fix.destructive) selectedFixes.add(diagnostic);
+          }
+          render();
+        });
+        fixBar.append(fixStatus, selectSafe, applySelected);
+        updateFixStatus();
+        list.append(fixBar);
+        for (const diagnostic of diagnostics.slice(0, 500)) {
+          list.appendChild(diagnosticRow(editor, diagnostic, selectedFixes, updateFixStatus, () => {
+            if (!editor.projectConfiguration.diagnostics.mutedCodes.includes(diagnostic.code)) {
+              editor.projectConfiguration.diagnostics.mutedCodes.push(diagnostic.code);
+              saveProjectConfiguration(editor.projectConfiguration);
+            }
+            render();
+          }));
+        }
         if (diagnostics.length > 500) list.appendChild(Object.assign(document.createElement('p'), {
           textContent: `${diagnostics.length - 500} additional diagnostics omitted from this view. Use the filters and source-linked review workspaces to narrow the result.`,
         }));
+      }
+      if (mutedCodes.size > 0) {
+        const muted = document.createElement('details');
+        const mutedTitle = document.createElement('summary');
+        mutedTitle.textContent = `Muted issue types (${mutedCodes.size})`;
+        muted.append(mutedTitle);
+        for (const code of [...mutedCodes].sort()) {
+          const row = document.createElement('div');
+          row.className = 'diagnostic-muted-row';
+          row.append(code, button('Unmute', () => {
+            editor.projectConfiguration.diagnostics.mutedCodes =
+              editor.projectConfiguration.diagnostics.mutedCodes.filter(item => item !== code);
+            saveProjectConfiguration(editor.projectConfiguration);
+            render();
+          }));
+          muted.append(row);
+        }
+        list.append(muted);
       }
       const classes = document.createElement('details');
       const classesTitle = document.createElement('summary'); classesTitle.textContent = `Entity class breakdown (${info.entityClasses.length})`; classes.appendChild(classesTitle);

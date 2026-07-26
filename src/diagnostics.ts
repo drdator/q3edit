@@ -12,6 +12,13 @@ export type DiagnosticTarget =
   | { kind: 'brush'; entityIndex: number; brushIndex: number }
   | { kind: 'patch'; entityIndex: number; patchIndex: number };
 
+export interface EditorDiagnosticFix {
+  kind: 'sync-classname' | 'reset-origin' | 'remove-target' | 'remove-model' |
+    'replace-missing-texture' | 'delete-brush' | 'delete-patch';
+  label: string;
+  destructive?: boolean;
+}
+
 export interface EditorDiagnostic {
   severity: DiagnosticSeverity;
   code: string;
@@ -19,6 +26,7 @@ export interface EditorDiagnostic {
   target?: DiagnosticTarget;
   line?: number;
   column?: number;
+  fix?: EditorDiagnosticFix;
 }
 
 export interface MapInfo {
@@ -130,14 +138,26 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
     if (!entity.classname.trim()) result.push({ severity: 'error', code: 'missing-classname', message: `${entityId(entityIndex)} has no classname`, target });
     else if (entity.classname !== 'worldspawn' && !isGroupInfoEntity(entity) && !getEntityClassRegistry().get(entity.classname)) result.push({ severity: 'info', code: 'unknown-class', message: `${entityId(entityIndex)} uses undocumented class ${entity.classname}`, target });
     if (entity.properties.classname !== entity.classname) {
-      result.push({ severity: 'warning', code: 'classname-mismatch', message: `${entityId(entityIndex)} classname property does not match its class`, target });
+      result.push({
+        severity: 'warning', code: 'classname-mismatch',
+        message: `${entityId(entityIndex)} classname property does not match its class`, target,
+        fix: { kind: 'sync-classname', label: 'Sync classname' },
+      });
     }
     if (entity.properties.origin && !entityOrigin(entity)) {
-      result.push({ severity: 'error', code: 'invalid-origin', message: `${entityId(entityIndex)} has invalid origin '${entity.properties.origin}'`, target });
+      result.push({
+        severity: 'error', code: 'invalid-origin',
+        message: `${entityId(entityIndex)} has invalid origin '${entity.properties.origin}'`, target,
+        fix: { kind: 'reset-origin', label: 'Reset origin' },
+      });
     }
     const linkedTarget = entity.properties.target?.trim();
     if (linkedTarget && !targetOwners.has(linkedTarget)) {
-      result.push({ severity: 'warning', code: 'broken-target', message: `${entityId(entityIndex)} targets missing '${linkedTarget}'`, target });
+      result.push({
+        severity: 'warning', code: 'broken-target',
+        message: `${entityId(entityIndex)} targets missing '${linkedTarget}'`, target,
+        fix: { kind: 'remove-target', label: 'Remove broken target' },
+      });
     }
 
     entity.brushes.forEach((brush, brushIndex) => {
@@ -145,12 +165,14 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
       if (!validation.valid) result.push({
         severity: 'error', code: 'invalid-brush', target: { kind: 'brush', entityIndex, brushIndex },
         message: `${brushId(entityIndex, brushIndex)} is invalid: ${validation.issues.join('; ')}`,
+        fix: { kind: 'delete-brush', label: 'Delete invalid brush', destructive: true },
       });
       if (editor.textureManager) {
         for (const texture of new Set(brush.faces.map(face => face.texture))) {
           if (!editor.textureManager.hasTextureSource(texture)) result.push({
             severity: 'warning', code: 'missing-texture', target: { kind: 'brush', entityIndex, brushIndex },
             message: `${brushId(entityIndex, brushIndex)} uses missing texture ${texture}`,
+            fix: { kind: 'replace-missing-texture', label: 'Replace missing with caulk' },
           });
         }
       }
@@ -161,11 +183,13 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
         if (!validation.valid) result.push({
           severity: 'error', code: 'invalid-terrain', target: { kind: 'patch', entityIndex, patchIndex },
           message: `E${entityIndex}:P${patchIndex} has invalid terrain data: ${validation.issues.join('; ')}`,
+          fix: { kind: 'delete-patch', label: 'Delete invalid patch', destructive: true },
         });
       }
       if (editor.textureManager && !editor.textureManager.hasTextureSource(patch.texture)) result.push({
         severity: 'warning', code: 'missing-texture', target: { kind: 'patch', entityIndex, patchIndex },
         message: `E${entityIndex}:P${patchIndex} uses missing texture ${patch.texture}`,
+        fix: { kind: 'replace-missing-texture', label: 'Replace missing with caulk' },
       });
     });
 
@@ -173,6 +197,7 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
     if (requestedModel && editor.modelManager && !editor.modelManager.resolveEntity(entity)) {
       result.push({
         severity: 'warning', code: 'missing-model', message: `${entityId(entityIndex)} cannot load model ${requestedModel}`, target,
+        ...(entity.properties.model ? { fix: { kind: 'remove-model', label: 'Remove missing model' } as EditorDiagnosticFix } : {}),
       });
     }
   });
@@ -184,6 +209,69 @@ export function collectEditorDiagnostics(editor: Editor): EditorDiagnostic[] {
     diagnostics: result,
   });
   return result;
+}
+
+export function applyDiagnosticFixes(
+  editor: Editor,
+  diagnostics: readonly EditorDiagnostic[],
+): { fixed: number; skipped: number } {
+  const fixable = diagnostics.filter((item): item is EditorDiagnostic & { fix: EditorDiagnosticFix } => !!item.fix && !!item.target);
+  if (fixable.length === 0) return { fixed: 0, skipped: diagnostics.length };
+  const prepared = fixable.map(diagnostic => {
+    const target = diagnostic.target!;
+    const entity = editor.entities[target.entityIndex];
+    return {
+      diagnostic,
+      entity,
+      brush: entity && target.kind === 'brush' ? entity.brushes[target.brushIndex] : undefined,
+      patch: entity && target.kind === 'patch' ? entity.patches[target.patchIndex] : undefined,
+    };
+  });
+  let fixed = 0;
+  editor.transact(`Fix ${fixable.length} map ${fixable.length === 1 ? 'issue' : 'issues'}`, () => {
+    const seen = new Set<string>();
+    for (const preparedFix of prepared) {
+      const { diagnostic, entity, brush, patch } = preparedFix;
+      const target = diagnostic.target!;
+      const key = `${diagnostic.fix.kind}:${JSON.stringify(target)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (!entity) continue;
+      if (diagnostic.fix.kind === 'sync-classname') entity.properties.classname = entity.classname;
+      else if (diagnostic.fix.kind === 'reset-origin') entity.properties.origin = '0 0 0';
+      else if (diagnostic.fix.kind === 'remove-target') delete entity.properties.target;
+      else if (diagnostic.fix.kind === 'remove-model') delete entity.properties.model;
+      else if (diagnostic.fix.kind === 'replace-missing-texture' && target.kind === 'brush') {
+        if (!brush) continue;
+        for (const face of brush.faces) {
+          if (!editor.textureManager?.hasTextureSource(face.texture)) face.texture = 'common/caulk';
+        }
+      } else if (diagnostic.fix.kind === 'replace-missing-texture' && target.kind === 'patch') {
+        if (!patch) continue;
+        patch.texture = 'common/caulk';
+      } else if (diagnostic.fix.kind === 'delete-brush' && target.kind === 'brush') {
+        if (!brush) continue;
+        const index = entity.brushes.indexOf(brush);
+        if (index < 0) continue;
+        entity.brushes.splice(index, 1);
+      } else if (diagnostic.fix.kind === 'delete-patch' && target.kind === 'patch') {
+        if (!patch) continue;
+        const index = entity.patches.indexOf(patch);
+        if (index < 0) continue;
+        entity.patches.splice(index, 1);
+      } else continue;
+      fixed++;
+    }
+    editor.selection = editor.selection.filter(item => {
+      if (item.type === 'entity') return editor.entities.includes(item.entity);
+      if (item.type === 'brush' || item.type === 'face') return item.entity.brushes.includes(item.brush);
+      return item.entity.patches.includes(item.patch);
+    });
+    editor.reconcileHiddenState();
+    editor.redrawRequested = true;
+    editor.statusMessage = `Fixed ${fixed} map ${fixed === 1 ? 'issue' : 'issues'}`;
+  });
+  return { fixed, skipped: diagnostics.length - fixed };
 }
 
 export function collectMapInfo(editor: Editor, diagnostics = collectEditorDiagnostics(editor)): MapInfo {

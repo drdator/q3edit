@@ -23,6 +23,7 @@ describe('project configuration', () => {
     project.assets.archives = ['pak0.pk3', 'mymod.pk3'];
     project.compile.bspArgs = ['-meta'];
     project.entityDefinitions.sources = ['scripts/entities.def'];
+    project.diagnostics.mutedCodes = ['unknown-class', 'missing-texture'];
     saveProjectConfiguration(project, storage);
     expect(loadProjectConfiguration(storage)).toEqual(project);
   });
