@@ -13,6 +13,8 @@ export interface EditorCommandContext {
   openRotateDialog: () => void;
   openScaleDialog: () => void;
   compileBSP: () => void | Promise<void>;
+  rerunLastBuild: () => void | Promise<void>;
+  canRerunLastBuild: () => boolean;
   quickPlay: () => void | Promise<void>;
   openQuickPlayOptions: () => void;
   managePakFiles: () => void | Promise<void>;
@@ -182,6 +184,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.quick-play-options', label: 'Quick Play Options…', menu: menu('File', 71, 'quick-play'), execute: ctx => ctx.openQuickPlayOptions() },
     { id: 'file.build-history', label: 'Build History…', menu: menu('File', 79, 'compile'), enabled: ctx => !!ctx.openBuildHistory, execute: ctx => ctx.openBuildHistory?.() },
     { id: 'file.compile-bsp', label: 'Compile BSP…', menu: menu('File', 80, 'compile'), execute: ctx => ctx.compileBSP() },
+    { id: 'file.rerun-last-build', label: 'Rerun Last Build', defaultShortcut: 'F6', menu: menu('File', 81, 'compile'), enabled: ctx => ctx.canRerunLastBuild(), execute: ctx => ctx.rerunLastBuild() },
 
     { id: 'edit.undo', label: 'Undo', defaultShortcut: 'Mod+Z', menu: menu('Edit', 0, 'history'), enabled: ({ editor }) => editor.history.canUndo, execute: ({ editor }) => editor.undo() },
     { id: 'edit.redo', label: 'Redo', defaultShortcut: 'Mod+Y', alternateShortcuts: ['Mod+Shift+Z'], menu: menu('Edit', 10, 'history'), enabled: ({ editor }) => editor.history.canRedo, execute: ({ editor }) => editor.redo() },
