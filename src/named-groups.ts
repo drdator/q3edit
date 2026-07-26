@@ -1,7 +1,10 @@
-import type { Brush } from './brush';
+import { cloneBrush, type Brush } from './brush';
 import { createEntity, type Entity } from './entity';
 import type { Editor, SelectionItem } from './editor';
-import type { Patch } from './patch';
+import type { MapSnapshot } from './history';
+import type { Vec3 } from './math';
+import { clonePatch, translatePatch, type Patch } from './patch';
+import { translateBrushLocked } from './texture-lock';
 
 export const GROUP_INFO_CLASSNAME = 'group_info';
 export const GROUP_ID_KEY = '_q3edit_group_id';
@@ -9,6 +12,8 @@ export const GROUP_NAME_KEY = 'group';
 export const GROUP_HIDDEN_KEY = '_q3edit_hidden';
 export const GROUP_LOCKED_KEY = '_q3edit_locked';
 export const GROUP_PARENT_KEY = '_q3edit_parent_group';
+export const GROUP_LINK_SOURCE_KEY = '_q3edit_link_source_group';
+export const GROUP_LINK_OFFSET_KEY = '_q3edit_link_offset';
 export const Q3RADIANT_NAMED_GROUP_SERIALIZATION =
   'Q3Radiant group_info/group epairs with q3edit-group comment fallback for classic brushes and terrain' as const;
 
@@ -18,6 +23,8 @@ export interface NamedGroup {
   hidden: boolean;
   locked: boolean;
   parentId?: string;
+  linkedSourceId?: string;
+  linkedOffset?: Vec3;
   entity: Entity;
 }
 
@@ -31,6 +38,14 @@ function parseBoolean(value: string | undefined): boolean {
   return value === '1' || value === 'true';
 }
 
+function parseOffset(value: string | undefined): Vec3 | undefined {
+  if (!value) return undefined;
+  const parts = value.trim().split(/\s+/).map(Number);
+  return parts.length === 3 && parts.every(Number.isFinite)
+    ? [parts[0], parts[1], parts[2]]
+    : undefined;
+}
+
 export function listNamedGroups(entities: Entity[]): NamedGroup[] {
   return entities.filter(isGroupInfoEntity).map(entity => ({
     id: entity.properties[GROUP_ID_KEY] ?? '',
@@ -38,6 +53,8 @@ export function listNamedGroups(entities: Entity[]): NamedGroup[] {
     hidden: parseBoolean(entity.properties[GROUP_HIDDEN_KEY]),
     locked: parseBoolean(entity.properties[GROUP_LOCKED_KEY]),
     parentId: entity.properties[GROUP_PARENT_KEY] || undefined,
+    linkedSourceId: entity.properties[GROUP_LINK_SOURCE_KEY] || undefined,
+    linkedOffset: parseOffset(entity.properties[GROUP_LINK_OFFSET_KEY]),
     entity,
   }));
 }
@@ -206,6 +223,157 @@ export function createNamedGroup(editor: Editor, name: string): NamedGroup | nul
   });
 }
 
+function groupGeometry(entities: Entity[], id: string): Array<
+  { kind: 'brush'; owner: Entity; brush: Brush } | { kind: 'patch'; owner: Entity; patch: Patch }
+> {
+  const result: Array<
+    { kind: 'brush'; owner: Entity; brush: Brush } | { kind: 'patch'; owner: Entity; patch: Patch }
+  > = [];
+  for (const owner of entities) {
+    for (const brush of owner.brushes) {
+      if (brush.editorGroupId === id) result.push({ kind: 'brush', owner, brush });
+    }
+    for (const patch of owner.patches) {
+      if (patch.editorGroupId === id) result.push({ kind: 'patch', owner, patch });
+    }
+  }
+  return result;
+}
+
+function hasEntityMembers(entities: Entity[], id: string): boolean {
+  return entities.some(entity => !isGroupInfoEntity(entity) && entityGroupId(entity) === id);
+}
+
+function nextLinkedCopyName(entities: Entity[], sourceName: string): string {
+  const names = new Set(listNamedGroups(entities).map(group => group.name.toLowerCase()));
+  let index = 1;
+  let candidate = `${sourceName} instance`;
+  while (names.has(candidate.toLowerCase())) candidate = `${sourceName} instance ${++index}`;
+  return candidate;
+}
+
+function copyBrushStableIds(source: Brush | undefined, target: Brush): void {
+  if (!source) return;
+  target.editorObjectId = source.editorObjectId;
+  target.faces.forEach((face, index) => { face.editorObjectId = source.faces[index]?.editorObjectId; });
+}
+
+function replaceLinkedGeometry(entities: Entity[], sourceId: string, targetId: string, offset: Vec3): void {
+  const oldBrushes = groupGeometry(entities, targetId)
+    .filter((item): item is { kind: 'brush'; owner: Entity; brush: Brush } => item.kind === 'brush')
+    .map(item => item.brush);
+  const oldPatches = groupGeometry(entities, targetId)
+    .filter((item): item is { kind: 'patch'; owner: Entity; patch: Patch } => item.kind === 'patch')
+    .map(item => item.patch);
+  for (const owner of entities) {
+    owner.brushes = owner.brushes.filter(brush => brush.editorGroupId !== targetId);
+    owner.patches = owner.patches.filter(patch => patch.editorGroupId !== targetId);
+  }
+
+  let brushIndex = 0;
+  let patchIndex = 0;
+  for (const item of groupGeometry(entities, sourceId)) {
+    if (item.kind === 'brush') {
+      const clone = cloneBrush(item.brush);
+      clone.editorGroupId = targetId;
+      translateBrushLocked(clone, offset);
+      copyBrushStableIds(oldBrushes[brushIndex++], clone);
+      item.owner.brushes.push(clone);
+    } else {
+      const clone = clonePatch(item.patch);
+      clone.editorGroupId = targetId;
+      translatePatch(clone, offset);
+      clone.editorObjectId = oldPatches[patchIndex++]?.editorObjectId;
+      item.owner.patches.push(clone);
+    }
+  }
+}
+
+function comparableGroupGeometry(entities: Entity[], id: string): string {
+  return JSON.stringify(groupGeometry(entities, id).map(item => {
+    const value = item.kind === 'brush' ? item.brush : item.patch;
+    return JSON.parse(JSON.stringify(value, (key, member) => (
+      key === 'editorObjectId' || key === 'editorGroupId' ? undefined : member
+    )));
+  }));
+}
+
+/**
+ * Linked instances are flattened geometry in the map. Only source changes rebuild
+ * their locked copies, which keeps normal group edits from churning object IDs.
+ */
+export function synchronizeLinkedGroups(editor: Editor, before: MapSnapshot): void {
+  const beforeGroups = listNamedGroups(before);
+  for (const instance of listNamedGroups(editor.entities).filter(group => group.linkedSourceId)) {
+    const sourceId = instance.linkedSourceId!;
+    if (!namedGroupForId(editor.entities, sourceId)) continue;
+    const beforeInstance = beforeGroups.find(group => group.id === instance.id);
+    const sourceChanged = comparableGroupGeometry(before, sourceId) !== comparableGroupGeometry(editor.entities, sourceId);
+    const linkChanged = beforeInstance?.linkedSourceId !== sourceId
+      || JSON.stringify(beforeInstance?.linkedOffset) !== JSON.stringify(instance.linkedOffset);
+    if (sourceChanged || linkChanged) {
+      replaceLinkedGeometry(editor.entities, sourceId, instance.id, instance.linkedOffset ?? [0, 0, 0]);
+    }
+  }
+}
+
+export function createLinkedGroupCopy(editor: Editor, id: string, offset: Vec3): NamedGroup | null {
+  const source = namedGroupForId(editor.entities, id);
+  if (!source || source.linkedSourceId) {
+    editor.statusMessage = 'Create linked copies from a source group';
+    return null;
+  }
+  if (hasEntityMembers(editor.entities, id)) {
+    editor.statusMessage = 'Linked groups currently support brush and patch members only';
+    return null;
+  }
+  if (groupGeometry(editor.entities, id).length === 0) {
+    editor.statusMessage = 'The source group has no geometry';
+    return null;
+  }
+  if (!offset.every(Number.isFinite)) {
+    editor.statusMessage = 'Linked group offset must contain three numbers';
+    return null;
+  }
+  return editor.transact('Create linked group copy', () => {
+    const used = new Set(listNamedGroups(editor.entities).map(group => group.id));
+    const entity = createEntity(GROUP_INFO_CLASSNAME);
+    const targetId = nextGroupId(used);
+    entity.properties[GROUP_ID_KEY] = targetId;
+    entity.properties[GROUP_NAME_KEY] = nextLinkedCopyName(editor.entities, source.name);
+    entity.properties[GROUP_LINK_SOURCE_KEY] = source.id;
+    entity.properties[GROUP_LINK_OFFSET_KEY] = offset.join(' ');
+    entity.properties[GROUP_LOCKED_KEY] = '1';
+    editor.entities.push(entity);
+    replaceLinkedGeometry(editor.entities, source.id, targetId, offset);
+    editor.redrawRequested = true;
+    editor.statusMessage = `Created linked copy of ${source.name}`;
+    return listNamedGroups([entity])[0];
+  });
+}
+
+export function setLinkedGroupOffset(editor: Editor, id: string, offset: Vec3): void {
+  const group = namedGroupForId(editor.entities, id);
+  if (!group?.linkedSourceId || !offset.every(Number.isFinite)) return;
+  editor.transact('Move linked group copy', () => {
+    group.entity.properties[GROUP_LINK_OFFSET_KEY] = offset.join(' ');
+    editor.redrawRequested = true;
+    editor.statusMessage = `Moved linked copy ${group.name}`;
+  });
+}
+
+export function unlinkNamedGroup(editor: Editor, id: string): void {
+  const group = namedGroupForId(editor.entities, id);
+  if (!group?.linkedSourceId) return;
+  editor.transact('Unlink named group', () => {
+    delete group.entity.properties[GROUP_LINK_SOURCE_KEY];
+    delete group.entity.properties[GROUP_LINK_OFFSET_KEY];
+    delete group.entity.properties[GROUP_LOCKED_KEY];
+    editor.redrawRequested = true;
+    editor.statusMessage = `Unlinked ${group.name}; its geometry is now independent`;
+  });
+}
+
 export function renameNamedGroup(editor: Editor, id: string, name: string): void {
   const group = namedGroupForId(editor.entities, id); const trimmed = name.trim();
   if (!group || !trimmed) return;
@@ -234,6 +402,10 @@ export function deleteNamedGroup(editor: Editor, id: string): void {
 
 export function addSelectionToNamedGroup(editor: Editor, id: string): void {
   const group = namedGroupForId(editor.entities, id); if (!group || editor.selection.length === 0) return;
+  if (group.linkedSourceId) {
+    editor.statusMessage = 'Linked copies mirror their source group and cannot accept members';
+    return;
+  }
   editor.transact('Add selection to named group', () => {
     for (const item of editor.selection) setItemGroup(item, id);
     editor.redrawRequested = true; editor.statusMessage = `Added selection to ${group.name}`;
@@ -280,6 +452,10 @@ export function setNamedGroupHidden(editor: Editor, id: string, hidden: boolean)
 
 export function setNamedGroupLocked(editor: Editor, id: string, locked: boolean): void {
   const group = namedGroupForId(editor.entities, id); if (!group) return;
+  if (group.linkedSourceId && !locked) {
+    editor.statusMessage = 'Unlink this instance before editing it independently';
+    return;
+  }
   editor.transact(locked ? 'Lock named group' : 'Unlock named group', () => {
     if (locked) group.entity.properties[GROUP_LOCKED_KEY] = '1'; else delete group.entity.properties[GROUP_LOCKED_KEY];
     if (locked) editor.selection = editor.selection.filter(item => {

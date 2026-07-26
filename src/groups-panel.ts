@@ -1,5 +1,6 @@
 import type { Editor } from './editor';
 import { countNamedGroupMembers } from './named-groups';
+import type { Vec3 } from './math';
 
 const NAMED_GROUP_ICON_NAMES = {
   select: 'selection-all',
@@ -9,7 +10,19 @@ const NAMED_GROUP_ICON_NAMES = {
   lock: 'lock',
   unlock: 'lock-open',
   delete: 'trash',
+  link: 'link-simple-horizontal',
+  moveLink: 'arrows-out-cardinal',
+  unlink: 'link-break',
 };
+
+function promptOffset(label: string, initial: Vec3): Vec3 | null {
+  const value = globalThis.prompt?.(label, initial.join(' '));
+  if (value === undefined || value === null) return null;
+  const parts = value.trim().split(/\s+/).map(Number);
+  return parts.length === 3 && parts.every(Number.isFinite)
+    ? [parts[0], parts[1], parts[2]]
+    : null;
+}
 
 function button(icon: string, label: string, title: string, action: () => void, className = ''): HTMLButtonElement {
   const element = document.createElement('button');
@@ -84,7 +97,22 @@ export function buildGroupsPanel(container: HTMLElement, editor: Editor): void {
     meta.className = 'named-group-meta';
     const members = countNamedGroupMembers(editor.entities, group.id);
     const parent = groups.find(candidate => candidate.id === group.parentId);
-    meta.textContent = `${members} member${members === 1 ? '' : 's'} · ${group.hidden ? 'hidden' : 'visible'} · ${group.locked ? 'locked' : 'unlocked'}${parent ? ` · in ${parent.name}` : ''}`;
+    const linkedSource = group.linkedSourceId
+      ? groups.find(candidate => candidate.id === group.linkedSourceId)
+      : undefined;
+    const sourceInstances = groups.filter(candidate => candidate.linkedSourceId === group.id).length;
+    const linkStatus = group.linkedSourceId
+      ? linkedSource
+        ? ` · linked to ${linkedSource.name}`
+        : ' · broken link'
+      : sourceInstances > 0
+        ? ` · source for ${sourceInstances} instance${sourceInstances === 1 ? '' : 's'}`
+        : '';
+    meta.textContent = `${members} member${members === 1 ? '' : 's'} · ${group.hidden ? 'hidden' : 'visible'} · ${group.locked ? 'locked' : 'unlocked'}${parent ? ` · in ${parent.name}` : ''}${linkStatus}`;
+    if (group.linkedSourceId && !linkedSource) {
+      meta.classList.add('named-group-link-broken');
+      meta.title = 'The source metadata is missing. Unlink to keep this geometry as an independent group.';
+    }
     item.appendChild(meta);
 
     const actions = document.createElement('div');
@@ -96,11 +124,30 @@ export function buildGroupsPanel(container: HTMLElement, editor: Editor): void {
         group.hidden ? 'Show group' : 'Hide group', 'Toggle group visibility', () => editor.setNamedGroupHidden(group.id, !group.hidden)),
       button(group.locked ? NAMED_GROUP_ICON_NAMES.unlock : NAMED_GROUP_ICON_NAMES.lock,
         group.locked ? 'Unlock group' : 'Lock group', 'Toggle group selection lock', () => editor.setNamedGroupLocked(group.id, !group.locked)),
+      ...(group.linkedSourceId ? [
+        button(NAMED_GROUP_ICON_NAMES.moveLink, 'Set linked offset', 'Set this instance offset from its source', () => {
+          const offset = promptOffset('Linked instance offset (X Y Z)', group.linkedOffset ?? [0, 0, 0]);
+          if (offset) editor.setLinkedGroupOffset(group.id, offset);
+          else editor.statusMessage = 'Linked group offset must contain three numbers';
+        }),
+        button(NAMED_GROUP_ICON_NAMES.unlink, 'Unlink group', 'Keep the geometry but stop mirroring the source',
+          () => editor.unlinkNamedGroup(group.id)),
+      ] : [
+        button(NAMED_GROUP_ICON_NAMES.link, 'Create linked copy', 'Create a locked geometry copy that mirrors this group', () => {
+          const offset = promptOffset('Linked copy offset (X Y Z)', [editor.gridSize, editor.gridSize, 0]);
+          if (offset) editor.createLinkedGroupCopy(group.id, offset);
+          else editor.statusMessage = 'Linked group offset must contain three numbers';
+        }),
+      ]),
       button(NAMED_GROUP_ICON_NAMES.delete, 'Delete group', 'Delete group but keep its objects',
         () => editor.deleteNamedGroup(group.id), 'named-group-delete'),
     );
     (actions.children[0] as HTMLButtonElement).disabled = members === 0;
     (actions.children[1] as HTMLButtonElement).disabled = editor.selection.length === 0;
+    if (group.linkedSourceId) {
+      (actions.children[1] as HTMLButtonElement).disabled = true;
+      (actions.children[3] as HTMLButtonElement).disabled = true;
+    }
     item.appendChild(actions);
     container.appendChild(item);
   }

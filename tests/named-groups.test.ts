@@ -135,4 +135,55 @@ describe('named groups', () => {
     expect(groups.find(item => item.id === 'unknown-valid')?.name).toBe('Recovered unknown-valid');
     expect(invalid.editorGroupId).toBeUndefined();
   });
+
+  it('creates flattened linked geometry and keeps it synchronized with its source', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/concrete');
+    editor.worldspawn.brushes.push(brush);
+    editor.selectBrush(editor.worldspawn, brush);
+    const source = editor.createNamedGroup('Pillar')!;
+    const instance = editor.createLinkedGroupCopy(source.id, [128, 0, 0])!;
+
+    expect(instance).toMatchObject({
+      linkedSourceId: source.id,
+      linkedOffset: [128, 0, 0],
+      locked: true,
+    });
+    expect(editor.worldspawn.brushes).toHaveLength(2);
+    expect(editor.worldspawn.brushes[1]).toMatchObject({
+      mins: [128, 0, 0],
+      maxs: [192, 64, 64],
+      editorGroupId: instance.id,
+    });
+
+    editor.moveSelection([16, 0, 0]);
+    expect(editor.worldspawn.brushes.find(item => item.editorGroupId === source.id)?.mins).toEqual([16, 0, 0]);
+    expect(editor.worldspawn.brushes.find(item => item.editorGroupId === instance.id)?.mins).toEqual([144, 0, 0]);
+    expect(editor.namedGroups().find(group => group.id === instance.id)?.locked).toBe(true);
+
+    const text = serializeMap(editor.entities);
+    expect(text).toContain('"_q3edit_link_source_group"');
+    const loaded = listNamedGroups(parseMap(text)).find(group => group.id === instance.id);
+    expect(loaded).toMatchObject({ linkedSourceId: source.id, linkedOffset: [128, 0, 0] });
+  });
+
+  it('can reposition and unlink a linked copy without changing flattened geometry', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [32, 32, 32]);
+    editor.worldspawn.brushes.push(brush);
+    editor.selectBrush(editor.worldspawn, brush);
+    const source = editor.createNamedGroup('Trim')!;
+    const instance = editor.createLinkedGroupCopy(source.id, [64, 0, 0])!;
+
+    editor.setLinkedGroupOffset(instance.id, [0, 96, 0]);
+    expect(editor.worldspawn.brushes.find(item => item.editorGroupId === instance.id)?.mins).toEqual([0, 96, 0]);
+    editor.unlinkNamedGroup(instance.id);
+    expect(editor.namedGroups().find(group => group.id === instance.id)).toMatchObject({
+      linkedSourceId: undefined,
+      locked: false,
+    });
+
+    editor.moveSelection([16, 0, 0]);
+    expect(editor.worldspawn.brushes.find(item => item.editorGroupId === instance.id)?.mins).toEqual([0, 96, 0]);
+  });
 });
