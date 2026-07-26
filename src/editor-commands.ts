@@ -104,7 +104,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
   const displayLabels: Record<DisplayCategory, string> = {
     entities: 'Entities', lights: 'Lights', paths: 'Paths', world: 'World', detail: 'Detail Geometry',
     water: 'Water', clip: 'Clip', hint: 'Hint', caulk: 'Caulk', curves: 'Curves', names: 'Names',
-    angles: 'Angles', coordinates: 'Coordinates', blocks: 'Blocks',
+    angles: 'Angles', coordinates: 'Coordinates', dimensions: 'Selection Dimensions', blocks: 'Blocks',
   };
   const displayCommands: CommandDefinition<EditorCommandContext>[] = DISPLAY_CATEGORIES.map((category, index) => ({
     id: `view.display.${category}`,

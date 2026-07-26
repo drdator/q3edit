@@ -57,6 +57,20 @@ describe('display policy', () => {
     expect(loadDisplayPreferences(storage)).toEqual(preferences);
   });
 
+  it('enables newly introduced display categories for existing preferences', () => {
+    const serialized = JSON.stringify({
+      categories: { entities: false },
+      rendererMode: 'textured',
+      textureFiltering: 'trilinear',
+    });
+    const storage = { getItem: () => serialized };
+
+    const preferences = loadDisplayPreferences(storage);
+
+    expect(preferences.categories.entities).toBe(false);
+    expect(preferences.categories.dimensions).toBe(true);
+  });
+
   it('keeps hidden-category selections selected but non-interactive', () => {
     const editor = new Editor();
     const world = createEntity('worldspawn');

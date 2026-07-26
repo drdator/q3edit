@@ -557,6 +557,10 @@ function drawSelectionBox(ctx: Viewport2DRenderContext): void {
     ctx.ctx.setLineDash([]);
   }
 
+  if (ctx.editor.display.categories.dimensions) {
+    drawSelectionDimensions(ctx, bounds, x0, y0, x1, y1);
+  }
+
   if (ctx.editor.gizmoMode === 'scale') {
     const hs = 3;
     ctx.ctx.fillStyle = theme.selection;
@@ -572,6 +576,65 @@ function drawSelectionBox(ctx: Viewport2DRenderContext): void {
       ctx.ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
     }
   }
+}
+
+export function formatMapDimension(value: number): string {
+  const rounded = Math.round(Math.abs(value) * 100) / 100;
+  return String(rounded);
+}
+
+function drawSelectionDimensions(
+  ctx: Viewport2DRenderContext,
+  bounds: { mins: [number, number, number]; maxs: [number, number, number] },
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): void {
+  const widthPixels = Math.abs(x1 - x0);
+  const heightPixels = Math.abs(y1 - y0);
+  const minimumLabelExtent = 34;
+  if (widthPixels < minimumLabelExtent && heightPixels < minimumLabelExtent) return;
+
+  const theme = editorThemeColors();
+  const viewport = ctx.canvas.getBoundingClientRect();
+  ctx.ctx.save();
+  ctx.ctx.font = '11px monospace';
+  ctx.ctx.textAlign = 'center';
+  ctx.ctx.textBaseline = 'middle';
+
+  const drawLabel = (text: string, x: number, y: number, angle = 0): void => {
+    const paddingX = 4;
+    const height = 17;
+    const width = Math.ceil(ctx.ctx.measureText(text).width) + paddingX * 2;
+    ctx.ctx.save();
+    ctx.ctx.translate(x, y);
+    ctx.ctx.rotate(angle);
+    ctx.ctx.fillStyle = themeRgba(theme.viewportRgb, 0.9);
+    ctx.ctx.fillRect(-width / 2, -height / 2, width, height);
+    ctx.ctx.strokeStyle = themeRgba(theme.selectionRgb, 0.65);
+    ctx.ctx.strokeRect(-width / 2 + 0.5, -height / 2 + 0.5, width - 1, height - 1);
+    ctx.ctx.fillStyle = theme.selection;
+    ctx.ctx.fillText(text, 0, 0);
+    ctx.ctx.restore();
+  };
+
+  if (widthPixels >= minimumLabelExtent) {
+    drawLabel(
+      formatMapDimension(bounds.maxs[ctx.axisH] - bounds.mins[ctx.axisH]),
+      Math.max(20, Math.min(viewport.width - 20, (x0 + x1) / 2)),
+      y1 + 20 < viewport.height ? y1 + 12 : y1 - 12,
+    );
+  }
+  if (heightPixels >= minimumLabelExtent) {
+    drawLabel(
+      formatMapDimension(bounds.maxs[ctx.axisV] - bounds.mins[ctx.axisV]),
+      x1 + 20 < viewport.width ? x1 + 12 : x1 - 12,
+      Math.max(20, Math.min(viewport.height - 20, (y0 + y1) / 2)),
+      -Math.PI / 2,
+    );
+  }
+  ctx.ctx.restore();
 }
 
 function drawVertexHandles(ctx: Viewport2DRenderContext): void {
