@@ -6,6 +6,7 @@ import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type Textu
 import { openExactPrimitiveDialog } from './primitive-dialog';
 import { openReleaseNotesDialog } from './release-notes-dialog';
 import type { BspOverlayMode } from './bsp-inspection';
+import { openGeometryExportDialog } from './geometry-export-dialog';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -180,6 +181,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'file.import-prefab', label: 'Import Prefab…', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },
     { id: 'file.save-prefab', label: 'Save Selection as Prefab', menu: menu('File', 50, 'prefab'), enabled: hasSelection, execute: ({ editor }) => editor.saveSelectionAsPrefab() },
     { id: 'file.export-console', label: 'Export .map to Console', menu: menu('File', 60, 'export'), execute: ({ editor }) => console.log(editor.serializeMap()) },
+    { id: 'file.export-obj', label: 'Export Geometry (.obj)…', menu: menu('File', 61, 'export'), execute: ({ editor }) => openGeometryExportDialog(editor) },
     { id: 'file.quick-play', label: 'Quick Play', defaultShortcut: 'F5', menu: menu('File', 70, 'quick-play'), execute: ctx => ctx.quickPlay() },
     { id: 'file.quick-play-options', label: 'Quick Play Options…', menu: menu('File', 71, 'quick-play'), execute: ctx => ctx.openQuickPlayOptions() },
     { id: 'file.build-history', label: 'Build History…', menu: menu('File', 79, 'compile'), enabled: ctx => !!ctx.openBuildHistory, execute: ctx => ctx.openBuildHistory?.() },
