@@ -84,6 +84,21 @@ describe('large-map organization', () => {
     expect(editor.statusMessage).toContain('1 stale reference skipped');
   });
 
+  it('restores group-backed sets without selecting the group metadata entity', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    editor.worldspawn.brushes.push(brush);
+    editor.selection = [{ type: 'brush', entity: editor.worldspawn, brush }];
+    const group = editor.createNamedGroup('Architecture')!;
+    const organization = controller(editor);
+    organization.saveSelectionSet('Architecture set', group.id);
+    editor.selection = [];
+
+    organization.restoreSelectionSet(readOrganization(editor).selectionSets[0]);
+
+    expect(editor.selection).toEqual([{ type: 'brush', entity: editor.worldspawn, brush }]);
+  });
+
   it('keeps persistent selections attached after movement and same-class entity reordering', () => {
     const editor = new Editor();
     const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);

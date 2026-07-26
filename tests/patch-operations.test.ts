@@ -60,6 +60,14 @@ describe('advanced patch operations', () => {
     expect(thickened.every(result => result.tessIndices.length > 0)).toBe(true);
     expect(Math.abs(thickened[0].mins[2] - thickened[1].mins[2])).toBe(8);
     expect(inspectPatch(thickened[0]).controlPoints).toHaveLength(9);
+    expect(thickened[2].mins[1]).toBeCloseTo(64);
+    expect(thickened[2].maxs[1]).toBeCloseTo(64);
+    expect(thickened[3].mins[1]).toBeCloseTo(0);
+    expect(thickened[3].maxs[1]).toBeCloseTo(0);
+    expect(thickened[4].mins[0]).toBeCloseTo(0);
+    expect(thickened[4].maxs[0]).toBeCloseTo(0);
+    expect(thickened[5].mins[0]).toBeCloseTo(64);
+    expect(thickened[5].maxs[0]).toBeCloseTo(64);
   });
 
   it('runs operations transactionally and round-trips their control grid', () => {

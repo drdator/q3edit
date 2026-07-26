@@ -31,6 +31,13 @@ describe('entity definitions', () => {
     expect(entityPropertyCategory({ key: 'custom', name: 'Custom', type: 'string' })).toBe('General');
   });
 
+  it('treats three-axis angles as a vector rather than a scalar angle', () => {
+    const result = parseQuakedDefinitions(`/*QUAKED misc_camera (1 1 1) (-8 -8 -8) (8 8 8)
+angles: Pitch yaw roll
+*/`);
+    expect(result.classes[0].properties.angles.type).toBe('vector');
+  });
+
   it('parses Q3Radiant QUAKED headers, bounds, docs, defaults, models, and flags', () => {
     const result = parseQuakedDefinitions(fixture, 'entities.def');
     expect(result.classes).toHaveLength(3);

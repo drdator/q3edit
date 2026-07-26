@@ -71,6 +71,7 @@ export function createBuildSettingsControls(
   );
 
   let scope: HTMLSelectElement | null = null;
+  let currentScope = initial.scope;
   if (regionActive) {
     scope = document.createElement('select');
     scope.setAttribute('aria-label', 'Build scope');
@@ -99,11 +100,12 @@ export function createBuildSettingsControls(
     read: () => ({
       quality: quality.value as QuickPlayQuality,
       generateAas: generateAas.checked,
-      scope: regionActive ? scope?.value as QuickPlayBuildScope ?? initial.scope : initial.scope,
+      scope: scope?.value as QuickPlayBuildScope ?? currentScope,
     }),
     set: (settings) => {
       quality.value = settings.quality;
       generateAas.checked = settings.generateAas;
+      currentScope = settings.scope;
       if (scope) scope.value = settings.scope;
       updateDisabledState();
     },

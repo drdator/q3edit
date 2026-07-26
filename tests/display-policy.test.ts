@@ -8,6 +8,7 @@ import {
   isEntityCategoryVisible,
   isPatchCategoryVisible,
   loadDisplayPreferences,
+  resetDisplayCategories,
   saveDisplayPreferences,
   setAllDisplayCategories,
 } from '../src/display-policy';
@@ -99,6 +100,9 @@ describe('display policy', () => {
     }
     setAllDisplayCategories(preferences, true);
     expect(Object.values(preferences.categories).every(Boolean)).toBe(true);
+    resetDisplayCategories(preferences);
+    expect(preferences.categories).toEqual(DEFAULT_DISPLAY_PREFERENCES.categories);
+    expect(preferences.categories.lightRadii).toBe(false);
   });
 
   it('persists validated renderer and category preferences', () => {

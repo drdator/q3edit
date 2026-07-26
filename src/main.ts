@@ -192,38 +192,46 @@ async function init() {
 
   const installTextureManager = (assets: AssetIndex): TextureManager => {
     const entityRegistry = loadEntityClassRegistry(assets, editor.projectConfiguration.entityDefinitions.sources);
+    const modelManager = new ModelManager(assets);
+    const texMgr = new TextureManager(vp3D.gl, assets);
+    try {
+      texMgr.setProjectShaderFiles(getCachedProjectShaderFiles());
+
+      // Create solid-color textures for entity category markers
+      const registerColorTex = (name: string, r: number, g: number, b: number) => {
+        const pixels = new Uint8Array([r, g, b, 255]);
+        const tex = vp3D.gl.createTexture();
+        if (!tex) throw new Error(`Could not allocate marker texture ${name}`);
+        vp3D.gl.bindTexture(vp3D.gl.TEXTURE_2D, tex);
+        vp3D.gl.texImage2D(vp3D.gl.TEXTURE_2D, 0, vp3D.gl.RGBA, 1, 1, 0,
+          vp3D.gl.RGBA, vp3D.gl.UNSIGNED_BYTE, pixels);
+        texMgr.registerTexture(name, tex, 1, 1);
+      };
+      registerColorTex('__entity_green', 40, 180, 40);
+      registerColorTex('__entity_#44cc44', 68, 204, 68);
+      registerColorTex('__entity_#ffcc00', 255, 204, 0);
+      registerColorTex('__entity_#ff6644', 255, 102, 68);
+      registerColorTex('__entity_#cc8844', 204, 136, 68);
+      registerColorTex('__entity_#44bbff', 68, 187, 255);
+      registerColorTex('__entity_#cc44ff', 204, 68, 255);
+      registerColorTex('__entity_#888888', 136, 136, 136);
+    } catch (error) {
+      texMgr.dispose();
+      throw error;
+    }
+
+    texMgr.onTextureLoaded = () => { editor.redrawRequested = true; };
+    const previousTextureManager = activeTextureManager;
     setEntityClassRegistry(entityRegistry);
-    editor.modelManager = new ModelManager(assets);
+    editor.modelManager = modelManager;
+    editor.textureManager = texMgr;
+    activeTextureManager = texMgr;
     ui.updateEntityDefinitions();
+    ui.updateTextureBrowser(texMgr);
+    previousTextureManager?.dispose();
     if (entityRegistry.diagnostics.length > 0) {
       console.warn('Entity definition diagnostics:', entityRegistry.diagnostics);
     }
-    activeTextureManager?.dispose();
-    const texMgr = new TextureManager(vp3D.gl, assets);
-    texMgr.setProjectShaderFiles(getCachedProjectShaderFiles());
-
-    // Create solid-color textures for entity category markers
-    const registerColorTex = (name: string, r: number, g: number, b: number) => {
-      const pixels = new Uint8Array([r, g, b, 255]);
-      const tex = vp3D.gl.createTexture()!;
-      vp3D.gl.bindTexture(vp3D.gl.TEXTURE_2D, tex);
-      vp3D.gl.texImage2D(vp3D.gl.TEXTURE_2D, 0, vp3D.gl.RGBA, 1, 1, 0,
-        vp3D.gl.RGBA, vp3D.gl.UNSIGNED_BYTE, pixels);
-      texMgr.registerTexture(name, tex, 1, 1);
-    };
-    registerColorTex('__entity_green', 40, 180, 40);
-    registerColorTex('__entity_#44cc44', 68, 204, 68);
-    registerColorTex('__entity_#ffcc00', 255, 204, 0);
-    registerColorTex('__entity_#ff6644', 255, 102, 68);
-    registerColorTex('__entity_#cc8844', 204, 136, 68);
-    registerColorTex('__entity_#44bbff', 68, 187, 255);
-    registerColorTex('__entity_#cc44ff', 204, 68, 255);
-    registerColorTex('__entity_#888888', 136, 136, 136);
-
-    texMgr.onTextureLoaded = () => { editor.redrawRequested = true; };
-    editor.textureManager = texMgr;
-    activeTextureManager = texMgr;
-    ui.updateTextureBrowser(texMgr);
     editor.redrawRequested = true;
     return texMgr;
   };

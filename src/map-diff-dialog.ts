@@ -180,10 +180,17 @@ export function openMapDiffDialog(editor: Editor, snapshot: DocumentRecoverySnap
 
   const footer = document.createElement('div');
   footer.className = 'editor-dialog-actions';
-  footer.append(button('Close', () => overlay.remove()));
+  const close = () => overlay.remove();
+  footer.append(button('Close', close));
   dialog.append(title, help, toolbar, warning, list, footer);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
+  overlay.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      close();
+      event.stopPropagation();
+    }
+  });
   render();
 }
 
@@ -236,8 +243,9 @@ function openMergeResultDialog(
   }
   const footer = document.createElement('div');
   footer.className = 'editor-dialog-actions';
+  const close = () => overlay.remove();
   footer.append(
-    button('Cancel', () => overlay.remove()),
+    button('Cancel', close),
     button(`Apply ${result.applied} Safe Change${result.applied === 1 ? '' : 's'}`, () => {
       editor.transact(`Merge ${incomingName}`, () => {
         editor.entities = result.entities;
@@ -252,6 +260,12 @@ function openMergeResultDialog(
   dialog.append(title, description, summary, list, footer);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
+  overlay.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      close();
+      event.stopPropagation();
+    }
+  });
 }
 
 export function chooseMapToMerge(editor: Editor, snapshot: DocumentRecoverySnapshot): void {

@@ -179,11 +179,16 @@ export function thickenPatch(source: Patch, amount: number, caps = true): Patch[
   }
   finish(front); invertPatch(back);
   if (!caps) return [front, back];
+  const reverse = (points: PatchControlPoint[]) => [...points].reverse();
+  const frontLeft = front.ctrl.map(row => row[0]);
+  const backLeft = back.ctrl.map(row => row[0]);
+  const frontRight = front.ctrl.map(row => row[front.width - 1]);
+  const backRight = back.ctrl.map(row => row[back.width - 1]);
   const sides = [
-    sidePatch(front.ctrl[0], [...back.ctrl[back.height - 1]].reverse(), source),
-    sidePatch(front.ctrl[front.height - 1], [...back.ctrl[0]].reverse(), source),
-    sidePatch(front.ctrl.map(row => row[0]), [...back.ctrl].reverse().map(row => row[back.width - 1]), source),
-    sidePatch(front.ctrl.map(row => row[front.width - 1]), [...back.ctrl].reverse().map(row => row[0]), source),
+    sidePatch(front.ctrl[0], back.ctrl[back.height - 1], source),
+    sidePatch(reverse(front.ctrl[front.height - 1]), reverse(back.ctrl[0]), source),
+    sidePatch(reverse(frontLeft), backLeft, source),
+    sidePatch(frontRight, reverse(backRight), source),
   ];
   return [front, back, ...sides];
 }

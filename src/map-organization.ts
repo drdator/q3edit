@@ -214,6 +214,7 @@ function resolvePositionalRef(editor: Editor, ref: string): SelectionItem[] {
     const groupId = ref.slice(2);
     const result: SelectionItem[] = [];
     editor.entities.forEach(entity => {
+      if (entity.classname === 'group_info') return;
       if (entity.properties._q3edit_group_id === groupId) result.push({ type: 'entity', entity });
       entity.brushes.forEach(brush => { if (brush.editorGroupId === groupId) result.push({ type: 'brush', entity, brush }); });
       entity.patches.forEach(patch => { if (patch.editorGroupId === groupId) result.push({ type: 'patch', entity, patch }); });

@@ -2812,6 +2812,10 @@ export class UI {
       const selectedId = profileSelect.value;
       let profile = this.editor.preferences.buildProfiles.profiles.find(item => item.id === selectedId);
       if (!profile) {
+        if (this.editor.preferences.buildProfiles.profiles.length >= 24) {
+          this.editor.statusMessage = 'Build profiles are limited to 24';
+          return;
+        }
         const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'profile';
         let id = base;
         let suffix = 2;

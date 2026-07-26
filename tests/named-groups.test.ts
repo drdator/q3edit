@@ -186,4 +186,22 @@ describe('named groups', () => {
     editor.moveSelection([16, 0, 0]);
     expect(editor.worldspawn.brushes.find(item => item.editorGroupId === instance.id)?.mins).toEqual([0, 96, 0]);
   });
+
+  it('turns linked copies into editable groups when their source group is deleted', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [32, 32, 32]);
+    editor.worldspawn.brushes.push(brush);
+    editor.selectBrush(editor.worldspawn, brush);
+    const source = editor.createNamedGroup('Source')!;
+    const instance = editor.createLinkedGroupCopy(source.id, [64, 0, 0])!;
+
+    editor.deleteNamedGroup(source.id);
+
+    expect(editor.namedGroups().find(group => group.id === instance.id)).toMatchObject({
+      linkedSourceId: undefined,
+      locked: false,
+    });
+    expect(editor.worldspawn.brushes.find(item => item.editorGroupId === instance.id)?.mins)
+      .toEqual([64, 0, 0]);
+  });
 });

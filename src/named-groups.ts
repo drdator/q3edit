@@ -391,6 +391,11 @@ export function deleteNamedGroup(editor: Editor, id: string): void {
   editor.transact('Delete named group', () => {
     for (const entity of editor.entities) {
       if (entity.properties[GROUP_PARENT_KEY] === id) delete entity.properties[GROUP_PARENT_KEY];
+      if (entity.properties[GROUP_LINK_SOURCE_KEY] === id) {
+        delete entity.properties[GROUP_LINK_SOURCE_KEY];
+        delete entity.properties[GROUP_LINK_OFFSET_KEY];
+        delete entity.properties[GROUP_LOCKED_KEY];
+      }
       if (entity.properties[GROUP_ID_KEY] === id) delete entity.properties[GROUP_ID_KEY];
       for (const brush of entity.brushes) if (brush.editorGroupId === id) brush.editorGroupId = undefined;
       for (const patch of entity.patches) if (patch.editorGroupId === id) patch.editorGroupId = undefined;

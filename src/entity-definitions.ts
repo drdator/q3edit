@@ -70,7 +70,8 @@ function numbers(value: string): number[] {
 
 function inferPropertyType(key: string): EntityPropertyType {
   const lower = key.toLowerCase();
-  if (lower === 'angle' || lower === 'angles') return 'angle';
+  if (lower === 'angle') return 'angle';
+  if (lower === 'angles') return 'vector';
   if (lower === '_color' || lower === 'color') return 'color';
   if (lower === 'origin' || lower.endsWith('_vector') || lower === 'movedir') return 'vector';
   if (lower === 'target' || lower === 'targetname' || lower === 'killtarget') return 'entity-reference';
@@ -360,7 +361,7 @@ const BUILT_IN_PROPERTIES: Record<string, Record<string, BuiltInProperty>> = {
     model: { name: 'Model', type: 'asset', description: 'Path to an MD3 model below models/.' },
     skin: { name: 'Skin', type: 'asset', description: 'Optional .skin file applied to the model.' },
     angle: { name: 'Yaw', type: 'angle', default: '0', description: 'Rotation around the vertical axis.' },
-    angles: { name: 'Pitch yaw roll', type: 'angle', description: 'Three-axis rotation written as pitch yaw roll.' },
+    angles: { name: 'Pitch yaw roll', type: 'vector', description: 'Three-axis rotation written as pitch yaw roll.' },
   },
   func_door: {
     angle: { name: 'Move direction', type: 'angle', default: '0', description: 'Direction the door travels; use -1 for up and -2 for down.' },
