@@ -5,7 +5,11 @@ import {
   setTypedEntityProperties,
 } from './editor-properties';
 import type { Entity } from './entity';
-import type { EntityClassDefinition, EntityPropertyDefinition } from './entity-definitions';
+import {
+  entityPropertyCategory,
+  type EntityClassDefinition,
+  type EntityPropertyDefinition,
+} from './entity-definitions';
 import { openModelBrowser } from './model-browser';
 
 export const ENTITY_PROPERTY_COMMAND_IDS = {
@@ -176,6 +180,22 @@ export function buildDefinedEntityProperties(
     };
   }
   const modelRotationKey = entities.some(entity => 'angles' in entity.properties) ? 'angles' : 'angle';
+  const categories = new Map<string, HTMLElement>();
+  const categoryBody = (name: string): HTMLElement => {
+    const existing = categories.get(name);
+    if (existing) return existing;
+    const section = document.createElement('details');
+    section.className = 'entity-property-category';
+    section.open = true;
+    const summary = document.createElement('summary');
+    summary.textContent = name;
+    const body = document.createElement('div');
+    body.className = 'entity-property-category-body';
+    section.append(summary, body);
+    categories.set(name, body);
+    container.appendChild(section);
+    return body;
+  };
   for (const property of Object.values(definedProperties)) {
     const present = entities.map(entity => property.key in entity.properties);
     const hasValue = present.some(Boolean);
@@ -218,7 +238,7 @@ export function buildDefinedEntityProperties(
     }
     row.appendChild(controls);
     addHelp(row, property);
-    container.appendChild(row);
+    categoryBody(entityPropertyCategory(property)).appendChild(row);
   }
 
   if (definition.spawnflags.length > 0) {

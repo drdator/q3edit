@@ -1554,6 +1554,29 @@ body.sidepanel-resizing * {
   line-height: 1.35;
 }
 
+.entity-property-category {
+  border-top: 1px solid var(--border-dark);
+}
+
+.entity-property-category > summary {
+  padding: 7px 0 5px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.entity-property-category > summary:hover {
+  color: var(--text);
+}
+
+.entity-property-category-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .brush-list {
   display: flex;
   flex-direction: column;

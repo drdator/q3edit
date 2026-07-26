@@ -19,6 +19,7 @@ export interface EntityPropertyDefinition {
   description?: string;
   default?: string;
   choices?: Array<{ value: string; label: string }>;
+  category?: string;
 }
 
 export interface EntitySpawnflagDefinition {
@@ -76,6 +77,18 @@ function inferPropertyType(key: string): EntityPropertyType {
   if (lower === 'model' || lower === 'skin' || lower.endsWith('sound') || lower.endsWith('shader')) return 'asset';
   if (/^(?:light|wait|random|speed|count|damage|health|radius|lip|height)$/.test(lower)) return 'number';
   return 'string';
+}
+
+export function entityPropertyCategory(definition: EntityPropertyDefinition): string {
+  if (definition.category?.trim()) return definition.category.trim();
+  const key = definition.key.toLowerCase();
+  if (key === 'origin' || key === 'angle' || key === 'angles' || key === 'movedir') return 'Transform';
+  if (definition.type === 'entity-reference' || /^(?:target|targetname|killtarget|team)$/.test(key)) return 'Links';
+  if (definition.type === 'asset' || definition.type === 'color' ||
+      /^(?:model|skin|shader|modelscale|modelscale_vec|_color)$/.test(key)) return 'Appearance';
+  if (/^(?:speed|wait|random|lip|height|phase|count)$/.test(key)) return 'Timing & Movement';
+  if (/^(?:damage|dmg|health|radius|light|noise|message)$/.test(key)) return 'Gameplay';
+  return 'General';
 }
 
 function parseVec3(text: string): Vec3 | null {

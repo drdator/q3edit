@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { AssetIndex } from '../src/asset-index';
 import {
+  entityPropertyCategory,
   EntityClassRegistry,
   loadEntityClassRegistry,
   parseEntDefinitions,
@@ -21,6 +22,15 @@ function archive(name: string, files: Record<string, string>) {
 }
 
 describe('entity definitions', () => {
+  it('categorizes common entity properties while honoring explicit metadata', () => {
+    expect(entityPropertyCategory({ key: 'origin', name: 'Origin', type: 'vector' })).toBe('Transform');
+    expect(entityPropertyCategory({ key: 'target', name: 'Target', type: 'entity-reference' })).toBe('Links');
+    expect(entityPropertyCategory({ key: 'model', name: 'Model', type: 'asset' })).toBe('Appearance');
+    expect(entityPropertyCategory({ key: 'speed', name: 'Speed', type: 'number' })).toBe('Timing & Movement');
+    expect(entityPropertyCategory({ key: 'custom', name: 'Custom', type: 'string', category: 'Mod' })).toBe('Mod');
+    expect(entityPropertyCategory({ key: 'custom', name: 'Custom', type: 'string' })).toBe('General');
+  });
+
   it('parses Q3Radiant QUAKED headers, bounds, docs, defaults, models, and flags', () => {
     const result = parseQuakedDefinitions(fixture, 'entities.def');
     expect(result.classes).toHaveLength(3);
