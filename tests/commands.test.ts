@@ -22,6 +22,7 @@ describe('CommandRegistry', () => {
   it('registers the complete editor command set without conflicts', () => {
     const noop = () => {};
     const quickPlay = vi.fn();
+    const reloadAssets = vi.fn();
     const editor = {
       preferences: {
         quickPlay: {
@@ -43,6 +44,7 @@ describe('CommandRegistry', () => {
       quickPlay,
       openQuickPlayOptions: noop,
       managePakFiles: noop,
+      reloadAssets,
       openPreferences: noop,
       openProjectSettings: noop,
       openDiagnostics: noop,
@@ -72,6 +74,7 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.build-results').enabled).toBe(true);
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     expect(registry.getState('file.quick-play').shortcut).toBe('F5');
+    expect(registry.getState('tools.reload-assets').enabled).toBe(true);
     for (const id of [
       'patch.transpose',
       'patch.invert',
@@ -95,6 +98,8 @@ describe('CommandRegistry', () => {
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     registry.execute('file.quick-play');
     expect(quickPlay).toHaveBeenCalledWith();
+    registry.execute('tools.reload-assets');
+    expect(reloadAssets).toHaveBeenCalledOnce();
   });
 
   it('exposes checked state for display categories, renderer modes, and lighting', () => {
