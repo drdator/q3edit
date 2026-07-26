@@ -7,6 +7,7 @@ export function textureSearchScore(
   query: string,
   semantics: Record<string, unknown> | null,
   surfaceParms: string[],
+  tags: string[] = [],
 ): number | null {
   const normalizedName = name.toLowerCase().replace(/\\/g, '/');
   const tokens = textureSearchTokens(query);
@@ -14,11 +15,12 @@ export function textureSearchScore(
   const semanticTerms = semantics
     ? Object.entries(semantics).filter(([, enabled]) => enabled === true).map(([term]) => term)
     : [];
-  const haystack = `${normalizedName.replace(/[^a-z0-9]+/g, ' ')} ${normalizedName.replace(/[^a-z0-9]+/g, '')} ${surfaceParms.join(' ')} ${semanticTerms.join(' ')}`;
+  const haystack = `${normalizedName.replace(/[^a-z0-9]+/g, ' ')} ${normalizedName.replace(/[^a-z0-9]+/g, '')} ${surfaceParms.join(' ')} ${semanticTerms.join(' ')} ${tags.join(' ')}`;
   if (!tokens.every(token => haystack.includes(token))) return null;
   const normalizedQuery = tokens.join(' ');
   let score = tokens.reduce((total, token) => total + (normalizedName.includes(token) ? 20 : 5), 0);
   if (normalizedName.replace(/[^a-z0-9]+/g, ' ').includes(normalizedQuery)) score += 50;
   if (normalizedName.endsWith(tokens.join(''))) score += 20;
+  score += tokens.reduce((total, token) => total + (tags.some(tag => tag.includes(token)) ? 25 : 0), 0);
   return score;
 }

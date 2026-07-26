@@ -586,7 +586,7 @@ export class TextureManager {
       }
     }
     for (const name of this.shaderNames) {
-      const directory = name.split('/')[0];
+      const directory = name.includes('/') ? name.split('/')[0] : '';
       if (directory) dirs.add(directory);
     }
     return [...dirs].sort();

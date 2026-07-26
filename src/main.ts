@@ -11,6 +11,7 @@ import {
   loadOpenArenaEnabled,
   loadProjectShaderFiles,
   getCachedProjectShaderFiles,
+  loadTextureTags,
   loadStoredPaks,
   preparePakFiles,
   replaceStoredAssetConfiguration,
@@ -56,6 +57,7 @@ async function init() {
   installDialogEscapeDismissal();
   const editor = new Editor();
   await loadProjectShaderFiles();
+  await loadTextureTags();
   editor.createDefaultMap();
   const recovery = new DocumentRecoveryService(editor, currentEditorSessionId());
   setLoadingStatus('Checking for recovered work…');
