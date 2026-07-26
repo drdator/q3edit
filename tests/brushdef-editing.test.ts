@@ -10,6 +10,7 @@ import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
 import {
   fitTexture,
+  projectTexture,
   resetTextureAlignment,
   rotateTexture,
   scaleTexture,
@@ -157,6 +158,47 @@ describe('brushDef texture editing', () => {
     expect(classicFace.textureProjection.offsetY).toBe(27);
     const classicU = classicFace.polygon.map(vertex => computeFaceUV(vertex, classicFace, 128, 128)[0]);
     expect(Math.max(...classicU) - Math.min(...classicU)).toBeCloseTo(1, 6);
+  });
+
+  test('projects classic and primitive textures onto axial and camera bases', () => {
+    const editor = new Editor();
+    const worldspawn = createEntity('worldspawn');
+    const brush = createBoxBrush([0, 0, 0], [96, 64, 32], 'textures/common/caulk');
+    const face = brush.faces[4];
+    if (face.textureProjection.kind !== 'classic') throw new Error('expected classic projection');
+    Object.assign(face.textureProjection, {
+      offsetX: 11,
+      offsetY: -7,
+      rotation: 33,
+      scaleX: -0.25,
+      scaleY: 0.75,
+    });
+    worldspawn.brushes.push(brush);
+    editor.entities = [worldspawn];
+    editor.selection = [{ type: 'face', entity: worldspawn, brush, face }];
+
+    projectTexture(editor, 'axial');
+    expect(face.textureProjection).toMatchObject({
+      offsetX: 0,
+      offsetY: 0,
+      rotation: 0,
+      scaleX: 0.25,
+      scaleY: 0.75,
+    });
+
+    editor.camera3d.yaw = 0;
+    editor.camera3d.pitch = 0;
+    projectTexture(editor, 'camera');
+    expect(face.textureProjection.rotation).toBeCloseTo(270, 6);
+
+    const primitive = editorWithSelectedFace();
+    const primitiveFace = primitive.brush.faces[0];
+    if (primitiveFace.textureProjection.kind !== 'brush-primitive') throw new Error('expected primitive projection');
+    const uMagnitude = Math.hypot(...primitiveFace.textureProjection.matrix[0].slice(0, 2));
+    const vMagnitude = Math.hypot(...primitiveFace.textureProjection.matrix[1].slice(0, 2));
+    projectTexture(primitive.editor, 'axial');
+    expect(primitiveFace.textureProjection.matrix[0]).toEqual([uMagnitude, 0, 0]);
+    expect(primitiveFace.textureProjection.matrix[1]).toEqual([0, vMagnitude, 0]);
   });
 });
 
