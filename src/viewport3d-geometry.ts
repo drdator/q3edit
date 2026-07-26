@@ -52,6 +52,7 @@ export interface Viewport3DGeometryContext {
   editor: Editor;
   solidVBO: WebGLBuffer;
   clipBoxVBO: WebGLBuffer;
+  clipPreviewVBO: WebGLBuffer;
   pathLineVBO: WebGLBuffer;
   pathLineSelVBO: WebGLBuffer;
   pathCurveVBO: WebGLBuffer;
@@ -71,6 +72,7 @@ export interface Viewport3DGeometryContext {
 export interface Viewport3DGeometryBuild {
   drawGroups: DrawGroup[];
   clipBoxCount: number;
+  clipPreviewCount: number;
   pathLineCount: number;
   pathLineSelCount: number;
   pathCurveCount: number;
@@ -413,6 +415,33 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(pointfileMarkerVerts), ctx.gl.DYNAMIC_DRAW);
   const pointfileMarkerCount = pointfileMarkerVerts.length / 3;
 
+  const clipPreviewVerts: number[] = [];
+  if (ctx.editor.activeTool === 'clip') {
+    const points = ctx.editor.clipPoints;
+    for (const point of points) {
+      const size = 6;
+      clipPreviewVerts.push(
+        point[0] - size, point[1], point[2], point[0] + size, point[1], point[2],
+        point[0], point[1] - size, point[2], point[0], point[1] + size, point[2],
+        point[0], point[1], point[2] - size, point[0], point[1], point[2] + size,
+      );
+    }
+    for (let index = 0; index < points.length - 1; index++) {
+      const from = points[index];
+      const to = points[index + 1];
+      clipPreviewVerts.push(from[0], from[1], from[2], to[0], to[1], to[2]);
+    }
+    if (points.length === 3) {
+      clipPreviewVerts.push(
+        points[2][0], points[2][1], points[2][2],
+        points[0][0], points[0][1], points[0][2],
+      );
+    }
+  }
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.clipPreviewVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(clipPreviewVerts), ctx.gl.DYNAMIC_DRAW);
+  const clipPreviewCount = clipPreviewVerts.length / 3;
+
   const bspOverlayVerts = [
     ...bspOverlayLines(
     ctx.editor.compiledBspInspection,
@@ -592,6 +621,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   return {
     drawGroups,
     clipBoxCount,
+    clipPreviewCount,
     pathLineCount,
     pathLineSelCount,
     pathCurveCount,

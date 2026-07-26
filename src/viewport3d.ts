@@ -73,6 +73,9 @@ export class Viewport3D {
   private clipBoxVAO!: WebGLVertexArrayObject;
   private clipBoxVBO!: WebGLBuffer;
   private clipBoxCount = 0;
+  private clipPreviewVAO!: WebGLVertexArrayObject;
+  private clipPreviewVBO!: WebGLBuffer;
+  private clipPreviewCount = 0;
   private pathLineVAO!: WebGLVertexArrayObject;
   private pathLineVBO!: WebGLBuffer;
   private pathLineCount = 0;
@@ -360,6 +363,8 @@ export class Viewport3D {
 
     const clipBox = createLineBuffer(gl);
     this.clipBoxVAO = clipBox.vao; this.clipBoxVBO = clipBox.vbo;
+    const clipPreview = createLineBuffer(gl);
+    this.clipPreviewVAO = clipPreview.vao; this.clipPreviewVBO = clipPreview.vbo;
     const path = createLineBuffer(gl);
     this.pathLineVAO = path.vao; this.pathLineVBO = path.vbo;
     const pathSel = createLineBuffer(gl);
@@ -414,6 +419,7 @@ export class Viewport3D {
       editor: this.editor,
       solidVBO: this.solidVBO,
       clipBoxVBO: this.clipBoxVBO,
+      clipPreviewVBO: this.clipPreviewVBO,
       pathLineVBO: this.pathLineVBO,
       pathLineSelVBO: this.pathLineSelVBO,
       pathCurveVBO: this.pathCurveVBO,
@@ -431,6 +437,7 @@ export class Viewport3D {
     });
     this.drawGroups = result.drawGroups;
     this.clipBoxCount = result.clipBoxCount;
+    this.clipPreviewCount = result.clipPreviewCount;
     this.pathLineCount = result.pathLineCount;
     this.pathLineSelCount = result.pathLineSelCount;
     this.pathCurveCount = result.pathCurveCount;
@@ -501,6 +508,8 @@ export class Viewport3D {
       drawGroups: this.drawGroups,
       clipBoxVAO: this.clipBoxVAO,
       clipBoxCount: this.clipBoxCount,
+      clipPreviewVAO: this.clipPreviewVAO,
+      clipPreviewCount: this.clipPreviewCount,
       pathLineVAO: this.pathLineVAO,
       pathLineCount: this.pathLineCount,
       pathLineSelVAO: this.pathLineSelVAO,

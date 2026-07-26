@@ -8,6 +8,7 @@ import { leafAtPoint } from './bsp-inspection';
 import { CONTENTS_DETAIL } from './map-flags';
 import { editorThemeColors, themeRgba } from './theme-colors';
 import { lightVolumeSegments, resolveLightVolume } from './light-volume';
+import { planeFromPoints } from './math';
 
 interface GeoSnapLine {
   axis: 'h' | 'v';
@@ -93,7 +94,8 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
     drawCreationPreview(ctx);
   }
 
-  if (ctx.editor.activeTool === 'clip' && ctx.editor.clipPoints.length > 0 && ctx.editor.clipDepthAxis === ctx.axisDepth) {
+  if (ctx.editor.activeTool === 'clip' && ctx.editor.clipPoints.length > 0 &&
+      (ctx.editor.clipPoints.length >= 3 || ctx.editor.clipDepthAxis === ctx.axisDepth)) {
     drawClipPreview(ctx, w, h);
   }
 
@@ -800,9 +802,28 @@ function drawClipPreview(ctx: Viewport2DRenderContext, viewW: number, viewH: num
     ctx.ctx.fill();
   }
 
-  if (pts.length === 2) {
-    const [sx1, sy1] = ctx.worldToScreen(pts[0][ctx.axisH], pts[0][ctx.axisV]);
-    const [sx2, sy2] = ctx.worldToScreen(pts[1][ctx.axisH], pts[1][ctx.axisV]);
+  if (pts.length >= 2) {
+    let [sx1, sy1] = ctx.worldToScreen(pts[0][ctx.axisH], pts[0][ctx.axisV]);
+    let [sx2, sy2] = ctx.worldToScreen(pts[1][ctx.axisH], pts[1][ctx.axisV]);
+    let frontX: number | null = null;
+    let frontY: number | null = null;
+    if (pts.length >= 3) {
+      const plane = planeFromPoints(pts[0], pts[1], pts[2]);
+      const nh = plane.normal[ctx.axisH];
+      const nv = plane.normal[ctx.axisV];
+      const depth = pts.reduce((sum, point) => sum + point[ctx.axisDepth], 0) / pts.length;
+      const rhs = plane.dist - plane.normal[ctx.axisDepth] * depth;
+      const denom = nh * nh + nv * nv;
+      if (denom > 1e-8) {
+        const h0 = nh * rhs / denom;
+        const v0 = nv * rhs / denom;
+        [sx1, sy1] = ctx.worldToScreen(h0, v0);
+        [sx2, sy2] = ctx.worldToScreen(h0 - nv, v0 + nh);
+        const [frontSx, frontSy] = ctx.worldToScreen(h0 + nh, v0 + nv);
+        frontX = frontSx - sx1;
+        frontY = frontSy - sy1;
+      }
+    }
     const dx = sx2 - sx1;
     const dy = sy2 - sy1;
     const len = Math.sqrt(dx * dx + dy * dy);
@@ -822,8 +843,9 @@ function drawClipPreview(ctx: Viewport2DRenderContext, viewW: number, viewH: num
 
       const midX = (sx1 + sx2) / 2;
       const midY = (sy1 + sy2) / 2;
-      const perpX = -ny;
-      const perpY = nx;
+      const frontLen = frontX === null || frontY === null ? 0 : Math.hypot(frontX, frontY);
+      const perpX = frontLen > 0.01 ? frontX! / frontLen : -ny;
+      const perpY = frontLen > 0.01 ? frontY! / frontLen : nx;
       const arrowDist = 12;
       const isFront = ctx.editor.clipMode === 'front' || ctx.editor.clipMode === 'both';
       const isBack = ctx.editor.clipMode === 'back' || ctx.editor.clipMode === 'both';

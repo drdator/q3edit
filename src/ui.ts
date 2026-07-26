@@ -2011,7 +2011,7 @@ export class UI {
         ? 'Tool: patch edit (texture paint)'
         : `Tool: patch edit (height r${e.currentTerrainRadius()} s${e.currentTerrainStrength()} ${e.terrainFalloff})`;
     } else if (e.activeTool === 'clip') {
-      toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/2`;
+      toolLabel = `Tool: clip (${e.clipMode}) ${e.clipPoints.length}/3`;
     } else if (e.activeTool === 'create') {
       toolLabel = brushPrimitiveUsesSides(e.currentBrushPrimitive)
         ? `Tool: create (${e.currentBrushPrimitive} ${e.currentBrushSides})`

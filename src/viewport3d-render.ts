@@ -69,6 +69,8 @@ export interface Viewport3DRenderContext {
   drawGroups: DrawGroup[];
   clipBoxVAO: WebGLVertexArrayObject;
   clipBoxCount: number;
+  clipPreviewVAO: WebGLVertexArrayObject;
+  clipPreviewCount: number;
   pathLineVAO: WebGLVertexArrayObject;
   pathLineCount: number;
   pathLineSelVAO: WebGLVertexArrayObject;
@@ -289,6 +291,16 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       ctx.gl.bindVertexArray(ctx.pointfileMarkerVAO);
       ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.pointfileMarkerCount);
     }
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
+  if (!isGameView && ctx.clipPreviewCount > 0) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.2, 0.2);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    ctx.gl.bindVertexArray(ctx.clipPreviewVAO);
+    ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.clipPreviewCount);
     ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }
 

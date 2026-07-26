@@ -1,14 +1,18 @@
 import { clipBrush, type Brush } from './brush';
 import { hollowBrush, intersectBrushes, mergeBrushes, subtractBrush } from './csg';
-import type { Vec3 } from './math';
+import { vec3Cross, vec3Length, vec3Sub, type Vec3 } from './math';
 import { getSelectedBrushItems } from './editor-selection';
 import type { Editor, SelectionItem } from './editor';
 
 export function addClipPoint(editor: Editor, point: Vec3, depthAxis: number): void {
-  if (editor.clipPoints.length >= 2) editor.clipPoints = [];
-  editor.clipPoints.push(point);
-  editor.clipDepthAxis = depthAxis;
+  if (editor.clipPoints.length >= 3) editor.clipPoints = [];
+  editor.clipPoints.push([...point]);
+  if (editor.clipPoints.length === 1) editor.clipDepthAxis = depthAxis;
+  if (editor.clipPoints.length === 3) editor.clipDepthAxis = -1;
   editor.redrawRequested = true;
+  editor.statusMessage = editor.clipPoints.length === 2
+    ? 'Clip point 2/3 — press Enter for an axial clip or place a third point'
+    : `Clip point ${editor.clipPoints.length}/3`;
 }
 
 export function cycleClipMode(editor: Editor): void {
@@ -25,14 +29,34 @@ export function cancelClip(editor: Editor): void {
 }
 
 export function executeClip(editor: Editor): void {
-  if (editor.clipPoints.length < 2 || editor.selection.length === 0) return;
+  if (editor.clipPoints.length < 2) {
+    editor.statusMessage = 'Clip: place at least two points';
+    return;
+  }
+  if (editor.selection.length === 0) {
+    editor.statusMessage = 'Clip: select brushes first';
+    return;
+  }
 
   const p1 = editor.clipPoints[0];
   const p2 = editor.clipPoints[1];
-  const depthAxis = editor.clipDepthAxis;
-
-  const p3: Vec3 = [p1[0], p1[1], p1[2]];
-  p3[depthAxis] += 1;
+  let p3: Vec3;
+  if (editor.clipPoints.length >= 3) {
+    p3 = editor.clipPoints[2];
+    const cross = vec3Cross(vec3Sub(p2, p1), vec3Sub(p3, p1));
+    if (vec3Length(cross) < 1e-6) {
+      editor.statusMessage = 'Clip: the three points are collinear';
+      return;
+    }
+  } else {
+    const depthAxis = editor.clipDepthAxis;
+    if (depthAxis < 0 || depthAxis > 2) {
+      editor.statusMessage = 'Clip: add a third point to define the plane in 3D';
+      return;
+    }
+    p3 = [p1[0], p1[1], p1[2]];
+    p3[depthAxis] += 1;
+  }
 
   const frontPoints: [Vec3, Vec3, Vec3] = [p1, p2, p3];
   const backPoints: [Vec3, Vec3, Vec3] = [p2, p1, p3];
