@@ -218,7 +218,14 @@ function hollowShellForFace(brush: Brush, face: BrushFace, thickness: number): B
  * Create an inward-facing room shell. Only the face visible from inside keeps
  * the source face material; exterior and edge faces are caulked.
  */
+export function roomThicknessFits(brush: Brush, thickness: number): boolean {
+  return Number.isFinite(thickness) && thickness > 0 &&
+    brush.maxs.every((maximum, axis) =>
+      maximum - brush.mins[axis] > thickness * 2 + ON_EPSILON);
+}
+
 export function roomBrushes(brush: Brush, thickness: number): Brush[] {
+  if (!roomThicknessFits(brush, thickness)) return [];
   const shells: Brush[] = [];
   for (const source of brush.faces) {
     const shell = hollowShellForFace(brush, source, thickness);
@@ -322,6 +329,10 @@ export function mergeBrushes(brushes: Brush[]): Brush | null {
 
   const newBrush: Brush = {
     faces: mergedFaces,
+    name: brushes.every(brush => brush.name === brushes[0].name) ? brushes[0].name : undefined,
+    editorGroupId: brushes.every(brush => brush.editorGroupId === brushes[0].editorGroupId)
+      ? brushes[0].editorGroupId
+      : undefined,
     properties: brushes[0].properties ? { ...brushes[0].properties } : undefined,
     mins: [0, 0, 0],
     maxs: [0, 0, 0],
@@ -377,6 +388,10 @@ export function intersectBrushes(brushes: Brush[]): Brush | null {
 
   const intersection: Brush = {
     faces,
+    name: brushes.every(brush => brush.name === firstBrush.name) ? firstBrush.name : undefined,
+    editorGroupId: brushes.every(brush => brush.editorGroupId === firstBrush.editorGroupId)
+      ? firstBrush.editorGroupId
+      : undefined,
     properties: firstBrush.properties ? { ...firstBrush.properties } : undefined,
     mins: [0, 0, 0],
     maxs: [0, 0, 0],

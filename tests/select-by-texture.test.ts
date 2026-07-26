@@ -40,4 +40,19 @@ describe('select by texture', () => {
       { type: 'patch', entity: editor.worldspawn, patch },
     ]);
   });
+
+  it('does not allow direct face selection through a locked group', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/metal');
+    editor.worldspawn.brushes.push(brush);
+    editor.selection = [{ type: 'brush', entity: editor.worldspawn, brush }];
+    const group = editor.createNamedGroup('Locked')!;
+    editor.setNamedGroupLocked(group.id, true);
+    editor.selection = [{ type: 'brush', entity: editor.worldspawn, brush }];
+
+    editor.selectFace(editor.worldspawn, brush, brush.faces[0]);
+
+    expect(editor.selection).toEqual([{ type: 'brush', entity: editor.worldspawn, brush }]);
+    expect(editor.statusMessage).toContain('locked');
+  });
 });

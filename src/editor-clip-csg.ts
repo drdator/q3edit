@@ -5,6 +5,7 @@ import {
   intersectBrushes,
   mergeBrushes,
   roomBrushes,
+  roomThicknessFits,
   subtractBrush,
 } from './csg';
 import { vec3Cross, vec3Length, vec3Sub, type Vec3 } from './math';
@@ -183,6 +184,12 @@ export function csgRoom(editor: Editor): void {
   const brushItems = getSelectedBrushItems(editor);
   if (brushItems.length === 0) {
     editor.statusMessage = 'CSG Room: select brushes first';
+    return;
+  }
+
+  const tooThin = brushItems.filter(item => !roomThicknessFits(item.brush, editor.gridSize));
+  if (tooThin.length > 0) {
+    editor.statusMessage = `CSG Room: ${tooThin.length} selected ${tooThin.length === 1 ? 'brush is' : 'brushes are'} too thin for ${editor.gridSize}-unit walls`;
     return;
   }
 

@@ -9,6 +9,11 @@ export interface ShaderSourceValidation {
   diagnostics: ShaderSourceDiagnostic[];
 }
 
+export interface ProjectShaderSourceValidation {
+  valid: boolean;
+  files: Record<string, ShaderSourceValidation>;
+}
+
 function stripComments(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, match => match.replace(/[^\n]/g, ' '))
@@ -31,8 +36,12 @@ export function validateShaderSource(source: string): ShaderSourceValidation {
     token = '';
     if (!value) return;
     if (stack.length === 0) {
-      pendingNameValue = value;
-      pendingNameLine = tokenLine;
+      if (pendingNameValue) {
+        diagnostics.push({ line: tokenLine, message: `Unexpected token "${value}" before shader block` });
+      } else {
+        pendingNameValue = value;
+        pendingNameLine = tokenLine;
+      }
     }
   };
 
@@ -75,9 +84,42 @@ export function validateShaderSource(source: string): ShaderSourceValidation {
 }
 
 export function normalizeProjectShaderPath(path: string): string {
-  const file = path.trim().replace(/\\/g, '/').replace(/^\/+/, '').replace(/[^a-zA-Z0-9_./-]/g, '_');
-  const withRoot = file.startsWith('scripts/') ? file : `scripts/${file}`;
-  return withRoot.endsWith('.shader') ? withRoot : `${withRoot}.shader`;
+  const segments = path.trim().replace(/\\/g, '/').split('/')
+    .filter(segment => segment && segment !== '.' && segment !== '..')
+    .map(segment => segment.replace(/[^a-zA-Z0-9_.-]/g, '_'));
+  if (segments[0]?.toLowerCase() === 'scripts') segments.shift();
+  let file = segments.join('/');
+  if (!file || file === '.shader') file = 'q3edit_custom.shader';
+  const withRoot = `scripts/${file}`;
+  return /\.shader$/i.test(withRoot)
+    ? `${withRoot.slice(0, -'.shader'.length)}.shader`
+    : `${withRoot}.shader`;
+}
+
+export function validateProjectShaderFiles(files: Record<string, string>): ProjectShaderSourceValidation {
+  const validations = Object.fromEntries(Object.entries(files).map(([path, source]) => [
+    path,
+    validateShaderSource(source),
+  ]));
+  const owners = new Map<string, string>();
+  for (const [path, validation] of Object.entries(validations)) {
+    for (const shaderName of validation.shaderNames) {
+      const owner = owners.get(shaderName);
+      if (!owner) {
+        owners.set(shaderName, path);
+        continue;
+      }
+      validation.diagnostics.push({
+        line: 1,
+        message: `Duplicate shader across project files: ${shaderName} (also in ${owner})`,
+      });
+      validation.valid = false;
+    }
+  }
+  return {
+    valid: Object.values(validations).every(validation => validation.valid),
+    files: validations,
+  };
 }
 
 export function defaultProjectShaderSource(name = 'q3edit/custom'): string {

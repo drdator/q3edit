@@ -3,7 +3,7 @@ import { loadProjectShaderFiles, saveProjectShaderFiles } from './pak-storage';
 import {
   defaultProjectShaderSource,
   normalizeProjectShaderPath,
-  validateShaderSource,
+  validateProjectShaderFiles,
 } from './q3-shader-source';
 
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
@@ -70,17 +70,23 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
     fileSelect.value = currentPath;
   };
   const validateAndPreview = (scheduleSave: boolean) => {
-    const validation = validateShaderSource(source.value);
     files[currentPath] = source.value;
-    status.dataset.valid = String(validation.valid);
+    const projectValidation = validateProjectShaderFiles(files);
+    const validation = projectValidation.files[currentPath];
+    status.dataset.valid = String(projectValidation.valid);
     status.dataset.saved = 'false';
-    status.textContent = validation.valid
-      ? `${validation.shaderNames.length} shader${validation.shaderNames.length === 1 ? '' : 's'} · valid`
-      : validation.diagnostics.map(item => `Line ${item.line}: ${item.message}`).join(' · ');
+    const otherInvalidPaths = Object.entries(projectValidation.files)
+      .filter(([path, result]) => path !== currentPath && !result.valid)
+      .map(([path]) => path);
+    status.textContent = !validation.valid
+      ? validation.diagnostics.map(item => `Line ${item.line}: ${item.message}`).join(' · ')
+      : otherInvalidPaths.length > 0
+        ? `Current file valid · Fix ${otherInvalidPaths.join(', ')} before previewing or saving`
+        : `${validation.shaderNames.length} shader${validation.shaderNames.length === 1 ? '' : 's'} · valid`;
     declared.textContent = validation.shaderNames.length > 0
       ? `Declared: ${validation.shaderNames.join(', ')}`
       : 'No declared shaders';
-    if (!validation.valid) {
+    if (!projectValidation.valid) {
       if (saveTimer !== null) {
         window.clearTimeout(saveTimer);
         saveTimer = null;
@@ -102,6 +108,7 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
     validateAndPreview(false);
   };
   const persist = async () => {
+    if (!validateProjectShaderFiles(files).valid) return;
     if (saveTimer !== null) {
       window.clearTimeout(saveTimer);
       saveTimer = null;
@@ -133,10 +140,13 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
   source.oninput = () => validateAndPreview(true);
 
   const newFile = button('New File', () => {
-    let suffix = 1;
+    let suffix = 0;
     let path = 'scripts/q3edit_custom.shader';
-    while (files[path] !== undefined) path = `scripts/q3edit_custom_${suffix++}.shader`;
-    files[path] = defaultProjectShaderSource(`q3edit/custom_${suffix}`);
+    while (files[path] !== undefined) {
+      suffix++;
+      path = `scripts/q3edit_custom_${suffix}.shader`;
+    }
+    files[path] = defaultProjectShaderSource(suffix === 0 ? 'q3edit/custom' : `q3edit/custom_${suffix}`);
     currentPath = path;
     showCurrent();
     validateAndPreview(true);
@@ -162,7 +172,8 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
   body.append(toolbar, pathField, source, declared, status);
 
   const close = async () => {
-    const validation = validateShaderSource(source.value);
+    files[currentPath] = source.value;
+    const validation = validateProjectShaderFiles(files);
     if (validation.valid) await persist();
     else textureManager.setProjectShaderFiles(await loadProjectShaderFiles());
     editor.onShaderSourcesChanged?.();
@@ -171,7 +182,10 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
   actions.append(
-    button('Save', () => { if (validateShaderSource(source.value).valid) void persist(); }, true),
+    button('Save', () => {
+      files[currentPath] = source.value;
+      if (validateProjectShaderFiles(files).valid) void persist();
+    }, true),
     button('Close', () => { void close(); }),
   );
   dialog.append(title, description, body, actions);

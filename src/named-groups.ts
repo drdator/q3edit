@@ -253,9 +253,34 @@ function nextLinkedCopyName(entities: Entity[], sourceName: string): string {
 }
 
 function copyBrushStableIds(source: Brush | undefined, target: Brush): void {
-  if (!source) return;
-  target.editorObjectId = source.editorObjectId;
-  target.faces.forEach((face, index) => { face.editorObjectId = source.faces[index]?.editorObjectId; });
+  target.editorObjectId = source?.editorObjectId;
+  target.faces.forEach((face, index) => { face.editorObjectId = source?.faces[index]?.editorObjectId; });
+}
+
+function comparableLinkedValue(value: Brush | Patch): string {
+  return JSON.stringify(value, (key, member) => (
+    key === 'editorObjectId' || key === 'editorGroupId' ? undefined : member
+  ));
+}
+
+function takePreviousLinkedValue<T extends Brush | Patch>(previous: T[], candidate: T): T | undefined {
+  if (previous.length === 0) return undefined;
+  const exactIndex = previous.findIndex(value => comparableLinkedValue(value) === comparableLinkedValue(candidate));
+  if (exactIndex >= 0) return previous.splice(exactIndex, 1)[0];
+  const center = candidate.mins.map((value, axis) => (value + candidate.maxs[axis]) * 0.5);
+  let closestIndex = 0;
+  let closestDistance = Infinity;
+  previous.forEach((value, index) => {
+    const distance = value.mins.reduce((sum, minimum, axis) => {
+      const valueCenter = (minimum + value.maxs[axis]) * 0.5;
+      return sum + (valueCenter - center[axis]) ** 2;
+    }, 0);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  });
+  return previous.splice(closestIndex, 1)[0];
 }
 
 function replaceLinkedGeometry(entities: Entity[], sourceId: string, targetId: string, offset: Vec3): void {
@@ -270,20 +295,18 @@ function replaceLinkedGeometry(entities: Entity[], sourceId: string, targetId: s
     owner.patches = owner.patches.filter(patch => patch.editorGroupId !== targetId);
   }
 
-  let brushIndex = 0;
-  let patchIndex = 0;
   for (const item of groupGeometry(entities, sourceId)) {
     if (item.kind === 'brush') {
       const clone = cloneBrush(item.brush);
       clone.editorGroupId = targetId;
       translateBrushLocked(clone, offset);
-      copyBrushStableIds(oldBrushes[brushIndex++], clone);
+      copyBrushStableIds(takePreviousLinkedValue(oldBrushes, clone), clone);
       item.owner.brushes.push(clone);
     } else {
       const clone = clonePatch(item.patch);
       clone.editorGroupId = targetId;
       translatePatch(clone, offset);
-      clone.editorObjectId = oldPatches[patchIndex++]?.editorObjectId;
+      clone.editorObjectId = takePreviousLinkedValue(oldPatches, clone)?.editorObjectId;
       item.owner.patches.push(clone);
     }
   }

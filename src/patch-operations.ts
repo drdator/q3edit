@@ -109,8 +109,17 @@ export function deformPatch(
   random: () => number = Math.random,
 ): void {
   if (!Number.isFinite(amount) || amount < 0) throw new Error('Patch deform amount must be zero or greater');
+  const displacements = new Map<string, number>();
   for (const row of patch.ctrl) for (const point of row) {
-    point.xyz[axis] += (random() * 2 - 1) * amount;
+    // Closed Q3 patches repeat control points at their seam. Reusing a
+    // displacement for coincident points keeps that seam welded.
+    const key = point.xyz.map(value => Math.round(value * 1e5)).join(',');
+    let displacement = displacements.get(key);
+    if (displacement === undefined) {
+      displacement = (random() * 2 - 1) * amount;
+      displacements.set(key, displacement);
+    }
+    point.xyz[axis] += displacement;
   }
   finish(patch);
 }

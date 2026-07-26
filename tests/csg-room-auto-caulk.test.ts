@@ -16,6 +16,10 @@ describe('CSG room', () => {
       expect(shell.faces.filter(face => face.texture === 'common/caulk').length).toBe(shell.faces.length - 1);
     }
   });
+
+  test('rejects a wall thickness that would consume the room interior', () => {
+    expect(roomBrushes(createBoxBrush([0, 0, 0], [32, 128, 128]), 16)).toEqual([]);
+  });
 });
 
 describe('conservative auto caulk', () => {

@@ -204,4 +204,28 @@ describe('named groups', () => {
     expect(editor.worldspawn.brushes.find(item => item.editorGroupId === instance.id)?.mins)
       .toEqual([64, 0, 0]);
   });
+
+  it('preserves the matching linked object identity when an earlier source member is deleted', () => {
+    const editor = new Editor();
+    const first = createBoxBrush([0, 0, 0], [32, 32, 32]);
+    const second = createBoxBrush([96, 0, 0], [128, 32, 32]);
+    editor.worldspawn.brushes.push(first, second);
+    editor.selection = [
+      { type: 'brush', entity: editor.worldspawn, brush: first },
+      { type: 'brush', entity: editor.worldspawn, brush: second },
+    ];
+    const source = editor.createNamedGroup('Source')!;
+    const instance = editor.createLinkedGroupCopy(source.id, [256, 0, 0])!;
+    const linkedSecond = editor.worldspawn.brushes.find(brush =>
+      brush.editorGroupId === instance.id && brush.mins[0] === 352)!;
+    const linkedSecondId = linkedSecond.editorObjectId;
+
+    editor.transact('Delete first source member', () => {
+      editor.worldspawn.brushes.splice(editor.worldspawn.brushes.indexOf(first), 1);
+    });
+
+    const remainingLinked = editor.worldspawn.brushes.find(brush => brush.editorGroupId === instance.id)!;
+    expect(remainingLinked.mins[0]).toBe(352);
+    expect(remainingLinked.editorObjectId).toBe(linkedSecondId);
+  });
 });

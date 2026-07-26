@@ -13,11 +13,13 @@ export function normalizeTextureTags(value: unknown): TextureTagMap {
   const result: TextureTagMap = {};
   for (const [texture, tags] of Object.entries(value as Record<string, unknown>)) {
     if (!Array.isArray(tags)) continue;
+    const textureName = normalizeTextureName(texture);
+    if (!textureName) continue;
     const normalized = [...new Set(tags
       .filter((tag): tag is string => typeof tag === 'string')
       .map(normalizeTextureTag)
       .filter(Boolean))].sort();
-    if (normalized.length > 0) result[normalizeTextureName(texture)] = normalized;
+    if (normalized.length > 0) result[textureName] = normalized;
   }
   return result;
 }
@@ -29,6 +31,7 @@ export function textureTagsFor(tags: TextureTagMap, texture: string): string[] {
 export function setTextureTags(tags: TextureTagMap, texture: string, values: string[]): TextureTagMap {
   const result = normalizeTextureTags(tags);
   const key = normalizeTextureName(texture);
+  if (!key) return result;
   const normalized = [...new Set(values.map(normalizeTextureTag).filter(Boolean))].sort();
   if (normalized.length > 0) result[key] = normalized;
   else delete result[key];

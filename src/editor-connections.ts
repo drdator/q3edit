@@ -178,6 +178,10 @@ export function selectConnectedEntities(editor: Editor, transitive = false): voi
   }
 
   const selected = new Set(seeds.filter(entity => selectableSet.has(entity)));
+  if (selected.size === 0) {
+    editor.statusMessage = 'Selected entities are hidden or locked';
+    return;
+  }
   let frontier = [...selected];
   do {
     const next: Entity[] = [];

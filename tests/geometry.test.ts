@@ -123,22 +123,29 @@ describe('clipping and CSG invariants', () => {
   });
 
   test('merges adjacent boxes into their convex union', () => {
-    const merged = mergeBrushes([
-      createBoxBrush([0, 0, 0], [32, 64, 64]),
-      createBoxBrush([32, 0, 0], [64, 64, 64]),
-    ]);
+    const first = createBoxBrush([0, 0, 0], [32, 64, 64]);
+    const second = createBoxBrush([32, 0, 0], [64, 64, 64]);
+    first.editorGroupId = second.editorGroupId = 'architecture';
+    first.name = second.name = 'wall';
+    const merged = mergeBrushes([first, second]);
 
     expect(merged).not.toBeNull();
     expectVecClose(merged!.mins, [0, 0, 0]);
     expectVecClose(merged!.maxs, [64, 64, 64]);
     expect(validateBrush(merged!).valid).toBe(true);
+    expect(merged).toMatchObject({ editorGroupId: 'architecture', name: 'wall' });
   });
 
   test('intersects overlapping brushes into their common volume', () => {
     const first = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/first');
+    first.editorGroupId = 'architecture';
+    first.name = 'overlap';
+    const second = createBoxBrush([32, 16, -16], [96, 48, 48], 'base_wall/second');
+    second.editorGroupId = 'architecture';
+    second.name = 'overlap';
     const intersection = intersectBrushes([
       first,
-      createBoxBrush([32, 16, -16], [96, 48, 48], 'base_wall/second'),
+      second,
     ]);
 
     expect(intersection).not.toBeNull();
@@ -146,6 +153,15 @@ describe('clipping and CSG invariants', () => {
     expectVecClose(intersection!.maxs, [64, 48, 48]);
     expect(intersection!.faces.every(face => face.texture === 'base_wall/first')).toBe(true);
     expect(validateBrush(intersection!).valid).toBe(true);
+    expect(intersection).toMatchObject({ editorGroupId: 'architecture', name: 'overlap' });
+  });
+
+  test('does not assign a replacement to one input group when CSG inputs differ', () => {
+    const left = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    const right = createBoxBrush([32, 0, 0], [96, 64, 64]);
+    left.editorGroupId = 'left';
+    right.editorGroupId = 'right';
+    expect(intersectBrushes([left, right])?.editorGroupId).toBeUndefined();
   });
 
   test('returns null when brushes have no common volume', () => {
