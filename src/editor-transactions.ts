@@ -1,5 +1,5 @@
 import type { Editor } from './editor';
-import { deduplicateEditorObjectIds } from './editor-object-ids';
+import { deduplicateEditorObjectIds, ensureEditorObjectIds } from './editor-object-ids';
 import { cloneMapSnapshot, type MapSnapshot } from './history';
 import { synchronizeLinkedGroups } from './named-groups';
 import {
@@ -77,6 +77,7 @@ export function commitTransaction(editor: Editor): boolean {
   synchronizeLinkedGroups(editor, active.before);
   deduplicateEditorObjectIds(editor.entities);
   if (!active.options.assumeChanged && documentsEqual(active.before, editor.entities)) return false;
+  ensureEditorObjectIds(editor.entities);
 
   editor.history.recordSnapshot(active.before, active.beforeRevision, active.label, active.options);
   if (active.transform) editor.lastTransform = cloneTransformDescriptor(active.transform);

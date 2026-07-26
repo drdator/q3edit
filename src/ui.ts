@@ -194,7 +194,7 @@ export class UI {
       openPreferences: () => this.openPreferences(),
       openProjectSettings: () => this.openProjectSettings(),
       openVersionHistory: () => {
-        if (this.recovery) openVersionHistoryDialog(this.recovery);
+        if (this.recovery) openVersionHistoryDialog(this.recovery, this.editor);
       },
       openBuildHistory: () => { void openBuildHistoryDialog(this.editor, this.buildHistory); },
       openReleasePackage: () => {

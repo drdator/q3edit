@@ -38,3 +38,15 @@ and entity properties remain independent. Saving through another editor may
 remove the Q3Edit metadata; the flattened geometry remains intact, but the link
 cannot be reconstructed. If only part of the metadata survives, the Groups panel
 marks the instance as a broken link so it can be explicitly unlinked.
+
+## Object identity and map merges
+
+After the first real edit, Q3Edit assigns persistent `_q3edit_object_id` metadata
+to entities and `q3edit-id` comments to brushes and patches. Version History uses
+those IDs for object-level comparison and three-way merging. Compiler-safe
+exports strip the IDs.
+
+Maps that pass through another editor remain valid but may lose these IDs.
+Q3Edit still compares unambiguous unchanged objects, while potentially edited
+objects are conservatively reported as separate additions/removals. Three-way
+merge skips uncorrelated objects rather than guessing and risking geometry loss.

@@ -2,6 +2,8 @@ import type {
   DocumentRecoveryService,
   DocumentRecoverySnapshot,
 } from './document-recovery';
+import type { Editor } from './editor';
+import { chooseMapToMerge, openMapDiffDialog } from './map-diff-dialog';
 
 function button(label: string, action: () => void | Promise<void>, primary = false): HTMLButtonElement {
   const result = document.createElement('button');
@@ -27,7 +29,7 @@ function exportSnapshot(snapshot: DocumentRecoverySnapshot): void {
   URL.revokeObjectURL(url);
 }
 
-export function openVersionHistoryDialog(recovery: DocumentRecoveryService): void {
+export function openVersionHistoryDialog(recovery: DocumentRecoveryService, editor: Editor): void {
   document.getElementById('version-history-dialog')?.remove();
   const overlay = document.createElement('div');
   overlay.id = 'version-history-dialog';
@@ -75,6 +77,8 @@ export function openVersionHistoryDialog(recovery: DocumentRecoveryService): voi
       const actions = document.createElement('div');
       actions.className = 'version-history-actions';
       actions.append(
+        button('Compare', () => openMapDiffDialog(editor, snapshot)),
+        button('Merge .map…', () => chooseMapToMerge(editor, snapshot)),
         button('Restore', () => {
           if (globalThis.confirm?.(`Restore “${snapshot.label}” as a new undoable map state?`) ?? true) {
             recovery.restoreVersion(snapshot);
