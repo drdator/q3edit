@@ -25,6 +25,7 @@ import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { mirrorBrushLocked, rotateBrushLocked, scaleBrushLocked, translateBrushLocked } from './texture-lock';
+import { getEntityClassRegistry } from './entity-definitions';
 
 export interface BrushScaleOriginal {
   brush: Brush;
@@ -457,10 +458,83 @@ export function scaleSelection(editor: Editor, scale: Vec3): void {
   });
 }
 
-export function duplicateSelection(editor: Editor): void {
+const FALLBACK_INCOMING_RELATIONSHIP_KEYS = ['targetname'] as const;
+const FALLBACK_OUTGOING_RELATIONSHIP_KEYS = ['target', 'killtarget', 'pathtarget'] as const;
+const SHARED_RELATIONSHIP_KEYS = ['team'] as const;
+
+function relationshipKeys(entity: Entity): { incoming: Set<string>; outgoing: Set<string> } {
+  const incoming = new Set<string>(FALLBACK_INCOMING_RELATIONSHIP_KEYS);
+  const outgoing = new Set<string>(FALLBACK_OUTGOING_RELATIONSHIP_KEYS);
+  const definition = getEntityClassRegistry().get(entity.classname);
+  for (const relationship of definition?.relationships ?? []) {
+    (relationship.direction === 'incoming' ? incoming : outgoing).add(relationship.key);
+  }
+  for (const property of Object.values(definition?.properties ?? {})) {
+    if (property.type !== 'entity-reference') continue;
+    if (property.key.toLowerCase().includes('targetname')) incoming.add(property.key);
+    else outgoing.add(property.key);
+  }
+  return { incoming, outgoing };
+}
+
+function uniqueRelationshipName(value: string, used: Set<string>): string {
+  let index = 1;
+  let candidate = `${value}_${index}`;
+  while (used.has(candidate)) candidate = `${value}_${++index}`;
+  used.add(candidate);
+  return candidate;
+}
+
+function makeDuplicatedEntityLinksUnique(editor: Editor, pairs: Array<{ source: Entity; clone: Entity }>): number {
+  const used = new Set<string>();
+  for (const entity of editor.nonWorldspawnEntities()) {
+    const keys = relationshipKeys(entity);
+    for (const key of [...keys.incoming, ...keys.outgoing, ...SHARED_RELATIONSHIP_KEYS]) {
+      const value = entity.properties[key]?.trim();
+      if (value) used.add(value);
+    }
+  }
+
+  const referenceReplacements = new Map<string, string>();
+  const sharedReplacements = new Map<string, string>();
+  for (const { source } of pairs) {
+    const { incoming } = relationshipKeys(source);
+    for (const key of incoming) {
+      const value = source.properties[key]?.trim();
+      if (value && !referenceReplacements.has(value)) {
+        referenceReplacements.set(value, uniqueRelationshipName(value, used));
+      }
+    }
+    for (const key of SHARED_RELATIONSHIP_KEYS) {
+      const value = source.properties[key]?.trim();
+      const identity = `${key}\u0000${value}`;
+      if (value && !sharedReplacements.has(identity)) {
+        sharedReplacements.set(identity, uniqueRelationshipName(value, used));
+      }
+    }
+  }
+
+  for (const { source, clone } of pairs) {
+    const { incoming, outgoing } = relationshipKeys(source);
+    for (const key of [...incoming, ...outgoing]) {
+      const value = clone.properties[key]?.trim();
+      const replacement = value ? referenceReplacements.get(value) : undefined;
+      if (replacement) clone.properties[key] = replacement;
+    }
+    for (const key of SHARED_RELATIONSHIP_KEYS) {
+      const value = clone.properties[key]?.trim();
+      const replacement = value ? sharedReplacements.get(`${key}\u0000${value}`) : undefined;
+      if (replacement) clone.properties[key] = replacement;
+    }
+  }
+  return referenceReplacements.size + sharedReplacements.size;
+}
+
+function duplicateSelectionWithOptions(editor: Editor, makeUnique: boolean): void {
   if (editor.selection.length === 0) return;
-  editor.transact('Duplicate selection', () => {
+  editor.transact(makeUnique ? 'Duplicate and make unique' : 'Duplicate selection', () => {
     const newSelection: SelectionItem[] = [];
+    const entityPairs: Array<{ source: Entity; clone: Entity }> = [];
     const offset: Vec3 = [editor.gridSize, editor.gridSize, 0];
     const selectedEntities = selectedEntitySet(editor);
 
@@ -480,14 +554,26 @@ export function duplicateSelection(editor: Editor): void {
         const newEntity = cloneEntity(item.entity);
         translateEditorEntity(editor, newEntity, offset);
         editor.entities.push(newEntity);
+        entityPairs.push({ source: item.entity, clone: newEntity });
         newSelection.push({ type: 'entity', entity: newEntity });
       }
     }
 
+    const remapped = makeUnique ? makeDuplicatedEntityLinksUnique(editor, entityPairs) : 0;
     editor.selection = newSelection;
     editor.redrawRequested = true;
-    editor.statusMessage = 'Duplicated';
+    editor.statusMessage = makeUnique
+      ? `Duplicated and made unique (${remapped} relationship name${remapped === 1 ? '' : 's'} remapped)`
+      : 'Duplicated';
   });
+}
+
+export function duplicateSelection(editor: Editor): void {
+  duplicateSelectionWithOptions(editor, false);
+}
+
+export function duplicateSelectionAndMakeUnique(editor: Editor): void {
+  duplicateSelectionWithOptions(editor, true);
 }
 
 export function snapSelectionToGrid(editor: Editor): void {
