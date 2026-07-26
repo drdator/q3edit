@@ -3433,6 +3433,14 @@ button.diagnostic-row:hover { border-color: var(--accent); }
 .map-merge-summary > span { padding: 10px; color: var(--accent); text-align: center; background: var(--bg-dark); border: 1px solid var(--border-dark); font-size: 18px; }
 .map-merge-summary small { display: block; margin-top: 3px; color: var(--text-dim); font-size: 10px; text-transform: uppercase; }
 
+.patch-deform-dialog { width: min(520px, calc(100vw - 48px)); }
+.patch-deform-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; background: var(--bg-dark); border: 1px solid var(--border-dark); }
+.patch-deform-fields input,
+.patch-deform-fields select { width: 100%; box-sizing: border-box; }
+.patch-deform-error { min-height: 18px; margin-top: 7px; color: var(--danger); }
+.patch-inspector-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.panel-body .patch-inspector-actions .btn { margin: 0; }
+
 @media (max-width: 700px) {
   .version-history-row { grid-template-columns: 1fr; }
   .version-history-actions { justify-content: flex-start; }
@@ -3440,6 +3448,7 @@ button.diagnostic-row:hover { border-color: var(--accent); }
   .map-diff-row { grid-template-columns: 64px minmax(0, 1fr); }
   .map-diff-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .map-diff-summary { width: 100%; margin-left: 0; }
+  .patch-deform-fields { grid-template-columns: 1fr; }
 }
 
 /* ── Release notes ── */

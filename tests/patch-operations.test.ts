@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createFlatPatch, createTerrainDefGridPatch } from '../src/patch';
-import { createPatchMatrix, deletePatchColumns, deletePatchRows, fitPatchUV, insertPatchColumns, insertPatchRows, inspectPatch, invertPatch, redispersePatchColumns, thickenPatch, transformPatchUV, transposePatch } from '../src/patch-operations';
+import { createPatchMatrix, deformPatch, deletePatchColumns, deletePatchRows, fitPatchUV, insertPatchColumns, insertPatchRows, inspectPatch, invertPatch, redispersePatchColumns, smoothPatchColumns, smoothPatchRows, thickenPatch, transformPatchUV, transposePatch } from '../src/patch-operations';
 import { Editor } from '../src/editor';
 import { createEntity } from '../src/entity';
 import { parseMap, serializeMap } from '../src/mapfile';
@@ -31,6 +31,26 @@ describe('advanced patch operations', () => {
     fitPatchUV(patch); expect(patch.ctrl[2][2].uv).toEqual([1, 1]);
     transformPatchUV(patch, [1, 2], [2, 2], 0);
     expect(patch.ctrl[2][2].uv).toEqual([2.5, 3.5]);
+  });
+
+  it('smooths row/column anchors and deforms on only the requested axis', () => {
+    const columns = createPatchMatrix([0, 0, 0], [128, 64, 0], 'test', 5, 3);
+    columns.ctrl[1][1].xyz[2] = 10;
+    columns.ctrl[1][2].xyz[2] = 99;
+    columns.ctrl[1][3].xyz[2] = 30;
+    smoothPatchColumns(columns);
+    expect(columns.ctrl[1][2].xyz[2]).toBe(20);
+
+    const rows = createPatchMatrix([0, 0, 0], [64, 128, 0], 'test', 3, 5);
+    rows.ctrl[1][1].xyz[2] = 8;
+    rows.ctrl[2][1].xyz[2] = 99;
+    rows.ctrl[3][1].xyz[2] = 24;
+    smoothPatchRows(rows);
+    expect(rows.ctrl[2][1].xyz[2]).toBe(16);
+
+    const before = [...rows.ctrl[0][0].xyz];
+    deformPatch(rows, 12, 2, () => 1);
+    expect(rows.ctrl[0][0].xyz).toEqual([before[0], before[1], before[2] + 12]);
   });
 
   it('thickens into front/back shells and optional closed side caps', () => {

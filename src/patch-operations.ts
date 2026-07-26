@@ -71,6 +71,50 @@ export function redispersePatchColumns(patch: Patch): void {
   finish(patch);
 }
 
+function smoothControlSequence(points: PatchControlPoint[]): void {
+  if (points.length < 3) return;
+  const wraps = Math.hypot(
+    ...points[0].xyz.map((value, axis) => value - points[points.length - 1].xyz[axis]),
+  ) <= 1;
+  for (let index = 2; index < points.length - 1; index += 2) {
+    points[index].xyz = points[index - 1].xyz
+      .map((value, axis) => (value + points[index + 1].xyz[axis]) * 0.5) as Vec3;
+  }
+  if (wraps && points.length >= 5) {
+    const midpoint = points[points.length - 2].xyz
+      .map((value, axis) => (value + points[1].xyz[axis]) * 0.5) as Vec3;
+    points[0].xyz = [...midpoint] as Vec3;
+    points[points.length - 1].xyz = [...midpoint] as Vec3;
+  }
+}
+
+/** Smooths anchors between neighboring handles along the row direction. */
+export function smoothPatchRows(patch: Patch): void {
+  for (let col = 0; col < patch.width; col++) {
+    smoothControlSequence(patch.ctrl.map(row => row[col]));
+  }
+  finish(patch);
+}
+
+/** Smooths anchors between neighboring handles along the column direction. */
+export function smoothPatchColumns(patch: Patch): void {
+  for (const row of patch.ctrl) smoothControlSequence(row);
+  finish(patch);
+}
+
+export function deformPatch(
+  patch: Patch,
+  amount: number,
+  axis: 0 | 1 | 2,
+  random: () => number = Math.random,
+): void {
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Patch deform amount must be zero or greater');
+  for (const row of patch.ctrl) for (const point of row) {
+    point.xyz[axis] += (random() * 2 - 1) * amount;
+  }
+  finish(patch);
+}
+
 export function createPatchMatrix(mins: Vec3, maxs: Vec3, texture: string, width: number, height: number): Patch {
   if (width < 3 || height < 3 || width > 31 || height > 31 || width % 2 === 0 || height % 2 === 0) {
     throw new Error('Patch dimensions must be odd values from 3 through 31');

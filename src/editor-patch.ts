@@ -15,13 +15,14 @@ import { stitchSelectedTerrainControlSeams } from './editor-terrain';
 import {
   createPatchMatrix, cyclePatchCap, deletePatchColumns, deletePatchRows, fitPatchUV, insertPatchColumns,
   insertPatchRows, invertPatch, naturalizePatchUV, redispersePatchColumns,
+  deformPatch,
   naturalizePatchUVByDistance,
-  redispersePatchRows, thickenPatch, transformPatchUV, transposePatch,
+  redispersePatchRows, smoothPatchColumns, smoothPatchRows, thickenPatch, transformPatchUV, transposePatch,
 } from './patch-operations';
 import { convertTerrainToBezierPatch, isTerrainMesh } from './terrain-model';
 
 export type PatchOperation = 'insert-rows' | 'delete-rows' | 'insert-columns' | 'delete-columns'
-  | 'transpose' | 'invert' | 'redisperse-rows' | 'redisperse-columns'
+  | 'transpose' | 'invert' | 'redisperse-rows' | 'redisperse-columns' | 'smooth-rows' | 'smooth-columns'
   | 'cycle-cap' | 'naturalize' | 'fit' | 'shift-u' | 'shift-v' | 'scale-up' | 'scale-down' | 'rotate';
 
 export function createPatch(
@@ -78,6 +79,7 @@ export function applyPatchOperation(editor: Editor, operation: PatchOperation): 
     transpose: transposePatch, invert: invertPatch,
     'cycle-cap': cyclePatchCap,
     'redisperse-rows': redispersePatchRows, 'redisperse-columns': redispersePatchColumns,
+    'smooth-rows': smoothPatchRows, 'smooth-columns': smoothPatchColumns,
     naturalize: naturalizePatchUV, fit: fitPatchUV,
     'shift-u': patch => transformPatchUV(patch, [0.125, 0], [1, 1], 0),
     'shift-v': patch => transformPatchUV(patch, [0, 0.125], [1, 1], 0),
@@ -88,6 +90,20 @@ export function applyPatchOperation(editor: Editor, operation: PatchOperation): 
   editor.transact(`Patch ${operation}`, () => {
     for (const item of items) operations[operation](item.patch);
     editor.redrawRequested = true; editor.statusMessage = `Patch: ${operation}`;
+  });
+}
+
+export function deformSelectedPatches(editor: Editor, amount: number, axis: 0 | 1 | 2): void {
+  const items = getSelectedPatchItems(editor);
+  if (!items.length || !Number.isFinite(amount) || amount < 0) return;
+  if (items.some(item => isTerrainMesh(item.patch))) {
+    editor.statusMessage = 'Convert terrainDef to patchDef2 before deforming it';
+    return;
+  }
+  editor.transact('Deform patches', () => {
+    for (const item of items) deformPatch(item.patch, amount, axis);
+    editor.redrawRequested = true;
+    editor.statusMessage = `Deformed ${items.length} patch${items.length === 1 ? '' : 'es'} by up to ${amount} units`;
   });
 }
 

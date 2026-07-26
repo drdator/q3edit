@@ -10,6 +10,7 @@ import { openGeometryExportDialog } from './geometry-export-dialog';
 import type { ViewportLayout } from './preferences';
 import { openUvEditorDialog } from './uv-editor-dialog';
 import { openShaderEditorDialog } from './shader-editor-dialog';
+import { openPatchDeformDialog } from './patch-deform-dialog';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -372,8 +373,9 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'patch.delete-rows', label: 'Delete Rows', menu: menu('Patch', 90, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('delete-rows') },
     { id: 'patch.insert-columns', label: 'Insert Columns', menu: menu('Patch', 100, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('insert-columns') },
     { id: 'patch.delete-columns', label: 'Delete Columns', menu: menu('Patch', 110, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('delete-columns') },
-    ...(['transpose','invert','redisperse-rows','redisperse-columns','cycle-cap','naturalize','fit','shift-u','shift-v','scale-up','scale-down','rotate'] as const).map((operation, index) => ({ id: `patch.${operation}`, label: `Patch ${operation.replace(/-/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}`, menu: menu('Patch', 120 + index, operation.includes('row') || operation.includes('column') ? 'grid' : 'texture'), enabled: hasSelectedPatches, execute: ({ editor }: EditorCommandContext) => editor.applyPatchOperation(operation) })),
+    ...(['transpose','invert','redisperse-rows','redisperse-columns','smooth-rows','smooth-columns','cycle-cap','naturalize','fit','shift-u','shift-v','scale-up','scale-down','rotate'] as const).map((operation, index) => ({ id: `patch.${operation}`, label: `Patch ${operation.replace(/-/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}`, menu: menu('Patch', 120 + index, operation.includes('row') || operation.includes('column') ? 'grid' : 'texture'), enabled: hasSelectedPatches, execute: ({ editor }: EditorCommandContext) => editor.applyPatchOperation(operation) })),
     { id: 'patch.thicken', label: 'Thicken With Caps', menu: menu('Patch', 150, 'shape'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.thickenPatches() },
+    { id: 'patch.deform', label: 'Deform Patch…', menu: menu('Patch', 155, 'shape'), enabled: hasSelectedPatches, execute: ({ editor }) => openPatchDeformDialog(editor) },
     { id: 'terrain.convert-patchdef2', label: 'Convert Terrain to patchDef2', menu: menu('Terrain', 140, 'setup'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.convertSelectedTerrainToPatch() },
     { id: 'patch.subdivide-more', label: 'Increase Patch Subdivisions', defaultShortcut: 'Plus', alternateShortcuts: ['='], menu: menu('Patch', 160, 'subdivision'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(1) },
     { id: 'patch.subdivide-less', label: 'Decrease Patch Subdivisions', defaultShortcut: 'Minus', alternateShortcuts: ['Shift+_'], menu: menu('Patch', 170, 'subdivision'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(-1) },
