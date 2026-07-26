@@ -34,6 +34,8 @@ interface StoredRelease {
   includeSource: boolean;
 }
 
+let releaseDialogRequest = 0;
+
 function defaults(mapName: string): StoredRelease {
   return {
     metadata: {
@@ -154,10 +156,16 @@ function manifestSummary(manifest: ProjectAssetManifest): HTMLElement {
 }
 
 export async function openReleasePackageDialog(options: ReleasePackageDialogOptions): Promise<void> {
+  const request = ++releaseDialogRequest;
   document.getElementById('release-package-dialog')?.remove();
   const { editor, textureManager, buildHistory } = options;
-  const mapName = editor.fileName.replace(/\.map$/i, '').replace(/[^a-zA-Z0-9_-]/g, '') || 'release';
-  const builds = await buildHistory.list(editor.fileName);
+  const fileName = editor.fileName;
+  const documentSession = editor.documentSessionStartedAt;
+  const builds = await buildHistory.list(fileName);
+  if (request !== releaseDialogRequest
+    || documentSession !== editor.documentSessionStartedAt
+    || fileName !== editor.fileName) return;
+  const mapName = fileName.replace(/\.map$/i, '').replace(/[^a-zA-Z0-9_-]/g, '') || 'release';
   const compileFingerprint = buildSourceFingerprint(editor.serializeCompileMap());
   const build = selectReleaseBuild(builds, editor.documentRevision, compileFingerprint);
   const staleBuild = builds.find(record => record.success && record.bsp && !record.region) ?? null;
@@ -265,7 +273,12 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   auditSection.innerHTML = '<h3>Asset manifest</h3>';
   const manifestHost = document.createElement('div');
   const renderManifest = () => {
-    manifestHost.replaceChildren(manifestSummary(scanProjectAssets(editor.entities, textureManager.getAssetIndex(), textureManager)));
+    const activeTextureManager = editor.textureManager ?? textureManager;
+    manifestHost.replaceChildren(manifestSummary(scanProjectAssets(
+      editor.entities,
+      activeTextureManager.getAssetIndex(),
+      activeTextureManager,
+    )));
   };
   renderManifest();
   auditSection.appendChild(manifestHost);
@@ -310,13 +323,14 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
     if (!build?.bsp) return null;
     saveMetadata();
     try {
+      const activeTextureManager = editor.textureManager ?? textureManager;
       const packageResult = buildReleasePackage({
         mapName,
         bsp: build.bsp,
         aas: build.aas,
         entities: editor.entities,
-        assets: textureManager.getAssetIndex(),
-        textures: textureManager,
+        assets: activeTextureManager.getAssetIndex(),
+        textures: activeTextureManager,
         metadata: collectStored().metadata,
         levelshot,
         levelshotExtension,
@@ -364,7 +378,11 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   exportButton.classList.add('primary');
   exportButton.disabled = !build;
   actions.append(
-    button('Close', () => { saveMetadata(); overlay.remove(); }),
+    button('Close', () => {
+      saveMetadata();
+      if (request === releaseDialogRequest) releaseDialogRequest++;
+      overlay.remove();
+    }),
     playButton,
     reportButton,
     exportButton,
@@ -374,6 +392,7 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       saveMetadata();
+      if (request === releaseDialogRequest) releaseDialogRequest++;
       overlay.remove();
       event.stopPropagation();
     }

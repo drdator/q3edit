@@ -10,6 +10,7 @@ const PROJECT_SHADER_FILES_KEY = 'project-shader-files';
 const TEXTURE_TAGS_KEY = 'texture-tags';
 let cachedProjectShaderFiles: Record<string, string> = {};
 let cachedTextureTags: TextureTagMap = {};
+let projectShaderSaveQueue: Promise<void> = Promise.resolve();
 
 interface StoredPak extends PakArchive {
   updatedAt: number;
@@ -120,6 +121,7 @@ export async function loadOpenArenaEnabled(): Promise<boolean> {
 }
 
 export async function loadProjectShaderFiles(): Promise<Record<string, string>> {
+  await projectShaderSaveQueue;
   const db = await openDatabase();
   try {
     const tx = db.transaction(SETTINGS_STORE_NAME, 'readonly');
@@ -138,19 +140,24 @@ export function getCachedProjectShaderFiles(): Record<string, string> {
 }
 
 export async function saveProjectShaderFiles(files: Record<string, string>): Promise<void> {
-  cachedProjectShaderFiles = structuredClone(files);
-  const db = await openDatabase();
-  try {
-    const tx = db.transaction(SETTINGS_STORE_NAME, 'readwrite');
-    tx.objectStore(SETTINGS_STORE_NAME).put({ key: PROJECT_SHADER_FILES_KEY, value: cachedProjectShaderFiles });
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error('Could not store project shaders'));
-      tx.onabort = () => reject(tx.error ?? new Error('Project shader storage was aborted'));
-    });
-  } finally {
-    db.close();
-  }
+  const snapshot = structuredClone(files);
+  cachedProjectShaderFiles = snapshot;
+  const operation = projectShaderSaveQueue.then(async () => {
+    const db = await openDatabase();
+    try {
+      const tx = db.transaction(SETTINGS_STORE_NAME, 'readwrite');
+      tx.objectStore(SETTINGS_STORE_NAME).put({ key: PROJECT_SHADER_FILES_KEY, value: snapshot });
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error ?? new Error('Could not store project shaders'));
+        tx.onabort = () => reject(tx.error ?? new Error('Project shader storage was aborted'));
+      });
+    } finally {
+      db.close();
+    }
+  });
+  projectShaderSaveQueue = operation.catch(() => {});
+  return operation;
 }
 
 export async function loadTextureTags(): Promise<TextureTagMap> {

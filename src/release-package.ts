@@ -4,6 +4,7 @@ import { normalizeAssetPath } from './asset-index';
 import type { Entity } from './entity';
 import type { TextureManager } from './textures';
 import { decodeMd3 } from './md3';
+import { validateProjectShaderFiles } from './q3-shader-source';
 
 export interface ArenaMetadata {
   title: string;
@@ -306,6 +307,13 @@ function addEntry(entries: Map<string, Uint8Array>, path: string, data: Uint8Arr
 
 export function buildReleasePackage(input: ReleasePackageInput): ReleasePackageResult {
   const mapName = input.mapName.replace(/[^a-zA-Z0-9_-]/g, '') || 'release';
+  const projectShaderFiles = input.textures.getProjectShaderFiles?.() ?? {};
+  const shaderValidation = validateProjectShaderFiles(projectShaderFiles);
+  if (!shaderValidation.valid) {
+    const diagnostics = Object.entries(shaderValidation.files).flatMap(([path, validation]) =>
+      validation.diagnostics.map(item => `${path}:${item.line}: ${item.message}`));
+    throw new Error(`Project shader validation failed:\n${diagnostics.join('\n')}`);
+  }
   const manifest = scanProjectAssets(input.entities, input.assets, input.textures);
   const errors = manifest.missing.map(item => `Missing ${item.requestedPath}`);
   if (!input.allowUnlicensed) errors.push(...manifest.unlicensed.map(item => `No redistribution license found for ${item.resolvedPath}`));
@@ -318,7 +326,7 @@ export function buildReleasePackage(input: ReleasePackageInput): ReleasePackageR
   addEntry(entries, `scripts/${mapName}.arena`, arenaText);
   if (input.levelshot) addEntry(entries, `levelshots/${mapName}.${input.levelshotExtension ?? 'png'}`, input.levelshot);
   if (input.includeSourceMap) addEntry(entries, `maps/${mapName}.map`, input.includeSourceMap);
-  for (const [path, source] of Object.entries(input.textures.getProjectShaderFiles?.() ?? {})) {
+  for (const [path, source] of Object.entries(projectShaderFiles)) {
     addEntry(entries, path, source);
   }
   if (input.files?.readme) addEntry(entries, 'README.txt', input.files.readme);

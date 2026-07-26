@@ -87,6 +87,16 @@ export function openUvEditorDialog(editor: Editor): void {
   let previousPoint: [number, number] = [0, 0];
   let previousAngle = 0;
   let previousRadius = 0;
+  let close = () => overlay.remove();
+
+  const faceIsCurrent = () =>
+    [...editor.allBrushes()].some(item => item.brush.faces.includes(face));
+  const requireCurrentFace = (): boolean => {
+    if (faceIsCurrent()) return true;
+    editor.statusMessage = 'UV Editor closed because the selected face changed';
+    close();
+    return false;
+  };
 
   const textureInfo = () => editor.textureManager?.getIfLoaded(face.texture);
   const textureSize = (): [number, number] => {
@@ -189,6 +199,7 @@ export function openUvEditorDialog(editor: Editor): void {
   };
 
   canvas.addEventListener('pointerdown', event => {
+    if (!requireCurrentFace()) return;
     const point = eventPoint(event, canvas);
     if (distance(point, rotateHandle) <= 22) dragMode = 'rotate';
     else if (distance(point, scaleHandle) <= 22) dragMode = 'scale';
@@ -201,6 +212,7 @@ export function openUvEditorDialog(editor: Editor): void {
     event.preventDefault();
   });
   canvas.addEventListener('pointermove', event => {
+    if (dragMode && !requireCurrentFace()) return;
     const point = eventPoint(event, canvas);
     if (!dragMode) {
       updateCursor(point);
@@ -243,17 +255,17 @@ export function openUvEditorDialog(editor: Editor): void {
     image.src = thumbnail;
   }
 
-  const close = () => {
+  close = () => {
     window.removeEventListener('resize', draw);
     overlay.remove();
   };
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
   actions.append(
-    button('Reset', () => { editor.resetTextureAlignment(); draw(); }),
-    button('Fit', () => { editor.fitTexture(); draw(); }),
-    button('Fit Width', () => { editor.fitTexture('width'); draw(); }),
-    button('Fit Height', () => { editor.fitTexture('height'); draw(); }),
+    button('Reset', () => { if (requireCurrentFace()) { editor.resetTextureAlignment(); draw(); } }),
+    button('Fit', () => { if (requireCurrentFace()) { editor.fitTexture(); draw(); } }),
+    button('Fit Width', () => { if (requireCurrentFace()) { editor.fitTexture('width'); draw(); } }),
+    button('Fit Height', () => { if (requireCurrentFace()) { editor.fitTexture('height'); draw(); } }),
     button('Close', close, true),
   );
   dialog.append(title, description, body, actions);

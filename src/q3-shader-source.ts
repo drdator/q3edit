@@ -101,6 +101,28 @@ export function validateProjectShaderFiles(files: Record<string, string>): Proje
     path,
     validateShaderSource(source),
   ]));
+  const pathOwners = new Map<string, string>();
+  for (const [path, validation] of Object.entries(validations)) {
+    const normalized = normalizeProjectShaderPath(path);
+    if (normalized !== path) {
+      validation.diagnostics.push({
+        line: 1,
+        message: `Shader file path must be normalized as ${normalized}`,
+      });
+      validation.valid = false;
+    }
+    const pathKey = normalized.toLowerCase();
+    const owner = pathOwners.get(pathKey);
+    if (owner && owner !== path) {
+      validation.diagnostics.push({
+        line: 1,
+        message: `Shader file path collides with ${owner}`,
+      });
+      validation.valid = false;
+    } else {
+      pathOwners.set(pathKey, path);
+    }
+  }
   const owners = new Map<string, string>();
   for (const [path, validation] of Object.entries(validations)) {
     for (const shaderName of validation.shaderNames) {

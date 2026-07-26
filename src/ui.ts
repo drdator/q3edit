@@ -59,6 +59,7 @@ import { getCachedTextureTags, saveTextureTags } from './pak-storage';
 import { listTextureTags, setTextureTags, textureTagsFor, type TextureTagMap } from './texture-tags';
 import { textureSearchScore } from './texture-search';
 import { openTextureTagsDialog } from './texture-tags-dialog';
+import { validateProjectShaderFiles } from './q3-shader-source';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -3050,6 +3051,17 @@ export class UI {
     };
 
     compileBtn.onclick = async () => {
+      const projectShaderFiles = this.texMgr?.getProjectShaderFiles() ?? {};
+      const shaderValidation = validateProjectShaderFiles(projectShaderFiles);
+      if (!shaderValidation.valid) {
+        const first = Object.entries(shaderValidation.files)
+          .flatMap(([path, validation]) => validation.diagnostics.map(item => `${path}:${item.line}: ${item.message}`))[0];
+        const message = `Cannot compile until project shader errors are fixed${first ? ` · ${first}` : ''}`;
+        dialog.classList.add('error');
+        description.textContent = message;
+        this.editor.statusMessage = message;
+        return;
+      }
       const buildSettings = autoPlaySettings ?? buildControls.read();
       if (!automated) {
         this.editor.preferences.quickPlay = {

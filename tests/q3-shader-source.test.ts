@@ -59,4 +59,17 @@ textures/custom/repeated {
     expect(validation.files['scripts/second.shader'].diagnostics[0]?.message)
       .toContain('Duplicate shader across project files');
   });
+
+  test('rejects noncanonical and case-colliding project paths restored from legacy storage', () => {
+    const validation = validateProjectShaderFiles({
+      'scripts/../legacy.shader': 'textures/custom/legacy { }',
+      'scripts/SHARED.shader': 'textures/custom/first { }',
+      'scripts/shared.shader': 'textures/custom/second { }',
+    });
+    expect(validation.valid).toBe(false);
+    expect(validation.files['scripts/../legacy.shader'].diagnostics)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('must be normalized') })]));
+    expect(validation.files['scripts/shared.shader'].diagnostics)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('collides') })]));
+  });
 });

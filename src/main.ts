@@ -161,8 +161,10 @@ async function init() {
 
   let defaultArchives: PakArchive[] = [];
   let defaultPakLoaded = false;
+  let defaultPakLoad: Promise<void> | null = null;
   let openArenaEnabled = true;
   let activeTextureManager: TextureManager | null = null;
+  let assetStackRequest = 0;
 
   const describeAssetStack = (names: string[], useOpenArena: boolean): string => {
     if (useOpenArena) {
@@ -179,15 +181,23 @@ async function init() {
     onProgress: PakProgressCallback = setLoadingStatus,
   ): Promise<void> => {
     if (defaultPakLoaded) return;
-    onProgress('Loading OpenArena assets…');
-    const defaults = await loadPakManifest('/openarena/manifest.json', onProgress, {
-      label: 'OpenArena 0.8.8 default textures',
-      archives: ['pak0.pk3', 'pak4-textures.pk3'],
-      license: 'COPYING',
-      source: 'OPENARENA.md',
-    });
-    defaultArchives = defaults.archives;
-    defaultPakLoaded = true;
+    if (!defaultPakLoad) {
+      defaultPakLoad = (async () => {
+        onProgress('Loading OpenArena assets…');
+        const defaults = await loadPakManifest('/openarena/manifest.json', onProgress, {
+          label: 'OpenArena 0.8.8 default textures',
+          archives: ['pak0.pk3', 'pak4-textures.pk3'],
+          license: 'COPYING',
+          source: 'OPENARENA.md',
+        });
+        defaultArchives = defaults.archives;
+        defaultPakLoaded = true;
+      })().catch(error => {
+        defaultPakLoad = null;
+        throw error;
+      });
+    }
+    await defaultPakLoad;
   };
 
   const installTextureManager = (assets: AssetIndex): TextureManager => {
@@ -236,16 +246,20 @@ async function init() {
     return texMgr;
   };
 
-  const rebuildWithStoredPaks = async (): Promise<string[]> => {
+  const rebuildWithStoredPaks = async (): Promise<{ names: string[]; useOpenArena: boolean } | null> => {
+    const request = ++assetStackRequest;
+    const useOpenArena = openArenaEnabled;
+    const configured = structuredClone(editor.projectConfiguration.assets);
     const allStored = await loadStoredPaks();
-    const configured = editor.projectConfiguration.assets;
     const stored = configured.configured
       ? configured.archives.map(name => allStored.find(pak => pak.name.toLowerCase() === name.toLowerCase())).filter((pak): pak is PakArchive => pak !== undefined)
       : allStored;
-    if (openArenaEnabled) await ensureDefaultPakLoaded();
-    const archives = [...(openArenaEnabled ? defaultArchives : []), ...stored];
-    installTextureManager(await indexPakArchives(archives, setLoadingStatus));
-    return stored.map(pak => pak.name);
+    if (useOpenArena) await ensureDefaultPakLoaded();
+    const archives = [...(useOpenArena ? defaultArchives : []), ...stored];
+    const assets = await indexPakArchives(archives, setLoadingStatus);
+    if (request !== assetStackRequest) return null;
+    installTextureManager(assets);
+    return { names: stored.map(pak => pak.name), useOpenArena };
   };
 
   let reloadingAssets = false;
@@ -260,9 +274,13 @@ async function init() {
     const undoCountBefore = editor.history.undoCount;
     try {
       await assetLoading.ready;
-      const names = await rebuildWithStoredPaks();
-      const description = describeAssetStack(names, openArenaEnabled);
-      ui.setTextureAssetStatus(description, names);
+      const rebuilt = await rebuildWithStoredPaks();
+      if (!rebuilt) {
+        editor.statusMessage = 'Asset reload superseded by a newer configuration';
+        return;
+      }
+      const description = describeAssetStack(rebuilt.names, rebuilt.useOpenArena);
+      ui.setTextureAssetStatus(description, rebuilt.names);
       await activeTextureManager?.waitForIdle();
       editor.redrawRequested = true;
       editor.statusMessage = `Reloaded assets · ${description}`;
@@ -301,9 +319,10 @@ async function init() {
 
   ui.onProjectConfigurationChanged = async (project: ProjectConfiguration) => {
     openArenaEnabled = project.assets.configured ? project.assets.openArenaEnabled : await loadOpenArenaEnabled();
-    const names = await rebuildWithStoredPaks();
-    const description = describeAssetStack(names, openArenaEnabled);
-    ui.setTextureAssetStatus(description, names);
+    const rebuilt = await rebuildWithStoredPaks();
+    if (!rebuilt) return;
+    const description = describeAssetStack(rebuilt.names, rebuilt.useOpenArena);
+    ui.setTextureAssetStatus(description, rebuilt.names);
     editor.statusMessage = `Using ${description}`;
   };
 
@@ -316,6 +335,7 @@ async function init() {
         size: pak.data.byteLength,
       })), openArenaEnabled);
       if (!result) return;
+      const request = ++assetStackRequest;
 
       assetLoading = ui.showAssetLoading('Preparing PK3 file changes…');
       await assetLoading.ready;
@@ -343,6 +363,10 @@ async function init() {
       if (result.openArenaEnabled) await ensureDefaultPakLoaded(reportProgress);
       const archives = [...(result.openArenaEnabled ? defaultArchives : []), ...ordered];
       const assets = await indexPakArchives(archives, reportProgress);
+      if (request !== assetStackRequest) {
+        editor.statusMessage = 'PK3 changes were superseded by a newer asset configuration';
+        return;
+      }
       reportProgress('Saving asset configuration…');
       await replaceStoredAssetConfiguration(ordered, result.openArenaEnabled);
       openArenaEnabled = result.openArenaEnabled;
@@ -393,8 +417,9 @@ async function init() {
     openArenaEnabled = editor.projectConfiguration.assets.configured
       ? editor.projectConfiguration.assets.openArenaEnabled
       : await loadOpenArenaEnabled();
-    const names = await rebuildWithStoredPaks();
-    ui.setTextureAssetStatus(describeAssetStack(names, openArenaEnabled), names);
+    const rebuilt = await rebuildWithStoredPaks();
+    const names = rebuilt?.names ?? [];
+    if (rebuilt) ui.setTextureAssetStatus(describeAssetStack(names, rebuilt.useOpenArena), names);
     showOpenArenaNotice = showStartupDialogs
       && openArenaEnabled
       && names.length === 0
