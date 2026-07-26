@@ -7,6 +7,7 @@ import { openExactPrimitiveDialog } from './primitive-dialog';
 import { openReleaseNotesDialog } from './release-notes-dialog';
 import type { BspOverlayMode } from './bsp-inspection';
 import { openGeometryExportDialog } from './geometry-export-dialog';
+import type { ViewportLayout } from './preferences';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -35,6 +36,7 @@ export interface EditorCommandContext {
   openMcpConnection: () => void;
   openTerrainPanel: () => void;
   toggleSidebar: () => void;
+  setViewportLayout: (layout: ViewportLayout) => void;
   cycleInvisibleMode: () => void;
   setTool: (tool: Tool) => void;
   setGrid: (size: number) => void;
@@ -241,6 +243,24 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'view.cubic-clip-smaller', label: 'Smaller Clip Cube', menu: menu('View', 40, 'clipping'), execute: ({ editor }) => editor.adjustCubicClipSize(-1) },
     { id: 'view.cubic-clip-larger', label: 'Larger Clip Cube', menu: menu('View', 50, 'clipping'), execute: ({ editor }) => editor.adjustCubicClipSize(1) },
     { id: 'view.sidebar', label: 'Right Sidebar', menu: menu('View', 60, 'layout'), checked: ({ editor }) => editor.preferences.sidebar.visible, execute: ctx => ctx.toggleSidebar() },
+    ...([
+      ['quad', 'Four Panes'],
+      ['wide-3d', 'Four Panes — Wide 3D'],
+      ['wide-2d', 'Four Panes — Wide 2D'],
+      ['three-pane', 'Three Panes'],
+      ['two-vertical', 'Two Panes — Side by Side'],
+      ['two-horizontal', 'Two Panes — Stacked'],
+      ['single-3d', 'Maximize 3D'],
+      ['single-xy', 'Maximize XY'],
+      ['single-xz', 'Maximize XZ'],
+      ['single-yz', 'Maximize YZ'],
+    ] as Array<[ViewportLayout, string]>).map((item, index): CommandDefinition<EditorCommandContext> => ({
+      id: `view.layout.${item[0]}`,
+      label: item[1],
+      menu: menu('View', 61 + index, 'layout', 'Viewport Layout'),
+      checked: ({ editor }) => editor.preferences.viewportLayout === item[0],
+      execute: context => context.setViewportLayout(item[0]),
+    })),
     { id: 'view.camera-selected', label: 'Look Through Selected', menu: menu('View', 70, 'camera', 'Camera'), enabled: hasSelection, execute: ({ editor }) => editor.lookThroughSelectedEntity() },
     { id: 'view.camera-path', label: 'Look Through Camera Path', menu: menu('View', 71, 'camera', 'Camera'), enabled: ({ editor }) => editor.cameraPaths().length > 0, execute: ({ editor }) => editor.lookThroughCameraPath() },
     { id: 'view.selection-to-camera', label: 'Move Selection to Camera', menu: menu('View', 72, 'camera', 'Camera'), enabled: hasSelection, execute: ({ editor }) => editor.moveSelectionToCamera() },
