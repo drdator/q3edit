@@ -21,6 +21,8 @@ export interface BrushPrimitiveTextureProjection {
 export type BrushTextureProjection = ClassicBrushTextureProjection | BrushPrimitiveTextureProjection;
 
 export interface BrushFace {
+  /** Stable editor-only identity used by persistent selection sets. */
+  editorObjectId?: string;
   points: [Vec3, Vec3, Vec3];  // 3 points defining the plane (for .map format)
   texture: string;
   textureProjection: BrushTextureProjection;
@@ -33,6 +35,8 @@ export interface BrushFace {
 }
 
 export interface Brush {
+  /** Stable editor-only identity used by persistent selection sets. */
+  editorObjectId?: string;
   faces: BrushFace[];
   name?: string;
   /** Stable editor-only named-group membership. */
@@ -251,6 +255,7 @@ export function cloneBrush(brush: Brush): Brush {
     textureProjection: cloneTextureProjection(f.textureProjection),
   }));
   return {
+    editorObjectId: brush.editorObjectId,
     faces,
     name: brush.name,
     editorGroupId: brush.editorGroupId,

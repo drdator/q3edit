@@ -91,7 +91,25 @@ async function init() {
   const vp3D = new Viewport3D(tdCanvas, editor);
 
   // Create UI
-  const ui = new UI(editor);
+  const ui = new UI(editor, recovery);
+  ui.configureEditorCapture(() => vp3D.capturePng(1024, 768));
+  ui.configureNavigation(
+    () => ({
+      camera3d: structuredClone(editor.camera3d),
+      views2d: {
+        xy: { centerX: vpXY.centerX, centerY: vpXY.centerY, zoom: vpXY.zoom },
+        xz: { centerX: vpXZ.centerX, centerY: vpXZ.centerY, zoom: vpXZ.zoom },
+        yz: { centerX: vpYZ.centerX, centerY: vpYZ.centerY, zoom: vpYZ.zoom },
+      },
+    }),
+    state => {
+      vp3D.setCamera(state.camera3d.position, state.camera3d.yaw, state.camera3d.pitch);
+      for (const [viewport, saved] of [[vpXY, state.views2d.xy], [vpXZ, state.views2d.xz], [vpYZ, state.views2d.yz]] as const) {
+        viewport.centerX = saved.centerX; viewport.centerY = saved.centerY; viewport.zoom = saved.zoom;
+      }
+      editor.redrawRequested = true;
+    },
+  );
   if (recoveredDocument) {
     editor.statusMessage = editor.hasUnsavedChanges
       ? `Recovered unsaved changes to ${editor.fileName}`

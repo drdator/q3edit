@@ -61,4 +61,18 @@ describe('structured compiler diagnostics', () => {
       refs: ['E0:B0:F0', 'E0:B0:F1', 'E0:B0:F2', 'E0:B0:F3', 'E0:B0:F4', 'E0:B0:F5'],
     });
   });
+
+  test('links entity/brush and serialized line diagnostics back to source objects', () => {
+    const world = createEntity('worldspawn');
+    world.brushes.push(createBoxBrush([0, 0, 0], [64, 64, 64]));
+    const explicit = structureCompilerOutput(['Warning: entity 0 brush 0 has duplicate plane'], [world]);
+    expect(explicit[0]).toMatchObject({
+      refs: ['E0:B0'],
+      impact: 'correctness',
+      suggestion: expect.stringContaining('linked source geometry'),
+    });
+
+    const byLine = structureCompilerOutput(['Error on line 7: malformed brush'], [world]);
+    expect(byLine[0].refs).toEqual(['E0:B0']);
+  });
 });

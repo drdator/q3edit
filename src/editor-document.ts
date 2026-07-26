@@ -7,12 +7,116 @@ import {
   resetEditorStateAfterDocumentReplacement,
 } from './editor-transactions';
 
+export interface OriginalMapSource {
+  text: string;
+  revision: number;
+  unsupportedConstructs: Editor['unsupportedMapConstructs'];
+  hasComments: boolean;
+}
+
+export interface MapSaveSafety {
+  safe: boolean;
+  preservesOriginalText: boolean;
+  requiresReviewedExport: boolean;
+  reasons: string[];
+}
+
+type ParsedMapResult = ReturnType<typeof parseMapWithDiagnostics>;
+
+export interface DocumentHistoryAuxiliary {
+  fileName: string;
+  originalMapSource: OriginalMapSource | null;
+  mapDiagnostics: Editor['mapDiagnostics'];
+  unsupportedMapConstructs: Editor['unsupportedMapConstructs'];
+  savedDocumentRevision: number;
+  documentSessionStartedAt: number;
+}
+
+export function captureDocumentHistoryAuxiliary(editor: Editor): DocumentHistoryAuxiliary {
+  return {
+    fileName: editor.fileName,
+    originalMapSource: editor.originalMapSource ? structuredClone(editor.originalMapSource) : null,
+    mapDiagnostics: structuredClone(editor.mapDiagnostics),
+    unsupportedMapConstructs: structuredClone(editor.unsupportedMapConstructs),
+    savedDocumentRevision: editor.savedDocumentRevision,
+    documentSessionStartedAt: editor.documentSessionStartedAt,
+  };
+}
+
+function restoreDocumentHistoryAuxiliary(editor: Editor, value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const auxiliary = value as DocumentHistoryAuxiliary;
+  editor.fileName = auxiliary.fileName;
+  editor.originalMapSource = auxiliary.originalMapSource ? structuredClone(auxiliary.originalMapSource) : null;
+  editor.mapDiagnostics = structuredClone(auxiliary.mapDiagnostics);
+  editor.unsupportedMapConstructs = structuredClone(auxiliary.unsupportedMapConstructs);
+  editor.savedDocumentRevision = auxiliary.savedDocumentRevision;
+  editor.documentSessionStartedAt = auxiliary.documentSessionStartedAt;
+}
+
+const pendingMapLoads = new WeakMap<Editor, number>();
+
+function beginMapLoad(editor: Editor): number {
+  const request = (pendingMapLoads.get(editor) ?? 0) + 1;
+  pendingMapLoads.set(editor, request);
+  return request;
+}
+
+function invalidatePendingMapLoad(editor: Editor): void {
+  beginMapLoad(editor);
+}
+
+function parseMapInWorker(text: string): Promise<ParsedMapResult> {
+  if (typeof Worker === 'undefined') return Promise.resolve(parseMapWithDiagnostics(text));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./map-parser-worker.ts', import.meta.url), { type: 'module' });
+    const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`;
+    worker.onmessage = (event: MessageEvent<{ requestId: string; result?: ParsedMapResult; error?: string }>) => {
+      if (event.data.requestId !== requestId) return;
+      worker.terminate();
+      if (event.data.error) reject(new Error(event.data.error));
+      else if (event.data.result) resolve(event.data.result);
+      else reject(new Error('Map parser worker returned no result'));
+    };
+    worker.onerror = event => { worker.terminate(); reject(new Error(event.message || 'Map parser worker failed')); };
+    worker.postMessage({ requestId, text });
+  });
+}
+
+export function analyzeMapSaveSafety(editor: Editor): MapSaveSafety {
+  const source = editor.originalMapSource;
+  if (!source) {
+    return { safe: true, preservesOriginalText: false, requiresReviewedExport: false, reasons: [] };
+  }
+  if (editor.documentRevision === source.revision) {
+    return { safe: true, preservesOriginalText: true, requiresReviewedExport: false, reasons: [] };
+  }
+  const reasons: string[] = [];
+  if (source.unsupportedConstructs.length > 0) {
+    reasons.push(`${source.unsupportedConstructs.length} unsupported map block${source.unsupportedConstructs.length === 1 ? '' : 's'} cannot be merged safely after editing`);
+  }
+  if (source.hasComments) {
+    reasons.push('source comments and formatting will be normalized');
+  }
+  return {
+    safe: reasons.length === 0,
+    preservesOriginalText: false,
+    requiresReviewedExport: reasons.length > 0,
+    reasons,
+  };
+}
+
 export function undo(editor: Editor): void {
   commitTransaction(editor);
   const previousRevision = editor.documentRevision;
-  const prev = editor.history.undo(editor.entities, editor.documentRevision);
+  const prev = editor.history.undo(
+    editor.entities,
+    editor.documentRevision,
+    captureDocumentHistoryAuxiliary(editor),
+  );
   if (prev) {
     editor.entities = prev.entities;
+    restoreDocumentHistoryAuxiliary(editor, prev.auxiliary);
     editor.restoreDocumentRevision(prev.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Undo: ${prev.label}`;
@@ -23,9 +127,14 @@ export function undo(editor: Editor): void {
 export function redo(editor: Editor): void {
   commitTransaction(editor);
   const previousRevision = editor.documentRevision;
-  const next = editor.history.redo(editor.entities, editor.documentRevision);
+  const next = editor.history.redo(
+    editor.entities,
+    editor.documentRevision,
+    captureDocumentHistoryAuxiliary(editor),
+  );
   if (next) {
     editor.entities = next.entities;
+    restoreDocumentHistoryAuxiliary(editor, next.auxiliary);
     editor.restoreDocumentRevision(next.revision);
     resetEditorStateAfterDocumentReplacement(editor);
     editor.statusMessage = `Redo: ${next.label}`;
@@ -34,6 +143,9 @@ export function redo(editor: Editor): void {
 }
 
 export function serializeMap(editor: Editor): string {
+  if (editor.originalMapSource?.revision === editor.documentRevision) {
+    return editor.originalMapSource.text;
+  }
   return serializeEntities(editor.entities);
 }
 
@@ -41,11 +153,12 @@ export function serializeCompileMap(editor: Editor): string {
   return serializeEntities(editor.entities, { compilerSafe: true });
 }
 
-export function loadMap(editor: Editor, text: string): void {
-  const result = parseMapWithDiagnostics(text);
+function applyParsedMap(editor: Editor, text: string, result: ParsedMapResult, fileName?: string): void {
+  const auxiliary = captureDocumentHistoryAuxiliary(editor);
   editor.transact('Open map', () => {
     editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
-  });
+  }, { auxiliary, assumeChanged: true });
+  if (fileName) editor.fileName = fileName;
   editor.mapDiagnostics = result.diagnostics;
   editor.unsupportedMapConstructs = result.unsupportedConstructs;
   editor.selection = [];
@@ -54,6 +167,12 @@ export function loadMap(editor: Editor, text: string): void {
   editor.clearHiddenState();
   editor.redrawRequested = true;
   editor.markDocumentSaved();
+  editor.originalMapSource = {
+    text,
+    revision: editor.documentRevision,
+    unsupportedConstructs: structuredClone(result.unsupportedConstructs),
+    hasComments: /(^|\n)\s*\/\//.test(text),
+  };
   editor.beginDocumentSession();
   editor.activityHistory.record({
     source: 'file',
@@ -83,6 +202,29 @@ export function loadMap(editor: Editor, text: string): void {
   console.warn('Map parse diagnostics', result.diagnostics);
 }
 
+export function loadMap(editor: Editor, text: string): void {
+  invalidatePendingMapLoad(editor);
+  applyParsedMap(editor, text, parseMapWithDiagnostics(text));
+}
+
+async function loadMapAsyncForRequest(
+  editor: Editor,
+  text: string,
+  request: number,
+  fileName?: string,
+): Promise<boolean> {
+  if (pendingMapLoads.get(editor) !== request) return false;
+  editor.statusMessage = 'Parsing map in background…';
+  const result = await parseMapInWorker(text);
+  if (pendingMapLoads.get(editor) !== request) return false;
+  applyParsedMap(editor, text, result, fileName);
+  return true;
+}
+
+export async function loadMapAsync(editor: Editor, text: string, fileName?: string): Promise<boolean> {
+  return loadMapAsyncForRequest(editor, text, beginMapLoad(editor), fileName);
+}
+
 export function restoreRecoveredMap(
   editor: Editor,
   text: string,
@@ -90,11 +232,14 @@ export function restoreRecoveredMap(
   documentRevision: number,
   savedDocumentRevision: number,
   documentSessionStartedAt: number,
+  originalMapSource: OriginalMapSource | null = null,
 ): void {
+  invalidatePendingMapLoad(editor);
   const result = parseMapWithDiagnostics(text);
   editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
   editor.mapDiagnostics = result.diagnostics;
   editor.unsupportedMapConstructs = result.unsupportedConstructs;
+  editor.originalMapSource = originalMapSource ? structuredClone(originalMapSource) : null;
   editor.fileName = fileName;
   editor.selection = [];
   editor.regionBounds = null;
@@ -107,11 +252,14 @@ export function restoreRecoveredMap(
 }
 
 export function newMap(editor: Editor): void {
+  invalidatePendingMapLoad(editor);
+  const auxiliary = captureDocumentHistoryAuxiliary(editor);
   editor.transact('New map', () => {
     editor.entities = [createWorldspawn()];
-  });
+  }, { auxiliary, assumeChanged: true });
   editor.mapDiagnostics = [];
   editor.unsupportedMapConstructs = [];
+  editor.originalMapSource = null;
   editor.fileName = 'untitled.map';
   editor.selection = [];
   editor.regionBounds = null;
@@ -132,6 +280,21 @@ export function newMap(editor: Editor): void {
 }
 
 export function saveMapToFile(editor: Editor): void {
+  const safety = analyzeMapSaveSafety(editor);
+  if (safety.requiresReviewedExport) {
+    const constructs = editor.originalMapSource?.unsupportedConstructs
+      .map(construct => `• ${construct.keyword} at line ${construct.line}`)
+      .join('\n') ?? '';
+    const approved = globalThis.confirm?.(
+      `This map cannot be saved without normalizing source content:\n\n${safety.reasons.map(reason => `• ${reason}`).join('\n')}` +
+      `${constructs ? `\n\nAffected constructs:\n${constructs}` : ''}` +
+      '\n\nChoose OK to export the editable content without the unsupported source, or Cancel to keep the original intact.',
+    ) ?? false;
+    if (!approved) {
+      editor.statusMessage = 'Save cancelled to prevent map data loss';
+      return;
+    }
+  }
   const data = serializeMap(editor);
   const blob = new Blob([data], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
@@ -140,6 +303,13 @@ export function saveMapToFile(editor: Editor): void {
   link.download = editor.fileName;
   link.click();
   URL.revokeObjectURL(url);
+  editor.originalMapSource = {
+    text: data,
+    revision: editor.documentRevision,
+    unsupportedConstructs: [],
+    hasComments: /(^|\n)\s*\/\//.test(data),
+  };
+  editor.unsupportedMapConstructs = [];
   editor.markDocumentSaved();
   editor.statusMessage = `Saved ${editor.fileName}`;
   editor.activityHistory.record({
@@ -160,10 +330,17 @@ export function openMapFromFile(editor: Editor): void {
   input.onchange = () => {
     const file = input.files?.[0];
     if (!file) return;
-    editor.fileName = file.name;
+    const request = beginMapLoad(editor);
     const reader = new FileReader();
     reader.onload = () => {
-      loadMap(editor, reader.result as string);
+      void loadMapAsyncForRequest(editor, reader.result as string, request, file.name).catch(error => {
+        if (pendingMapLoads.get(editor) !== request) return;
+        editor.statusMessage = `Could not open map: ${error instanceof Error ? error.message : String(error)}`;
+      });
+    };
+    reader.onerror = () => {
+      if (pendingMapLoads.get(editor) !== request) return;
+      editor.statusMessage = `Could not read ${file.name}`;
     };
     reader.readAsText(file);
   };
@@ -176,6 +353,7 @@ export function createDefaultMap(editor: Editor): void {
   editor.entities = [createWorldspawn()];
   editor.mapDiagnostics = [];
   editor.unsupportedMapConstructs = [];
+  editor.originalMapSource = null;
   editor.regionBounds = null;
   editor.clearPointfile(false);
   editor.clearHiddenState();

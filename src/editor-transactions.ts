@@ -1,9 +1,13 @@
 import type { Editor } from './editor';
+import { deduplicateEditorObjectIds } from './editor-object-ids';
 import { cloneMapSnapshot, type MapSnapshot } from './history';
 
 export interface TransactionOptions {
+  auxiliary?: unknown;
   coalesceKey?: string;
   coalesceWindowMs?: number;
+  /** The mutation is known to change the document, so a full structural comparison is unnecessary. */
+  assumeChanged?: boolean;
 }
 
 interface TransactionState {
@@ -63,9 +67,10 @@ export function commitTransaction(editor: Editor): boolean {
   if (active.depth > 0) return false;
   activeTransactions.delete(editor);
 
-  if (documentsEqual(active.before, editor.entities)) return false;
+  deduplicateEditorObjectIds(editor.entities);
+  if (!active.options.assumeChanged && documentsEqual(active.before, editor.entities)) return false;
 
-  editor.history.record(active.before, active.beforeRevision, active.label, active.options);
+  editor.history.recordSnapshot(active.before, active.beforeRevision, active.label, active.options);
   editor.commitDocumentRevision();
   editor.redrawRequested = true;
   editor.notifyDocumentChanged(active.label, active.beforeRevision);

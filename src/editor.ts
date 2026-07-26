@@ -62,6 +62,7 @@ import {
   serializeMap as serializeEditorMap,
   serializeCompileMap as serializeEditorCompileMap,
   undo as undoDocument,
+  type OriginalMapSource,
 } from './editor-document';
 import {
   copySelection as copyEditorSelection,
@@ -80,13 +81,20 @@ import {
 } from './editor-pointfile';
 import {
   fitTexture as fitEditorTexture,
+  alignFaceChain as alignEditorFaceChain,
+  copyProjectionFromFirst as copyEditorProjectionFromFirst,
+  fitTextureByMapUnits as fitEditorTextureByMapUnits,
   getTextureFaces as collectTextureFaces,
   replaceTextures as replaceEditorTextures,
   resetTextureAlignment as resetEditorTextureAlignment,
   rotateTexture as rotateEditorTexture,
   scaleTexture as scaleEditorTexture,
   setTexture as setEditorTexture,
+  setTextureDensity as setEditorTextureDensity,
+  selectedTextureDensityReport as getEditorTextureDensityReport,
   shiftTexture as shiftEditorTexture,
+  textureAxisLines as getEditorTextureAxisLines,
+  wrapTextureSelection as wrapEditorTextureSelection,
   type TextureReplaceMatch,
   type TextureReplaceScope,
 } from './editor-textures';
@@ -104,6 +112,7 @@ import {
 } from './editor-vertex';
 import {
   changeSubdivisions as changeEditorPatchSubdivisions,
+  alignSelectedPatchBoundaries as alignEditorPatchBoundaries,
   applyPatchOperation as applyEditorPatchOperation,
   convertSelectedTerrainToPatch as convertEditorTerrainToPatch,
   createMatrixPatch as createEditorMatrixPatch,
@@ -112,11 +121,13 @@ import {
   type PatchOperation,
   clearControlPointSelection as clearEditorControlPointSelection,
   createPatch as createEditorPatch,
+  copySelectedPatchUV as copyEditorPatchUV,
   enterPatchEditMode as enterEditorPatchEditMode,
   exitPatchEditMode as exitEditorPatchEditMode,
   isControlPointSelected as isEditorControlPointSelected,
   moveSelectedControlPoints as moveEditorSelectedControlPoints,
   patchControlSelectionCenter as getEditorPatchControlSelectionCenter,
+  naturalizeSelectedPatchesByDistance as naturalizeEditorPatchesByDistance,
   selectControlPoint as selectEditorControlPoint,
 } from './editor-patch';
 import {
@@ -174,6 +185,7 @@ import {
   selectNamedGroup as selectEditorNamedGroup,
   setNamedGroupHidden as setEditorNamedGroupHidden,
   setNamedGroupLocked as setEditorNamedGroupLocked,
+  setNamedGroupParent as setEditorNamedGroupParent,
   type NamedGroup,
 } from './named-groups';
 import {
@@ -261,6 +273,7 @@ import {
 import type { BrushPrimitive } from './brush-primitives';
 import { createExactBrushPrimitive as createEditorExactBrushPrimitive, type ExactPrimitiveParameters } from './editor-primitives';
 import type { MapParseDiagnostic, UnsupportedMapConstruct } from './mapfile';
+import type { BspInspection, BspOverlayMode } from './bsp-inspection';
 import {
   beginTransaction as beginEditorTransaction,
   cancelTransaction as cancelEditorTransaction,
@@ -274,6 +287,11 @@ export interface EditorDocumentChange {
   previousRevision: number | null;
   revision: number;
 }
+
+export type MapBoundsCandidate =
+  | { kind: 'brush'; entity: Entity; brush: Brush; mins: Vec3; maxs: Vec3 }
+  | { kind: 'patch'; entity: Entity; patch: Patch; mins: Vec3; maxs: Vec3 }
+  | { kind: 'entity'; entity: Entity; mins: Vec3; maxs: Vec3 };
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -330,6 +348,14 @@ export class Editor {
   clipboardText = '';
   mapDiagnostics: MapParseDiagnostic[] = [];
   unsupportedMapConstructs: UnsupportedMapConstruct[] = [];
+  originalMapSource: OriginalMapSource | null = null;
+  compiledBspInspection: BspInspection | null = null;
+  compiledBspOverlay: BspOverlayMode = 'none';
+  designReviewOverlayLines: Vec3[] = [];
+  textureAxisOverlayLines: Vec3[] = [];
+  entityRelationshipOverlayLines: Vec3[] = [];
+  runtimeEntityMessages: string[] = [];
+  pendingReviewMapText: string | null = null;
   documentRevision = 0;
   savedDocumentRevision = 0;
   documentSessionStartedAt = Date.now();
@@ -337,7 +363,6 @@ export class Editor {
   private documentChangeListeners = new Set<(change: EditorDocumentChange) => void>();
   private documentStateChangeListeners = new Set<() => void>();
   private documentSessionListeners = new Set<(startedAt: number) => void>();
-
   // Drag state for brush creation
   creating = false;
   createStart: Vec3 = [0, 0, 0];
@@ -819,6 +844,7 @@ export class Editor {
   selectNamedGroup(id: string): void { selectEditorNamedGroup(this, id); }
   setNamedGroupHidden(id: string, hidden: boolean): void { setEditorNamedGroupHidden(this, id, hidden); }
   setNamedGroupLocked(id: string, locked: boolean): void { setEditorNamedGroupLocked(this, id, locked); }
+  setNamedGroupParent(id: string, parentId?: string): void { setEditorNamedGroupParent(this, id, parentId); }
 
   connectSelectedEntities(): void {
     connectEditorSelectedEntities(this);
@@ -982,6 +1008,7 @@ export class Editor {
     documentRevision: number,
     savedDocumentRevision: number,
     documentSessionStartedAt: number,
+    originalMapSource: OriginalMapSource | null = null,
   ): void {
     restoreRecoveredEditorMap(
       this,
@@ -990,6 +1017,7 @@ export class Editor {
       documentRevision,
       savedDocumentRevision,
       documentSessionStartedAt,
+      originalMapSource,
     );
   }
 
@@ -1043,6 +1071,37 @@ export class Editor {
 
   *nonWorldspawnEntities(): Iterable<Entity> {
     yield* iterateNonWorldspawnEntities(this);
+  }
+
+  boundsCandidates2D(
+    axisH: number,
+    axisV: number,
+    minH: number,
+    minV: number,
+    maxH: number,
+    maxV: number,
+  ): MapBoundsCandidate[] {
+    const overlaps = (mins: Vec3, maxs: Vec3): boolean =>
+      maxs[axisH] >= minH && mins[axisH] <= maxH &&
+      maxs[axisV] >= minV && mins[axisV] <= maxV;
+    const result: MapBoundsCandidate[] = [];
+    for (const { entity, brush } of this.allBrushes()) {
+      if (overlaps(brush.mins, brush.maxs)) {
+        result.push({ kind: 'brush', entity, brush, mins: brush.mins, maxs: brush.maxs });
+      }
+    }
+    for (const { entity, patch } of this.allPatches()) {
+      if (overlaps(patch.mins, patch.maxs)) {
+        result.push({ kind: 'patch', entity, patch, mins: patch.mins, maxs: patch.maxs });
+      }
+    }
+    for (const entity of this.nonWorldspawnEntities()) {
+      const bounds = this.entityBounds(entity);
+      if (bounds && overlaps(bounds.mins, bounds.maxs)) {
+        result.push({ kind: 'entity', entity, ...bounds });
+      }
+    }
+    return result;
   }
 
   // ── Point entities (non-worldspawn, no brushes/patches) ──
@@ -1204,6 +1263,17 @@ export class Editor {
   fitTexture(): void {
     fitEditorTexture(this);
   }
+
+  copyTextureProjection(mode: 'world' | 'local' = 'world'): number { return copyEditorProjectionFromFirst(this, mode); }
+  alignTextureFaceChain(): number { return alignEditorFaceChain(this); }
+  wrapTextureSelection(): number { return wrapEditorTextureSelection(this); }
+  setTextureDensity(value: number): void { setEditorTextureDensity(this, value); }
+  textureDensityReport(): ReturnType<typeof getEditorTextureDensityReport> { return getEditorTextureDensityReport(this); }
+  fitTextureByMapUnits(units: number): void { fitEditorTextureByMapUnits(this, units); }
+  updateTextureAxisOverlay(): void { this.textureAxisOverlayLines = getEditorTextureAxisLines(this); this.redrawRequested = true; }
+  alignPatchBoundaries(): boolean { return alignEditorPatchBoundaries(this); }
+  copyPatchUV(): number { return copyEditorPatchUV(this); }
+  naturalizePatchesByDistance(units: number): void { naturalizeEditorPatchesByDistance(this, units); }
 
   // ── Vertex editing ──
 

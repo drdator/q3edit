@@ -86,6 +86,22 @@ export function naturalizePatchUV(patch: Patch): void {
   for (const row of patch.ctrl) for (const point of row) point.uv = [point.xyz[0] / 64, -point.xyz[1] / 64];
   tessellatePatch(patch);
 }
+export function naturalizePatchUVByDistance(patch: Patch, unitsPerRepeat = 128): void {
+  const uDistances = Array.from({ length: patch.width }, () => 0);
+  const vDistances = Array.from({ length: patch.height }, () => 0);
+  for (let col = 1; col < patch.width; col++) {
+    const distances = patch.ctrl.map(row => Math.hypot(...row[col].xyz.map((value, axis) => value - row[col - 1].xyz[axis])));
+    uDistances[col] = uDistances[col - 1] + distances.reduce((sum, value) => sum + value, 0) / distances.length;
+  }
+  for (let row = 1; row < patch.height; row++) {
+    const distances = patch.ctrl[row].map((point, col) => Math.hypot(...point.xyz.map((value, axis) => value - patch.ctrl[row - 1][col].xyz[axis])));
+    vDistances[row] = vDistances[row - 1] + distances.reduce((sum, value) => sum + value, 0) / distances.length;
+  }
+  for (let row = 0; row < patch.height; row++) for (let col = 0; col < patch.width; col++) {
+    patch.ctrl[row][col].uv = [uDistances[col] / unitsPerRepeat, vDistances[row] / unitsPerRepeat];
+  }
+  tessellatePatch(patch);
+}
 export function transformPatchUV(patch: Patch, shift: [number, number], scale: [number, number], rotation: number): void {
   const radians = rotation * Math.PI / 180; const c = Math.cos(radians); const s = Math.sin(radians);
   for (const row of patch.ctrl) for (const point of row) {

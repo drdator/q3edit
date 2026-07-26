@@ -5,6 +5,7 @@ import type { Vec3 } from './math';
 import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 import { openExactPrimitiveDialog } from './primitive-dialog';
 import { openReleaseNotesDialog } from './release-notes-dialog';
+import type { BspOverlayMode } from './bsp-inspection';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -17,9 +18,16 @@ export interface EditorCommandContext {
   managePakFiles: () => void | Promise<void>;
   openPreferences: () => void;
   openProjectSettings: () => void;
-  openDiagnostics: (tab: 'map' | 'entities' | 'find' | 'brush-macros') => void;
+  openVersionHistory?: () => void;
+  openBuildHistory?: () => void;
+  openReleasePackage?: () => void;
+  openOrganization?: () => void;
+  openSurfaceAlignment?: () => void;
+  openDiagnostics: (tab: 'map' | 'design-review' | 'entity-logic' | 'performance' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
+  toggleBuildResults: () => void;
+  isBuildResultsOpen: () => boolean;
   openMcpConnection: () => void;
   openTerrainPanel: () => void;
   toggleSidebar: () => void;
@@ -105,10 +113,10 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     checked: ({ editor }) => editor.display.categories[category],
     execute: ({ editor }) => editor.toggleDisplayCategory(category),
   }));
-  const rendererModes: RendererMode[] = ['wireframe', 'flat', 'textured'];
+  const rendererModes: RendererMode[] = ['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'];
   const rendererCommands: CommandDefinition<EditorCommandContext>[] = rendererModes.map((mode, index) => ({
     id: `view.renderer.${mode}`,
-    label: mode === 'flat' ? 'Flat Shaded' : mode[0].toUpperCase() + mode.slice(1),
+    label: mode === 'flat' ? 'Flat Shaded' : mode === 'lightmap' ? 'Lighting Only' : mode === 'overdraw' ? 'Overdraw' : mode[0].toUpperCase() + mode.slice(1),
     menu: menu('View', 200 + index, 'renderer', 'Renderer Mode'),
     checked: ({ editor }) => editor.display.rendererMode === mode,
     execute: ({ editor }) => editor.setRendererMode(mode),
@@ -121,17 +129,38 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     checked: ({ editor }) => editor.display.textureFiltering === filtering,
     execute: ({ editor }) => editor.setTextureFiltering(filtering),
   }));
+  const bspOverlayModes: Array<[BspOverlayMode, string]> = [
+    ['none', 'None'],
+    ['leaves', 'BSP Leaves'],
+    ['portals', 'Portals'],
+    ['both', 'Leaves + Portals'],
+    ['visible', 'Visible Leaves from Camera'],
+  ];
+  const bspOverlayCommands: CommandDefinition<EditorCommandContext>[] = bspOverlayModes.map(([mode, label], index) => ({
+    id: `view.bsp-overlay.${mode}`,
+    label,
+    menu: menu('View', 230 + index, 'renderer', 'BSP Overlay'),
+    enabled: ({ editor }) => editor.compiledBspInspection !== null,
+    checked: ({ editor }) => editor.compiledBspOverlay === mode,
+    execute: ({ editor }) => {
+      editor.compiledBspOverlay = mode;
+      editor.redrawRequested = true;
+    },
+  }));
   const commands: CommandDefinition<EditorCommandContext>[] = [
     { id: 'file.new', label: 'New', defaultShortcut: 'Mod+N', menu: menu('File', 0, 'document'), execute: ({ editor }) => { editor.newMap(); editor.createDefaultMap(); } },
     { id: 'file.open', label: 'Open...', defaultShortcut: 'Mod+O', menu: menu('File', 10, 'open-save'), execute: ({ editor }) => editor.openMapFromFile() },
     { id: 'file.save', label: 'Save', defaultShortcut: 'Mod+S', menu: menu('File', 20, 'open-save'), execute: ({ editor }) => editor.saveMapToFile() },
+    { id: 'file.version-history', label: 'Version History...', menu: menu('File', 25, 'open-save'), enabled: ctx => !!ctx.openVersionHistory, execute: ctx => ctx.openVersionHistory?.() },
     { id: 'file.manage-paks', label: 'Manage PK3 Files...', menu: menu('File', 30, 'assets'), execute: ctx => ctx.managePakFiles() },
     { id: 'file.project-settings', label: 'Project Settings...', menu: menu('File', 35, 'assets'), execute: ctx => ctx.openProjectSettings() },
+    { id: 'file.release-package', label: 'Build Release PK3...', menu: menu('File', 38, 'assets'), enabled: ctx => !!ctx.openReleasePackage, execute: ctx => ctx.openReleasePackage?.() },
     { id: 'file.import-prefab', label: 'Import Prefab...', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },
     { id: 'file.save-prefab', label: 'Save Selection as Prefab', menu: menu('File', 50, 'prefab'), enabled: hasSelection, execute: ({ editor }) => editor.saveSelectionAsPrefab() },
     { id: 'file.export-console', label: 'Export .map to Console', menu: menu('File', 60, 'export'), execute: ({ editor }) => console.log(editor.serializeMap()) },
     { id: 'file.quick-play', label: 'Quick Play', defaultShortcut: 'F5', menu: menu('File', 70, 'quick-play'), execute: ctx => ctx.quickPlay() },
     { id: 'file.quick-play-options', label: 'Quick Play Options...', menu: menu('File', 71, 'quick-play'), execute: ctx => ctx.openQuickPlayOptions() },
+    { id: 'file.build-history', label: 'Build History...', menu: menu('File', 79, 'compile'), enabled: ctx => !!ctx.openBuildHistory, execute: ctx => ctx.openBuildHistory?.() },
     { id: 'file.compile-bsp', label: 'Compile BSP...', menu: menu('File', 80, 'compile'), execute: ctx => ctx.compileBSP() },
 
     { id: 'edit.undo', label: 'Undo', defaultShortcut: 'Mod+Z', menu: menu('Edit', 0, 'history'), enabled: ({ editor }) => editor.history.canUndo, execute: ({ editor }) => editor.undo() },
@@ -157,6 +186,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'groups.create', label: 'Create Named Group...', menu: menu('Groups', 0, 'manage'), execute: ({ editor }) => {
       const name = globalThis.prompt?.('Named group', 'Group'); if (name) editor.createNamedGroup(name);
     } },
+    { id: 'groups.organization', label: 'Map Organization...', menu: menu('Groups', 5, 'manage'), enabled: ctx => !!ctx.openOrganization, execute: ctx => ctx.openOrganization?.() },
     { id: 'groups.add-selection', label: 'Add Selection to Group...', menu: menu('Groups', 10, 'membership'), enabled: hasSelection, execute: ({ editor }) => {
       const groups = editor.namedGroups();
       const name = globalThis.prompt?.(`Group name (${groups.map(group => group.name).join(', ')})`, groups[0]?.name ?? '');
@@ -184,7 +214,15 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     ...displayCommands,
     ...rendererCommands,
     ...filteringCommands,
+    ...bspOverlayCommands,
     { id: 'view.mcp-connection', label: 'Local MCP Connection...', menu: menu('View', 980, 'mcp-activity'), execute: ctx => ctx.openMcpConnection() },
+    {
+      id: 'view.build-results',
+      label: 'Build Results',
+      menu: menu('View', 985, 'mcp-activity'),
+      checked: ctx => ctx.isBuildResultsOpen(),
+      execute: ctx => ctx.toggleBuildResults(),
+    },
     { id: 'view.mcp-activity', label: 'Activity', menu: menu('View', 990, 'mcp-activity'), checked: ctx => ctx.isMcpActivityOpen(), execute: ctx => ctx.toggleMcpActivity() },
     { id: 'view.release-notes', label: 'Release Notes...', menu: menu('View', 1000, 'release-notes'), execute: () => openReleaseNotesDialog() },
 
@@ -284,9 +322,11 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'view.snap-mode', label: ({ editor }) => `Grid Snap: ${editor.gridSnapMode === 'off' ? 'Off' : editor.gridSnapMode === 'abs' ? 'Absolute' : 'Relative'}`, checked: ({ editor }) => editor.gridSnapMode !== 'off', execute: ctx => ctx.toggleSnap() },
     { id: 'terrain.open-panel', label: 'Open Terrain Panel', execute: ctx => ctx.openTerrainPanel() },
     { id: 'tools.map-info', label: 'Map Info & Diagnostics...', defaultShortcut: 'M', menu: menu('Tools', 300, 'diagnostics'), execute: ctx => ctx.openDiagnostics('map') },
+    { id: 'tools.entity-logic', label: 'Entity Logic...', menu: menu('Tools', 305, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entity-logic') },
     { id: 'tools.entity-info', label: 'Entity Info...', defaultShortcut: 'Mod+L', menu: menu('Tools', 310, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entities') },
     { id: 'tools.find-brush', label: 'Find Brush...', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
     { id: 'tools.brush-macros', label: 'Brush Macros...', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },
+    { id: 'tools.surface-alignment', label: 'Surface Alignment...', menu: menu('Tools', 340, 'surface'), enabled: ctx => (hasSelectedFaces(ctx) || hasSelectedPatches(ctx) || ctx.editor.textureDensityReport() !== null) && !!ctx.openSurfaceAlignment, execute: ctx => ctx.openSurfaceAlignment?.() },
 
     { id: 'texture.fit', label: 'Fit Texture', defaultShortcut: 'Mod+Shift+F', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture() },
     { id: 'texture.reset', label: 'Reset Texture Alignment', defaultShortcut: 'Mod+Shift+N', enabled: hasSelectedFaces, execute: ({ editor }) => editor.resetTextureAlignment() },

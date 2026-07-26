@@ -89,7 +89,18 @@ export function pickEntityAt(
   let bestArea = Infinity;
   let bestDepth = -Infinity;
 
-  for (const entity of ctx.editor.nonWorldspawnEntities()) {
+  const radius = 12 / ctx.zoom;
+  const candidates = ctx.editor.boundsCandidates2D(
+    ctx.axisH,
+    ctx.axisV,
+    wx - radius,
+    wy - radius,
+    wx + radius,
+    wy + radius,
+  );
+  for (const candidate of candidates) {
+    if (candidate.kind !== 'entity') continue;
+    const entity = candidate.entity;
     if (!ctx.editor.isEntityVisible(entity)) continue;
     if (!includeBrushEntities && !ctx.editor.isPointEntity(entity)) continue;
 
@@ -140,9 +151,12 @@ export function pickAt(ctx: Viewport2DPickingContext, wx: number, wy: number): V
   let bestPatch: { entity: Entity; patch: Patch } | null = null;
   let bestArea = Infinity;
   let bestDepth = -Infinity;
+  const boundsCandidates = ctx.editor.boundsCandidates2D(ctx.axisH, ctx.axisV, wx, wy, wx, wy);
 
   if (filter === 'all' || filter === 'brushes') {
-    for (const { entity, brush } of ctx.editor.allBrushes()) {
+    for (const candidate of boundsCandidates) {
+      if (candidate.kind !== 'brush') continue;
+      const { entity, brush } = candidate;
       if (!ctx.editor.isBrushVisible(brush, entity)) continue;
       if (pointInBrush2D(brush, wx, wy, ctx.axisH, ctx.axisV)) {
         const area = (brush.maxs[ctx.axisH] - brush.mins[ctx.axisH]) *
@@ -159,7 +173,9 @@ export function pickAt(ctx: Viewport2DPickingContext, wx: number, wy: number): V
   }
 
   if (filter === 'all' || filter === 'patches') {
-    for (const { entity, patch } of ctx.editor.allPatches()) {
+    for (const candidate of boundsCandidates) {
+      if (candidate.kind !== 'patch') continue;
+      const { entity, patch } = candidate;
       if (!ctx.editor.isPatchVisible(patch, entity)) continue;
       if (wx >= patch.mins[ctx.axisH] && wx <= patch.maxs[ctx.axisH] &&
           wy >= patch.mins[ctx.axisV] && wy <= patch.maxs[ctx.axisV]) {

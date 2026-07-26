@@ -1047,8 +1047,11 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
         }
       } else {
         const filter = ctx.editor.selectionFilter;
+        const boundsCandidates = ctx.editor.boundsCandidates2D(ctx.axisH, ctx.axisV, minH, minV, maxH, maxV);
         if (filter === 'all' || filter === 'brushes') {
-          for (const { entity, brush } of ctx.editor.allBrushes()) {
+          for (const candidate of boundsCandidates) {
+            if (candidate.kind !== 'brush') continue;
+            const { entity, brush } = candidate;
             if (!ctx.editor.isBrushVisible(brush, entity)) continue;
             if (brush.maxs[ctx.axisH] >= minH && brush.mins[ctx.axisH] <= maxH &&
                 brush.maxs[ctx.axisV] >= minV && brush.mins[ctx.axisV] <= maxV) {
@@ -1057,7 +1060,9 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
           }
         }
         if (filter === 'all' || filter === 'patches') {
-          for (const { entity, patch } of ctx.editor.allPatches()) {
+          for (const candidate of boundsCandidates) {
+            if (candidate.kind !== 'patch') continue;
+            const { entity, patch } = candidate;
             if (!ctx.editor.isPatchVisible(patch, entity)) continue;
             if (patch.maxs[ctx.axisH] >= minH && patch.mins[ctx.axisH] <= maxH &&
                 patch.maxs[ctx.axisV] >= minV && patch.mins[ctx.axisV] <= maxV) {
@@ -1066,7 +1071,9 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
           }
         }
         if (filter === 'all' || filter === 'entities') {
-          for (const entity of ctx.editor.nonWorldspawnEntities()) {
+          for (const candidate of boundsCandidates) {
+            if (candidate.kind !== 'entity') continue;
+            const { entity } = candidate;
             if (!ctx.editor.isEntityVisible(entity)) continue;
             const bounds = ctx.editor.entityBounds(entity);
             if (!bounds) continue;

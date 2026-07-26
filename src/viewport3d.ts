@@ -56,6 +56,7 @@ export class Viewport3D {
   private solidUseAlphaLoc!: WebGLUniformLocation;
   private solidAlphaOverrideLoc!: WebGLUniformLocation;
   private solidSolidOverrideLoc!: WebGLUniformLocation;
+  private solidDiagnosticModeLoc!: WebGLUniformLocation;
   private solidDynamicLightingEnabledLoc!: WebGLUniformLocation;
   private solidDynamicLightCountLoc!: WebGLUniformLocation;
   private solidDynamicLightPosLoc!: WebGLUniformLocation;
@@ -90,6 +91,9 @@ export class Viewport3D {
   private pointfileMarkerVAO!: WebGLVertexArrayObject;
   private pointfileMarkerVBO!: WebGLBuffer;
   private pointfileMarkerCount = 0;
+  private bspOverlayVAO!: WebGLVertexArrayObject;
+  private bspOverlayVBO!: WebGLBuffer;
+  private bspOverlayCount = 0;
   private paintPreviewVAO!: WebGLVertexArrayObject;
   private paintPreviewVBO!: WebGLBuffer;
   private paintPreviewCount = 0;
@@ -341,6 +345,7 @@ export class Viewport3D {
     this.solidUseAlphaLoc = gl.getUniformLocation(this.solidProg, 'uUseAlpha')!;
     this.solidAlphaOverrideLoc = gl.getUniformLocation(this.solidProg, 'uAlphaOverride')!;
     this.solidSolidOverrideLoc = gl.getUniformLocation(this.solidProg, 'uSolidOverride')!;
+    this.solidDiagnosticModeLoc = gl.getUniformLocation(this.solidProg, 'uDiagnosticMode')!;
     this.solidDynamicLightingEnabledLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightingEnabled')!;
     this.solidDynamicLightCountLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightCount')!;
     this.solidDynamicLightPosLoc = gl.getUniformLocation(this.solidProg, 'uDynamicLightPos[0]')!;
@@ -368,6 +373,8 @@ export class Viewport3D {
     this.pointfileLineVAO = pointfile.vao; this.pointfileLineVBO = pointfile.vbo;
     const pointfileMarker = createLineBuffer(gl);
     this.pointfileMarkerVAO = pointfileMarker.vao; this.pointfileMarkerVBO = pointfileMarker.vbo;
+    const bspOverlay = createLineBuffer(gl);
+    this.bspOverlayVAO = bspOverlay.vao; this.bspOverlayVBO = bspOverlay.vbo;
     const paintPreview = createLineBuffer(gl);
     this.paintPreviewVAO = paintPreview.vao; this.paintPreviewVBO = paintPreview.vbo;
     const line = createLineBuffer(gl);
@@ -414,6 +421,7 @@ export class Viewport3D {
       pathCurveSelVBO: this.pathCurveSelVBO,
       pointfileLineVBO: this.pointfileLineVBO,
       pointfileMarkerVBO: this.pointfileMarkerVBO,
+      bspOverlayVBO: this.bspOverlayVBO,
       paintPreviewVBO: this.paintPreviewVBO,
       lineVBO: this.lineVBO,
       wireVBO: this.wireVBO,
@@ -430,6 +438,7 @@ export class Viewport3D {
     this.pathCurveSelCount = result.pathCurveSelCount;
     this.pointfileLineCount = result.pointfileLineCount;
     this.pointfileMarkerCount = result.pointfileMarkerCount;
+    this.bspOverlayCount = result.bspOverlayCount;
     this.paintPreviewCount = result.paintPreviewCount;
     this.lineCount = result.lineCount;
     this.wireCount = result.wireCount;
@@ -480,6 +489,7 @@ export class Viewport3D {
       solidUseAlphaLoc: this.solidUseAlphaLoc,
       solidAlphaOverrideLoc: this.solidAlphaOverrideLoc,
       solidSolidOverrideLoc: this.solidSolidOverrideLoc,
+      solidDiagnosticModeLoc: this.solidDiagnosticModeLoc,
       solidDynamicLightingEnabledLoc: this.solidDynamicLightingEnabledLoc,
       solidDynamicLightCountLoc: this.solidDynamicLightCountLoc,
       solidDynamicLightPosLoc: this.solidDynamicLightPosLoc,
@@ -504,6 +514,8 @@ export class Viewport3D {
       pointfileLineCount: this.pointfileLineCount,
       pointfileMarkerVAO: this.pointfileMarkerVAO,
       pointfileMarkerCount: this.pointfileMarkerCount,
+      bspOverlayVAO: this.bspOverlayVAO,
+      bspOverlayCount: this.bspOverlayCount,
       paintPreviewVAO: this.paintPreviewVAO,
       paintPreviewCount: this.paintPreviewCount,
       lineVAO: this.lineVAO,

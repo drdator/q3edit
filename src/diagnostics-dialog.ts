@@ -8,8 +8,11 @@ import {
   type EditorDiagnostic,
 } from './diagnostics';
 import type { Editor } from './editor';
+import { createDesignReviewWorkspace } from './design-review-workspace';
+import { createEntityRelationshipWorkspace } from './entity-relationship-workspace';
+import { createPerformanceWorkspace } from './performance-workspace';
 
-export type DiagnosticsTab = 'map' | 'entities' | 'find' | 'brush-macros';
+export type DiagnosticsTab = 'map' | 'design-review' | 'entity-logic' | 'performance' | 'entities' | 'find' | 'brush-macros';
 
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
   const result = document.createElement('button');
@@ -53,6 +56,10 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
 
   const render = () => {
     content.innerHTML = '';
+    if (activeTab !== 'entity-logic' && editor.entityRelationshipOverlayLines.length > 0) {
+      editor.entityRelationshipOverlayLines = [];
+      editor.redrawRequested = true;
+    }
     content.setAttribute('aria-labelledby', `diagnostics-tab-${activeTab}`);
     for (const tabButton of tabs.children) {
       const element = tabButton as HTMLElement;
@@ -75,14 +82,26 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
       const heading = document.createElement('h3'); heading.textContent = 'Validation results';
       const list = document.createElement('div'); list.className = 'diagnostics-list';
       if (diagnostics.length === 0) { const empty = document.createElement('p'); empty.textContent = 'No issues found.'; list.appendChild(empty); }
-      else for (const diagnostic of diagnostics) list.appendChild(diagnosticRow(editor, diagnostic));
+      else {
+        for (const diagnostic of diagnostics.slice(0, 500)) list.appendChild(diagnosticRow(editor, diagnostic));
+        if (diagnostics.length > 500) list.appendChild(Object.assign(document.createElement('p'), {
+          textContent: `${diagnostics.length - 500} additional diagnostics omitted from this view. Use the filters and source-linked review workspaces to narrow the result.`,
+        }));
+      }
       const classes = document.createElement('details');
       const classesTitle = document.createElement('summary'); classesTitle.textContent = `Entity class breakdown (${info.entityClasses.length})`; classes.appendChild(classesTitle);
       for (const item of info.entityClasses) { const row = document.createElement('div'); row.textContent = `${item.classname}: ${item.count}`; classes.appendChild(row); }
       content.append(summary, heading, list, classes);
+    } else if (activeTab === 'design-review') {
+      content.appendChild(createDesignReviewWorkspace(editor));
+    } else if (activeTab === 'entity-logic') {
+      content.appendChild(createEntityRelationshipWorkspace(editor));
+    } else if (activeTab === 'performance') {
+      content.appendChild(createPerformanceWorkspace(editor));
     } else if (activeTab === 'entities') {
       const list = document.createElement('div'); list.className = 'entity-info-list';
-      for (const info of collectEntityInfo(editor, diagnostics)) {
+      const entityInfo = collectEntityInfo(editor, diagnostics);
+      for (const info of entityInfo.slice(0, 500)) {
         const row = document.createElement('button'); row.type = 'button'; row.className = 'entity-info-row';
         const label = document.createElement('strong'); label.textContent = `${info.id} · ${info.classname}`;
         const details = document.createElement('span');
@@ -93,6 +112,9 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
         row.onclick = () => navigateToDiagnostic(editor, { target: { kind: 'entity', entityIndex: info.index } });
         list.appendChild(row);
       }
+      if (entityInfo.length > 500) list.appendChild(Object.assign(document.createElement('p'), {
+        textContent: `${entityInfo.length - 500} additional entities omitted. Use Object Filters to narrow large maps.`,
+      }));
       content.appendChild(list);
     } else if (activeTab === 'find') {
       const form = document.createElement('div'); form.className = 'find-brush-form';
@@ -127,7 +149,7 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
     }
   };
 
-  for (const [tab, label] of [['map', 'Map Info'], ['entities', 'Entity Info'], ['find', 'Find Brush'], ['brush-macros', 'Brush Macros']] as const) {
+  for (const [tab, label] of [['map', 'Map Info'], ['design-review', 'Design Review'], ['entity-logic', 'Entity Logic'], ['performance', 'Performance'], ['entities', 'Entity Info'], ['find', 'Find Brush'], ['brush-macros', 'Brush Macros']] as const) {
     const tabButton = button(label, () => { activeTab = tab; render(); });
     tabButton.id = `diagnostics-tab-${tab}`;
     tabButton.classList.add('diagnostics-tab');
@@ -146,7 +168,12 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
     activeTab = tabButtons[next].dataset.tab as DiagnosticsTab;
     render(); tabButtons[next].focus(); event.preventDefault();
   });
-  const actions = document.createElement('div'); actions.className = 'editor-dialog-actions'; actions.appendChild(button('Close', () => overlay.remove()));
+  const close = () => {
+    editor.entityRelationshipOverlayLines = [];
+    editor.redrawRequested = true;
+    overlay.remove();
+  };
+  const actions = document.createElement('div'); actions.className = 'editor-dialog-actions'; actions.appendChild(button('Close', close));
   dialog.append(title, tabs, content, actions); overlay.appendChild(dialog); document.body.appendChild(overlay); render();
-  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { overlay.remove(); event.stopPropagation(); } });
+  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') { close(); event.stopPropagation(); } });
 }

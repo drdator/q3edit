@@ -34,6 +34,8 @@ export interface PatchTessVertex {
 }
 
 export interface Patch {
+  /** Stable editor-only identity used by persistent selection sets. */
+  editorObjectId?: string;
   width: number;          // columns of control points
   height: number;         // rows of control points
   texture: string;
@@ -412,6 +414,7 @@ export function clonePatch(patch: Patch): Patch {
     }))
   );
   const p: Patch = {
+    editorObjectId: patch.editorObjectId,
     width: patch.width,
     height: patch.height,
     texture: patch.texture,

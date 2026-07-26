@@ -240,6 +240,17 @@ export class AssetIndex {
     this.decodedBytes = 0;
   }
 
+  memoryStats(): { archives: number; archiveBytes: number; indexedAssets: number; decodedEntries: number; decodedBytes: number; decodedLimitBytes: number } {
+    return {
+      archives: this.archiveCount,
+      archiveBytes: this.archives.filter(archive => archive.enabled !== false).reduce((sum, archive) => sum + archive.data.byteLength, 0),
+      indexedAssets: this.winners.size,
+      decodedEntries: this.decoded.size,
+      decodedBytes: this.decodedBytes,
+      decodedLimitBytes: this.maxDecodedCacheBytes,
+    };
+  }
+
   private remember(key: string, data: Uint8Array): void {
     if (data.byteLength > this.maxDecodedCacheBytes) return;
     while (this.decodedBytes + data.byteLength > this.maxDecodedCacheBytes) {

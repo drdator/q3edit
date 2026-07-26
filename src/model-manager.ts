@@ -30,6 +30,17 @@ export class ModelManager {
 
   clear(): void { this.cache.clear(); }
 
+  memoryStats(): { decodedModels: number; failedModels: number; estimatedBytes: number } {
+    const models = [...this.cache.values()].filter((value): value is Md3Model => !(value instanceof Error));
+    return {
+      decodedModels: models.length,
+      failedModels: [...this.cache.values()].filter(value => value instanceof Error).length,
+      estimatedBytes: models.reduce((sum, model) => sum + model.surfaces.reduce((surfaceSum, surface) =>
+        surfaceSum + surface.triangles.length * 3 * 4 + surface.uvs.length * 2 * 8 +
+        surface.frames.reduce((frameSum, frame) => frameSum + frame.length * 6 * 8, 0), 0), 0),
+    };
+  }
+
   listModels(): string[] { return this.assets.models().map(asset => asset.normalizedPath); }
   listSkins(): string[] { return this.assets.skins().map(asset => asset.normalizedPath); }
 

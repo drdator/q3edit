@@ -49,16 +49,16 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function compilerStageStatus(output: readonly string[]): Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped'> {
-  const stages: Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped'> = {
+function compilerStageStatus(output: readonly string[]): Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped' | 'reused'> {
+  const stages: Record<'bsp' | 'vis' | 'light' | 'aas', 'success' | 'failed' | 'skipped' | 'reused'> = {
     bsp: 'skipped', vis: 'skipped', light: 'skipped', aas: 'skipped',
   };
   for (const line of output) {
-    const match = /^=== Stage \d+ result: (success|failed) ===$/i.exec(line.trim());
+    const match = /^=== Stage \d+ result: (success|failed|skipped|reused)(?: \(\d+ ms\))? ===$/i.exec(line.trim());
     if (!match) continue;
     const number = Number(/^=== Stage (\d+)/.exec(line.trim())?.[1]);
     const stage = number === 1 ? 'bsp' : number === 2 ? 'vis' : number === 3 ? 'light' : number === 4 ? 'aas' : null;
-    if (stage) stages[stage] = match[1].toLowerCase() as 'success' | 'failed';
+    if (stage) stages[stage] = match[1].toLowerCase() as 'success' | 'failed' | 'skipped' | 'reused';
   }
   return stages;
 }
@@ -279,6 +279,7 @@ export class LiveMapBridge {
         preview.projectConfiguration = structuredClone(this.editor.projectConfiguration);
         preview.display = structuredClone(this.editor.display);
         const result = applyMapOperations(preview, message.operations, message.label);
+        this.editor.pendingReviewMapText = preview.serializeMap();
         const diagnostics = collectEditorDiagnostics(preview);
         const objects = result.created.map(ref => {
           const item = selectionForRef(preview, ref);
@@ -762,6 +763,8 @@ export class LiveMapBridge {
         );
         if (leaked) compilerDiagnostics.push({
           severity: 'error', code: 'leak', message: 'The BSP compiler produced a leak pointfile.', refs: [],
+          impact: 'correctness',
+          suggestion: 'Follow the loaded pointfile to the opening, seal the map, and compile again.',
         });
         if (result.pointfileText) this.editor.loadPointfileText(result.pointfileText, 'MCP compile leak: loaded pointfile');
         else this.editor.clearPointfile(false);

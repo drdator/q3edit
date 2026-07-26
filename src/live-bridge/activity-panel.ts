@@ -17,6 +17,15 @@ export const DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT = 280;
 export const MIN_MCP_ACTIVITY_PANEL_HEIGHT = 140;
 export const MAX_MCP_ACTIVITY_PANEL_HEIGHT = 800;
 export const MCP_ACTIVITY_TAIL_THRESHOLD = 24;
+export const MCP_ACTIVITY_RENDER_PAGE = 250;
+
+export function activityRenderWindow<T>(entries: readonly T[], limit = MCP_ACTIVITY_RENDER_PAGE): {
+  entries: T[];
+  hidden: number;
+} {
+  const visible = entries.slice(-Math.max(1, limit));
+  return { entries: visible, hidden: entries.length - visible.length };
+}
 
 export interface McpActivityScrollMetrics {
   scrollTop: number;
@@ -116,6 +125,7 @@ export interface McpActivityPanelOptions {
   history: ActivityHistory;
   initialVisible?: boolean;
   initialHeight?: number;
+  onOpenBuild?: () => void;
   onVisibilityChange?: (visible: boolean) => void;
   onHeightChange?: (height: number, committed: boolean) => void;
   onLayoutChange?: () => void;
@@ -133,6 +143,7 @@ export class McpActivityPanel {
   private visible: boolean;
   private height: number;
   private followTail = true;
+  private visibleEntryLimit = MCP_ACTIVITY_RENDER_PAGE;
 
   constructor(private readonly options: McpActivityPanelOptions) {
     const root = document.getElementById('mcp-activity-panel');
@@ -152,11 +163,14 @@ export class McpActivityPanel {
     const header = document.createElement('header');
     header.className = 'mcp-activity-panel-header';
     const identity = document.createElement('div');
-    identity.className = 'mcp-activity-identity';
-    const title = document.createElement('strong');
+    identity.className = 'bottom-dock-tabs';
+    const title = compactButton('Activity', 'Show Activity', () => this.open());
     title.id = 'mcp-activity-title';
-    title.textContent = 'Activity';
-    identity.append(title);
+    title.classList.add('bottom-dock-tab', 'active');
+    title.setAttribute('aria-current', 'page');
+    const buildTab = compactButton('Build', 'Show the current document build', () => this.options.onOpenBuild?.());
+    buildTab.classList.add('bottom-dock-tab');
+    identity.append(title, buildTab);
 
     const controls = document.createElement('div');
     controls.className = 'mcp-activity-controls';
@@ -197,9 +211,10 @@ export class McpActivityPanel {
     this.root.setAttribute('role', 'region');
     this.root.setAttribute('aria-labelledby', 'mcp-activity-title');
 
-    this.search.addEventListener('input', () => this.render());
-    this.source.addEventListener('change', () => this.render());
-    this.kind.addEventListener('change', () => this.render());
+    const resetFilter = () => { this.visibleEntryLimit = MCP_ACTIVITY_RENDER_PAGE; this.render(); };
+    this.search.addEventListener('input', resetFilter);
+    this.source.addEventListener('change', resetFilter);
+    this.kind.addEventListener('change', resetFilter);
     this.list.addEventListener('scroll', () => {
       this.followTail = isMcpActivityAtTail(this.list);
     }, { passive: true });
@@ -242,6 +257,10 @@ export class McpActivityPanel {
     if (!this.visible) return;
     this.visible = false;
     this.applyVisibility(true);
+  }
+
+  syncHeight(height: number): void {
+    this.setHeight(height, false, false);
   }
 
   private clear(): void {
@@ -294,11 +313,11 @@ export class McpActivityPanel {
     });
   }
 
-  private setHeight(height: number, committed: boolean): void {
+  private setHeight(height: number, committed: boolean, notify = true): void {
     this.height = clampMcpActivityPanelHeight(height, window.innerHeight);
     this.root.style.height = `${this.height}px`;
     this.resizer.setAttribute('aria-valuenow', String(this.height));
-    this.options.onHeightChange?.(this.height, committed);
+    if (notify) this.options.onHeightChange?.(this.height, committed);
     this.options.onLayoutChange?.();
     if (this.followTail) this.scrollToTail();
   }
@@ -332,7 +351,24 @@ export class McpActivityPanel {
       this.restoreScrollPosition(shouldFollowTail, previousScrollTop);
       return;
     }
-    for (const entry of filtered) {
+    const windowed = activityRenderWindow(filtered, this.visibleEntryLimit);
+    const rendered = windowed.entries;
+    if (windowed.hidden > 0) {
+      const earlier = compactButton(
+        `Show ${Math.min(MCP_ACTIVITY_RENDER_PAGE, windowed.hidden)} earlier events`,
+        `${windowed.hidden} older matching events are not rendered yet`,
+        () => {
+          const previousHeight = this.list.scrollHeight;
+          this.visibleEntryLimit += MCP_ACTIVITY_RENDER_PAGE;
+          this.followTail = false;
+          this.render();
+          this.list.scrollTop = this.list.scrollHeight - previousHeight;
+        },
+      );
+      earlier.classList.add('mcp-activity-load-earlier');
+      this.list.appendChild(earlier);
+    }
+    for (const entry of rendered) {
       const rowDetails = document.createElement('details');
       rowDetails.className = `mcp-activity-entry ${entry.status} ${entry.source} ${entry.category}${entry.historical ? ' historical' : ''}`;
       rowDetails.open = this.expandedIds.has(entry.id);

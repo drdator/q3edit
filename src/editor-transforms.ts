@@ -321,7 +321,7 @@ export function deleteSelection(editor: Editor): void {
 }
 
 export function moveSelection(editor: Editor, delta: Vec3): void {
-  if (delta[0] === 0 && delta[1] === 0 && delta[2] === 0) return;
+  if (editor.selection.length === 0 || (delta[0] === 0 && delta[1] === 0 && delta[2] === 0)) return;
   editor.transact('Move selection', () => {
     const selectedEntities = selectedEntitySet(editor);
 
@@ -336,7 +336,7 @@ export function moveSelection(editor: Editor, delta: Vec3): void {
       }
     }
     editor.redrawRequested = true;
-  }, { coalesceKey: 'move-selection' });
+  }, { coalesceKey: 'move-selection', assumeChanged: true });
 }
 
 export function rotateSelection(editor: Editor, angleDeg: number): void {

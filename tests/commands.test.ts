@@ -22,7 +22,18 @@ describe('CommandRegistry', () => {
   it('registers the complete editor command set without conflicts', () => {
     const noop = () => {};
     const quickPlay = vi.fn();
-    const editor = { preferences: { quickPlay: { quality: 'normal', botsEnabled: false, botCount: 1, botSkill: 2 } } } as Editor;
+    const editor = {
+      preferences: {
+        quickPlay: {
+          quality: 'normal',
+          generateAas: true,
+          scope: 'region',
+          botsEnabled: false,
+          botCount: 1,
+          botSkill: 2,
+        },
+      },
+    } as Editor;
     const context: EditorCommandContext = {
       editor,
       handleExitVertexMode: noop,
@@ -37,6 +48,8 @@ describe('CommandRegistry', () => {
       openDiagnostics: noop,
       toggleMcpActivity: noop,
       isMcpActivityOpen: () => false,
+      toggleBuildResults: noop,
+      isBuildResultsOpen: () => false,
       openMcpConnection: noop,
       openTerrainPanel: noop,
       toggleSidebar: noop,
@@ -56,9 +69,17 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.release-notes').label).toBe('Release Notes...');
     expect(registry.getState('view.mcp-activity').label).toBe('Activity');
     expect(registry.getState('view.mcp-activity').checked).toBe(false);
+    expect(registry.getState('view.build-results').enabled).toBe(true);
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     expect(registry.getState('file.quick-play').shortcut).toBe('F5');
-    context.editor.preferences.quickPlay = { quality: 'full', botsEnabled: true, botCount: 2, botSkill: 3 };
+    context.editor.preferences.quickPlay = {
+      quality: 'full',
+      generateAas: true,
+      scope: 'region',
+      botsEnabled: true,
+      botCount: 2,
+      botSkill: 3,
+    };
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     registry.execute('file.quick-play');
     expect(quickPlay).toHaveBeenCalledWith();
@@ -72,6 +93,7 @@ describe('CommandRegistry', () => {
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
       compileBSP: noop, quickPlay: noop, openQuickPlayOptions: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
       toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
+      toggleBuildResults: noop, isBuildResultsOpen: () => false,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
       cycleInvisibleMode: noop, setTool, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
@@ -85,6 +107,11 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.texture-filter.nearest').checked).toBe(true);
     registry.execute('view.dynamic-lights');
     expect(registry.getState('view.dynamic-lights').checked).toBe(true);
+    expect(registry.getState('view.bsp-overlay.portals').enabled).toBe(false);
+    editor.compiledBspInspection = {} as NonNullable<Editor['compiledBspInspection']>;
+    registry.execute('view.bsp-overlay.portals');
+    expect(editor.compiledBspOverlay).toBe('portals');
+    expect(registry.getState('view.bsp-overlay.portals').checked).toBe(true);
     registry.execute('gizmo.scale');
     expect(editor.gizmoMode).toBe('scale');
     expect(setTool).toHaveBeenCalledWith('select');

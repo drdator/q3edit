@@ -48,8 +48,9 @@ export function serializeMap(entities: Entity[], options: MapSerializeOptions = 
 
     for (let brushIndex = 0; brushIndex < entity.brushes.length; brushIndex++) {
       const brush = entity.brushes[brushIndex];
-      lines.push(brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
+      lines.push(options.compilerSafe ? `// brush ${brushIndex}` : brush.name ? `// ${brush.name}` : `// brush ${brushIndex}`);
       if (brush.editorGroupId && !options.compilerSafe) lines.push(`// q3edit-group ${encodeURIComponent(brush.editorGroupId)}`);
+      if (brush.editorObjectId && !options.compilerSafe) lines.push(`// q3edit-id ${encodeURIComponent(brush.editorObjectId)}`);
       lines.push('{');
       serializeBrush(lines, brush, options.compilerSafe ? undefined : groupNames.get(brush.editorGroupId ?? ''), options.compilerSafe);
       lines.push('}');
@@ -63,6 +64,7 @@ export function serializeMap(entities: Entity[], options: MapSerializeOptions = 
       }
       lines.push(`// patch ${patchIndex}`);
       if (patch.editorGroupId && !options.compilerSafe) lines.push(`// q3edit-group ${encodeURIComponent(patch.editorGroupId)}`);
+      if (patch.editorObjectId && !options.compilerSafe) lines.push(`// q3edit-id ${encodeURIComponent(patch.editorObjectId)}`);
       lines.push('{');
       if (patch.terrainDef) {
         serializeTerrainDef(lines, patch);
@@ -88,7 +90,10 @@ function serializeBrush(lines: string[], brush: Brush, groupName?: string, compi
   if (!compilerSafe && brush.properties && Object.keys(brush.properties).length > 0) {
     throw new Error('Classic brush syntax cannot preserve brush-local properties');
   }
-  for (const face of brush.faces) serializeClassicFace(lines, face);
+  for (const face of brush.faces) {
+    if (!compilerSafe && face.editorObjectId) lines.push(`// q3edit-face ${encodeURIComponent(face.editorObjectId)}`);
+    serializeClassicFace(lines, face);
+  }
 }
 
 function serializeClassicFace(lines: string[], face: BrushFace): void {
@@ -117,6 +122,7 @@ function serializeBrushDef(lines: string[], brush: Brush, groupName?: string, co
     }
     const [point1, point2, point3] = face.points;
     const [row0, row1] = face.textureProjection.matrix;
+    if (!compilerSafe && face.editorObjectId) lines.push(`// q3edit-face ${encodeURIComponent(face.editorObjectId)}`);
     lines.push(
       `${formatPoint(point1)} ${formatPoint(point3)} ${formatPoint(point2)} ` +
       `( ( ${row0.map(fmtNum).join(' ')} ) ( ${row1.map(fmtNum).join(' ')} ) ) ` +
@@ -177,7 +183,7 @@ function quoteMapString(value: string): string {
 
 function fmtNum(value: number): string {
   if (Number.isInteger(value)) return value.toString();
-  return value.toFixed(9).replace(/\.?0+$/, '');
+  return value.toFixed(12).replace(/\.?0+$/, '');
 }
 
 function defaultTerrainSurface(patch: Patch): TerrainDefSurface {
