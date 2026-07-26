@@ -4169,6 +4169,81 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
 }
 
 /* Texture thumbnail grid */
+
+.uv-editor-dialog {
+  width: min(900px, calc(100vw - 64px));
+  height: min(720px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+}
+
+.uv-editor-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 12px;
+}
+
+.uv-editor-canvas {
+  display: block;
+  flex: 1 1 0;
+  width: 100%;
+  height: 0;
+  min-height: 260px;
+  border: 1px solid var(--border-dark, #1d1d1d);
+  border-top-color: #111;
+  border-left-color: #111;
+  border-right-color: #595959;
+  border-bottom-color: #595959;
+  background: #151515;
+  outline: none;
+  touch-action: none;
+}
+
+.uv-editor-canvas:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent, #e8a030);
+}
+
+.uv-editor-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  color: var(--text-muted, #999);
+  font-size: 13px;
+}
+
+.uv-editor-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.uv-handle-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: #e8a030;
+}
+
+.uv-handle-swatch.translate {
+  border-radius: 50%;
+}
+
+.uv-handle-swatch.rotate {
+  border-radius: 50%;
+  background: #67b7d1;
+}
+
+.uv-handle-swatch.scale {
+  background: #78c46b;
+}
+
+.uv-editor-status {
+  min-height: 20px;
+  color: var(--text-muted, #999);
+  overflow-wrap: anywhere;
+}
 .texture-list.texture-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
