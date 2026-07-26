@@ -109,6 +109,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     decals: 'Decals', pointEntities: 'Point Entities', structural: 'Structural Geometry',
     areaportals: 'Areaportals', visportals: 'Visportals', clusterportals: 'Clusterportals',
     botclips: 'Bot Clips', funcGroups: 'func_group', lightgrid: 'Lightgrid',
+    lightRadii: 'Light Radii',
   };
   const displayCommands: CommandDefinition<EditorCommandContext>[] = DISPLAY_CATEGORIES.map((category, index) => ({
     id: `view.display.${category}`,
