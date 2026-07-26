@@ -325,6 +325,7 @@ export class Gizmo {
         origin,
         scale,
       );
+      this.editor.recordTransactionTransform({ kind: 'scale', scale, centerMode: 'selection' });
     }
   }
 

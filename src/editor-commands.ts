@@ -204,6 +204,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.rotate-15', label: 'Rotate 15°', defaultShortcut: 'Shift+R', menu: menu('Edit', 220, 'transform'), enabled: hasSelection, execute: ({ editor }) => editor.rotateSelection(15) },
     { id: 'edit.rotate', label: 'Rotate…', defaultShortcut: 'Mod+Shift+R', menu: menu('Edit', 230, 'transform'), enabled: hasSelection, execute: ctx => ctx.openRotateDialog() },
     { id: 'edit.scale', label: 'Scale…', defaultShortcut: 'Mod+Shift+E', menu: menu('Edit', 240, 'transform'), enabled: hasSelection, execute: ctx => ctx.openScaleDialog() },
+    { id: 'edit.repeat-transform', label: 'Repeat Last Transform', menu: menu('Edit', 245, 'transform'), enabled: ({ editor }) => editor.selection.length > 0 && editor.lastTransform !== null, execute: ({ editor }) => editor.repeatLastTransform() },
     { id: 'edit.flip-x', label: 'Flip X', defaultShortcut: 'Shift+X', menu: menu('Edit', 250, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(0) },
     { id: 'edit.flip-y', label: 'Flip Y', defaultShortcut: 'Shift+Y', menu: menu('Edit', 260, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(1) },
     { id: 'edit.flip-z', label: 'Flip Z', defaultShortcut: 'Shift+Z', menu: menu('Edit', 270, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(2) },

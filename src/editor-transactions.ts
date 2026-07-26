@@ -1,6 +1,10 @@
 import type { Editor } from './editor';
 import { deduplicateEditorObjectIds } from './editor-object-ids';
 import { cloneMapSnapshot, type MapSnapshot } from './history';
+import {
+  cloneTransformDescriptor,
+  type TransformDescriptor,
+} from './transform-descriptor';
 
 export interface TransactionOptions {
   auxiliary?: unknown;
@@ -16,6 +20,7 @@ interface TransactionState {
   beforeRevision: number;
   depth: number;
   options: TransactionOptions;
+  transform?: TransformDescriptor;
 }
 
 const activeTransactions = new WeakMap<Editor, TransactionState>();
@@ -26,6 +31,7 @@ function documentsEqual(left: MapSnapshot, right: MapSnapshot): boolean {
 
 export function resetEditorStateAfterDocumentReplacement(editor: Editor): void {
   editor.selection = [];
+  editor.lastTransform = null;
   editor.clearHiddenState();
   editor.vertexMode = false;
   editor.vertexData = [];
@@ -71,20 +77,48 @@ export function commitTransaction(editor: Editor): boolean {
   if (!active.options.assumeChanged && documentsEqual(active.before, editor.entities)) return false;
 
   editor.history.recordSnapshot(active.before, active.beforeRevision, active.label, active.options);
+  if (active.transform) editor.lastTransform = cloneTransformDescriptor(active.transform);
   editor.commitDocumentRevision();
   editor.redrawRequested = true;
   editor.notifyDocumentChanged(active.label, active.beforeRevision);
   return true;
 }
 
+export function recordTransactionTransform(
+  editor: Editor,
+  transform: TransformDescriptor,
+  mode: 'replace' | 'accumulate' = 'replace',
+): void {
+  const active = activeTransactions.get(editor);
+  if (!active) return;
+
+  if (mode === 'accumulate' && transform.kind === 'move' && active.transform?.kind === 'move') {
+    active.transform = {
+      kind: 'move',
+      delta: [
+        active.transform.delta[0] + transform.delta[0],
+        active.transform.delta[1] + transform.delta[1],
+        active.transform.delta[2] + transform.delta[2],
+      ],
+    };
+    return;
+  }
+
+  active.transform = cloneTransformDescriptor(transform);
+}
+
 export function cancelTransaction(editor: Editor): boolean {
   const active = activeTransactions.get(editor);
   if (!active) return false;
 
+  const lastTransform = editor.lastTransform
+    ? cloneTransformDescriptor(editor.lastTransform)
+    : null;
   activeTransactions.delete(editor);
   editor.entities = active.before;
   editor.restoreDocumentRevision(active.beforeRevision);
   resetEditorStateAfterDocumentReplacement(editor);
+  editor.lastTransform = lastTransform;
   return true;
 }
 
