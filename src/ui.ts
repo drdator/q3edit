@@ -235,6 +235,9 @@ export class UI {
     this.setupKeyboard();
 
     this.editor.onLocateTexture = (texture: string) => this.locateTexture(texture);
+    this.editor.onShaderSourcesChanged = () => {
+      if (this.texMgr) this.updateTextureBrowser(this.texMgr);
+    };
     this.editor.onRequestExitVertexMode = () => this.handleExitVertexMode();
   }
 

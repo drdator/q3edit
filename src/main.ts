@@ -9,6 +9,8 @@ import { loadEntityClassRegistry, setEntityClassRegistry } from './entity-defini
 import { ModelManager } from './model-manager';
 import {
   loadOpenArenaEnabled,
+  loadProjectShaderFiles,
+  getCachedProjectShaderFiles,
   loadStoredPaks,
   preparePakFiles,
   replaceStoredAssetConfiguration,
@@ -53,6 +55,7 @@ async function init() {
   const showStartupDialogs = startupDialogsEnabled(window.location.search);
   installDialogEscapeDismissal();
   const editor = new Editor();
+  await loadProjectShaderFiles();
   editor.createDefaultMap();
   const recovery = new DocumentRecoveryService(editor, currentEditorSessionId());
   setLoadingStatus('Checking for recovered work…');
@@ -195,6 +198,7 @@ async function init() {
     }
     activeTextureManager?.dispose();
     const texMgr = new TextureManager(vp3D.gl, assets);
+    texMgr.setProjectShaderFiles(getCachedProjectShaderFiles());
 
     // Create solid-color textures for entity category markers
     const registerColorTex = (name: string, r: number, g: number, b: number) => {

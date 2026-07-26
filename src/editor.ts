@@ -436,6 +436,7 @@ export class Editor {
 
   // UI callback for locating a texture in the texture panel
   onLocateTexture: ((texture: string) => void) | null = null;
+  onShaderSourcesChanged: (() => void) | null = null;
   onRequestExitVertexMode: (() => void) | null = null;
   // Selection filter — constrains what types can be picked in viewports
   selectionFilter: 'all' | 'brushes' | 'patches' | 'entities' = 'all';

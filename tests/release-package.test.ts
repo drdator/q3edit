@@ -62,6 +62,29 @@ describe('release packaging', () => {
     expect(serializeArena('test_map', input.metadata)).toContain('type "ffa team"');
   });
 
+  it('packages project-local shaders without treating them as missing PK3 assets', () => {
+    const assets = new AssetIndex([archive('pak0.pk3', {
+      'textures/base/wall.tga': 'image',
+    })]);
+    const world = createEntity('worldspawn');
+    world.brushes.push(createBoxBrush([0, 0, 0], [64, 64, 64], 'q3edit/glow'));
+    const shaderSource = 'textures/q3edit/glow { { map textures/base/wall } }';
+    const textures = {
+      getShaderSourcePath: () => 'scripts/q3edit_custom.shader',
+      getShaderMetadata: () => ({ referencedImages: ['textures/base/wall'], sky: null, semantics: { sky: false } }),
+      getProjectShaderFiles: () => ({ 'scripts/q3edit_custom.shader': shaderSource }),
+      findImageFile: () => ['textures/base/wall.tga', strToU8('image')],
+    } as never;
+
+    const result = buildReleasePackage({
+      mapName: 'shader_test', bsp: strToU8('bsp'), entities: [world], assets, textures,
+      metadata: { title: '', gameTypes: ['ffa'], botSupport: false, recommendedPlayers: '', author: '', description: '' },
+    });
+
+    expect(result.report.manifest.missing).toEqual([]);
+    expect(new TextDecoder().decode(unzipSync(result.pk3)['scripts/q3edit_custom.shader'])).toBe(shaderSource);
+  });
+
   it('never packages base-game archives even when they contain a license file', () => {
     const assets = new AssetIndex([archive('pak0.pk3', {
       'textures/base/wall.tga': 'image',
