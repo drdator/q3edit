@@ -3,6 +3,7 @@ import type { Entity } from './entity';
 import { entityDisplayOrigin } from './editor-queries';
 import type { Vec3 } from './math';
 import { CAMERA_CLOSED_KEY, CAMERA_ORDER_KEY, CAMERA_PATH_KEY } from './camera-paths';
+import { isObjectInLockedGroup } from './named-groups';
 
 export interface EntityLink {
   source: Entity;
@@ -146,6 +147,59 @@ export function collectEntityLinks(editor: Editor): EntityLink[] {
   }
 
   return links;
+}
+
+export function selectConnectedEntities(editor: Editor, transitive = false): void {
+  const seeds = selectedEntitiesInOrder(editor).filter(entity => entity !== editor.worldspawn);
+  if (seeds.length === 0) {
+    editor.statusMessage = 'Select an entity in a target chain first';
+    return;
+  }
+
+  const selectable = Array.from(editor.nonWorldspawnEntities()).filter(entity =>
+    editor.isEntityVisible(entity) && !isObjectInLockedGroup(editor, entity));
+  const selectableSet = new Set(selectable);
+  const byTargetname = new Map<string, Entity[]>();
+  for (const entity of selectable) {
+    const targetname = trimProperty(entity.properties.targetname);
+    if (!targetname) continue;
+    byTargetname.set(targetname, [...(byTargetname.get(targetname) ?? []), entity]);
+  }
+
+  const neighbours = new Map(selectable.map(entity => [entity, new Set<Entity>()]));
+  for (const source of selectable) {
+    const target = trimProperty(source.properties.target);
+    if (!target) continue;
+    for (const destination of byTargetname.get(target) ?? []) {
+      if (destination === source) continue;
+      neighbours.get(source)?.add(destination);
+      neighbours.get(destination)?.add(source);
+    }
+  }
+
+  const selected = new Set(seeds.filter(entity => selectableSet.has(entity)));
+  let frontier = [...selected];
+  do {
+    const next: Entity[] = [];
+    for (const entity of frontier) {
+      for (const neighbour of neighbours.get(entity) ?? []) {
+        if (selected.has(neighbour)) continue;
+        selected.add(neighbour);
+        next.push(neighbour);
+      }
+    }
+    frontier = transitive ? next : [];
+  } while (frontier.length > 0);
+
+  if (editor.patchEditMode) editor.exitPatchEditMode();
+  if (editor.vertexMode) editor.exitVertexMode();
+  editor.selection = selectable
+    .filter(entity => selected.has(entity))
+    .map(entity => ({ type: 'entity' as const, entity }));
+  editor.redrawRequested = true;
+  editor.statusMessage = transitive
+    ? `Selected complete entity chain (${editor.selection.length} entities)`
+    : `Selected connected entities (${editor.selection.length} entities)`;
 }
 
 export function collectEntityPathCurves(editor: Editor): EntityPathCurve[] {

@@ -171,6 +171,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.select-all-type', label: 'Select All of Type', menu: menu('Edit', 50, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectAllOfType() },
     { id: 'edit.select-faces-by-texture', label: 'Select Faces Using Current Texture', menu: menu('Edit', 52, 'selection'), execute: ({ editor }) => editor.selectFacesByTexture() },
     { id: 'edit.select-objects-by-texture', label: 'Select Objects Using Current Texture', menu: menu('Edit', 54, 'selection'), execute: ({ editor }) => editor.selectObjectsByTexture() },
+    { id: 'edit.select-connected', label: 'Select Connected Entities', menu: menu('Edit', 56, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectConnectedEntities(false) },
+    { id: 'edit.select-connected-chain', label: 'Select Entire Entity Chain', menu: menu('Edit', 58, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectConnectedEntities(true) },
     { id: 'edit.invert-selection', label: 'Invert Selection', defaultShortcut: 'Mod+Shift+I', menu: menu('Edit', 60, 'selection'), execute: ({ editor }) => editor.invertSelection() },
     { id: 'edit.select-touching', label: 'Select Touching', menu: menu('Edit', 70, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectTouching() },
     { id: 'edit.select-inside', label: 'Select Inside', menu: menu('Edit', 80, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectInside() },

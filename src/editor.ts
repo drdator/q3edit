@@ -196,6 +196,7 @@ import {
   connectSelectedEntitiesAsClosedPath as connectEditorSelectedEntitiesAsClosedPath,
   connectSelectedEntitiesAsPath as connectEditorSelectedEntitiesAsPath,
   connectSelectedEntities as connectEditorSelectedEntities,
+  selectConnectedEntities as selectEditorConnectedEntities,
   type EntityPathCurve,
   type EntityLink,
 } from './editor-connections';
@@ -1161,6 +1162,10 @@ export class Editor {
 
   selectObjectsByTexture(): void {
     selectEditorObjectsByTexture(this);
+  }
+
+  selectConnectedEntities(transitive = false): void {
+    selectEditorConnectedEntities(this, transitive);
   }
 
   invertSelection(): void {
