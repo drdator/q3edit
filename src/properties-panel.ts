@@ -149,10 +149,12 @@ export class PropertiesPanel {
           });
         }
 
-        const delBtn = document.createElement('div');
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
         delBtn.className = 'btn icon-btn kv-del';
-        delBtn.innerHTML = '<i class="ph ph-trash"></i>';
+        delBtn.innerHTML = '<i class="ph ph-trash" aria-hidden="true"></i>';
         delBtn.title = 'Remove property';
+        delBtn.setAttribute('aria-label', delBtn.title);
         delBtn.addEventListener('mousedown', () => {
           removeEntityProperty(this.editor, entity, currentKey);
         });
@@ -167,7 +169,7 @@ export class PropertiesPanel {
       // Add property — just adds an empty row
       const addBtn = document.createElement('div');
       addBtn.className = 'btn';
-      addBtn.innerHTML = '<i class="ph ph-plus"></i> Add Key';
+      addBtn.innerHTML = '<i class="ph ph-plus" aria-hidden="true"></i> Add Key';
       addBtn.addEventListener('mousedown', () => {
         addEntityProperty(this.editor, entity);
       });
@@ -271,10 +273,12 @@ export class PropertiesPanel {
         });
       }
 
-      const delBtn = document.createElement('div');
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
       delBtn.className = 'btn icon-btn kv-del';
-      delBtn.innerHTML = '<i class="ph ph-trash"></i>';
+      delBtn.innerHTML = '<i class="ph ph-trash" aria-hidden="true"></i>';
       delBtn.title = 'Remove property from selected entities';
+      delBtn.setAttribute('aria-label', delBtn.title);
       delBtn.addEventListener('mousedown', () => removeEntityProperties(this.editor, entities, key));
 
       row.appendChild(keyInput);
@@ -286,7 +290,7 @@ export class PropertiesPanel {
 
     const addBtn = document.createElement('div');
     addBtn.className = 'btn';
-    addBtn.innerHTML = '<i class="ph ph-plus"></i> Add Key to Selection';
+    addBtn.innerHTML = '<i class="ph ph-plus" aria-hidden="true"></i> Add Key to Selection';
     addBtn.addEventListener('mousedown', () => addEntityProperties(this.editor, entities));
     container.appendChild(addBtn);
   }
@@ -524,10 +528,12 @@ export class PropertiesPanel {
       const row = document.createElement('div');
       row.className = 'kv-row';
       row.appendChild(input);
-      const locBtn = document.createElement('div');
+      const locBtn = document.createElement('button');
+      locBtn.type = 'button';
       locBtn.className = 'btn icon-btn';
       locBtn.title = 'Locate in texture browser';
-      locBtn.innerHTML = '<i class="ph ph-crosshair"></i>';
+      locBtn.setAttribute('aria-label', locBtn.title);
+      locBtn.innerHTML = '<i class="ph ph-crosshair" aria-hidden="true"></i>';
       locBtn.addEventListener('mousedown', () => {
         const tex = input.value || this.editor.currentTexture;
         if (tex) this.editor.onLocateTexture?.(tex);

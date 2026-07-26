@@ -335,7 +335,6 @@ export class Viewport3D {
   private initGL(): void {
     const gl = this.gl;
     gl.enable(gl.DEPTH_TEST);
-    gl.clearColor(0.12, 0.12, 0.14, 1);
 
     this.solidProg = createProgram(gl, VERT_SRC, FRAG_SRC);
     this.solidPVLoc = gl.getUniformLocation(this.solidProg, 'uPV')!;

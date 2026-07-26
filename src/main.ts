@@ -55,7 +55,7 @@ async function init() {
   const editor = new Editor();
   editor.createDefaultMap();
   const recovery = new DocumentRecoveryService(editor, currentEditorSessionId());
-  setLoadingStatus('Checking for recovered work...');
+  setLoadingStatus('Checking for recovered work…');
   const recoveredDocument = await recovery.restore();
   if (recoveredDocument) {
     editor.activityHistory.record({
@@ -174,7 +174,7 @@ async function init() {
     onProgress: PakProgressCallback = setLoadingStatus,
   ): Promise<void> => {
     if (defaultPakLoaded) return;
-    onProgress('Loading OpenArena assets...');
+    onProgress('Loading OpenArena assets…');
     const defaults = await loadPakManifest('/openarena/manifest.json', onProgress, {
       label: 'OpenArena 0.8.8 default textures',
       archives: ['pak0.pk3', 'pak4-textures.pk3'],
@@ -252,15 +252,15 @@ async function init() {
       })), openArenaEnabled);
       if (!result) return;
 
-      assetLoading = ui.showAssetLoading('Preparing PK3 file changes...');
+      assetLoading = ui.showAssetLoading('Preparing PK3 file changes…');
       await assetLoading.ready;
       const reportProgress: PakProgressCallback = (message, completed, total) => {
         setLoadingStatus(message);
         assetLoading?.update(message, completed, total);
       };
 
-      ui.setTextureAssetStatus('Applying PK3 file changes...');
-      reportProgress('Applying PK3 file changes...');
+      ui.setTextureAssetStatus('Applying PK3 file changes…');
+      reportProgress('Applying PK3 file changes…');
 
       const existingByName = new Map(stored.map(pak => [pak.name.toLowerCase(), pak]));
       const newFiles = result.entries.filter(entry => entry.file).map(entry => entry.file!);
@@ -278,7 +278,7 @@ async function init() {
       if (result.openArenaEnabled) await ensureDefaultPakLoaded(reportProgress);
       const archives = [...(result.openArenaEnabled ? defaultArchives : []), ...ordered];
       const assets = await indexPakArchives(archives, reportProgress);
-      reportProgress('Saving asset configuration...');
+      reportProgress('Saving asset configuration…');
       await replaceStoredAssetConfiguration(ordered, result.openArenaEnabled);
       openArenaEnabled = result.openArenaEnabled;
       editor.projectConfiguration.assets = {
@@ -288,10 +288,10 @@ async function init() {
         configured: true,
       };
       saveProjectConfiguration(editor.projectConfiguration);
-      assetLoading.update('Updating textures in the 3D view...', 1, 1);
+      assetLoading.update('Updating textures in the 3D view…', 1, 1);
       const installedTextureManager = installTextureManager(assets);
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-      assetLoading.update('Decoding visible textures...', 1, 1);
+      assetLoading.update('Decoding visible textures…', 1, 1);
       await installedTextureManager.waitForIdle();
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       const names = ordered.map(pak => pak.name);
@@ -323,7 +323,7 @@ async function init() {
 
   // Load the persisted asset stack. OpenArena is fetched only when enabled.
   let showOpenArenaNotice = false;
-  setLoadingStatus('Loading texture asset settings...');
+  setLoadingStatus('Loading texture asset settings…');
   try {
     openArenaEnabled = editor.projectConfiguration.assets.configured
       ? editor.projectConfiguration.assets.openArenaEnabled
@@ -369,7 +369,7 @@ function startEditor(): void {
   loadingEl.innerHTML = `
     <div class="loading-content">
       <div class="loading-title">Q3EDIT</div>
-      <div class="loading-status" id="loading-status">Initializing...</div>
+      <div class="loading-status" id="loading-status">Initializing…</div>
       <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
     </div>
   `;

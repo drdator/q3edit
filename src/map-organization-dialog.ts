@@ -169,7 +169,7 @@ export function openMapOrganizationDialog(editor: Editor, controller: MapOrganiz
       button('Next', () => {
         if (!filtered.length) return; filteredIndex = (filteredIndex + 1) % filtered.length; controller.selectRefs([filtered[filteredIndex].ref]);
       }),
-      button('Save Filter...', () => {
+      button('Save Filter…', () => {
         update(); const name = globalThis.prompt?.('Filter preset name', 'Filter');
         if (name) { controller.saveFilterPreset(name, filter); render(); }
       }),

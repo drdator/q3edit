@@ -6,6 +6,7 @@ import { Patch } from './patch';
 import { collectBrushEdges } from './vertex';
 import { leafAtPoint } from './bsp-inspection';
 import { CONTENTS_DETAIL } from './map-flags';
+import { editorThemeColors, themeRgba } from './theme-colors';
 
 interface GeoSnapLine {
   axis: 'h' | 'v';
@@ -42,7 +43,7 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
   const w = rect.width;
   const h = rect.height;
 
-  ctx.ctx.fillStyle = '#1e1e1e';
+  ctx.ctx.fillStyle = editorThemeColors().viewport;
   ctx.ctx.fillRect(0, 0, w, h);
 
   drawGrid(ctx, w, h);
@@ -172,13 +173,16 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
 }
 
 function drawGrid(ctx: Viewport2DRenderContext, w: number, h: number): void {
+  const theme = editorThemeColors();
   const gridSize = ctx.editor.gridSize;
   const [wMinX, wMaxY] = ctx.screenToWorld(0, 0);
   const [wMaxX, wMinY] = ctx.screenToWorld(w, h);
 
   const minorAlpha = Math.min(1, ctx.zoom * gridSize / 8);
   if (minorAlpha > 0.1) {
-    ctx.ctx.strokeStyle = `rgba(50, 50, 50, ${minorAlpha * 0.6})`;
+    ctx.ctx.save();
+    ctx.ctx.strokeStyle = theme.gridMinor;
+    ctx.ctx.globalAlpha = minorAlpha;
     ctx.ctx.lineWidth = 0.5;
     ctx.ctx.beginPath();
     const startX = Math.floor(wMinX / gridSize) * gridSize;
@@ -194,10 +198,11 @@ function drawGrid(ctx: Viewport2DRenderContext, w: number, h: number): void {
       ctx.ctx.lineTo(w, sy);
     }
     ctx.ctx.stroke();
+    ctx.ctx.restore();
   }
 
   const majorSize = Math.max(gridSize * 8, 64);
-  ctx.ctx.strokeStyle = 'rgba(70, 70, 70, 0.8)';
+  ctx.ctx.strokeStyle = theme.gridMajor;
   ctx.ctx.lineWidth = 0.5;
   ctx.ctx.beginPath();
   const majorStartX = Math.floor(wMinX / majorSize) * majorSize;
@@ -215,7 +220,7 @@ function drawGrid(ctx: Viewport2DRenderContext, w: number, h: number): void {
   ctx.ctx.stroke();
 
   const [ox, oy] = ctx.worldToScreen(0, 0);
-  ctx.ctx.strokeStyle = 'rgba(0, 100, 180, 0.5)';
+  ctx.ctx.strokeStyle = theme.gridOrigin;
   ctx.ctx.lineWidth = 1;
   ctx.ctx.beginPath();
   ctx.ctx.moveTo(ox, 0);
@@ -226,14 +231,15 @@ function drawGrid(ctx: Viewport2DRenderContext, w: number, h: number): void {
 }
 
 function drawBrush(ctx: Viewport2DRenderContext, brush: Brush, selected: boolean): void {
+  const theme = editorThemeColors();
   const detail = brush.faces.some(face => (face.contentFlags & CONTENTS_DETAIL) !== 0);
-  ctx.ctx.fillStyle = selected ? 'rgba(255, 102, 0, 0.15)' : detail ? 'rgba(170, 100, 210, 0.14)' : 'rgba(60, 80, 100, 0.2)';
+  ctx.ctx.fillStyle = selected ? themeRgba(theme.selectionRgb, 0.15) : detail ? 'rgba(170, 100, 210, 0.14)' : 'rgba(60, 80, 100, 0.2)';
   ctx.ctx.lineWidth = selected ? 1.5 : 1;
 
   for (const face of brush.faces) {
     if (face.polygon.length < 3) continue;
     const shader = face.texture.toLowerCase().replace(/^textures\//, '');
-    ctx.ctx.strokeStyle = selected ? '#ff6600'
+    ctx.ctx.strokeStyle = selected ? theme.selection
       : shader === 'common/hint' ? '#ffb340'
         : shader === 'common/skip' ? '#7c7c7c'
           : shader === 'common/areaportal' ? '#4fd698'
@@ -253,16 +259,17 @@ function drawBrush(ctx: Viewport2DRenderContext, brush: Brush, selected: boolean
 }
 
 function drawPatch(ctx: Viewport2DRenderContext, patch: Patch, selected: boolean): void {
+  const theme = editorThemeColors();
   const textureTerrainMode = ctx.editor.patchEditMode && ctx.editor.terrainBrushMode === 'texture';
   ctx.ctx.strokeStyle = textureTerrainMode
     ? selected ? 'rgba(255, 170, 96, 0.5)' : 'rgba(68, 136, 187, 0.22)'
-    : selected ? '#ff6600' : '#4488bb';
+    : selected ? theme.selection : '#4488bb';
   ctx.ctx.lineWidth = textureTerrainMode
     ? selected ? 1 : 0.75
     : selected ? 1.5 : 1;
   ctx.ctx.fillStyle = textureTerrainMode
-    ? selected ? 'rgba(255, 102, 0, 0.015)' : 'rgba(60, 80, 100, 0.04)'
-    : selected ? 'rgba(255, 102, 0, 0.08)' : 'rgba(60, 80, 100, 0.1)';
+    ? selected ? themeRgba(theme.selectionRgb, 0.015) : 'rgba(60, 80, 100, 0.04)'
+    : selected ? themeRgba(theme.selectionRgb, 0.08) : 'rgba(60, 80, 100, 0.1)';
 
   const [x0, y0] = ctx.worldToScreen(patch.mins[ctx.axisH], patch.maxs[ctx.axisV]);
   const [x1, y1] = ctx.worldToScreen(patch.maxs[ctx.axisH], patch.mins[ctx.axisV]);
@@ -534,6 +541,7 @@ function drawPathCurves(ctx: Viewport2DRenderContext): void {
 }
 
 function drawSelectionBox(ctx: Viewport2DRenderContext): void {
+  const theme = editorThemeColors();
   const bounds = ctx.editor.selectionBounds();
   if (!bounds) return;
   const [x0, y0] = ctx.worldToScreen(bounds.mins[ctx.axisH], bounds.maxs[ctx.axisV]);
@@ -542,7 +550,7 @@ function drawSelectionBox(ctx: Viewport2DRenderContext): void {
   const bh = y1 - y0;
 
   if (ctx.editor.selection.length > 1) {
-    ctx.ctx.strokeStyle = 'rgba(255, 170, 0, 0.6)';
+    ctx.ctx.strokeStyle = themeRgba(theme.selectionRgb, 0.6);
     ctx.ctx.lineWidth = 1;
     ctx.ctx.setLineDash([4, 4]);
     ctx.ctx.strokeRect(x0, y0, bw, bh);
@@ -551,7 +559,7 @@ function drawSelectionBox(ctx: Viewport2DRenderContext): void {
 
   if (ctx.editor.gizmoMode === 'scale') {
     const hs = 3;
-    ctx.ctx.fillStyle = '#ffaa00';
+    ctx.ctx.fillStyle = theme.selection;
     const midX = (x0 + x1) / 2;
     const midY = (y0 + y1) / 2;
     const handles = [
@@ -615,6 +623,7 @@ function drawVertexHandles(ctx: Viewport2DRenderContext): void {
 }
 
 function drawEntity(ctx: Viewport2DRenderContext, entity: Entity, selected: boolean): void {
+  const theme = editorThemeColors();
   const origin = ctx.editor.entityDisplayOrigin(entity);
   if (!origin) return;
   const bounds = ctx.editor.entityBounds(entity);
@@ -626,15 +635,15 @@ function drawEntity(ctx: Viewport2DRenderContext, entity: Entity, selected: bool
   if ((hasGeometry || ctx.editor.modelManager?.resolveEntity(entity)) && bounds) {
     const [x0, y0] = ctx.worldToScreen(bounds.mins[ctx.axisH], bounds.maxs[ctx.axisV]);
     const [x1, y1] = ctx.worldToScreen(bounds.maxs[ctx.axisH], bounds.mins[ctx.axisV]);
-    ctx.ctx.strokeStyle = selected ? '#ffaa00' : catColor;
+    ctx.ctx.strokeStyle = selected ? theme.selection : catColor;
     ctx.ctx.lineWidth = selected ? 1.5 : 1;
     ctx.ctx.globalAlpha = selected ? 0.9 : 0.5;
     ctx.ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.ctx.globalAlpha = 1.0;
   }
 
-  ctx.ctx.fillStyle = selected ? '#ff6600' : catColor;
-  ctx.ctx.strokeStyle = selected ? '#ffaa00' : catColor;
+  ctx.ctx.fillStyle = selected ? theme.selection : catColor;
+  ctx.ctx.strokeStyle = selected ? theme.selection : catColor;
   ctx.ctx.globalAlpha = selected ? 1.0 : 0.85;
   ctx.ctx.lineWidth = 1;
   ctx.ctx.beginPath();
@@ -679,7 +688,7 @@ function drawEntity(ctx: Viewport2DRenderContext, entity: Entity, selected: bool
   }
 
   if (ctx.editor.display.categories.names || ctx.editor.display.categories.coordinates) {
-    ctx.ctx.fillStyle = selected ? '#ffaa00' : catColor;
+    ctx.ctx.fillStyle = selected ? theme.selection : catColor;
     ctx.ctx.font = '9px monospace';
     ctx.ctx.textAlign = 'left';
     const name = ctx.editor.display.categories.names ? entity.classname : '';

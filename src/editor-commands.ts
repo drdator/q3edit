@@ -149,26 +149,26 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
   }));
   const commands: CommandDefinition<EditorCommandContext>[] = [
     { id: 'file.new', label: 'New', defaultShortcut: 'Mod+N', menu: menu('File', 0, 'document'), execute: ({ editor }) => { editor.newMap(); editor.createDefaultMap(); } },
-    { id: 'file.open', label: 'Open...', defaultShortcut: 'Mod+O', menu: menu('File', 10, 'open-save'), execute: ({ editor }) => editor.openMapFromFile() },
+    { id: 'file.open', label: 'Open…', defaultShortcut: 'Mod+O', menu: menu('File', 10, 'open-save'), execute: ({ editor }) => editor.openMapFromFile() },
     { id: 'file.save', label: 'Save', defaultShortcut: 'Mod+S', menu: menu('File', 20, 'open-save'), execute: ({ editor }) => editor.saveMapToFile() },
-    { id: 'file.version-history', label: 'Version History...', menu: menu('File', 25, 'open-save'), enabled: ctx => !!ctx.openVersionHistory, execute: ctx => ctx.openVersionHistory?.() },
-    { id: 'file.manage-paks', label: 'Manage PK3 Files...', menu: menu('File', 30, 'assets'), execute: ctx => ctx.managePakFiles() },
-    { id: 'file.project-settings', label: 'Project Settings...', menu: menu('File', 35, 'assets'), execute: ctx => ctx.openProjectSettings() },
-    { id: 'file.release-package', label: 'Build Release PK3...', menu: menu('File', 38, 'assets'), enabled: ctx => !!ctx.openReleasePackage, execute: ctx => ctx.openReleasePackage?.() },
-    { id: 'file.import-prefab', label: 'Import Prefab...', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },
+    { id: 'file.version-history', label: 'Version History…', menu: menu('File', 25, 'open-save'), enabled: ctx => !!ctx.openVersionHistory, execute: ctx => ctx.openVersionHistory?.() },
+    { id: 'file.manage-paks', label: 'Manage PK3 Files…', menu: menu('File', 30, 'assets'), execute: ctx => ctx.managePakFiles() },
+    { id: 'file.project-settings', label: 'Project Settings…', menu: menu('File', 35, 'assets'), execute: ctx => ctx.openProjectSettings() },
+    { id: 'file.release-package', label: 'Build Release PK3…', menu: menu('File', 38, 'assets'), enabled: ctx => !!ctx.openReleasePackage, execute: ctx => ctx.openReleasePackage?.() },
+    { id: 'file.import-prefab', label: 'Import Prefab…', menu: menu('File', 40, 'prefab'), execute: ({ editor }) => editor.importPrefabFromFile() },
     { id: 'file.save-prefab', label: 'Save Selection as Prefab', menu: menu('File', 50, 'prefab'), enabled: hasSelection, execute: ({ editor }) => editor.saveSelectionAsPrefab() },
     { id: 'file.export-console', label: 'Export .map to Console', menu: menu('File', 60, 'export'), execute: ({ editor }) => console.log(editor.serializeMap()) },
     { id: 'file.quick-play', label: 'Quick Play', defaultShortcut: 'F5', menu: menu('File', 70, 'quick-play'), execute: ctx => ctx.quickPlay() },
-    { id: 'file.quick-play-options', label: 'Quick Play Options...', menu: menu('File', 71, 'quick-play'), execute: ctx => ctx.openQuickPlayOptions() },
-    { id: 'file.build-history', label: 'Build History...', menu: menu('File', 79, 'compile'), enabled: ctx => !!ctx.openBuildHistory, execute: ctx => ctx.openBuildHistory?.() },
-    { id: 'file.compile-bsp', label: 'Compile BSP...', menu: menu('File', 80, 'compile'), execute: ctx => ctx.compileBSP() },
+    { id: 'file.quick-play-options', label: 'Quick Play Options…', menu: menu('File', 71, 'quick-play'), execute: ctx => ctx.openQuickPlayOptions() },
+    { id: 'file.build-history', label: 'Build History…', menu: menu('File', 79, 'compile'), enabled: ctx => !!ctx.openBuildHistory, execute: ctx => ctx.openBuildHistory?.() },
+    { id: 'file.compile-bsp', label: 'Compile BSP…', menu: menu('File', 80, 'compile'), execute: ctx => ctx.compileBSP() },
 
     { id: 'edit.undo', label: 'Undo', defaultShortcut: 'Mod+Z', menu: menu('Edit', 0, 'history'), enabled: ({ editor }) => editor.history.canUndo, execute: ({ editor }) => editor.undo() },
     { id: 'edit.redo', label: 'Redo', defaultShortcut: 'Mod+Y', alternateShortcuts: ['Mod+Shift+Z'], menu: menu('Edit', 10, 'history'), enabled: ({ editor }) => editor.history.canRedo, execute: ({ editor }) => editor.redo() },
     { id: 'edit.copy', label: 'Copy', defaultShortcut: 'Mod+C', menu: menu('Edit', 20, 'clipboard'), enabled: hasSelection, execute: ({ editor }) => editor.copySelection() },
     { id: 'edit.paste', label: 'Paste', defaultShortcut: 'Mod+V', menu: menu('Edit', 30, 'clipboard'), execute: ({ editor }) => editor.pasteClipboard() },
     { id: 'edit.select-all', label: 'Select All', defaultShortcut: 'Mod+A', menu: menu('Edit', 40, 'selection'), execute: ({ editor }) => editor.selectAll() },
-    { id: 'edit.select-all-type', label: 'Select All Of Type', menu: menu('Edit', 50, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectAllOfType() },
+    { id: 'edit.select-all-type', label: 'Select All of Type', menu: menu('Edit', 50, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectAllOfType() },
     { id: 'edit.invert-selection', label: 'Invert Selection', defaultShortcut: 'Mod+Shift+I', menu: menu('Edit', 60, 'selection'), execute: ({ editor }) => editor.invertSelection() },
     { id: 'edit.select-touching', label: 'Select Touching', menu: menu('Edit', 70, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectTouching() },
     { id: 'edit.select-inside', label: 'Select Inside', menu: menu('Edit', 80, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectInside() },
@@ -181,13 +181,13 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.make-structural', label: 'Make Structural', menu: menu('Edit', 150, 'brush-kind'), enabled: hasSelection, execute: ({ editor }) => editor.makeStructural() },
     { id: 'edit.group-selection', label: 'Group Selection', defaultShortcut: 'Mod+Shift+G', menu: menu('Edit', 160, 'grouping'), enabled: hasSelection, execute: ({ editor }) => editor.groupSelectionIntoEntity() },
     { id: 'edit.move-worldspawn', label: 'Move to Worldspawn', defaultShortcut: 'Mod+Shift+U', menu: menu('Edit', 170, 'grouping'), enabled: hasSelection, execute: ({ editor }) => editor.moveSelectionToWorldspawn() },
-    { id: 'edit.preferences', label: 'Preferences...', defaultShortcut: 'Mod+,', menu: menu('Edit', 175, 'settings'), execute: ctx => ctx.openPreferences() },
+    { id: 'edit.preferences', label: 'Preferences…', defaultShortcut: 'Mod+,', menu: menu('Edit', 175, 'settings'), execute: ctx => ctx.openPreferences() },
     { id: 'edit.connect-entities', label: 'Connect Entities', defaultShortcut: 'Mod+K', menu: menu('Edit', 180, 'grouping'), execute: ({ editor }) => editor.connectSelectedEntities() },
-    { id: 'groups.create', label: 'Create Named Group...', menu: menu('Groups', 0, 'manage'), execute: ({ editor }) => {
+    { id: 'groups.create', label: 'Create Named Group…', menu: menu('Groups', 0, 'manage'), execute: ({ editor }) => {
       const name = globalThis.prompt?.('Named group', 'Group'); if (name) editor.createNamedGroup(name);
     } },
-    { id: 'groups.organization', label: 'Map Organization...', menu: menu('Groups', 5, 'manage'), enabled: ctx => !!ctx.openOrganization, execute: ctx => ctx.openOrganization?.() },
-    { id: 'groups.add-selection', label: 'Add Selection to Group...', menu: menu('Groups', 10, 'membership'), enabled: hasSelection, execute: ({ editor }) => {
+    { id: 'groups.organization', label: 'Map Organization…', menu: menu('Groups', 5, 'manage'), enabled: ctx => !!ctx.openOrganization, execute: ctx => ctx.openOrganization?.() },
+    { id: 'groups.add-selection', label: 'Add Selection to Group…', menu: menu('Groups', 10, 'membership'), enabled: hasSelection, execute: ({ editor }) => {
       const groups = editor.namedGroups();
       const name = globalThis.prompt?.(`Group name (${groups.map(group => group.name).join(', ')})`, groups[0]?.name ?? '');
       const group = groups.find(candidate => candidate.name === name); if (group) editor.addSelectionToNamedGroup(group.id);
@@ -197,8 +197,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.delete', label: 'Delete', defaultShortcut: 'Delete', alternateShortcuts: ['Backspace'], menu: menu('Edit', 200, 'change'), enabled: hasSelection, execute: ({ editor }) => editor.deleteSelection() },
     { id: 'edit.rotate-90', label: 'Rotate 90°', defaultShortcut: 'R', menu: menu('Edit', 210, 'transform'), enabled: hasSelection, execute: ({ editor }) => editor.rotateSelection(90) },
     { id: 'edit.rotate-15', label: 'Rotate 15°', defaultShortcut: 'Shift+R', menu: menu('Edit', 220, 'transform'), enabled: hasSelection, execute: ({ editor }) => editor.rotateSelection(15) },
-    { id: 'edit.rotate', label: 'Rotate...', defaultShortcut: 'Mod+Shift+R', menu: menu('Edit', 230, 'transform'), enabled: hasSelection, execute: ctx => ctx.openRotateDialog() },
-    { id: 'edit.scale', label: 'Scale...', defaultShortcut: 'Mod+Shift+E', menu: menu('Edit', 240, 'transform'), enabled: hasSelection, execute: ctx => ctx.openScaleDialog() },
+    { id: 'edit.rotate', label: 'Rotate…', defaultShortcut: 'Mod+Shift+R', menu: menu('Edit', 230, 'transform'), enabled: hasSelection, execute: ctx => ctx.openRotateDialog() },
+    { id: 'edit.scale', label: 'Scale…', defaultShortcut: 'Mod+Shift+E', menu: menu('Edit', 240, 'transform'), enabled: hasSelection, execute: ctx => ctx.openScaleDialog() },
     { id: 'edit.flip-x', label: 'Flip X', defaultShortcut: 'Shift+X', menu: menu('Edit', 250, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(0) },
     { id: 'edit.flip-y', label: 'Flip Y', defaultShortcut: 'Shift+Y', menu: menu('Edit', 260, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(1) },
     { id: 'edit.flip-z', label: 'Flip Z', defaultShortcut: 'Shift+Z', menu: menu('Edit', 270, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(2) },
@@ -215,7 +215,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     ...rendererCommands,
     ...filteringCommands,
     ...bspOverlayCommands,
-    { id: 'view.mcp-connection', label: 'Local MCP Connection...', menu: menu('View', 980, 'mcp-activity'), execute: ctx => ctx.openMcpConnection() },
+    { id: 'view.mcp-connection', label: 'Local MCP Connection…', menu: menu('View', 980, 'mcp-activity'), execute: ctx => ctx.openMcpConnection() },
     {
       id: 'view.build-results',
       label: 'Build Results',
@@ -224,27 +224,27 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
       execute: ctx => ctx.toggleBuildResults(),
     },
     { id: 'view.mcp-activity', label: 'Activity', menu: menu('View', 990, 'mcp-activity'), checked: ctx => ctx.isMcpActivityOpen(), execute: ctx => ctx.toggleMcpActivity() },
-    { id: 'view.release-notes', label: 'Release Notes...', menu: menu('View', 1000, 'release-notes'), execute: () => openReleaseNotesDialog() },
+    { id: 'view.release-notes', label: 'Release Notes…', menu: menu('View', 1000, 'release-notes'), execute: () => openReleaseNotesDialog() },
 
     { id: 'region.from-selection', label: 'Set From Selection', menu: menu('Region', 0, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromSelection() },
     { id: 'region.from-view', label: 'Set From Current XY View', menu: menu('Region', 10, 'region'), execute: ({ editor }) => editor.setRegionFromCurrentXYView() },
     { id: 'region.from-brush', label: 'Set From One Brush', menu: menu('Region', 20, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromSingleBrush() },
     { id: 'region.from-tall-selection', label: 'Set Tall From Selection', menu: menu('Region', 30, 'region'), enabled: hasSelection, execute: ({ editor }) => editor.setRegionFromTallSelection() },
-    { id: 'region.save', label: 'Save Region...', menu: menu('Region', 40, 'file'), enabled: ({ editor }) => editor.isRegionActive(), execute: ({ editor }) => editor.saveRegionToFile() },
+    { id: 'region.save', label: 'Save Region…', menu: menu('Region', 40, 'file'), enabled: ({ editor }) => editor.isRegionActive(), execute: ({ editor }) => editor.saveRegionToFile() },
     { id: 'region.off', label: 'Region Off', menu: menu('Region', 50, 'region'), enabled: ({ editor }) => editor.isRegionActive(), execute: ({ editor }) => editor.clearRegion() },
-    { id: 'pointfile.open', label: 'Open Pointfile...', menu: menu('Pointfile', 0, 'file'), execute: ({ editor }) => editor.openPointfileFromFile() },
+    { id: 'pointfile.open', label: 'Open Pointfile…', menu: menu('Pointfile', 0, 'file'), execute: ({ editor }) => editor.openPointfileFromFile() },
     { id: 'pointfile.clear', label: ({ editor }) => editor.pointfilePoints.length > 0 ? `Clear Pointfile (${editor.pointfilePoints.length})` : 'Clear Pointfile', menu: menu('Pointfile', 10, 'file'), enabled: ({ editor }) => editor.pointfilePoints.length > 0, execute: ({ editor }) => editor.clearPointfile() },
     { id: 'pointfile.previous', label: 'Previous Leak Spot', menu: menu('Pointfile', 20, 'navigate'), enabled: ({ editor }) => editor.pointfilePoints.length > 0, execute: ({ editor }) => editor.prevPointfilePoint() },
     { id: 'pointfile.next', label: 'Next Leak Spot', menu: menu('Pointfile', 30, 'navigate'), enabled: ({ editor }) => editor.pointfilePoints.length > 0, execute: ({ editor }) => editor.nextPointfilePoint() },
     { id: 'path.connect', label: 'Connect Selection as Path', defaultShortcut: 'Mod+Shift+K', menu: menu('Path', 0, 'path'), execute: ({ editor }) => editor.connectSelectedEntitiesAsPath() },
     { id: 'path.connect-closed', label: 'Connect Selection as Closed Path', defaultShortcut: 'Mod+Alt+K', menu: menu('Path', 10, 'path'), execute: ({ editor }) => editor.connectSelectedEntitiesAsClosedPath() },
-    { id: 'path.camera-selection', label: 'Camera Path from Selection...', menu: menu('Path', 20, 'camera'), execute: ({ editor }) => {
+    { id: 'path.camera-selection', label: 'Camera Path from Selection…', menu: menu('Path', 20, 'camera'), execute: ({ editor }) => {
       const name = globalThis.prompt?.('Camera path name', 'Camera Path'); if (name) editor.createCameraPathFromSelection(name);
     } },
-    { id: 'path.camera-selection-closed', label: 'Closed Camera Path from Selection...', menu: menu('Path', 30, 'camera'), execute: ({ editor }) => {
+    { id: 'path.camera-selection-closed', label: 'Closed Camera Path from Selection…', menu: menu('Path', 30, 'camera'), execute: ({ editor }) => {
       const name = globalThis.prompt?.('Camera path name', 'Camera Loop'); if (name) editor.createCameraPathFromSelection(name, true);
     } },
-    { id: 'path.camera-view', label: 'New Camera Path from 3D View...', menu: menu('Path', 40, 'camera'), execute: ({ editor }) => {
+    { id: 'path.camera-view', label: 'New Camera Path from 3D View…', menu: menu('Path', 40, 'camera'), execute: ({ editor }) => {
       const name = globalThis.prompt?.('Camera path name', 'Camera Path'); if (name) editor.createCameraPathFromCurrentCamera(name);
     } },
     { id: 'path.camera-play', label: 'Play Camera Path', menu: menu('Path', 50, 'playback'), enabled: ({ editor }) => editor.cameraPaths().length > 0, execute: ({ editor }) => {
@@ -256,7 +256,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'path.smart-train', label: 'Build Smart Train Path', menu: menu('Path', 80, 'smart'), execute: ({ editor }) => editor.createSmartTrainPath() },
 
     { id: 'terrain.create', label: 'Create Terrain Patch', menu: menu('Terrain', 0, 'setup'), enabled: hasSelection, execute: ({ editor }) => editor.createTerrainPatch() },
-    { id: 'terrain.prepare-paint', label: 'Prepare Terrain For Texture Paint', menu: menu('Terrain', 10, 'setup'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.splitTerrainIntoPaintTiles() },
+    { id: 'terrain.prepare-paint', label: 'Prepare Terrain for Texture Paint', menu: menu('Terrain', 10, 'setup'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.splitTerrainIntoPaintTiles() },
     { id: 'terrain.stitch', label: 'Stitch Terrain Seams', menu: menu('Terrain', 20, 'setup'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.stitchTerrainSeams() },
     { id: 'terrain.toggle-brush-mode', label: ({ editor }) => `Brush Mode: ${editor.terrainBrushMode === 'texture' ? 'Texture' : 'Height'}`, menu: menu('Terrain', 30, 'mode'), execute: ({ editor }) => editor.toggleTerrainBrushMode() },
     { id: 'terrain.raise', label: 'Raise Terrain', defaultShortcut: 'PageUp', menu: menu('Terrain', 40, 'sculpt'), enabled: ({ editor }) => editor.patchEditMode, execute: ({ editor }) => editor.raiseTerrain() },
@@ -277,7 +277,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tool.entity', label: 'Place Entity', defaultShortcut: '3', menu: menu('Tools', 20, 'tools'), checked: ({ editor }) => editor.activeTool === 'entity', execute: ctx => ctx.setTool('entity') },
     { id: 'tool.clip', label: 'Clip', defaultShortcut: '4', menu: menu('Tools', 30, 'tools'), checked: ({ editor }) => editor.activeTool === 'clip', execute: ctx => ctx.setTool('clip') },
     { id: 'tool.rotate', label: 'Rotate', defaultShortcut: '5', menu: menu('Tools', 40, 'tools'), checked: ({ editor }) => editor.activeTool === 'rotate', execute: ctx => ctx.setTool('rotate') },
-    { id: 'brush.create-exact', label: 'Create Exact Primitive...', menu: menu('Tools', 50, 'create'), execute: ({ editor }) => openExactPrimitiveDialog(editor) },
+    { id: 'brush.create-exact', label: 'Create Exact Primitive…', menu: menu('Tools', 50, 'create'), execute: ({ editor }) => openExactPrimitiveDialog(editor) },
     { id: 'csg.subtract', label: 'CSG Subtract', defaultShortcut: 'Mod+Shift+S', menu: menu('CSG', 0, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgSubtract() },
     { id: 'csg.hollow', label: 'Make Hollow', defaultShortcut: 'Mod+Shift+H', menu: menu('CSG', 10, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgHollow() },
     { id: 'csg.merge', label: 'Merge Brushes', defaultShortcut: 'Mod+Shift+M', menu: menu('CSG', 20, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgMerge() },
@@ -300,7 +300,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'patch.create-endcap', label: 'Create End Cap', menu: menu('Patch', 40, 'create'), enabled: hasSelection, execute: ({ editor }) => editor.createPatch('endcap') },
     { id: 'patch.create-square', label: 'Create Square 5x5', menu: menu('Patch', 50, 'matrix'), enabled: hasSelection, execute: ({ editor }) => editor.createMatrixPatch(5, 5) },
     { id: 'patch.create-dense', label: 'Create Dense 9x9', menu: menu('Patch', 60, 'matrix'), enabled: hasSelection, execute: ({ editor }) => editor.createMatrixPatch(9, 9) },
-    { id: 'patch.create-arbitrary', label: 'Create Arbitrary Matrix...', menu: menu('Patch', 70, 'matrix'), enabled: hasSelection, execute: ({ editor }) => {
+    { id: 'patch.create-arbitrary', label: 'Create Arbitrary Matrix…', menu: menu('Patch', 70, 'matrix'), enabled: hasSelection, execute: ({ editor }) => {
       const value = globalThis.prompt?.('Patch dimensions (odd, 3-31)', '5x3'); if (!value) return;
       const match = value.match(/^\s*(\d+)\s*[x, ]\s*(\d+)\s*$/i); if (match) editor.createMatrixPatch(Number(match[1]), Number(match[2]));
     } },
@@ -308,7 +308,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'patch.delete-rows', label: 'Delete Rows', menu: menu('Patch', 90, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('delete-rows') },
     { id: 'patch.insert-columns', label: 'Insert Columns', menu: menu('Patch', 100, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('insert-columns') },
     { id: 'patch.delete-columns', label: 'Delete Columns', menu: menu('Patch', 110, 'grid'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.applyPatchOperation('delete-columns') },
-    ...(['transpose','invert','redisperse-rows','redisperse-columns','cycle-cap','naturalize','fit','shift-u','shift-v','scale-up','scale-down','rotate'] as const).map((operation, index) => ({ id: `patch.${operation}`, label: `Patch ${operation.replace(/-/g, ' ')}`, menu: menu('Patch', 120 + index, operation.includes('row') || operation.includes('column') ? 'grid' : 'texture'), enabled: hasSelectedPatches, execute: ({ editor }: EditorCommandContext) => editor.applyPatchOperation(operation) })),
+    ...(['transpose','invert','redisperse-rows','redisperse-columns','cycle-cap','naturalize','fit','shift-u','shift-v','scale-up','scale-down','rotate'] as const).map((operation, index) => ({ id: `patch.${operation}`, label: `Patch ${operation.replace(/-/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}`, menu: menu('Patch', 120 + index, operation.includes('row') || operation.includes('column') ? 'grid' : 'texture'), enabled: hasSelectedPatches, execute: ({ editor }: EditorCommandContext) => editor.applyPatchOperation(operation) })),
     { id: 'patch.thicken', label: 'Thicken With Caps', menu: menu('Patch', 150, 'shape'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.thickenPatches() },
     { id: 'terrain.convert-patchdef2', label: 'Convert Terrain to patchDef2', menu: menu('Terrain', 140, 'setup'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.convertSelectedTerrainToPatch() },
     { id: 'patch.subdivide-more', label: 'Increase Patch Subdivisions', defaultShortcut: 'Plus', alternateShortcuts: ['='], menu: menu('Patch', 160, 'subdivision'), enabled: hasSelectedPatches, execute: ({ editor }) => editor.changeSubdivisions(1) },
@@ -321,12 +321,12 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'gizmo.scale', label: 'Scale Mode', defaultShortcut: 'E', checked: ({ editor }) => editor.gizmoMode === 'scale', execute: ctx => setGizmo(ctx, 'scale') },
     { id: 'view.snap-mode', label: ({ editor }) => `Grid Snap: ${editor.gridSnapMode === 'off' ? 'Off' : editor.gridSnapMode === 'abs' ? 'Absolute' : 'Relative'}`, checked: ({ editor }) => editor.gridSnapMode !== 'off', execute: ctx => ctx.toggleSnap() },
     { id: 'terrain.open-panel', label: 'Open Terrain Panel', execute: ctx => ctx.openTerrainPanel() },
-    { id: 'tools.map-info', label: 'Map Info & Diagnostics...', defaultShortcut: 'M', menu: menu('Tools', 300, 'diagnostics'), execute: ctx => ctx.openDiagnostics('map') },
-    { id: 'tools.entity-logic', label: 'Entity Logic...', menu: menu('Tools', 305, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entity-logic') },
-    { id: 'tools.entity-info', label: 'Entity Info...', defaultShortcut: 'Mod+L', menu: menu('Tools', 310, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entities') },
-    { id: 'tools.find-brush', label: 'Find Brush...', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
-    { id: 'tools.brush-macros', label: 'Brush Macros...', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },
-    { id: 'tools.surface-alignment', label: 'Surface Alignment...', menu: menu('Tools', 340, 'surface'), enabled: ctx => (hasSelectedFaces(ctx) || hasSelectedPatches(ctx) || ctx.editor.textureDensityReport() !== null) && !!ctx.openSurfaceAlignment, execute: ctx => ctx.openSurfaceAlignment?.() },
+    { id: 'tools.map-info', label: 'Map Info & Diagnostics…', defaultShortcut: 'M', menu: menu('Tools', 300, 'diagnostics'), execute: ctx => ctx.openDiagnostics('map') },
+    { id: 'tools.entity-logic', label: 'Entity Logic…', menu: menu('Tools', 305, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entity-logic') },
+    { id: 'tools.entity-info', label: 'Entity Info…', defaultShortcut: 'Mod+L', menu: menu('Tools', 310, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entities') },
+    { id: 'tools.find-brush', label: 'Find Brush…', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
+    { id: 'tools.brush-macros', label: 'Brush Macros…', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },
+    { id: 'tools.surface-alignment', label: 'Surface Alignment…', menu: menu('Tools', 340, 'surface'), enabled: ctx => (hasSelectedFaces(ctx) || hasSelectedPatches(ctx) || ctx.editor.textureDensityReport() !== null) && !!ctx.openSurfaceAlignment, execute: ctx => ctx.openSurfaceAlignment?.() },
 
     { id: 'texture.fit', label: 'Fit Texture', defaultShortcut: 'Mod+Shift+F', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture() },
     { id: 'texture.reset', label: 'Reset Texture Alignment', defaultShortcut: 'Mod+Shift+N', enabled: hasSelectedFaces, execute: ({ editor }) => editor.resetTextureAlignment() },

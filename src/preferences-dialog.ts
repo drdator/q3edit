@@ -18,6 +18,7 @@ import {
   saveProjectConfiguration,
   type ProjectConfiguration,
 } from './project-config';
+import { refreshEditorThemeColors } from './theme-colors';
 
 const THEME_VARIABLES = ['background', 'panel', 'text', 'accent', 'viewport', 'gridMajor', 'gridMinor'] as const;
 
@@ -31,9 +32,15 @@ export function applyAppearancePreferences(preferences: GlobalPreferences): void
     viewport: '--viewport-bg', gridMajor: '--grid-major', gridMinor: '--grid-minor',
   };
   for (const name of THEME_VARIABLES) {
-    if (preferences.theme.preset === 'custom') root.style.setProperty(cssNames[name], preferences.theme.colors[name]);
-    else root.style.removeProperty(cssNames[name]);
+    if (preferences.theme.preset === 'custom') {
+      root.style.setProperty(cssNames[name], preferences.theme.colors[name]);
+      if (name === 'panel') root.style.setProperty('--panel', preferences.theme.colors[name]);
+    } else {
+      root.style.removeProperty(cssNames[name]);
+      if (name === 'panel') root.style.removeProperty('--panel');
+    }
   }
+  refreshEditorThemeColors(root);
 }
 
 function labeled(label: string, control: HTMLElement): HTMLLabelElement {

@@ -153,7 +153,7 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
   sidebarToggle.type = 'button';
   sidebarToggle.className = 'menubar-icon-button menubar-sidebar-toggle';
   sidebarToggle.dataset.command = 'view.sidebar';
-  sidebarToggle.innerHTML = '<i class="ph ph-sidebar-simple"></i>';
+  sidebarToggle.innerHTML = '<i class="ph ph-sidebar-simple" aria-hidden="true"></i>';
   const refreshSidebarToggle = () => {
     const state = ctx.commands.getState('view.sidebar');
     sidebarToggle.classList.toggle('active', state.checked);

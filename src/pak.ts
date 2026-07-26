@@ -19,7 +19,7 @@ export function isPk3Data(data: ArrayBuffer | Uint8Array): boolean {
 }
 
 export async function loadPak(url: string, onProgress?: PakProgressCallback): Promise<AssetArchive> {
-  onProgress?.(`Fetching ${url}...`);
+  onProgress?.(`Fetching ${url}…`);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
 
@@ -57,7 +57,7 @@ export async function loadPakManifest(
     }
     const detail = error instanceof Error ? error.message : String(error);
     console.warn(`Could not load ${manifestUrl}; using the built-in asset list: ${detail}`);
-    onProgress?.('Asset manifest unavailable; using built-in OpenArena list...');
+    onProgress?.('Asset manifest unavailable; using built-in OpenArena list…');
     manifest = fallbackManifest;
   }
 
@@ -69,7 +69,7 @@ export async function loadPakManifest(
   const archives: AssetArchive[] = [];
   for (let index = 0; index < manifest.archives.length; index++) {
     const archivePath = manifest.archives[index];
-    onProgress?.(`Loading ${archivePath} (${index + 1} of ${manifest.archives.length})...`, index, manifest.archives.length);
+    onProgress?.(`Loading ${archivePath} (${index + 1} of ${manifest.archives.length})…`, index, manifest.archives.length);
     archives.push(await loadPak(new URL(archivePath, baseUrl).toString(), onProgress));
     onProgress?.(`Loaded ${archivePath}`, index + 1, manifest.archives.length);
   }
@@ -84,7 +84,7 @@ export async function indexPakArchives(
     const archive = archives[index];
     const sizeMB = (archive.data.byteLength / 1024 / 1024).toFixed(1);
     onProgress?.(
-      `Indexing ${archive.name} (${index + 1} of ${archives.length}, ${sizeMB} MB)...`,
+      `Indexing ${archive.name} (${index + 1} of ${archives.length}, ${sizeMB} MB)…`,
       index,
       archives.length,
     );

@@ -64,7 +64,7 @@
   </head>
   <body>
     <canvas id="canvas" tabindex="0" aria-label="ioquake3 game view"></canvas>
-    <div id="loading" role="status" aria-live="polite">Waiting for compiled map...</div>
+    <div id="loading" role="status" aria-live="polite">Waiting for compiled map…</div>
 
     <script type="module">
       const DB_NAME = 'q3edit-assets';
@@ -233,7 +233,7 @@
       }
 
       async function loadOpenArenaArchives() {
-        setStatus('Loading OpenArena asset list...');
+        setStatus('Loading OpenArena asset list…');
         const manifestResponse = await fetch('/openarena/manifest.json');
         if (!manifestResponse.ok) {
           throw new Error(`OpenArena asset list returned HTTP ${manifestResponse.status}`);
@@ -246,7 +246,7 @@
         const archives = [];
         for (let index = 0; index < manifest.archives.length; index++) {
           const name = manifest.archives[index];
-          setStatus(`Loading ${name} (${index + 1} of ${manifest.archives.length})...`);
+          setStatus(`Loading ${name} (${index + 1} of ${manifest.archives.length})…`);
           const response = await fetch(`/openarena/${encodeURIComponent(name)}`);
           if (!response.ok) throw new Error(`${name} returned HTTP ${response.status}`);
           archives.push({ name, data: await response.arrayBuffer() });
@@ -298,7 +298,7 @@
         for (let index = 0; index < archives.length; index++) {
           const archive = archives[index];
           const name = safeFileName(archive.name);
-          setStatus(`Installing ${name} (${index + 1} of ${archives.length})...`);
+          setStatus(`Installing ${name} (${index + 1} of ${archives.length})…`);
           module.FS.writeFile(`${root}/${name}`, new Uint8Array(archive.data));
         }
         // Package preview must resolve the BSP and AAS from the produced PK3.
@@ -313,9 +313,9 @@
 
       async function start(launch) {
         try {
-          setStatus('Preparing browser-local PK3 files...');
+          setStatus('Preparing browser-local PK3 files…');
           const assets = await loadLaunchAssets(launch);
-          setStatus('Loading ioquake3 WebAssembly runtime...');
+          setStatus('Loading ioquake3 WebAssembly runtime…');
           const ioquake3 = (await import('./ioquake3.js')).default;
           const availableBotNames = assets.gameDir === 'baseoa'
             ? ['Sarge', 'Grism', 'Sorceress']
@@ -348,10 +348,10 @@
             locateFile: (file) => new URL(file, import.meta.url).href,
             preRun: [(module) => {
               installFiles(module, launch, assets);
-              setStatus(`Starting ${launch.mapName}...`);
+              setStatus(`Starting ${launch.mapName}…`);
             }],
             onRuntimeInitialized: () => {
-              setStatus(`Starting ${launch.mapName}...`);
+              setStatus(`Starting ${launch.mapName}…`);
             },
             postRun: [() => {
               window.setTimeout(() => {

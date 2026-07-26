@@ -36,7 +36,8 @@ export function createViewport3DFullscreenUI(container: HTMLElement, onEnter: ()
   const fullscreenBtn = document.createElement('button');
   fullscreenBtn.className = 'vp-fullscreen-btn';
   fullscreenBtn.title = 'Fullscreen walkthrough';
-  fullscreenBtn.innerHTML = '<i class="ph ph-arrows-out"></i>';
+  fullscreenBtn.setAttribute('aria-label', fullscreenBtn.title);
+  fullscreenBtn.innerHTML = '<i class="ph ph-arrows-out" aria-hidden="true"></i>';
   fullscreenBtn.addEventListener('mousedown', (e) => {
     e.stopPropagation();
   });

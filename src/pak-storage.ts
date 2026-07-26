@@ -66,7 +66,7 @@ export async function preparePakFiles(
     if (!file.name.toLowerCase().endsWith('.pk3')) {
       throw new Error(`${file.name} is not a .pk3 file`);
     }
-    onProgress?.(`Reading ${file.name} (${index + 1} of ${files.length})...`, index, files.length);
+    onProgress?.(`Reading ${file.name} (${index + 1} of ${files.length})…`, index, files.length);
     const data = await file.arrayBuffer();
     if (!isPk3Data(data)) throw new Error(`${file.name} is not a valid PK3/ZIP archive`);
     archives.push({ name: file.name, data });
