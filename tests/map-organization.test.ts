@@ -67,6 +67,23 @@ describe('large-map organization', () => {
     expect(editor.selection).toEqual([{ type: 'brush', entity: editor.worldspawn, brush: saved }]);
   });
 
+  it('reports deleted selection-set members as stale instead of retargeting them', () => {
+    const editor = new Editor();
+    const saved = createBoxBrush([0, 0, 0], [64, 64, 64]);
+    editor.worldspawn.brushes.push(saved);
+    editor.selection = [{ type: 'brush', entity: editor.worldspawn, brush: saved }];
+    const organization = controller(editor);
+    organization.saveSelectionSet('Temporary brush');
+    const set = readOrganization(editor).selectionSets[0];
+    editor.worldspawn.brushes.splice(editor.worldspawn.brushes.indexOf(saved), 1);
+    editor.worldspawn.brushes.push(createBoxBrush([128, 0, 0], [192, 64, 64]));
+
+    organization.restoreSelectionSet(set);
+
+    expect(editor.selection).toEqual([]);
+    expect(editor.statusMessage).toContain('1 stale reference skipped');
+  });
+
   it('keeps persistent selections attached after movement and same-class entity reordering', () => {
     const editor = new Editor();
     const brush = createBoxBrush([0, 0, 0], [64, 64, 64]);
