@@ -6,7 +6,16 @@ import { History } from './history';
 import { ActivityHistory } from './activity-history';
 import { TextureManager } from './textures';
 import type { ModelManager } from './model-manager';
-import { DEFAULT_DISPLAY_PREFERENCES, saveDisplayPreferences, setDisplayCategory, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
+import {
+  DEFAULT_DISPLAY_PREFERENCES,
+  invertDisplayCategories,
+  saveDisplayPreferences,
+  setAllDisplayCategories,
+  setDisplayCategory,
+  type DisplayCategory,
+  type RendererMode,
+  type TextureFiltering,
+} from './display-policy';
 import { DEFAULT_GLOBAL_PREFERENCES, loadGlobalPreferences, saveGlobalPreferences, type GlobalPreferences } from './preferences';
 import { DEFAULT_PROJECT_CONFIGURATION, loadProjectConfiguration, resolveProjectPreferences, type ProjectConfiguration } from './project-config';
 import { BrushVertex } from './vertex';
@@ -472,6 +481,20 @@ export class Editor {
     setDisplayCategory(this.display, category, !this.display.categories[category]);
     this.persistCurrentPreferences();
     this.redrawRequested = true;
+  }
+
+  invertDisplayFilters(): void {
+    invertDisplayCategories(this.display);
+    this.persistCurrentPreferences();
+    this.redrawRequested = true;
+    this.statusMessage = 'Display filters inverted';
+  }
+
+  resetDisplayFilters(): void {
+    setAllDisplayCategories(this.display, true);
+    this.persistCurrentPreferences();
+    this.redrawRequested = true;
+    this.statusMessage = 'All display filters shown';
   }
 
   setRendererMode(mode: RendererMode): void {

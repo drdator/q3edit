@@ -14,6 +14,25 @@ export interface MenuBarContext {
   closeMenus: () => void;
 }
 
+function fitSubmenuToViewport(submenu: HTMLElement): void {
+  submenu.style.top = '-3px';
+  submenu.style.maxHeight = '';
+  submenu.style.overflowY = '';
+
+  let bounds = submenu.getBoundingClientRect();
+  const viewportPadding = 4;
+  const bottomOverflow = bounds.bottom - (window.innerHeight - viewportPadding);
+  if (bottomOverflow > 0) {
+    const upwardRoom = Math.max(0, bounds.top - viewportPadding);
+    submenu.style.top = `${-3 - Math.min(bottomOverflow, upwardRoom)}px`;
+    bounds = submenu.getBoundingClientRect();
+  }
+  if (bounds.bottom > window.innerHeight - viewportPadding) {
+    submenu.style.maxHeight = `${Math.max(80, window.innerHeight - bounds.top - viewportPadding)}px`;
+    submenu.style.overflowY = 'auto';
+  }
+}
+
 function menuEntries(commands: EditorCommand[]): MenuEntry[] {
   const entries: MenuEntry[] = [];
   let previousGroup: string | undefined;
@@ -107,7 +126,10 @@ export function buildMenuBar(ctx: MenuBarContext): () => void {
         submenu.className = 'menu-dropdown menu-submenu';
         for (const command of entry.commands) appendCommand(submenu, command);
         submenuAction.appendChild(submenu);
-        submenuAction.addEventListener('mouseenter', () => submenuAction.classList.add('submenu-open'));
+        submenuAction.addEventListener('mouseenter', () => {
+          submenuAction.classList.add('submenu-open');
+          fitSubmenuToViewport(submenu);
+        });
         submenuAction.addEventListener('mouseleave', () => submenuAction.classList.remove('submenu-open'));
         submenuAction.addEventListener('mousedown', event => {
           event.stopPropagation();

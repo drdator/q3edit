@@ -929,6 +929,7 @@ textarea:focus-visible {
 .menu-submenu {
   top: -3px;
   left: 100%;
+  overscroll-behavior: contain;
 }
 
 .menu-action.has-submenu:hover > .menu-submenu,
