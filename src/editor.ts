@@ -220,6 +220,7 @@ import {
   addClipPoint as addEditorClipPoint,
   cancelClip as cancelEditorClip,
   csgHollow as hollowEditorBrushes,
+  csgIntersect as intersectEditorBrushes,
   csgMerge as mergeEditorBrushes,
   csgSubtract as subtractEditorBrushes,
   cycleClipMode as cycleEditorClipMode,
@@ -806,6 +807,10 @@ export class Editor {
 
   csgMerge(): void {
     mergeEditorBrushes(this);
+  }
+
+  csgIntersect(): void {
+    intersectEditorBrushes(this);
   }
 
   duplicateSelection(): void {

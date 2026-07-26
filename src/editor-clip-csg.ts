@@ -1,5 +1,5 @@
 import { clipBrush, type Brush } from './brush';
-import { hollowBrush, mergeBrushes, subtractBrush } from './csg';
+import { hollowBrush, intersectBrushes, mergeBrushes, subtractBrush } from './csg';
 import type { Vec3 } from './math';
 import { getSelectedBrushItems } from './editor-selection';
 import type { Editor, SelectionItem } from './editor';
@@ -178,5 +178,37 @@ export function csgMerge(editor: Editor): void {
     editor.selection = [{ type: 'brush', entity, brush: merged }];
     editor.redrawRequested = true;
     editor.statusMessage = `CSG Merge: ${brushItems.length} brushes merged into 1`;
+  });
+}
+
+export function csgIntersect(editor: Editor): void {
+  const brushItems = getSelectedBrushItems(editor);
+  if (brushItems.length < 2) {
+    editor.statusMessage = 'CSG Intersect: select 2+ brushes';
+    return;
+  }
+
+  const entity = brushItems[0].entity;
+  if (!brushItems.every(item => item.entity === entity)) {
+    editor.statusMessage = 'CSG Intersect: brushes must be in the same entity';
+    return;
+  }
+
+  const intersection = intersectBrushes(brushItems.map(item => item.brush));
+  if (!intersection) {
+    editor.statusMessage = 'CSG Intersect: selected brushes have no common volume';
+    return;
+  }
+
+  editor.transact('CSG intersect', () => {
+    for (const item of brushItems) {
+      const index = entity.brushes.indexOf(item.brush);
+      if (index >= 0) entity.brushes.splice(index, 1);
+    }
+    entity.brushes.push(intersection);
+    editor.reconcileHiddenState();
+    editor.selection = [{ type: 'brush', entity, brush: intersection }];
+    editor.redrawRequested = true;
+    editor.statusMessage = `CSG Intersect: ${brushItems.length} brushes replaced with their common volume`;
   });
 }
