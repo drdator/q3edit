@@ -141,7 +141,7 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
       const status = document.createElement('div'); status.className = 'diagnostics-inline-status';
       const actions = document.createElement('div'); actions.className = 'brush-macro-actions';
       actions.append(
-        button('Import...', () => { void chooseFile().then(json => { if (json) { try { editorArea.value = exportBrushMacro(importBrushMacro(json)); status.textContent = 'Macro imported'; } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); } } }); }),
+        button('Import…', () => { void chooseFile().then(json => { if (json) { try { editorArea.value = exportBrushMacro(importBrushMacro(json)); status.textContent = 'Macro imported'; } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); } } }); }),
         button('Export', () => { try { const macro = importBrushMacro(editorArea.value); download(`${macro.name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase() || 'brush-macro'}.json`, exportBrushMacro(macro)); } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); } }),
         button('Run on selected brushes', () => { try { const result = runBrushMacro(editor, importBrushMacro(editorArea.value)); status.textContent = result.changed ? `Updated ${result.selectedBrushes} selected brush${result.selectedBrushes === 1 ? '' : 'es'}` : 'Select at least one brush first'; } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); } }, true),
       );

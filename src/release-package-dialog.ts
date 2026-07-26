@@ -238,7 +238,7 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
       levelshotPreview.src = `data:${capture.mimeType};base64,${capture.data}`;
       levelshotStatus.textContent = `${capture.width}×${capture.height} editor camera capture`;
     }),
-    button('Choose Image...', () => upload.click()),
+    button('Choose Image…', () => upload.click()),
     upload,
   );
   levelshotSection.append(levelshotActions, levelshotPreview, levelshotStatus);

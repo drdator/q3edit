@@ -31,7 +31,7 @@ export function buildEntityPanel(body: HTMLElement, editor: Editor): void {
   group.addEventListener('mousedown', () => editor.groupSelectionIntoEntity());
   const ungroup = document.createElement('div');
   ungroup.className = 'btn';
-  ungroup.textContent = 'To Worldspawn';
+  ungroup.textContent = 'Move to Worldspawn';
   ungroup.addEventListener('mousedown', () => editor.moveSelectionToWorldspawn());
   actions.append(group, ungroup);
   body.appendChild(actions);

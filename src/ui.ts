@@ -101,7 +101,7 @@ export class UI {
   private textureReplace = '';
   private textureReplaceScope: 'selection' | 'map' = 'selection';
   private textureReplaceMatch: 'exact' | 'contains' = 'exact';
-  private textureAssetStatus = 'Loading OpenArena assets...';
+  private textureAssetStatus = 'Loading OpenArena assets…';
   private importedPakNames: string[] = [];
   private collapsedBrushPanelEntities = new WeakSet<Entity>();
   private collapsedBrushPanelTerrainGroups = new Set<string>();
@@ -309,7 +309,7 @@ export class UI {
       solo.title = 'Solo panel';
       solo.setAttribute('aria-label', `Solo ${header.textContent?.trim() || 'panel'}`);
       solo.setAttribute('aria-pressed', 'false');
-      solo.innerHTML = '<i class="ph ph-arrows-out-line-vertical"></i>';
+      solo.innerHTML = '<i class="ph ph-arrows-out-line-vertical" aria-hidden="true"></i>';
       solo.addEventListener('mousedown', event => {
         event.preventDefault();
         event.stopPropagation();
@@ -967,7 +967,7 @@ export class UI {
       intro.textContent = 'Q3Edit uses OpenArena assets by default so textures work without installing Quake III Arena. OpenArena does not contain the complete retail texture set.';
       const instructions = document.createElement('p');
       instructions.append(
-        'To use the original Quake III Arena assets, choose File > Manage PK3 Files..., then add ',
+        'To use the original Quake III Arena assets, choose File > Manage PK3 Files…, then add ',
         Object.assign(document.createElement('code'), { textContent: 'pak0.pk3' }),
         ' through ',
         Object.assign(document.createElement('code'), { textContent: 'pak8.pk3' }),
@@ -1109,7 +1109,7 @@ export class UI {
     const manageBtn = document.createElement('button');
     manageBtn.type = 'button';
     manageBtn.className = 'btn';
-    manageBtn.innerHTML = '<i class="ph ph-files" aria-hidden="true"></i><span>Manage PK3 files...</span>';
+    manageBtn.innerHTML = '<i class="ph ph-files" aria-hidden="true"></i><span>Manage PK3 Files…</span>';
     manageBtn.title = 'Add, remove, or reorder PK3 files from your Quake III Arena installation';
     manageBtn.addEventListener('click', async () => {
       if (!this.onManagePakFiles) return;
@@ -1287,7 +1287,7 @@ export class UI {
       const addButton = document.createElement('button');
       addButton.type = 'button';
       addButton.className = 'btn pak-manager-add';
-      addButton.innerHTML = '<i class="ph ph-plus" aria-hidden="true"></i><span>Add PK3 files...</span>';
+      addButton.innerHTML = '<i class="ph ph-plus" aria-hidden="true"></i><span>Add PK3 Files…</span>';
       addButton.onclick = () => fileInput.click();
 
       const sortButton = document.createElement('button');
@@ -2152,7 +2152,7 @@ export class UI {
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.id = 'texture-search';
-    searchInput.placeholder = 'Search textures...';
+    searchInput.placeholder = 'Search textures…';
     searchInput.value = this.textureSearch;
     searchInput.style.marginTop = '4px';
     body.appendChild(searchInput);
@@ -2716,7 +2716,7 @@ export class UI {
         undoable: false,
       });
       compileBtn.disabled = true;
-      compileBtn.textContent = 'Compiling...';
+      compileBtn.textContent = 'Compiling…';
       buildControls.setDisabled(true);
       dialog.classList.remove('success', 'warning', 'error');
 
@@ -3007,7 +3007,7 @@ export class UI {
       packagePk3: retainedPackage,
     };
     this.updateGamePreviewStatus({
-      state: 'preparing', message: 'Preparing browser-local PK3 files...', mapName: safeMapName,
+      state: 'preparing', message: 'Preparing browser-local PK3 files…', mapName: safeMapName,
       botNavigation: retainedAas !== null, noclip: false,
       noclipRequested: noclip, commandErrors: [],
       launchedAt: new Date().toISOString(), runningAt: null, error: null, consoleTail: [],
@@ -3033,7 +3033,7 @@ export class UI {
     status.className = 'game-preview-status';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    status.textContent = 'Preparing browser-local PK3 files...';
+    status.textContent = 'Preparing browser-local PK3 files…';
 
     const hint = document.createElement('div');
     hint.className = 'game-preview-hint';

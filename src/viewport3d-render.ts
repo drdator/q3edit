@@ -7,6 +7,7 @@ import {
   effectiveDynamicLightRadius,
   selectDynamicLightInfluences,
 } from './dynamic-lighting';
+import { editorThemeColors } from './theme-colors';
 
 export interface DrawGroup {
   textureName: string;
@@ -103,11 +104,13 @@ export interface Viewport3DRenderContext {
 }
 
 export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
+  const theme = editorThemeColors();
   const dpr = window.devicePixelRatio || 1;
   const rect = ctx.canvas.getBoundingClientRect();
   ctx.canvas.width = rect.width * dpr;
   ctx.canvas.height = rect.height * dpr;
   ctx.gl.viewport(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.gl.clearColor(theme.viewportRgb[0], theme.viewportRgb[1], theme.viewportRgb[2], 1);
   ctx.gl.clear(ctx.gl.COLOR_BUFFER_BIT | ctx.gl.DEPTH_BUFFER_BIT);
   if (ctx.xray) ctx.gl.disable(ctx.gl.DEPTH_TEST);
 
@@ -122,7 +125,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   if (!isGameView) {
     ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
-    ctx.gl.uniform3f(ctx.lineColorLoc, 0.2, 0.2, 0.22);
+    ctx.gl.uniform3f(ctx.lineColorLoc, theme.gridMajorRgb[0], theme.gridMajorRgb[1], theme.gridMajorRgb[2]);
     ctx.gl.bindVertexArray(ctx.gridVAO);
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.gridCount);
   }

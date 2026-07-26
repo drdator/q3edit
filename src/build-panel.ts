@@ -65,7 +65,7 @@ export class BuildPanel {
     );
 
     this.resizer = document.createElement('div');
-    this.resizer.className = 'mcp-activity-resizer';
+    this.resizer.className = 'bottom-dock-resizer';
     this.resizer.setAttribute('role', 'separator');
     this.resizer.setAttribute('aria-label', 'Resize Build panel');
     this.resizer.setAttribute('aria-orientation', 'horizontal');
@@ -73,13 +73,15 @@ export class BuildPanel {
     this.resizer.title = 'Drag to resize. Double-click to reset.';
 
     const header = document.createElement('header');
-    header.className = 'mcp-activity-panel-header build-panel-header';
+    header.className = 'bottom-dock-header build-panel-header';
     const tabs = document.createElement('div');
     tabs.className = 'bottom-dock-tabs';
     const activityTab = actionButton('Activity', () => this.options.onOpenActivity?.());
     activityTab.classList.add('bottom-dock-tab');
+    activityTab.title = 'Show Activity';
     const buildTab = actionButton('Build', () => this.open());
     buildTab.classList.add('bottom-dock-tab', 'active');
+    buildTab.title = 'Show the current document build';
     buildTab.setAttribute('aria-current', 'page');
     tabs.append(activityTab, buildTab);
 
@@ -89,9 +91,9 @@ export class BuildPanel {
     this.status.setAttribute('aria-live', 'polite');
 
     this.actions = document.createElement('div');
-    this.actions.className = 'mcp-activity-panel-actions build-panel-actions';
+    this.actions.className = 'bottom-dock-actions build-panel-actions';
     const close = actionButton('×', () => this.close());
-    close.classList.add('mcp-activity-close');
+    close.classList.add('bottom-dock-close');
     close.setAttribute('aria-label', 'Close Build');
     this.actions.append(close);
     header.append(tabs, this.status, this.actions);
@@ -157,7 +159,7 @@ export class BuildPanel {
       this.cancelBuild?.();
     });
     const close = actionButton('×', () => this.close());
-    close.classList.add('mcp-activity-close');
+    close.classList.add('bottom-dock-close');
     close.setAttribute('aria-label', 'Close Build');
     this.setActions([cancel, close]);
     this.open();
@@ -194,7 +196,7 @@ export class BuildPanel {
       actionButton('Compile Again', actions.compileAgain, true),
       actionButton('×', () => this.close()),
     ];
-    buttons[buttons.length - 1].classList.add('mcp-activity-close');
+    buttons[buttons.length - 1].classList.add('bottom-dock-close');
     buttons[buttons.length - 1].setAttribute('aria-label', 'Close Build');
     this.setActions(buttons);
     this.handleDocumentChange();
@@ -244,7 +246,7 @@ export class BuildPanel {
     empty.append(message, compile);
     this.body.replaceChildren(empty);
     const close = actionButton('×', () => this.close());
-    close.classList.add('mcp-activity-close');
+    close.classList.add('bottom-dock-close');
     close.setAttribute('aria-label', 'Close Build');
     this.setActions([close]);
   }
@@ -279,14 +281,14 @@ export class BuildPanel {
       event.preventDefault();
       const startY = event.clientY;
       const startHeight = this.height;
-      document.body.classList.add('mcp-activity-resizing');
+      document.body.classList.add('bottom-dock-resizing');
       const move = (moveEvent: MouseEvent) => {
         this.setHeight(resizedMcpActivityPanelHeight(startHeight, startY, moveEvent.clientY, window.innerHeight), false);
       };
       const finish = () => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', finish);
-        document.body.classList.remove('mcp-activity-resizing');
+        document.body.classList.remove('bottom-dock-resizing');
         this.options.onHeightChange?.(this.height, true);
       };
       document.addEventListener('mousemove', move);

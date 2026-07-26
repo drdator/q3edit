@@ -153,7 +153,7 @@ export class McpActivityPanel {
     this.height = clampMcpActivityPanelHeight(options.initialHeight ?? DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT, window.innerHeight);
 
     this.resizer = document.createElement('div');
-    this.resizer.className = 'mcp-activity-resizer';
+    this.resizer.className = 'bottom-dock-resizer';
     this.resizer.setAttribute('role', 'separator');
     this.resizer.setAttribute('aria-label', 'Resize Activity panel');
     this.resizer.setAttribute('aria-orientation', 'horizontal');
@@ -161,7 +161,7 @@ export class McpActivityPanel {
     this.resizer.title = 'Drag to resize. Double-click to reset.';
 
     const header = document.createElement('header');
-    header.className = 'mcp-activity-panel-header';
+    header.className = 'bottom-dock-header';
     const identity = document.createElement('div');
     identity.className = 'bottom-dock-tabs';
     const title = compactButton('Activity', 'Show Activity', () => this.open());
@@ -197,10 +197,10 @@ export class McpActivityPanel {
     this.summary = document.createElement('div');
     this.summary.className = 'mcp-activity-summary';
     const actions = document.createElement('div');
-    actions.className = 'mcp-activity-panel-actions';
+    actions.className = 'bottom-dock-actions';
     const clear = compactButton('Clear', 'Clear this document session’s activity history', () => this.clear());
     const close = compactButton('×', 'Close Activity', () => this.close());
-    close.classList.add('mcp-activity-close');
+    close.classList.add('bottom-dock-close');
     close.setAttribute('aria-label', 'Close Activity');
     actions.append(clear, close);
     header.append(identity, controls, this.summary, actions);
@@ -284,14 +284,14 @@ export class McpActivityPanel {
       event.preventDefault();
       const startY = event.clientY;
       const startHeight = this.height;
-      document.body.classList.add('mcp-activity-resizing');
+      document.body.classList.add('bottom-dock-resizing');
       const move = (moveEvent: MouseEvent) => {
         this.setHeight(resizedMcpActivityPanelHeight(startHeight, startY, moveEvent.clientY, window.innerHeight), false);
       };
       const finish = () => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', finish);
-        document.body.classList.remove('mcp-activity-resizing');
+        document.body.classList.remove('bottom-dock-resizing');
         this.options.onHeightChange?.(this.height, true);
       };
       document.addEventListener('mousemove', move);

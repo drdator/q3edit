@@ -204,7 +204,7 @@ export function buildDefinedEntityProperties(
       remove.title = `Remove ${property.name || property.key}`;
       remove.setAttribute('aria-label', remove.title);
       remove.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.remove;
-      remove.innerHTML = '<i class="ph ph-trash"></i>';
+      remove.innerHTML = '<i class="ph ph-trash" aria-hidden="true"></i>';
       remove.addEventListener('click', () => removeEntityProperties(editor, entities, property.key));
       controls.appendChild(remove);
     } else if (!alwaysShowControl) {

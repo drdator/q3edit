@@ -109,7 +109,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
   sidesSelect.min = '3'; sidesSelect.max = '64'; sidesSelect.step = '1'; sidesSelect.value = String(ctx.editor.currentBrushSides);
   createToolBody.appendChild(sidesSelect);
 
-  const exactButton = document.createElement('div'); exactButton.className = 'btn'; exactButton.textContent = 'Exact Primitive...';
+  const exactButton = document.createElement('div'); exactButton.className = 'btn'; exactButton.textContent = 'Exact Primitive…';
   exactButton.addEventListener('mousedown', () => void ctx.commands.execute('brush.create-exact'));
   createToolBody.appendChild(exactButton);
 
