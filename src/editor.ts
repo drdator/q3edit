@@ -35,6 +35,8 @@ import {
   selectPartialTall as selectEditorPartialTall,
   selectPatch as selectEditorPatch,
   selectPatchDirect as selectEditorPatchDirect,
+  selectFacesByTexture as selectEditorFacesByTexture,
+  selectObjectsByTexture as selectEditorObjectsByTexture,
   selectTouching as selectEditorTouching,
 } from './editor-selection';
 import {
@@ -1151,6 +1153,14 @@ export class Editor {
 
   selectAllOfType(): void {
     selectEditorAllOfType(this);
+  }
+
+  selectFacesByTexture(): void {
+    selectEditorFacesByTexture(this);
+  }
+
+  selectObjectsByTexture(): void {
+    selectEditorObjectsByTexture(this);
   }
 
   invertSelection(): void {

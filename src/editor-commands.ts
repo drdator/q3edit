@@ -169,6 +169,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.paste', label: 'Paste', defaultShortcut: 'Mod+V', menu: menu('Edit', 30, 'clipboard'), execute: ({ editor }) => editor.pasteClipboard() },
     { id: 'edit.select-all', label: 'Select All', defaultShortcut: 'Mod+A', menu: menu('Edit', 40, 'selection'), execute: ({ editor }) => editor.selectAll() },
     { id: 'edit.select-all-type', label: 'Select All of Type', menu: menu('Edit', 50, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectAllOfType() },
+    { id: 'edit.select-faces-by-texture', label: 'Select Faces Using Current Texture', menu: menu('Edit', 52, 'selection'), execute: ({ editor }) => editor.selectFacesByTexture() },
+    { id: 'edit.select-objects-by-texture', label: 'Select Objects Using Current Texture', menu: menu('Edit', 54, 'selection'), execute: ({ editor }) => editor.selectObjectsByTexture() },
     { id: 'edit.invert-selection', label: 'Invert Selection', defaultShortcut: 'Mod+Shift+I', menu: menu('Edit', 60, 'selection'), execute: ({ editor }) => editor.invertSelection() },
     { id: 'edit.select-touching', label: 'Select Touching', menu: menu('Edit', 70, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectTouching() },
     { id: 'edit.select-inside', label: 'Select Inside', menu: menu('Edit', 80, 'selection'), enabled: hasSelection, execute: ({ editor }) => editor.selectInside() },

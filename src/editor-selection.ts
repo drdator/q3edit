@@ -217,6 +217,63 @@ export function getSelectedFace(editor: Editor): BrushFace | null {
   return item?.type === 'face' ? item.face : null;
 }
 
+function normalizedTextureName(texture: string): string {
+  return texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '').toLowerCase();
+}
+
+export function selectFacesByTexture(editor: Editor, texture = editor.currentTexture): void {
+  const target = normalizedTextureName(texture);
+  const selected: SelectionItem[] = [];
+  if (target) {
+    for (const entity of editor.entities) {
+      for (const brush of entity.brushes) {
+        if (!editor.isBrushInRegion(brush, entity)) continue;
+        if (editor.isBrushHidden(brush, entity)) continue;
+        if (isObjectInLockedGroup(editor, brush, entity)) continue;
+        for (const face of brush.faces) {
+          if (normalizedTextureName(face.texture) !== target) continue;
+          selected.push({ type: 'face', entity, brush, face });
+        }
+      }
+    }
+  }
+  if (editor.patchEditMode) editor.exitPatchEditMode();
+  if (editor.vertexMode) editor.exitVertexMode();
+  editor.selection = selected;
+  editor.redrawRequested = true;
+  editor.statusMessage = `Selected ${selected.length} face${selected.length === 1 ? '' : 's'} using ${texture}`;
+}
+
+export function selectObjectsByTexture(editor: Editor, texture = editor.currentTexture): void {
+  const target = normalizedTextureName(texture);
+  const selected: SelectionItem[] = [];
+  if (target) {
+    for (const entity of editor.entities) {
+      for (const brush of entity.brushes) {
+        if (!editor.isBrushInRegion(brush, entity)) continue;
+        if (editor.isBrushHidden(brush, entity)) continue;
+        if (isObjectInLockedGroup(editor, brush, entity)) continue;
+        if (brush.faces.some(face => normalizedTextureName(face.texture) === target)) {
+          selected.push({ type: 'brush', entity, brush });
+        }
+      }
+      for (const patch of entity.patches) {
+        if (!editor.isPatchInRegion(patch, entity)) continue;
+        if (editor.isPatchHidden(patch, entity)) continue;
+        if (isObjectInLockedGroup(editor, patch, entity)) continue;
+        if (normalizedTextureName(patch.texture) === target) {
+          selected.push({ type: 'patch', entity, patch });
+        }
+      }
+    }
+  }
+  if (editor.patchEditMode) editor.exitPatchEditMode();
+  if (editor.vertexMode) editor.exitVertexMode();
+  editor.selection = selected;
+  editor.redrawRequested = true;
+  editor.statusMessage = `Selected ${selectionCountLabel(selected.length)} using ${texture}`;
+}
+
 export function getSelectedBrushItems(editor: Editor): { entity: Entity; brush: Brush }[] {
   const unique: { entity: Entity; brush: Brush }[] = [];
   const seen = new Set<Brush>();
