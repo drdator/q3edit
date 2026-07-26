@@ -1,5 +1,12 @@
 import { clipBrush, type Brush } from './brush';
-import { hollowBrush, intersectBrushes, mergeBrushes, subtractBrush } from './csg';
+import {
+  faceFullyCoveredByOpposingFace,
+  hollowBrush,
+  intersectBrushes,
+  mergeBrushes,
+  roomBrushes,
+  subtractBrush,
+} from './csg';
 import { vec3Cross, vec3Length, vec3Sub, type Vec3 } from './math';
 import { getSelectedBrushItems } from './editor-selection';
 import type { Editor, SelectionItem } from './editor';
@@ -169,6 +176,55 @@ export function csgHollow(editor: Editor): void {
     editor.selection = newSelection;
     editor.redrawRequested = true;
     editor.statusMessage = `CSG Hollow: ${newSelection.length} shell pieces (wall thickness: ${editor.gridSize})`;
+  });
+}
+
+export function csgRoom(editor: Editor): void {
+  const brushItems = getSelectedBrushItems(editor);
+  if (brushItems.length === 0) {
+    editor.statusMessage = 'CSG Room: select brushes first';
+    return;
+  }
+
+  editor.transact('CSG room', () => {
+    const newSelection: SelectionItem[] = [];
+    for (const item of brushItems) {
+      const shells = roomBrushes(item.brush, editor.gridSize);
+      if (shells.length === 0) continue;
+      const index = item.entity.brushes.indexOf(item.brush);
+      if (index >= 0) item.entity.brushes.splice(index, 1);
+      for (const shell of shells) {
+        item.entity.brushes.push(shell);
+        newSelection.push({ type: 'brush', entity: item.entity, brush: shell });
+      }
+    }
+    editor.reconcileHiddenState();
+    editor.selection = newSelection;
+    editor.redrawRequested = true;
+    editor.statusMessage = `CSG Room: ${newSelection.length} shell pieces (wall thickness: ${editor.gridSize})`;
+  });
+}
+
+export function autoCaulkSelected(editor: Editor): void {
+  const brushItems = getSelectedBrushItems(editor);
+  if (brushItems.length === 0) {
+    editor.statusMessage = 'Auto Caulk: select brushes first';
+    return;
+  }
+  const allBrushes = [...editor.allBrushes()].map(item => item.brush);
+  const changes = brushItems.flatMap(item => item.brush.faces.filter(face => {
+    if (face.texture.toLowerCase() === 'common/caulk') return false;
+    return allBrushes.some(other => other !== item.brush &&
+      other.faces.some(opposing => faceFullyCoveredByOpposingFace(face, opposing)));
+  }));
+  if (changes.length === 0) {
+    editor.statusMessage = 'Auto Caulk: no fully covered coplanar faces found';
+    return;
+  }
+  editor.transact('Auto caulk selected', () => {
+    for (const face of changes) face.texture = 'common/caulk';
+    editor.redrawRequested = true;
+    editor.statusMessage = `Auto Caulk: caulked ${changes.length} fully covered ${changes.length === 1 ? 'face' : 'faces'}`;
   });
 }
 
