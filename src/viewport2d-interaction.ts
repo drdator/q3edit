@@ -3,7 +3,7 @@ import { Editor } from './editor';
 import { cloneTextureProjection, type Brush, type BrushTextureProjection } from './brush';
 import { PatchControlPoint, type Patch } from './patch';
 import { entityOrigin } from './entity';
-import { pickEdge2D, pickVertex2D } from './vertex';
+import { pickEdge2D, pickFaceBoundary2D, pickVertex2D } from './vertex';
 import {
   rotateGeometryFromOriginals,
   scaleGeometryFromOriginals,
@@ -55,6 +55,7 @@ export interface Viewport2DInteractionState {
   rubberBandAdditive: boolean;
   vertexDragging: boolean;
   vertexDragSnapshotTaken: boolean;
+  vertexFaceDrag: { dataIndex: number; faceIndex: number; normal: Vec3 } | null;
   terrainSculpting: boolean;
   terrainSculptMode: TerrainSculptMode;
   terrainSculptSnapshotTaken: boolean;
@@ -110,6 +111,7 @@ export function createViewport2DInteractionState(): Viewport2DInteractionState {
     rubberBandAdditive: false,
     vertexDragging: false,
     vertexDragSnapshotTaken: false,
+    vertexFaceDrag: null,
     terrainSculpting: false,
     terrainSculptMode: 'locked',
     terrainSculptSnapshotTaken: false,
@@ -336,6 +338,48 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
 
   if (ctx.editor.vertexMode) {
     const threshold = 8 / ctx.zoom;
+    if (e.altKey) {
+      let bestFace: ReturnType<typeof pickFaceBoundary2D> = null;
+      let bestDataIndex = -1;
+      for (let dataIndex = 0; dataIndex < ctx.editor.vertexData.length; dataIndex++) {
+        const data = ctx.editor.vertexData[dataIndex];
+        const face = pickFaceBoundary2D(
+          data.brush,
+          data.vertices,
+          wx,
+          wy,
+          ctx.axisH,
+          ctx.axisV,
+          ctx.axisDepth,
+          threshold,
+        );
+        if (!face) continue;
+        if (!bestFace || face.distSq < bestFace.distSq - 0.01 ||
+            (Math.abs(face.distSq - bestFace.distSq) < 0.01 && face.depth > bestFace.depth)) {
+          bestFace = face;
+          bestDataIndex = dataIndex;
+        }
+      }
+      if (bestFace && bestDataIndex >= 0) {
+        const face = ctx.editor.vertexData[bestDataIndex].brush.faces[bestFace.faceIndex];
+        ctx.editor.selectFaceVertices(bestDataIndex, bestFace.faceIndex);
+        state.vertexFaceDrag = {
+          dataIndex: bestDataIndex,
+          faceIndex: bestFace.faceIndex,
+          normal: vec3Copy(face.plane.normal),
+        };
+        state.vertexDragging = true;
+        state.vertexDragSnapshotTaken = false;
+        state.dragging = true;
+        state.hasDragged = false;
+        state.dragWorldStart = [wx, wy];
+        state.geoSnapTargets = null;
+        state.geoSnapLines = [];
+        ctx.editor.statusMessage = 'Drag face along its normal';
+        return;
+      }
+    }
+    state.vertexFaceDrag = null;
     let hitDi = -1;
     let hitVi = -1;
     let hitEdgeDi = -1;
@@ -871,6 +915,30 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     const grid = ctx.editor.effectiveGrid(e.ctrlKey);
     const H = ctx.axisH;
     const V = ctx.axisV;
+    if (state.vertexFaceDrag) {
+      const normal = state.vertexFaceDrag.normal;
+      const projectedLengthSq = normal[H] * normal[H] + normal[V] * normal[V];
+      if (projectedLengthSq < 1e-8) return;
+      const rawDistance = (dx * normal[H] + dy * normal[V]) / projectedLengthSq;
+      const snappedDistance = Math.round(rawDistance / grid) * grid;
+      if (Math.abs(snappedDistance) < 1e-8) return;
+      if (!state.vertexDragSnapshotTaken) {
+        ctx.editor.beginTransaction('Drag brush face');
+        state.vertexDragSnapshotTaken = true;
+      }
+      const delta: Vec3 = [
+        normal[0] * snappedDistance,
+        normal[1] * snappedDistance,
+        normal[2] * snappedDistance,
+      ];
+      ctx.editor.moveSelectedVertices(delta);
+      state.hasDragged = true;
+      state.dragWorldStart = [
+        state.dragWorldStart[0] + delta[H],
+        state.dragWorldStart[1] + delta[V],
+      ];
+      return;
+    }
     let snappedDx: number;
     let snappedDy: number;
 
@@ -1149,8 +1217,10 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
       state.vertexDragSnapshotTaken = false;
     }
     state.vertexDragging = false;
+    const draggedFace = state.vertexFaceDrag !== null;
+    state.vertexFaceDrag = null;
     state.dragging = false;
-    if (state.hasDragged) ctx.editor.statusMessage = 'Vertex moved';
+    if (state.hasDragged) ctx.editor.statusMessage = draggedFace ? 'Face moved' : 'Vertex moved';
     return;
   }
   if (state.terrainSculpting) {

@@ -1,6 +1,6 @@
-import { Vec3, vec3Add, vec3Copy, vec3Sub, vec3Dot, vec3DistSq,
+import { Vec3, vec3Add, vec3Copy, vec3Sub, vec3Dot, vec3DistSq, vec3Cross, vec3Length,
          vec3Min, vec3Max, planeFromPoints } from './math';
-import { Brush, BrushFace, updateFacePointsFromPolygon } from './brush';
+import { Brush, BrushFace, rebuildBrush, updateFacePointsFromPolygon } from './brush';
 
 export interface BrushVertex {
   position: Vec3;
@@ -187,6 +187,134 @@ function pointToSegmentDistSq2D(
   const ex = px - cx;
   const ey = py - cy;
   return ex * ex + ey * ey;
+}
+
+export interface BrushFacePick2D {
+  faceIndex: number;
+  vertexIndices: number[];
+  distSq: number;
+  depth: number;
+}
+
+/** Pick a face by one of its projected boundary edges. Faces parallel to the view plane are ignored. */
+export function pickFaceBoundary2D(
+  brush: Brush,
+  vertices: BrushVertex[],
+  wx: number,
+  wy: number,
+  axisH: number,
+  axisV: number,
+  axisDepth: number,
+  threshold: number,
+): BrushFacePick2D | null {
+  const thresholdSq = threshold * threshold;
+  let best: BrushFacePick2D | null = null;
+  for (let faceIndex = 0; faceIndex < brush.faces.length; faceIndex++) {
+    const face = brush.faces[faceIndex];
+    const projectedNormalLength = Math.hypot(face.plane.normal[axisH], face.plane.normal[axisV]);
+    if (projectedNormalLength < 1e-5 || face.polygon.length < 3) continue;
+    let faceDistSq = Infinity;
+    let depth = -Infinity;
+    for (let index = 0; index < face.polygon.length; index++) {
+      const a = face.polygon[index];
+      const b = face.polygon[(index + 1) % face.polygon.length];
+      faceDistSq = Math.min(faceDistSq, pointToSegmentDistSq2D(
+        wx, wy, a[axisH], a[axisV], b[axisH], b[axisV],
+      ));
+      depth = Math.max(depth, a[axisDepth], b[axisDepth]);
+    }
+    if (faceDistSq > thresholdSq) continue;
+    const vertexIndices = vertices
+      .map((vertex, vertexIndex) => vertex.faceIndices.includes(faceIndex) ? vertexIndex : -1)
+      .filter(vertexIndex => vertexIndex >= 0);
+    if (vertexIndices.length < 3) continue;
+    if (!best || faceDistSq < best.distSq - 0.01 ||
+        (Math.abs(faceDistSq - best.distSq) < 0.01 && depth > best.depth)) {
+      best = { faceIndex, vertexIndices, distSq: faceDistSq, depth };
+    }
+  }
+  return best;
+}
+
+/** Insert a collinear midpoint into an edge's face polygons for subsequent vertex dragging. */
+export function splitBrushEdge(
+  brush: Brush,
+  vertices: BrushVertex[],
+  vertexIndices: [number, number],
+): Vec3 | null {
+  const first = vertices[vertexIndices[0]];
+  const second = vertices[vertexIndices[1]];
+  if (!first || !second) return null;
+  const edge = collectBrushEdges(brush, vertices).find(candidate => {
+    const [a, b] = candidate.vertexIndices;
+    return (a === vertexIndices[0] && b === vertexIndices[1]) ||
+      (a === vertexIndices[1] && b === vertexIndices[0]);
+  });
+  if (!edge) return null;
+
+  const midpoint: Vec3 = [
+    (first.position[0] + second.position[0]) / 2,
+    (first.position[1] + second.position[1]) / 2,
+    (first.position[2] + second.position[2]) / 2,
+  ];
+  for (const faceIndex of edge.faceIndices) {
+    const polygon = brush.faces[faceIndex]?.polygon;
+    if (!polygon) continue;
+    for (let index = 0; index < polygon.length; index++) {
+      const aMatchesFirst = vec3DistSq(polygon[index], first.position) < EPSILON_SQ;
+      const aMatchesSecond = vec3DistSq(polygon[index], second.position) < EPSILON_SQ;
+      const nextIndex = (index + 1) % polygon.length;
+      const bMatchesFirst = vec3DistSq(polygon[nextIndex], first.position) < EPSILON_SQ;
+      const bMatchesSecond = vec3DistSq(polygon[nextIndex], second.position) < EPSILON_SQ;
+      if ((aMatchesFirst && bMatchesSecond) || (aMatchesSecond && bMatchesFirst)) {
+        polygon.splice(index + 1, 0, vec3Copy(midpoint));
+        break;
+      }
+    }
+  }
+  return midpoint;
+}
+
+/** Collapse selected vertices to one point, removing degenerate polygon corners and faces. */
+export function weldBrushVertices(
+  brush: Brush,
+  vertices: BrushVertex[],
+  selectedIndices: number[],
+  target: Vec3,
+): void {
+  const selectedPositions = selectedIndices
+    .map(index => vertices[index]?.position)
+    .filter((position): position is Vec3 => position !== undefined);
+  if (selectedPositions.length < 2) return;
+
+  for (const face of brush.faces) {
+    face.polygon = face.polygon.map(point =>
+      selectedPositions.some(position => vec3DistSq(point, position) < EPSILON_SQ)
+        ? vec3Copy(target)
+        : point);
+    const cleaned: Vec3[] = [];
+    for (const point of face.polygon) {
+      if (cleaned.length === 0 || vec3DistSq(cleaned[cleaned.length - 1], point) >= EPSILON_SQ) {
+        cleaned.push(point);
+      }
+    }
+    if (cleaned.length > 1 && vec3DistSq(cleaned[0], cleaned[cleaned.length - 1]) < EPSILON_SQ) {
+      cleaned.pop();
+    }
+    face.polygon = cleaned;
+  }
+  brush.faces = brush.faces.filter(face => {
+    if (face.polygon.length < 3) return false;
+    const origin = face.polygon[0];
+    for (let index = 1; index < face.polygon.length - 1; index++) {
+      const first = vec3Sub(face.polygon[index], origin);
+      const second = vec3Sub(face.polygon[index + 1], origin);
+      if (vec3Length(vec3Cross(first, second)) > 1e-5) return true;
+    }
+    return false;
+  });
+  for (const face of brush.faces) updateFacePointsFromPolygon(face);
+  rebuildBrush(brush);
 }
 
 /** Pick the closest projected brush edge within a 2D threshold. */

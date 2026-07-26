@@ -236,6 +236,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'edit.flip-x', label: 'Flip X', defaultShortcut: 'Shift+X', menu: menu('Edit', 250, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(0) },
     { id: 'edit.flip-y', label: 'Flip Y', defaultShortcut: 'Shift+Y', menu: menu('Edit', 260, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(1) },
     { id: 'edit.flip-z', label: 'Flip Z', defaultShortcut: 'Shift+Z', menu: menu('Edit', 270, 'flip'), enabled: hasSelection, execute: ({ editor }) => editor.flipSelection(2) },
+    { id: 'edit.split-brush-edge', label: 'Split Selected Edge', menu: menu('Edit', 280, 'vertex'), enabled: ({ editor }) => editor.vertexMode && editor.vertexSelection.length === 2, execute: ({ editor }) => editor.splitSelectedVertexEdge() },
+    { id: 'edit.weld-brush-vertices', label: 'Weld Selected Vertices', menu: menu('Edit', 290, 'vertex'), enabled: ({ editor }) => editor.vertexMode && editor.vertexSelection.length >= 2, execute: ({ editor }) => editor.weldSelectedVertices() },
 
     { id: 'view.texture-lock', label: 'Texture Lock', defaultShortcut: 'T', menu: menu('View', 0, 'visibility'), checked: ({ editor }) => editor.textureLock, execute: ({ editor }) => editor.toggleTextureLock() },
     { id: 'view.invisible-mode', label: 'Cycle Invisible Mode', defaultShortcut: 'I', menu: menu('View', 10, 'visibility'), checked: ({ editor }) => editor.invisibleMode !== 'show', execute: ctx => ctx.cycleInvisibleMode() },

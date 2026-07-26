@@ -121,6 +121,9 @@ import {
   exitVertexMode as exitEditorVertexMode,
   isVertexSelected as isEditorVertexSelected,
   moveSelectedVertices as moveEditorSelectedVertices,
+  selectFaceVertices as selectEditorFaceVertices,
+  splitSelectedVertexEdge as splitEditorSelectedVertexEdge,
+  weldSelectedVertices as weldEditorSelectedVertices,
   rebuildBrushes as rebuildEditorBrushes,
   refreshVertexData as refreshEditorVertexData,
   selectVertex as selectEditorVertex,
@@ -1416,6 +1419,18 @@ export class Editor {
 
   moveSelectedVertices(delta: Vec3): void {
     moveEditorSelectedVertices(this, delta);
+  }
+
+  selectFaceVertices(dataIndex: number, faceIndex: number): number[] {
+    return selectEditorFaceVertices(this, dataIndex, faceIndex);
+  }
+
+  splitSelectedVertexEdge(): boolean {
+    return splitEditorSelectedVertexEdge(this);
+  }
+
+  weldSelectedVertices(): boolean {
+    return weldEditorSelectedVertices(this);
   }
 
   refreshVertexData(): void {
