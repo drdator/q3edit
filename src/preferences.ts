@@ -5,7 +5,7 @@ import {
   type RendererMode,
   type TextureFiltering,
 } from './display-policy';
-import type { BrushPrimitive } from './brush-primitives';
+import { BRUSH_PRIMITIVES, type BrushPrimitive } from './brush-primitives';
 import type { InvisibleMode } from './editor';
 import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH } from './sidebar-layout';
 import { clampMcpActivityPanelHeight, DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT } from './live-bridge/activity-panel';
@@ -186,7 +186,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
     'single-3d', 'single-xy', 'single-xz', 'single-yz',
   ];
   const snapModes: GridSnapMode[] = ['off', 'abs', 'rel'];
-  const primitives: BrushPrimitive[] = ['box', 'cylinder', 'cone', 'sphere', 'pyramid'];
+  const primitives = BRUSH_PRIMITIVES.map(option => option.value);
   const invisibleModes: InvisibleMode[] = ['show', 'dim', 'hide'];
   const quickPlayQualities: QuickPlayQuality[] = ['fast', 'normal', 'full'];
   const quickPlayScopes: QuickPlayBuildScope[] = ['full', 'region'];

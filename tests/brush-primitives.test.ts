@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateBrush } from '../src/brush';
 import { createBrushPrimitive } from '../src/brush-primitives';
 import { Editor } from '../src/editor';
+import type { Vec3 } from '../src/math';
 
 describe('brush primitive parameters', () => {
   it('supports arbitrary validated cylinder and cone side counts', () => {
@@ -11,6 +12,22 @@ describe('brush primitive parameters', () => {
     expect(cone.faces).toHaveLength(38);
     expect(validateBrush(cylinder)).toEqual({ valid: true, issues: [] });
     expect(validateBrush(cone)).toEqual({ valid: true, issues: [] });
+  });
+
+  it('creates compiler-safe convex icosahedron and rock brushes', () => {
+    const bounds: [Vec3, Vec3] = [[-96, -64, -48], [96, 64, 48]];
+    const icosahedron = createBrushPrimitive('icosahedron', ...bounds, 'test', 2, 8);
+    const rock = createBrushPrimitive('rock', ...bounds, 'test', 2, 8);
+
+    for (const brush of [icosahedron, rock]) {
+      expect(brush.faces).toHaveLength(20);
+      brush.mins.forEach((value, axis) => expect(value).toBeCloseTo(bounds[0][axis], 6));
+      brush.maxs.forEach((value, axis) => expect(value).toBeCloseTo(bounds[1][axis], 6));
+      expect(validateBrush(brush)).toEqual({ valid: true, issues: [] });
+      expect(brush.faces.every(face => face.polygon.length >= 3)).toBe(true);
+    }
+    expect(rock.faces.map(face => face.plane.dist))
+      .not.toEqual(icosahedron.faces.map(face => face.plane.dist));
   });
 
   it('creates exact dimensions and orientation transactionally', () => {
