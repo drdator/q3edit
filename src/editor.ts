@@ -80,6 +80,12 @@ import {
   pasteClipboard as pasteEditorClipboard,
 } from './editor-clipboard';
 import {
+  lookThroughCameraPath as lookThroughEditorCameraPath,
+  lookThroughSelectedEntity as lookThroughEditorSelectedEntity,
+  moveCameraFloor as moveEditorCameraFloor,
+  moveSelectionToCamera as moveEditorSelectionToCamera,
+} from './editor-camera-conveniences';
+import {
   importPrefabFromFile as importEditorPrefabFromFile,
   saveSelectionAsPrefab as saveEditorSelectionAsPrefab,
 } from './editor-prefabs';
@@ -1092,6 +1098,26 @@ export class Editor {
 
   async pasteClipboard(): Promise<void> {
     await pasteEditorClipboard(this);
+  }
+
+  async pasteClipboardAtCamera(): Promise<void> {
+    await pasteEditorClipboard(this, this.camera3d.position);
+  }
+
+  lookThroughSelectedEntity(): void {
+    lookThroughEditorSelectedEntity(this);
+  }
+
+  lookThroughCameraPath(): void {
+    lookThroughEditorCameraPath(this);
+  }
+
+  moveSelectionToCamera(): void {
+    moveEditorSelectionToCamera(this);
+  }
+
+  moveCameraFloor(direction: -1 | 1): void {
+    moveEditorCameraFloor(this, direction);
   }
 
   saveSelectionAsPrefab(): void {

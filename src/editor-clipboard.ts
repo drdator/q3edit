@@ -6,7 +6,9 @@ import {
   insertTransferEntities,
   parseTransferEntities,
   transferOffset,
+  transferOffsetToPoint,
 } from './editor-transfer';
+import type { Vec3 } from './math';
 
 function browserClipboard(): Clipboard | null {
   return typeof navigator !== 'undefined' && navigator.clipboard ? navigator.clipboard : null;
@@ -38,7 +40,7 @@ export async function copySelection(editor: Editor): Promise<void> {
     : `Copied ${formatTransferCount(totalItems)} (internal clipboard)`;
 }
 
-export async function pasteClipboard(editor: Editor): Promise<void> {
+export async function pasteClipboard(editor: Editor, target: Vec3 | null = null): Promise<void> {
   let entities = null;
   const clipboard = browserClipboard();
 
@@ -64,8 +66,8 @@ export async function pasteClipboard(editor: Editor): Promise<void> {
     return;
   }
 
-  const result = editor.transact('Paste', () =>
-    insertTransferEntities(editor, entities, transferOffset(editor))
+  const result = editor.transact(target ? 'Paste at camera' : 'Paste', () =>
+    insertTransferEntities(editor, entities, target ? transferOffsetToPoint(entities, target) : transferOffset(editor))
   );
 
   if (result.totalItems === 0) {
