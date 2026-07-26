@@ -125,6 +125,7 @@ export interface McpActivityPanelOptions {
   history: ActivityHistory;
   initialVisible?: boolean;
   initialHeight?: number;
+  onOpenBuild?: () => void;
   onVisibilityChange?: (visible: boolean) => void;
   onHeightChange?: (height: number, committed: boolean) => void;
   onLayoutChange?: () => void;
@@ -162,11 +163,14 @@ export class McpActivityPanel {
     const header = document.createElement('header');
     header.className = 'mcp-activity-panel-header';
     const identity = document.createElement('div');
-    identity.className = 'mcp-activity-identity';
-    const title = document.createElement('strong');
+    identity.className = 'bottom-dock-tabs';
+    const title = compactButton('Activity', 'Show Activity', () => this.open());
     title.id = 'mcp-activity-title';
-    title.textContent = 'Activity';
-    identity.append(title);
+    title.classList.add('bottom-dock-tab', 'active');
+    title.setAttribute('aria-current', 'page');
+    const buildTab = compactButton('Build', 'Show the current document build', () => this.options.onOpenBuild?.());
+    buildTab.classList.add('bottom-dock-tab');
+    identity.append(title, buildTab);
 
     const controls = document.createElement('div');
     controls.className = 'mcp-activity-controls';
@@ -255,6 +259,10 @@ export class McpActivityPanel {
     this.applyVisibility(true);
   }
 
+  syncHeight(height: number): void {
+    this.setHeight(height, false, false);
+  }
+
   private clear(): void {
     this.expandedIds.clear();
     this.followTail = true;
@@ -305,11 +313,11 @@ export class McpActivityPanel {
     });
   }
 
-  private setHeight(height: number, committed: boolean): void {
+  private setHeight(height: number, committed: boolean, notify = true): void {
     this.height = clampMcpActivityPanelHeight(height, window.innerHeight);
     this.root.style.height = `${this.height}px`;
     this.resizer.setAttribute('aria-valuenow', String(this.height));
-    this.options.onHeightChange?.(this.height, committed);
+    if (notify) this.options.onHeightChange?.(this.height, committed);
     this.options.onLayoutChange?.();
     if (this.followTail) this.scrollToTail();
   }

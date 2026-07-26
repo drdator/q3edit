@@ -3,8 +3,11 @@ import {
   normalizeGlobalPreferences,
   saveGlobalPreferences,
   type QuickPlayPreferences,
-  type QuickPlayQuality,
 } from './preferences';
+import {
+  buildSettingsFromPreferences,
+  createBuildSettingsControls,
+} from './build-settings';
 
 export interface QuickPlayDialogOptions {
   editor: Editor;
@@ -59,12 +62,17 @@ export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
   const fields = document.createElement('div');
   fields.className = 'quick-play-fields';
 
-  const quality = document.createElement('select');
-  quality.append(
-    option('fast', 'Fast — BSP and bot navigation', current.quality === 'fast'),
-    option('normal', 'Normal — BSP, VIS, and fast lighting', current.quality === 'normal'),
-    option('full', 'Full — BSP, VIS, and final lighting', current.quality === 'full'),
+  const buildHeading = document.createElement('h3');
+  buildHeading.className = 'quick-play-section-title';
+  buildHeading.textContent = 'Build';
+  const buildControls = createBuildSettingsControls(
+    buildSettingsFromPreferences(current),
+    editor.isRegionActive(),
   );
+
+  const playHeading = document.createElement('h3');
+  playHeading.className = 'quick-play-section-title';
+  playHeading.textContent = 'Play';
 
   const bots = document.createElement('input');
   bots.type = 'checkbox';
@@ -90,6 +98,7 @@ export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
     botSkill.disabled = !bots.checked;
     botSettings.classList.toggle('disabled', !bots.checked);
     bots.setAttribute('aria-expanded', String(bots.checked));
+    buildControls.setAasRequired(bots.checked);
     summary.textContent = bots.checked
       ? 'Bot navigation will be generated and opponents will be added when the map starts.'
       : 'Launches alone for movement, lighting, and geometry checks.';
@@ -97,7 +106,14 @@ export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
   bots.onchange = updateBotState;
   updateBotState();
 
-  fields.append(field('Compile quality', quality), field('Add bots', bots), botSettings, summary);
+  fields.append(
+    buildHeading,
+    buildControls.element,
+    playHeading,
+    field('Add bots', bots),
+    botSettings,
+    summary,
+  );
 
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
@@ -105,10 +121,13 @@ export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
   const save = button('Save', true);
 
   const persist = (): QuickPlayPreferences => {
+    const build = buildControls.read();
     const preferences = normalizeGlobalPreferences({
       ...editor.preferences,
       quickPlay: {
-        quality: quality.value as QuickPlayQuality,
+        quality: build.quality,
+        generateAas: build.generateAas,
+        scope: build.scope,
         botsEnabled: bots.checked,
         botCount: Number(botCount.value),
         botSkill: Number(botSkill.value),
@@ -134,5 +153,5 @@ export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Escape') { overlay.remove(); event.stopPropagation(); }
   });
-  quality.focus();
+  buildControls.focus();
 }

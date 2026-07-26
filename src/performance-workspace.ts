@@ -38,7 +38,6 @@ export function createPerformanceWorkspace(editor: Editor): HTMLElement {
   const modelMemory = editor.modelManager?.memoryStats();
   const currentMemory = document.createElement('div'); currentMemory.className = 'performance-current-memory';
   currentMemory.innerHTML = `<h3>Current editor memory</h3>
-    <span>Spatial index <strong>${bytes(editor.spatialIndex().estimatedBytes())}</strong></span>
     <span>Decoded assets <strong>${bytes(assetMemory?.decodedBytes)}</strong> / ${bytes(assetMemory?.decodedLimitBytes)}</span>
     <span>Texture GPU estimate <strong>${bytes(textureMemory?.estimatedGpuBytes)}</strong></span>
     <span>Models <strong>${bytes(modelMemory?.estimatedBytes)}</strong></span>
@@ -64,7 +63,6 @@ export function createPerformanceWorkspace(editor: Editor): HTMLElement {
       <div class="performance-memory">
         <span>Map text <strong>${bytes(report.memory.mapTextBytes)}</strong></span>
         <span>Document estimate <strong>${bytes(report.memory.estimatedDocumentBytes)}</strong></span>
-        <span>Spatial index <strong>${bytes(report.memory.spatialIndexBytes)}</strong></span>
         <span>JavaScript heap <strong>${bytes(report.memory.jsHeapBytes)}</strong></span>
         <span>Texture GPU estimate <strong>${bytes(report.memory.textures?.estimatedGpuBytes)}</strong></span>
         <span>Decoded asset cache <strong>${bytes(report.memory.assets?.decodedBytes)}</strong></span>

@@ -6,7 +6,6 @@ import { History } from './history';
 import { ActivityHistory } from './activity-history';
 import { TextureManager } from './textures';
 import type { ModelManager } from './model-manager';
-import { MapSpatialIndex, type MapSpatialEntry } from './map-spatial-index';
 import { DEFAULT_DISPLAY_PREFERENCES, saveDisplayPreferences, setDisplayCategory, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 import { DEFAULT_GLOBAL_PREFERENCES, loadGlobalPreferences, saveGlobalPreferences, type GlobalPreferences } from './preferences';
 import { DEFAULT_PROJECT_CONFIGURATION, loadProjectConfiguration, resolveProjectPreferences, type ProjectConfiguration } from './project-config';
@@ -279,7 +278,6 @@ import {
   beginTransaction as beginEditorTransaction,
   cancelTransaction as cancelEditorTransaction,
   commitTransaction as commitEditorTransaction,
-  hasActiveTransaction as hasActiveEditorTransaction,
   transact as transactEditorDocument,
   type TransactionOptions,
 } from './editor-transactions';
@@ -289,6 +287,11 @@ export interface EditorDocumentChange {
   previousRevision: number | null;
   revision: number;
 }
+
+export type MapBoundsCandidate =
+  | { kind: 'brush'; entity: Entity; brush: Brush; mins: Vec3; maxs: Vec3 }
+  | { kind: 'patch'; entity: Entity; patch: Patch; mins: Vec3; maxs: Vec3 }
+  | { kind: 'entity'; entity: Entity; mins: Vec3; maxs: Vec3 };
 
 export type Tool = 'select' | 'create' | 'entity' | 'clip' | 'rotate';
 export type ClipMode = 'front' | 'back' | 'both';
@@ -360,9 +363,6 @@ export class Editor {
   private documentChangeListeners = new Set<(change: EditorDocumentChange) => void>();
   private documentStateChangeListeners = new Set<() => void>();
   private documentSessionListeners = new Set<(startedAt: number) => void>();
-  private cachedSpatialIndex: MapSpatialIndex | null = null;
-  private cachedSpatialIndexRevision = -1;
-
   // Drag state for brush creation
   creating = false;
   createStart: Vec3 = [0, 0, 0];
@@ -1073,28 +1073,35 @@ export class Editor {
     yield* iterateNonWorldspawnEntities(this);
   }
 
-  invalidateSpatialIndex(): void {
-    this.cachedSpatialIndex = null;
-    this.cachedSpatialIndexRevision = -1;
-  }
-
-  spatialIndex(): MapSpatialIndex {
-    if (!this.cachedSpatialIndex || this.cachedSpatialIndexRevision !== this.documentRevision || hasActiveEditorTransaction(this)) {
-      this.cachedSpatialIndex = new MapSpatialIndex(this);
-      this.cachedSpatialIndexRevision = this.documentRevision;
-    }
-    return this.cachedSpatialIndex;
-  }
-
-  spatialCandidates2D(
+  boundsCandidates2D(
     axisH: number,
     axisV: number,
     minH: number,
     minV: number,
     maxH: number,
     maxV: number,
-  ): MapSpatialEntry[] {
-    return this.spatialIndex().queryBounds2D(axisH, axisV, minH, minV, maxH, maxV);
+  ): MapBoundsCandidate[] {
+    const overlaps = (mins: Vec3, maxs: Vec3): boolean =>
+      maxs[axisH] >= minH && mins[axisH] <= maxH &&
+      maxs[axisV] >= minV && mins[axisV] <= maxV;
+    const result: MapBoundsCandidate[] = [];
+    for (const { entity, brush } of this.allBrushes()) {
+      if (overlaps(brush.mins, brush.maxs)) {
+        result.push({ kind: 'brush', entity, brush, mins: brush.mins, maxs: brush.maxs });
+      }
+    }
+    for (const { entity, patch } of this.allPatches()) {
+      if (overlaps(patch.mins, patch.maxs)) {
+        result.push({ kind: 'patch', entity, patch, mins: patch.mins, maxs: patch.maxs });
+      }
+    }
+    for (const entity of this.nonWorldspawnEntities()) {
+      const bounds = this.entityBounds(entity);
+      if (bounds && overlaps(bounds.mins, bounds.maxs)) {
+        result.push({ kind: 'entity', entity, ...bounds });
+      }
+    }
+    return result;
   }
 
   // ── Point entities (non-worldspawn, no brushes/patches) ──

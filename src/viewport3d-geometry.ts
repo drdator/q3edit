@@ -92,14 +92,14 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   const textureTerrainMode = ctx.editor.patchEditMode && ctx.editor.terrainBrushMode === 'texture';
   const cubicClip = ctx.editor.cubicClipBounds();
   const spatialBounds = cubicClip ?? ctx.editor.regionBounds;
-  const spatialCandidates = spatialBounds
-    ? ctx.editor.spatialCandidates2D(0, 1, spatialBounds.mins[0], spatialBounds.mins[1], spatialBounds.maxs[0], spatialBounds.maxs[1])
+  const boundsCandidates = spatialBounds
+    ? ctx.editor.boundsCandidates2D(0, 1, spatialBounds.mins[0], spatialBounds.mins[1], spatialBounds.maxs[0], spatialBounds.maxs[1])
     : null;
-  const brushCandidates = spatialCandidates
-    ? spatialCandidates.flatMap(candidate => candidate.kind === 'brush' ? [{ entity: candidate.entity, brush: candidate.brush }] : [])
+  const brushCandidates = boundsCandidates
+    ? boundsCandidates.flatMap(candidate => candidate.kind === 'brush' ? [{ entity: candidate.entity, brush: candidate.brush }] : [])
     : [...ctx.editor.allBrushes()];
-  const patchCandidates = spatialCandidates
-    ? spatialCandidates.flatMap(candidate => candidate.kind === 'patch' ? [{ entity: candidate.entity, patch: candidate.patch }] : [])
+  const patchCandidates = boundsCandidates
+    ? boundsCandidates.flatMap(candidate => candidate.kind === 'patch' ? [{ entity: candidate.entity, patch: candidate.patch }] : [])
     : [...ctx.editor.allPatches()];
   const facesByTex = new Map<string, { verts: number[]; selected: boolean; faceSelected: boolean }[]>();
   const appendBoundsWireframe = (verts: number[], mins: Vec3, maxs: Vec3) => {

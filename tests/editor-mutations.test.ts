@@ -42,22 +42,6 @@ describe('transactional editor mutations', () => {
     expect(editor.entities[0].brushes[0].mins[0]).toBeCloseTo(0);
   });
 
-  test('invalidates cached spatial objects when undo replaces the document', () => {
-    const editor = editorWithBrush();
-    const original = editor.entities[0].brushes[0];
-    editor.spatialIndex();
-
-    editor.beginTransaction('Drag selection');
-    editor.moveSelection([128, 0, 0]);
-    editor.commitTransaction();
-    editor.undo();
-
-    const restored = editor.entities[0].brushes[0];
-    const indexed = editor.spatialIndex().entries.find(entry => entry.kind === 'brush');
-    expect(restored).not.toBe(original);
-    expect(indexed?.kind === 'brush' ? indexed.brush : null).toBe(restored);
-  });
-
   test('does not add history when a command leaves the document unchanged', () => {
     const editor = editorWithBrush();
 

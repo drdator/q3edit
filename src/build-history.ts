@@ -10,6 +10,7 @@ const DEFAULT_LIMIT = 12;
 export interface BuildRecord {
   id: string;
   fileName: string;
+  documentSessionStartedAt?: number;
   documentRevision: number;
   compileSourceFingerprint?: string;
   quality: string;
@@ -20,6 +21,7 @@ export interface BuildRecord {
     visArgs: string[];
     light: boolean;
     lightArgs: string[];
+    aas: boolean;
   };
   startedAt: number;
   durationMs: number;

@@ -1,14 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createBoxBrush } from '../src/brush';
 import {
   collectComplexMapCounts,
   createComplexMapFixture,
   runCurrentMapBenchmark,
   runComplexMapBenchmark,
 } from '../src/complex-map-performance';
-import { Editor } from '../src/editor';
-import { MapSpatialIndex } from '../src/map-spatial-index';
-import { createFlatPatch } from '../src/patch';
 import { activityRenderWindow } from '../src/live-bridge/activity-panel';
 
 describe('complex map scalability', () => {
@@ -21,25 +17,11 @@ describe('complex map scalability', () => {
     expect(collectComplexMapCounts(medium).patchControlPoints).toBeGreaterThan(0);
   });
 
-  it('indexes point and region queries without returning distant objects', () => {
-    const editor = new Editor();
-    editor.worldspawn.brushes = [
-      createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/metal'),
-      createBoxBrush([1_024, 1_024, 0], [1_088, 1_088, 64], 'base_wall/metal'),
-    ];
-    editor.worldspawn.patches = [createFlatPatch([128, 0, 0], [256, 128, 0], 'base_floor/stone')];
-    const index = new MapSpatialIndex(editor);
-    expect(index.queryPoint2D(0, 1, 32, 32).filter(entry => entry.kind === 'brush')).toHaveLength(1);
-    expect(index.queryBounds2D(0, 1, -1, -1, 300, 300).map(entry => entry.kind)).toEqual(expect.arrayContaining(['brush', 'patch']));
-    expect(index.queryBounds2D(0, 1, -1, -1, 300, 300).some(entry => entry.mins[0] > 1_000)).toBe(false);
-    expect(index.estimatedBytes()).toBeGreaterThan(0);
-  });
-
   it('reports all production workloads and explicit budgets', () => {
     const report = runComplexMapBenchmark('small');
     expect(report.metrics.map(item => item.name)).toEqual(expect.arrayContaining([
       'initial load', 'parse and geometry calculation', 'asset discovery', 'viewport geometry preparation',
-      'indexed picking', 'region selection', 'transform 64 brushes', 'undo', 'redo', 'diagnostics',
+      '2D picking candidates', 'region selection', 'transform 64 brushes', 'undo', 'redo', 'diagnostics',
       'save serialization', 'compile preparation',
     ]));
     expect(report.metrics.every(item => item.budgetMilliseconds > 0 && Number.isFinite(item.milliseconds))).toBe(true);
@@ -47,11 +29,10 @@ describe('complex map scalability', () => {
       budgetMilliseconds: 16.7,
       budgetClass: 'frame',
     });
-    expect(report.metrics.find(item => item.name === 'indexed picking')).toMatchObject({
+    expect(report.metrics.find(item => item.name === '2D picking candidates')).toMatchObject({
       budgetMilliseconds: 2,
       budgetClass: 'interaction',
     });
-    expect(report.memory.spatialIndexBytes).toBeGreaterThan(0);
   });
 
   it('benchmarks a detached copy of the current map', () => {

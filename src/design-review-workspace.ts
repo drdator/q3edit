@@ -25,7 +25,6 @@ interface ReviewFinding {
   message: string;
   refs: string[];
   details?: string;
-  sourceSignature?: string;
 }
 
 export interface ReviewRun {
@@ -39,42 +38,6 @@ export interface ReviewRun {
   routes: RouteLintResult;
 }
 
-export function precedingReviewRun(history: readonly ReviewRun[], activeId: string): ReviewRun | null {
-  const activeIndex = history.findIndex(item => item.id === activeId);
-  return activeIndex >= 0 ? history[activeIndex + 1] ?? null : null;
-}
-
-interface Suppression {
-  key: string;
-  reason: string;
-  sourceSignature: string;
-  acknowledgedAt: number;
-}
-
-const HISTORY_PREFIX = 'q3edit.design-review.history.';
-const SUPPRESS_PREFIX = 'q3edit.design-review.suppressions.';
-
-function storageKey(prefix: string, fileName: string): string {
-  return prefix + fileName.toLowerCase();
-}
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const value = localStorage.getItem(key);
-    return value ? JSON.parse(value) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJson(key: string, value: unknown): void {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* review persistence is optional */ }
-}
-
-function findingKey(finding: ReviewFinding): string {
-  return `${finding.source}:${finding.code}:${[...finding.refs].sort().join(',')}`;
-}
-
 function refObject(editor: Editor, ref: string): unknown {
   const match = /^E(\d+)(?::B(\d+)(?::F(\d+))?|:P(\d+))?$/.exec(ref);
   if (!match) return null;
@@ -86,11 +49,6 @@ function refObject(editor: Editor, ref: string): unknown {
     return match[3] !== undefined ? brush?.faces[Number(match[3])] ?? null : brush ?? null;
   }
   return entity;
-}
-
-function sourceSignature(editor: Editor, finding: ReviewFinding): string {
-  if (finding.sourceSignature) return finding.sourceSignature;
-  return JSON.stringify(finding.refs.map(ref => refObject(editor, ref)));
 }
 
 function reviewedTextureDimensions(editor: Editor, mapText: string): Map<string, TextureDimensions> {
@@ -152,9 +110,6 @@ export function runDesignReview(editor: Editor, mapText: string, source: ReviewR
     })),
     ...lightingFindings(statistics),
   ];
-  for (const finding of findings) {
-    finding.sourceSignature = JSON.stringify(finding.refs.map(ref => refObject(reviewedEditor, ref)));
-  }
   const status = findings.some(item => item.severity === 'error') ? 'blocked'
     : findings.some(item => item.severity === 'warning') ? 'needs-attention'
       : 'pass';
@@ -282,14 +237,6 @@ function select(value: string, options: Array<[string, string]>): HTMLSelectElem
   return result;
 }
 
-function downloadReview(editor: Editor, run: ReviewRun): void {
-  const data = JSON.stringify(run, null, 2);
-  const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
-  const anchor = document.createElement('a');
-  anchor.href = url; anchor.download = `${editor.fileName.replace(/\.map$/i, '')}-design-review.json`; anchor.click();
-  URL.revokeObjectURL(url);
-}
-
 export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
   const root = document.createElement('div');
   root.className = 'design-review-workspace';
@@ -314,17 +261,10 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
   const spatialPlan = readSpatialPlan(editor.worldspawn.properties);
   const area = select('all', [['all', 'All map areas'], ...spatialPlan.areas.map(item => [item.id, item.purpose || item.id] as [string, string])]);
   const objectKind = select('all', [['all', 'All object kinds'], ['entity', 'Entities'], ['brush', 'Brushes'], ['face', 'Faces'], ['patch', 'Patches']]);
-  const showAcknowledged = document.createElement('input');
-  showAcknowledged.type = 'checkbox';
   const content = document.createElement('div');
   content.className = 'design-review-content';
   const overlays = new Set<string>();
   let activeRun: ReviewRun | null = null;
-  const historyKey = storageKey(HISTORY_PREFIX, editor.fileName);
-  const suppressKey = storageKey(SUPPRESS_PREFIX, editor.fileName);
-  let history = readJson<ReviewRun[]>(historyKey, []);
-  let suppressions = readJson<Suppression[]>(suppressKey, []);
-  const historySelect = select('', [['', 'Current review'], ...history.map(item => [item.id, new Date(item.timestamp).toLocaleString()] as [string, string])]);
 
   const refGroup = (ref: string): string | null => {
     const match = /^E(\d+)(?::B(\d+)|:P(\d+))?/.exec(ref);
@@ -340,9 +280,7 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
     content.replaceChildren();
     if (!activeRun) {
       const empty = document.createElement('p');
-      empty.textContent = history.length > 0
-        ? `Last review: ${new Date(history[0].timestamp).toLocaleString()} · ${history[0].status}. Run again for the current revision.`
-        : 'Run a review to inspect spatial, route, gameplay, geometry, texture, lighting, and style quality.';
+      empty.textContent = 'Run a review to inspect spatial, route, gameplay, geometry, texture, lighting, and style quality.';
       content.appendChild(empty);
       return;
     }
@@ -351,15 +289,11 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
       warning: activeRun.findings.filter(item => item.severity === 'warning').length,
       info: activeRun.findings.filter(item => item.severity === 'info').length,
     };
-    const previous = precedingReviewRun(history, activeRun.id);
-    const previousKeys = new Set(previous?.findings.map(findingKey) ?? []);
-    const currentKeys = new Set(activeRun.findings.map(findingKey));
     const summary = document.createElement('div');
     summary.className = 'design-review-summary';
     for (const [label, value] of [
       ['Status', activeRun.status], ['Errors', severityCounts.error], ['Warnings', severityCounts.warning],
-      ['Info', severityCounts.info], ['New', activeRun.findings.filter(item => !previousKeys.has(findingKey(item))).length],
-      ['Resolved', previous?.findings.filter(item => !currentKeys.has(findingKey(item))).length ?? 0],
+      ['Info', severityCounts.info],
     ]) {
       const item = document.createElement('div');
       item.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
@@ -378,6 +312,7 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
     const list = document.createElement('div');
     list.className = 'design-review-findings';
     for (const finding of activeRun.findings) {
+      if (view.value === 'issues' && finding.severity === 'info') continue;
       if (severity.value !== 'all' && finding.severity !== severity.value) continue;
       if (type.value !== 'all' && finding.source !== type.value) continue;
       if (group.value !== 'all' && !finding.refs.some(ref => refGroup(ref) === group.value)) continue;
@@ -386,14 +321,10 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
         if (!areaGroup || !finding.refs.some(ref => refGroup(ref) === areaGroup)) continue;
       }
       if (objectKind.value !== 'all' && !finding.refs.some(ref => refKind(ref) === objectKind.value)) continue;
-      const key = findingKey(finding);
-      const suppression = suppressions.find(item => item.key === key);
-      const unchanged = suppression?.sourceSignature === sourceSignature(editor, finding);
-      if (unchanged && !showAcknowledged.checked) continue;
       const row = document.createElement('article');
-      row.className = `design-review-finding ${finding.severity}${unchanged ? ' acknowledged' : ''}`;
+      row.className = `design-review-finding ${finding.severity}`;
       const heading = document.createElement('div');
-      heading.innerHTML = `<strong>${finding.source} · ${finding.code}</strong><span>${finding.severity}${suppression && !unchanged ? ' · reopened after source change' : unchanged ? ' · acknowledged' : ''}</span>`;
+      heading.innerHTML = `<strong>${finding.source} · ${finding.code}</strong><span>${finding.severity}</span>`;
       const message = document.createElement('p');
       message.textContent = finding.message;
       row.append(heading, message);
@@ -409,34 +340,20 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
         previewRefs.textContent = `Preview refs: ${finding.refs.slice(0, 8).join(', ')}`;
         actions.appendChild(previewRefs);
       }
-      if (unchanged) actions.appendChild(button('Reopen', () => {
-        suppressions = suppressions.filter(item => item.key !== key); writeJson(suppressKey, suppressions); render();
-      }));
-      else actions.appendChild(button('Acknowledge...', () => {
-        const reason = globalThis.prompt?.('Why is this finding intentional?', suppression?.reason ?? '');
-        if (!reason?.trim()) return;
-        suppressions = suppressions.filter(item => item.key !== key);
-        suppressions.push({ key, reason: reason.trim(), sourceSignature: sourceSignature(editor, finding), acknowledgedAt: Date.now() });
-        writeJson(suppressKey, suppressions); render();
-      }));
       row.appendChild(actions);
       list.appendChild(row);
     }
-    if (list.childElementCount === 0) list.textContent = 'No findings match the active filters.';
+    if (list.childElementCount === 0) {
+      list.textContent = view.value === 'issues'
+        ? 'No actionable findings match the active filters.'
+        : 'No findings match the active filters.';
+    }
     content.appendChild(list);
   };
   const executeReview = () => {
     const reviewSource = source.value as ReviewRun['source'];
     const mapText = reviewSource === 'preview' ? editor.pendingReviewMapText! : editor.serializeMap();
     activeRun = runDesignReview(editor, mapText, reviewSource);
-    history = [activeRun, ...history].slice(0, 10);
-    writeJson(historyKey, history);
-    historySelect.replaceChildren(...[
-      ['', 'Current review'],
-      ...history.map(item => [item.id, new Date(item.timestamp).toLocaleString()] as [string, string]),
-    ].map(([value, label]) => {
-      const option = document.createElement('option'); option.value = value; option.textContent = label; return option;
-    }));
     editor.activityHistory.record({
       source: 'edit', status: activeRun.status === 'blocked' ? 'error' : activeRun.status === 'needs-attention' ? 'info' : 'success',
       category: 'system', title: 'Design review completed',
@@ -448,17 +365,7 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
   };
   const runButton = button('Run Review', executeReview);
   runButton.classList.add('primary');
-  historySelect.onchange = () => {
-    activeRun = historySelect.value ? history.find(item => item.id === historySelect.value) ?? null : history[0] ?? activeRun;
-    render();
-  };
-  filterControls.append(source, view, severity, type, area, group, objectKind, historySelect, runButton, button('Export', () => {
-    if (activeRun) downloadReview(editor, activeRun);
-  }));
-  const acknowledgedLabel = document.createElement('label');
-  acknowledgedLabel.className = 'design-review-checkbox';
-  acknowledgedLabel.append(showAcknowledged, document.createTextNode('Show acknowledged'));
-  overlayControls.appendChild(acknowledgedLabel);
+  filterControls.append(source, view, severity, type, area, group, objectKind, runButton);
   for (const [mode, label] of [
     ['spawns', 'Spawns & hulls'], ['items', 'Items'], ['routes', 'Routes'], ['jumps', 'Jump paths & collisions'], ['lights', 'Light coverage'], ['sight', 'Spawn/item links'],
   ]) {
@@ -475,7 +382,7 @@ export function createDesignReviewWorkspace(editor: Editor): HTMLElement {
     overlayControls.appendChild(labelElement);
   }
   controls.append(filterControls, overlayControls);
-  for (const element of [view, severity, type, area, group, objectKind, showAcknowledged]) element.onchange = render;
+  for (const element of [view, severity, type, area, group, objectKind]) element.onchange = render;
   root.append(controls, content);
   render();
   return root;

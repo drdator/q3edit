@@ -33,13 +33,19 @@ import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
 import { openMcpConnectionDialog } from './live-bridge/connection-dialog';
 import { openQuickPlayDialog } from './quick-play-dialog';
-import type { QuickPlayPreferences } from './preferences';
+import { saveGlobalPreferences, type QuickPlayPreferences } from './preferences';
+import {
+  buildSettingsFromPreferences,
+  createBuildSettingsControls,
+  type BuildSettings,
+} from './build-settings';
 import type { DocumentRecoveryService } from './document-recovery';
 import { openVersionHistoryDialog } from './version-history-dialog';
 import { buildSourceFingerprint, BuildHistoryService, type BuildRecord } from './build-history';
 import { parseBsp, type BspInspection } from './bsp-inspection';
 import { structureCompilerOutput } from './compile-diagnostics';
-import { createBuildInspector, openBuildHistoryDialog } from './build-inspector';
+import { openBuildHistoryDialog } from './build-inspector';
+import { BuildPanel } from './build-panel';
 import { openReleasePackageDialog } from './release-package-dialog';
 import { MapOrganizationController, type NavigationState } from './map-organization';
 import { openMapOrganizationDialog } from './map-organization-dialog';
@@ -107,6 +113,7 @@ export class UI {
   private gamePreviewClose: ((markClosed?: boolean) => void) | null = null;
   private gamePreviewListeners = new Set<() => void>();
   private readonly mcpActivity: McpActivityPanel;
+  private readonly buildPanel: BuildPanel;
   private readonly recovery: DocumentRecoveryService | null;
   private readonly buildHistory = new BuildHistoryService();
   private captureEditorLevelshot: (() => { mimeType: string; data: string; width: number; height: number }) | null = null;
@@ -124,17 +131,36 @@ export class UI {
     this.editor = editor;
     this.recovery = recovery;
     this.propertiesPanel = new PropertiesPanel(editor);
+    this.buildPanel = new BuildPanel({
+      editor: this.editor,
+      initialHeight: this.editor.preferences.mcpActivity.height,
+      onCompile: () => { void this.compileBSP(); },
+      onOpenActivity: () => this.mcpActivity.open(),
+      onVisibilityChange: visible => {
+        if (visible) this.mcpActivity.close();
+        this.commands?.notifyStateChanged();
+      },
+      onHeightChange: (height, committed) => {
+        this.mcpActivity?.syncHeight(height);
+        this.editor.preferences.mcpActivity.height = height;
+        if (committed) this.editor.persistCurrentPreferences();
+      },
+      onLayoutChange: () => { this.editor.redrawRequested = true; },
+    });
     this.mcpActivity = new McpActivityPanel({
       history: this.editor.activityHistory,
       initialVisible: this.editor.preferences.mcpActivity.visible,
       initialHeight: this.editor.preferences.mcpActivity.height,
+      onOpenBuild: () => this.buildPanel.open(),
       onVisibilityChange: visible => {
+        if (visible) this.buildPanel.close();
         this.editor.preferences.mcpActivity.visible = visible;
         this.editor.persistCurrentPreferences();
         this.commands.notifyStateChanged();
         this.editor.statusMessage = `${visible ? 'Opened' : 'Closed'} Activity`;
       },
       onHeightChange: (height, committed) => {
+        this.buildPanel.syncHeight(height);
         this.editor.preferences.mcpActivity.height = height;
         if (committed) this.editor.persistCurrentPreferences();
       },
@@ -175,6 +201,8 @@ export class UI {
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
+      toggleBuildResults: () => this.buildPanel.toggle(),
+      isBuildResultsOpen: () => this.buildPanel.isOpen(),
       openMcpConnection: () => this.openMcpConnection(),
       openTerrainPanel: () => this.openTerrainPanel(),
       toggleSidebar: () => this.toggleSidebar(),
@@ -2536,8 +2564,10 @@ export class UI {
   }
 
   private quickPlay(preferences: QuickPlayPreferences = this.editor.preferences.quickPlay): Promise<void> {
+    const buildSettings = buildSettingsFromPreferences(preferences);
+    if (preferences.botsEnabled) buildSettings.generateAas = true;
     return this.compileBSP(
-      preferences.quality,
+      buildSettings,
       preferences.botsEnabled ? preferences.botCount : 0,
       preferences.botSkill,
     );
@@ -2550,15 +2580,19 @@ export class UI {
   }
 
   private async compileBSP(
-    autoPlayQuality: 'fast' | 'normal' | 'full' | null = null,
+    autoPlaySettings: BuildSettings | null = null,
     botCount = 0,
     botSkill = 2,
   ): Promise<void> {
     document.getElementById('compile-dialog')?.remove();
-    const autoPlay = autoPlayQuality !== null;
-    const autoPlayLabel = autoPlayQuality
-      ? autoPlayQuality[0].toUpperCase() + autoPlayQuality.slice(1)
+    const autoPlay = autoPlaySettings !== null;
+    const autoPlayLabel = autoPlaySettings
+      ? autoPlaySettings.quality[0].toUpperCase() + autoPlaySettings.quality.slice(1)
       : '';
+    const regionActive = this.editor.isRegionActive();
+    const initialBuildSettings = autoPlaySettings
+      ?? buildSettingsFromPreferences(this.editor.preferences.quickPlay);
+    const buildControls = createBuildSettingsControls(initialBuildSettings, regionActive);
 
     const overlay = document.createElement('div');
     overlay.id = 'compile-dialog';
@@ -2575,10 +2609,10 @@ export class UI {
     title.className = 'editor-dialog-title';
     const botTitle = botCount > 0 ? `, ${botCount} ${botCount === 1 ? 'Bot' : 'Bots'}` : '';
     title.textContent = autoPlay
-      ? (this.editor.isRegionActive()
+      ? (regionActive && autoPlaySettings?.scope === 'region'
           ? `Quick Play (${autoPlayLabel}${botTitle}, Region)`
           : `Quick Play (${autoPlayLabel}${botTitle})`)
-      : (this.editor.isRegionActive() ? 'Compile BSP (Region)' : 'Compile BSP');
+      : 'Compile BSP';
     dialog.appendChild(title);
 
     const description = document.createElement('div');
@@ -2587,53 +2621,21 @@ export class UI {
       ? ` with ${botCount === 1 ? 'one bot opponent' : `${botCount} bot opponents`}`
       : '';
     description.textContent = autoPlay
-      ? (this.editor.isRegionActive()
-          ? `Compile the active region at ${autoPlayQuality} quality, then start it in browser ioquake3${botDescription}.`
-          : `Compile the current map at ${autoPlayQuality} quality, then start it in browser ioquake3${botDescription}.`)
-      : (this.editor.isRegionActive()
-          ? 'Compile the active region with the browser-based q3map toolchain.'
-          : 'Compile the current map with the browser-based q3map toolchain.');
+      ? (regionActive && autoPlaySettings?.scope === 'region'
+          ? `Compile the active region at ${autoPlaySettings.quality} quality, then start it in browser ioquake3${botDescription}.`
+          : `Compile the current map at ${autoPlaySettings?.quality} quality, then start it in browser ioquake3${botDescription}.`)
+      : 'Choose how to compile the current map with the browser-based q3map toolchain.';
     dialog.appendChild(description);
 
-    const qualityRow = document.createElement('div');
-    qualityRow.className = 'compile-dialog-quality';
-    const qualityLabel = document.createElement('label');
-    qualityLabel.textContent = 'Quality:';
-    const qualitySelect = document.createElement('select');
-    qualityLabel.htmlFor = 'compile-dialog-quality';
-    qualitySelect.id = 'compile-dialog-quality';
-    for (const [value, label] of [
-      ['fast', 'Fast (BSP only, no lighting)'],
-      ['normal', 'Normal (BSP + fast vis + light)'],
-      ['full', 'Full (BSP + full vis + light)'],
-    ]) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (value === 'normal') opt.selected = true;
-      qualitySelect.appendChild(opt);
-    }
-    qualityRow.appendChild(qualityLabel);
-    qualityRow.appendChild(qualitySelect);
-    qualityRow.hidden = autoPlay;
-    dialog.appendChild(qualityRow);
+    const settingsSection = document.createElement('div');
+    settingsSection.className = 'compile-dialog-settings';
+    const settingsTitle = document.createElement('h3');
+    settingsTitle.textContent = 'Build';
+    settingsSection.append(settingsTitle, buildControls.element);
+    settingsSection.hidden = autoPlay;
+    dialog.appendChild(settingsSection);
 
-    const status = document.createElement('div');
-    status.className = 'compile-dialog-status';
-    status.setAttribute('role', 'status');
-    status.setAttribute('aria-live', 'polite');
-    status.textContent = this.editor.isRegionActive() ? 'Active region only' : '';
-    dialog.appendChild(status);
-
-    const log = document.createElement('pre');
-    log.className = 'compile-dialog-log';
-    log.setAttribute('aria-label', 'Compiler output');
-    log.textContent = '';
-    dialog.appendChild(log);
-
-    const inspectorHost = document.createElement('div');
-    inspectorHost.className = 'compile-inspector-host';
-    dialog.appendChild(inspectorHost);
+    let buildStatus = '';
 
     const buttons = document.createElement('div');
     buttons.className = 'editor-dialog-actions compile-dialog-actions';
@@ -2647,51 +2649,20 @@ export class UI {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'btn';
-    closeBtn.textContent = 'Close';
-    let dismissed = false;
+    closeBtn.textContent = 'Cancel';
     closeBtn.onclick = () => {
-      dismissed = true;
       overlay.remove();
     };
 
-    const cancelCompileBtn = document.createElement('button');
-    cancelCompileBtn.type = 'button';
-    cancelCompileBtn.className = 'btn';
-    cancelCompileBtn.textContent = 'Cancel Compile';
-    cancelCompileBtn.hidden = true;
     let compileAbort: AbortController | null = null;
-    cancelCompileBtn.onclick = () => {
-      cancelCompileBtn.disabled = true;
-      status.textContent = 'Cancelling compile...';
-      compileAbort?.abort();
-    };
 
-    const runBtn = document.createElement('button');
-    runBtn.type = 'button';
-    runBtn.className = 'btn';
-    runBtn.textContent = 'Play in browser';
-    runBtn.hidden = true;
-
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'btn';
-    saveBtn.textContent = 'Save .bsp';
-    saveBtn.hidden = true;
-
-    const saveAasBtn = document.createElement('button');
-    saveAasBtn.type = 'button';
-    saveAasBtn.className = 'btn';
-    saveAasBtn.textContent = 'Save .aas';
-    saveAasBtn.hidden = true;
-
-    buttons.append(closeBtn, cancelCompileBtn, runBtn, saveAasBtn, saveBtn, compileBtn);
+    buttons.append(closeBtn, compileBtn);
     dialog.appendChild(buttons);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
     overlay.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        dismissed = true;
         overlay.remove();
         e.stopPropagation();
       }
@@ -2699,10 +2670,12 @@ export class UI {
     overlay.tabIndex = 0;
     compileBtn.focus();
 
-    const doCompile = async () => {
+    const doCompile = async (buildSettings: BuildSettings) => {
       const startedAt = performance.now();
       const startedAtEpoch = Date.now();
-      const compileWithRegion = this.editor.isRegionActive();
+      const compileWithRegion = buildSettings.scope === 'region' && this.editor.isRegionActive();
+      const compiledFileName = this.editor.fileName;
+      const compiledDocumentSession = this.editor.documentSessionStartedAt;
       const compileEntities = compileWithRegion
         ? this.editor.collectRegionEntities(true)
         : this.editor.entities;
@@ -2725,8 +2698,13 @@ export class UI {
         }
       }
       const shaderFiles = this.texMgr?.getShaderFiles();
-      const quality = autoPlayQuality ?? qualitySelect.value;
+      const quality = buildSettings.quality;
       const activityTitle = autoPlay ? 'Quick Play build' : 'BSP compilation';
+      compileAbort = new AbortController();
+      this.buildPanel.start(
+        compileWithRegion ? `Compiling active region · ${quality}` : `Compiling ${compiledFileName} · ${quality}`,
+        () => compileAbort?.abort(),
+      );
       this.editor.activityHistory.record({
         source: 'build',
         status: 'info',
@@ -2739,16 +2717,8 @@ export class UI {
       });
       compileBtn.disabled = true;
       compileBtn.textContent = 'Compiling...';
-      qualitySelect.disabled = true;
-      runBtn.hidden = true;
-      saveBtn.hidden = true;
-      saveAasBtn.hidden = true;
-      cancelCompileBtn.hidden = false;
-      cancelCompileBtn.disabled = false;
+      buildControls.setDisabled(true);
       dialog.classList.remove('success', 'warning', 'error');
-      status.textContent = compileWithRegion ? 'Compiling active region...' : 'Compiling...';
-      log.textContent = '';
-      inspectorHost.replaceChildren();
 
       const mapText = compileWithRegion
         ? this.editor.serializeRegionMap(true, true)
@@ -2756,24 +2726,22 @@ export class UI {
       const compiledDocumentRevision = this.editor.documentRevision;
 
       const compile = this.editor.projectConfiguration.compile;
-      compileAbort = new AbortController();
       const result = await compileMap(mapText, {
         args: compile.bspArgs.length > 0 ? compile.bspArgs : ['-v'],
         vis: quality !== 'fast' && compile.vis,
         visArgs: quality === 'full' ? compile.visArgs : ['-fast', ...compile.visArgs],
         light: quality !== 'fast' && compile.light,
         lightArgs: compile.lightArgs,
+        aas: buildSettings.generateAas,
         shaderFiles,
         assetFiles: assetFiles.size > 0 ? assetFiles : undefined,
         signal: compileAbort.signal,
         reuseUnchanged: true,
         onOutput: (line) => {
-          log.textContent += line + '\n';
-          log.scrollTop = log.scrollHeight;
+          this.buildPanel.appendOutput(line);
         },
       });
       compileAbort = null;
-      cancelCompileBtn.hidden = true;
 
       const structuredDiagnostics = structureCompilerOutput(
         result.output,
@@ -2785,8 +2753,6 @@ export class UI {
       if (result.bsp) {
         try {
           inspection = parseBsp(result.bsp, result.portalFileText);
-          this.editor.compiledBspInspection = inspection;
-          this.editor.redrawRequested = true;
         } catch (error) {
           result.output.push(`BSP inspection failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -2794,7 +2760,8 @@ export class UI {
       const durationMs = Math.round(performance.now() - startedAt);
       const record: BuildRecord = {
         id: `${startedAtEpoch}-${compiledDocumentRevision}`,
-        fileName: this.editor.fileName,
+        fileName: compiledFileName,
+        documentSessionStartedAt: compiledDocumentSession,
         documentRevision: compiledDocumentRevision,
         compileSourceFingerprint: buildSourceFingerprint(mapText),
         quality,
@@ -2805,6 +2772,7 @@ export class UI {
           visArgs: quality === 'full' ? [...compile.visArgs] : ['-fast', ...compile.visArgs],
           light: quality !== 'fast' && compile.light,
           lightArgs: [...compile.lightArgs],
+          aas: buildSettings.generateAas,
         },
         startedAt: startedAtEpoch,
         durationMs,
@@ -2819,124 +2787,140 @@ export class UI {
         portalFileText: result.portalFileText,
       };
       await this.buildHistory.add(record);
-      const [previous, history] = await Promise.all([
-        this.buildHistory.previous(this.editor.fileName, record.id),
-        this.buildHistory.list(this.editor.fileName),
-      ]);
-      inspectorHost.replaceChildren(createBuildInspector(this.editor, record, inspection, previous, history));
+      const history = (await this.buildHistory.list(record.fileName))
+        .filter(candidate => candidate.documentSessionStartedAt === compiledDocumentSession);
+      const recordIndex = history.findIndex(candidate => candidate.id === record.id);
+      const previous = recordIndex >= 0 ? history[recordIndex + 1] ?? null : null;
+      if (compiledDocumentSession === this.editor.documentSessionStartedAt) {
+        this.editor.activityHistory.record({
+          source: 'build',
+          status: result.success ? 'success' : 'error',
+          category: 'build',
+          title: `${activityTitle} ${result.success ? 'completed' : 'failed'}`,
+          summary: result.cancelled
+            ? 'Cancelled by user'
+            : result.success
+              ? `${quality} quality${result.reused ? ' · reused unchanged artifacts' : ''} · ${result.bsp ? `${(result.bsp.length / 1024).toFixed(1)} KB BSP` : 'no BSP'}${result.aas ? ` · ${(result.aas.length / 1024).toFixed(1)} KB AAS` : ' · no AAS'}${result.pointfileText ? ' · leak detected' : ''}`
+              : result.output[result.output.length - 1] ?? 'The compiler did not produce a BSP',
+          revisionBefore: compiledDocumentRevision,
+          revisionAfter: compiledDocumentRevision,
+          undoable: false,
+          durationMs,
+          details: [
+            ...(structuredDiagnostics.length > 0 ? [{
+              title: 'Structured diagnostics',
+              value: structuredDiagnostics.map(item => `${item.severity}: ${item.message} · ${item.suggestion}`),
+            }] : []),
+            ...(result.output.length > 0 ? [{ title: 'Compiler output', value: result.output }] : []),
+          ],
+        });
+      }
 
-      this.editor.activityHistory.record({
-        source: 'build',
-        status: result.success ? 'success' : 'error',
-        category: 'build',
-        title: `${activityTitle} ${result.success ? 'completed' : 'failed'}`,
-        summary: result.cancelled
-          ? 'Cancelled by user'
-          : result.success
-            ? `${quality} quality${result.reused ? ' · reused unchanged artifacts' : ''} · ${result.bsp ? `${(result.bsp.length / 1024).toFixed(1)} KB BSP` : 'no BSP'}${result.aas ? ` · ${(result.aas.length / 1024).toFixed(1)} KB AAS` : ' · no AAS'}${result.pointfileText ? ' · leak detected' : ''}`
-            : result.output[result.output.length - 1] ?? 'The compiler did not produce a BSP',
-        revisionBefore: this.editor.documentRevision,
-        revisionAfter: this.editor.documentRevision,
-        undoable: false,
-        durationMs,
-        details: [
-          ...(structuredDiagnostics.length > 0 ? [{
-            title: 'Structured diagnostics',
-            value: structuredDiagnostics.map(item => `${item.severity}: ${item.message} · ${item.suggestion}`),
-          }] : []),
-          ...(result.output.length > 0 ? [{ title: 'Compiler output', value: result.output }] : []),
-        ],
-      });
-
-      return result;
+      return { result, record, inspection, previous, history, compiledDocumentSession };
     };
 
     const baseName = this.editor.fileName.replace(/\.map$/, '');
+    const saveArtifact = (bytes: Uint8Array, extension: 'bsp' | 'aas') => {
+      const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${baseName}.${extension}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.editor.statusMessage = `Saved ${baseName}.${extension}`;
+    };
 
     compileBtn.onclick = async () => {
-      const result = await doCompile();
+      const buildSettings = autoPlaySettings ?? buildControls.read();
+      if (!autoPlay) {
+        this.editor.preferences.quickPlay = {
+          ...this.editor.preferences.quickPlay,
+          quality: buildSettings.quality,
+          generateAas: buildSettings.generateAas,
+          scope: buildSettings.scope,
+        };
+        saveGlobalPreferences(this.editor.preferences);
+      }
+      overlay.remove();
+      const { result, record, inspection, previous, history, compiledDocumentSession } = await doCompile(buildSettings);
 
       compileBtn.disabled = false;
       compileBtn.textContent = 'Compile';
-      qualitySelect.disabled = false;
+      buildControls.setDisabled(false);
+      const currentDocument = compiledDocumentSession === this.editor.documentSessionStartedAt;
+      const setEditorStatus = (message: string) => {
+        if (currentDocument) this.editor.statusMessage = message;
+      };
+      let panelTone: 'info' | 'success' | 'warning' | 'error' = 'info';
 
       if (result.cancelled) {
         dialog.classList.add('warning');
-        status.textContent = 'Compilation cancelled';
-        this.editor.statusMessage = 'BSP compilation cancelled';
+        buildStatus = 'Compilation cancelled';
+        panelTone = 'warning';
+        setEditorStatus('BSP compilation cancelled');
       } else if (result.success && result.bsp) {
-        const leaked = !!result.pointfileText
+        const leaked = currentDocument && !!result.pointfileText
           && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile');
         if (leaked) {
           dialog.classList.add('warning');
-          status.textContent = `Compiled with leak (${(result.bsp.length / 1024).toFixed(1)} KB, pointfile loaded)`;
-          log.textContent += (log.textContent ? '\n' : '') + '[editor] Leak pointfile loaded\n';
-          log.scrollTop = log.scrollHeight;
-          this.editor.statusMessage = 'Leak detected: pointfile loaded';
+          buildStatus = `Compiled with leak (${(result.bsp.length / 1024).toFixed(1)} KB, pointfile loaded)`;
+          panelTone = 'warning';
+          result.output.push('[editor] Leak pointfile loaded');
+          setEditorStatus('Leak detected: pointfile loaded');
         } else {
           dialog.classList.add('success');
-          this.editor.clearPointfile(false);
+          if (currentDocument) this.editor.clearPointfile(false);
           const navigation = result.aas
             ? `, bot navigation ${(result.aas.length / 1024).toFixed(1)} KB`
-            : ', bot navigation unavailable';
-          status.textContent = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB${navigation})`;
-          this.editor.statusMessage = 'BSP compiled successfully';
+            : buildSettings.generateAas
+              ? ', bot navigation unavailable'
+              : ', bot navigation not requested';
+          buildStatus = `Compiled successfully (${(result.bsp.length / 1024).toFixed(1)} KB${navigation})`;
+          panelTone = 'success';
+          setEditorStatus('BSP compiled successfully');
         }
 
-        saveBtn.hidden = false;
-        saveBtn.onclick = () => {
-          const blob = new Blob([new Uint8Array(result.bsp!)], { type: 'application/octet-stream' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = baseName + '.bsp';
-          a.click();
-          URL.revokeObjectURL(url);
-          this.editor.statusMessage = `Saved ${baseName}.bsp`;
-        };
-
-        if (result.aas) {
-          saveAasBtn.hidden = false;
-          saveAasBtn.onclick = () => {
-            const blob = new Blob([new Uint8Array(result.aas!)], { type: 'application/octet-stream' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = baseName + '.aas';
-            a.click();
-            URL.revokeObjectURL(url);
-            this.editor.statusMessage = `Saved ${baseName}.aas`;
-          };
-        }
-
-        runBtn.hidden = false;
-        runBtn.onclick = () => {
-          this.openBspPreview(baseName, result.bsp!, result.aas);
-        };
-
-        if (autoPlay && !dismissed) {
-          if (botCount > 0 && !result.aas) {
-            dialog.classList.remove('success');
-            dialog.classList.add('warning');
-            status.textContent = 'Compiled, but Quick Play with Bot requires successful bot navigation';
-            this.editor.statusMessage = 'Bot Quick Play stopped: AAS generation failed';
-          } else {
-            overlay.remove();
-            this.openBspPreview(baseName, result.bsp, result.aas, false, [], botCount, botSkill);
-          }
+        if (autoPlay && botCount > 0 && !result.aas) {
+          dialog.classList.remove('success');
+          dialog.classList.add('warning');
+          buildStatus = 'Compiled, but Quick Play with Bot requires successful bot navigation';
+          panelTone = 'warning';
+          setEditorStatus('Bot Quick Play stopped: AAS generation failed');
         }
       } else {
         dialog.classList.add('error');
-        if (result.pointfileText && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile')) {
-          status.textContent = 'Compilation failed (leak pointfile loaded)';
-          log.textContent += (log.textContent ? '\n' : '') + '[editor] Leak pointfile loaded\n';
-          log.scrollTop = log.scrollHeight;
-          this.editor.statusMessage = 'Leak detected: pointfile loaded';
+        panelTone = 'error';
+        if (currentDocument && result.pointfileText && this.editor.loadPointfileText(result.pointfileText, 'Leak detected: loaded pointfile')) {
+          buildStatus = 'Compilation failed (leak pointfile loaded)';
+          result.output.push('[editor] Leak pointfile loaded');
+          setEditorStatus('Leak detected: pointfile loaded');
         } else {
-          this.editor.clearPointfile(false);
-          status.textContent = 'Compilation failed';
-          this.editor.statusMessage = 'BSP compilation failed';
+          if (currentDocument) this.editor.clearPointfile(false);
+          buildStatus = 'Compilation failed';
+          setEditorStatus('BSP compilation failed');
         }
+      }
+
+      const accepted = this.buildPanel.finish(
+        record,
+        inspection,
+        previous,
+        history,
+        buildStatus || 'Build finished',
+        panelTone,
+        {
+          compileAgain: () => { void this.compileBSP(); },
+          ...(result.bsp ? {
+            play: () => this.openBspPreview(baseName, result.bsp!, result.aas),
+            saveBsp: () => saveArtifact(result.bsp!, 'bsp'),
+          } : {}),
+          ...(result.aas ? { saveAas: () => saveArtifact(result.aas!, 'aas') } : {}),
+        },
+      );
+
+      if (autoPlay && accepted && result.success && result.bsp && (botCount === 0 || result.aas)) {
+        this.openBspPreview(baseName, result.bsp, result.aas, false, [], botCount, botSkill);
       }
     };
 

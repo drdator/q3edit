@@ -89,7 +89,15 @@ export function pickEntityAt(
   let bestArea = Infinity;
   let bestDepth = -Infinity;
 
-  const candidates = ctx.editor.spatialIndex().queryPoint2D(ctx.axisH, ctx.axisV, wx, wy, 12 / ctx.zoom);
+  const radius = 12 / ctx.zoom;
+  const candidates = ctx.editor.boundsCandidates2D(
+    ctx.axisH,
+    ctx.axisV,
+    wx - radius,
+    wy - radius,
+    wx + radius,
+    wy + radius,
+  );
   for (const candidate of candidates) {
     if (candidate.kind !== 'entity') continue;
     const entity = candidate.entity;
@@ -143,10 +151,10 @@ export function pickAt(ctx: Viewport2DPickingContext, wx: number, wy: number): V
   let bestPatch: { entity: Entity; patch: Patch } | null = null;
   let bestArea = Infinity;
   let bestDepth = -Infinity;
-  const spatialCandidates = ctx.editor.spatialIndex().queryPoint2D(ctx.axisH, ctx.axisV, wx, wy);
+  const boundsCandidates = ctx.editor.boundsCandidates2D(ctx.axisH, ctx.axisV, wx, wy, wx, wy);
 
   if (filter === 'all' || filter === 'brushes') {
-    for (const candidate of spatialCandidates) {
+    for (const candidate of boundsCandidates) {
       if (candidate.kind !== 'brush') continue;
       const { entity, brush } = candidate;
       if (!ctx.editor.isBrushVisible(brush, entity)) continue;
@@ -165,7 +173,7 @@ export function pickAt(ctx: Viewport2DPickingContext, wx: number, wy: number): V
   }
 
   if (filter === 'all' || filter === 'patches') {
-    for (const candidate of spatialCandidates) {
+    for (const candidate of boundsCandidates) {
       if (candidate.kind !== 'patch') continue;
       const { entity, patch } = candidate;
       if (!ctx.editor.isPatchVisible(patch, entity)) continue;

@@ -14,7 +14,7 @@ import type { Editor } from './editor';
 import type { MapDocumentRef } from './map-operations';
 import { selectDocumentRef } from './document-navigation';
 
-type BuildTab = 'summary' | 'diagnostics' | 'bsp-vis' | 'lightmaps' | 'history';
+type BuildTab = 'summary' | 'diagnostics' | 'bsp-vis' | 'lightmaps' | 'output' | 'history';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -219,6 +219,13 @@ function buildHistoryPanel(records: BuildRecord[]): HTMLElement {
   return panel;
 }
 
+function compilerOutputPanel(output: readonly string[]): HTMLElement {
+  const log = document.createElement('pre');
+  log.className = 'build-compiler-output';
+  log.textContent = output.length > 0 ? output.join('\n') : 'The compiler produced no textual output.';
+  return log;
+}
+
 export function createBuildInspector(
   editor: Editor,
   record: BuildRecord,
@@ -250,10 +257,12 @@ export function createBuildInspector(
     } else if (active === 'diagnostics') content.appendChild(diagnosticList(editor, record.diagnostics));
     else if (active === 'bsp-vis') content.appendChild(inspection ? bspVisPanel(editor, inspection) : document.createTextNode('No BSP inspection available.'));
     else if (active === 'lightmaps') content.appendChild(inspection ? lightmapContactSheet(inspection) : document.createTextNode('No lightmap data available.'));
+    else if (active === 'output') content.appendChild(compilerOutputPanel(record.output));
     else content.appendChild(buildHistoryPanel(history));
   };
   for (const [tab, label] of [
-    ['summary', 'Build Summary'], ['diagnostics', 'Diagnostics'], ['bsp-vis', 'BSP / VIS'], ['lightmaps', 'Lightmaps'], ['history', 'History'],
+    ['summary', 'Build Summary'], ['diagnostics', 'Diagnostics'], ['bsp-vis', 'BSP / VIS'], ['lightmaps', 'Lightmaps'],
+    ['output', 'Compiler Output'], ['history', 'History'],
   ] as Array<[BuildTab, string]>) {
     const tabButton = button(label, () => { active = tab; render(); });
     tabButton.classList.add('diagnostics-tab');

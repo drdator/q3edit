@@ -378,7 +378,6 @@ export function createDefaultMap(editor: Editor): void {
   light.properties['light'] = '300';
   editor.entities.push(light);
 
-  editor.invalidateSpatialIndex();
   editor.redrawRequested = true;
   editor.statusMessage = 'Default map created';
 }

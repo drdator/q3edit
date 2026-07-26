@@ -25,7 +25,6 @@ function documentsEqual(left: MapSnapshot, right: MapSnapshot): boolean {
 }
 
 export function resetEditorStateAfterDocumentReplacement(editor: Editor): void {
-  editor.invalidateSpatialIndex();
   editor.selection = [];
   editor.clearHiddenState();
   editor.vertexMode = false;

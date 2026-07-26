@@ -18,9 +18,12 @@ export type ThemePreset = 'dark' | 'light' | 'high-contrast' | 'custom';
 export type ViewportLayout = 'quad' | 'wide-3d' | 'wide-2d';
 export type GridSnapMode = 'off' | 'abs' | 'rel';
 export type QuickPlayQuality = 'fast' | 'normal' | 'full';
+export type QuickPlayBuildScope = 'full' | 'region';
 
 export interface QuickPlayPreferences {
   quality: QuickPlayQuality;
+  generateAas: boolean;
+  scope: QuickPlayBuildScope;
   botsEnabled: boolean;
   botCount: number;
   botSkill: number;
@@ -74,7 +77,14 @@ export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
   collapsedPanels: {},
   sidebar: { visible: true, width: DEFAULT_SIDEBAR_WIDTH },
   mcpActivity: { visible: false, height: DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT },
-  quickPlay: { quality: 'normal', botsEnabled: false, botCount: 1, botSkill: 2 },
+  quickPlay: {
+    quality: 'normal',
+    generateAas: true,
+    scope: 'region',
+    botsEnabled: false,
+    botCount: 1,
+    botSkill: 2,
+  },
   theme: { preset: 'dark', colors: DEFAULT_THEME_COLORS },
   viewportLayout: 'quad',
   editorDefaults: {
@@ -144,6 +154,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   const primitives: BrushPrimitive[] = ['box', 'cylinder', 'cone', 'sphere', 'pyramid'];
   const invisibleModes: InvisibleMode[] = ['show', 'dim', 'hide'];
   const quickPlayQualities: QuickPlayQuality[] = ['fast', 'normal', 'full'];
+  const quickPlayScopes: QuickPlayBuildScope[] = ['full', 'region'];
   const rawBotCount = Number(quickPlay.botCount);
   const rawBotSkill = Number(quickPlay.botSkill);
   return {
@@ -161,6 +172,10 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
     quickPlay: {
       quality: quickPlayQualities.includes(quickPlay.quality as QuickPlayQuality)
         ? quickPlay.quality as QuickPlayQuality : defaults.quickPlay.quality,
+      generateAas: typeof quickPlay.generateAas === 'boolean'
+        ? quickPlay.generateAas : defaults.quickPlay.generateAas,
+      scope: quickPlayScopes.includes(quickPlay.scope as QuickPlayBuildScope)
+        ? quickPlay.scope as QuickPlayBuildScope : defaults.quickPlay.scope,
       botsEnabled: typeof quickPlay.botsEnabled === 'boolean' ? quickPlay.botsEnabled : defaults.quickPlay.botsEnabled,
       botCount: Number.isFinite(rawBotCount) ? Math.min(3, Math.max(1, Math.round(rawBotCount))) : defaults.quickPlay.botCount,
       botSkill: Number.isFinite(rawBotSkill) ? Math.min(5, Math.max(1, Math.round(rawBotSkill))) : defaults.quickPlay.botSkill,

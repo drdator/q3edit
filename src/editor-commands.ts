@@ -5,6 +5,7 @@ import type { Vec3 } from './math';
 import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
 import { openExactPrimitiveDialog } from './primitive-dialog';
 import { openReleaseNotesDialog } from './release-notes-dialog';
+import type { BspOverlayMode } from './bsp-inspection';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -25,6 +26,8 @@ export interface EditorCommandContext {
   openDiagnostics: (tab: 'map' | 'design-review' | 'entity-logic' | 'performance' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
+  toggleBuildResults: () => void;
+  isBuildResultsOpen: () => boolean;
   openMcpConnection: () => void;
   openTerrainPanel: () => void;
   toggleSidebar: () => void;
@@ -126,6 +129,24 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     checked: ({ editor }) => editor.display.textureFiltering === filtering,
     execute: ({ editor }) => editor.setTextureFiltering(filtering),
   }));
+  const bspOverlayModes: Array<[BspOverlayMode, string]> = [
+    ['none', 'None'],
+    ['leaves', 'BSP Leaves'],
+    ['portals', 'Portals'],
+    ['both', 'Leaves + Portals'],
+    ['visible', 'Visible Leaves from Camera'],
+  ];
+  const bspOverlayCommands: CommandDefinition<EditorCommandContext>[] = bspOverlayModes.map(([mode, label], index) => ({
+    id: `view.bsp-overlay.${mode}`,
+    label,
+    menu: menu('View', 230 + index, 'renderer', 'BSP Overlay'),
+    enabled: ({ editor }) => editor.compiledBspInspection !== null,
+    checked: ({ editor }) => editor.compiledBspOverlay === mode,
+    execute: ({ editor }) => {
+      editor.compiledBspOverlay = mode;
+      editor.redrawRequested = true;
+    },
+  }));
   const commands: CommandDefinition<EditorCommandContext>[] = [
     { id: 'file.new', label: 'New', defaultShortcut: 'Mod+N', menu: menu('File', 0, 'document'), execute: ({ editor }) => { editor.newMap(); editor.createDefaultMap(); } },
     { id: 'file.open', label: 'Open...', defaultShortcut: 'Mod+O', menu: menu('File', 10, 'open-save'), execute: ({ editor }) => editor.openMapFromFile() },
@@ -193,7 +214,15 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     ...displayCommands,
     ...rendererCommands,
     ...filteringCommands,
+    ...bspOverlayCommands,
     { id: 'view.mcp-connection', label: 'Local MCP Connection...', menu: menu('View', 980, 'mcp-activity'), execute: ctx => ctx.openMcpConnection() },
+    {
+      id: 'view.build-results',
+      label: 'Build Results',
+      menu: menu('View', 985, 'mcp-activity'),
+      checked: ctx => ctx.isBuildResultsOpen(),
+      execute: ctx => ctx.toggleBuildResults(),
+    },
     { id: 'view.mcp-activity', label: 'Activity', menu: menu('View', 990, 'mcp-activity'), checked: ctx => ctx.isMcpActivityOpen(), execute: ctx => ctx.toggleMcpActivity() },
     { id: 'view.release-notes', label: 'Release Notes...', menu: menu('View', 1000, 'release-notes'), execute: () => openReleaseNotesDialog() },
 

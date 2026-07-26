@@ -3,7 +3,6 @@ import { createBrushPrimitive, createWedgeBrush } from './brush-primitives';
 import { collectEditorDiagnostics } from './diagnostics';
 import { Editor, type SelectionItem } from './editor';
 import { createEntity } from './entity';
-import { MapSpatialIndex } from './map-spatial-index';
 import { parseMapWithDiagnostics, serializeMap } from './mapfile';
 import { createCylinderPatch, createFlatPatch } from './patch';
 
@@ -31,7 +30,6 @@ export interface ComplexMapBenchmarkMetric {
 export interface ComplexMapMemoryReport {
   mapTextBytes: number;
   estimatedDocumentBytes: number;
-  spatialIndexBytes: number;
   jsHeapBytes: number | null;
   jsHeapLimitBytes: number | null;
   textures?: ReturnType<NonNullable<Editor['textureManager']>['memoryStats']>;
@@ -210,8 +208,6 @@ function benchmarkEditor(
   const loadMs = elapsed(() => { loaded = new Editor(); loaded.loadMap(mapText); });
   let renderValues = 0;
   const geometryMs = elapsed(() => { renderValues = generateRenderBuffers(loaded); });
-  let index!: MapSpatialIndex;
-  const indexMs = elapsed(() => { index = new MapSpatialIndex(loaded); });
   const center = Math.sqrt(Math.max(1, collectComplexMapCounts(loaded).brushes)) * 40;
   const mapBounds = Array.from(loaded.allBrushes()).reduce<{ mins: [number, number, number]; maxs: [number, number, number] } | null>(
     (bounds, { brush }) => bounds ? {
@@ -223,24 +219,16 @@ function benchmarkEditor(
   const pickCenter = mapBounds
     ? [(mapBounds.mins[0] + mapBounds.maxs[0]) / 2, (mapBounds.mins[1] + mapBounds.maxs[1]) / 2]
     : [center, center];
-  const brushEntries = index.entries.filter(entry => entry.kind === 'brush');
-  let linearCandidateCount = 0;
-  const linearPickMs = elapsed(() => {
-    for (let repeat = 0; repeat < 200; repeat++) {
-      const x = pickCenter[0] + repeat % 8;
-      linearCandidateCount += brushEntries.filter(entry =>
-        x >= entry.mins[0] && x <= entry.maxs[0] && pickCenter[1] >= entry.mins[1] && pickCenter[1] <= entry.maxs[1]).length;
-    }
-  }) / 200;
   let candidateCount = 0;
   const pickMs = elapsed(() => {
     for (let repeat = 0; repeat < 200; repeat++) {
-      candidateCount += index.queryPoint2D(0, 1, pickCenter[0] + repeat % 8, pickCenter[1]).length;
+      const x = pickCenter[0] + repeat % 8;
+      candidateCount += loaded.boundsCandidates2D(0, 1, x, pickCenter[1], x, pickCenter[1]).length;
     }
   }) / 200;
   let selectedCount = 0;
   const selectionMs = elapsed(() => {
-    selectedCount = index.queryBounds2D(
+    selectedCount = loaded.boundsCandidates2D(
       0, 1,
       pickCenter[0] - 512, pickCenter[1] - 512,
       pickCenter[0] + 512, pickCenter[1] + 512,
@@ -276,9 +264,8 @@ function benchmarkEditor(
       metric('parse and geometry calculation', parseMs, LOAD_BUDGETS[size], 'load', `${parsed.diagnostics.length} parser diagnostics`),
       metric('asset discovery', assetDiscoveryMs, Math.max(16.7, LOAD_BUDGETS[size] / 10), 'load'),
       metric('viewport geometry preparation', geometryMs, 16.7, 'frame', `${renderValues.toLocaleString()} vertex values`),
-      metric('spatial index rebuild', indexMs, Math.max(16.7, LOAD_BUDGETS[size] / 5), 'load', `${index.entries.length.toLocaleString()} indexed objects`),
-      metric('indexed picking', pickMs, 2, 'interaction',
-        `${Math.round(candidateCount / 200)} indexed candidates / ${Math.round(linearCandidateCount / 200)} linear hits · ${linearPickMs.toFixed(3)} ms linear baseline · ${Math.max(1, linearPickMs / Math.max(0.0001, pickMs)).toFixed(1)}× faster`),
+      metric('2D picking candidates', pickMs, 2, 'interaction',
+        `${Math.round(candidateCount / 200)} matching candidates · direct scan without cache invalidation`),
       metric('region selection', selectionMs, 16.7, 'interaction', `${selectedCount.toLocaleString()} candidates`),
       metric('transform 64 brushes', transformMs, 100, 'command'),
       metric('undo', undoMs, 100, 'command'),
@@ -290,7 +277,6 @@ function benchmarkEditor(
     memory: {
       mapTextBytes: new TextEncoder().encode(mapText).byteLength,
       estimatedDocumentBytes: estimatedDocumentBytes(loaded),
-      spatialIndexBytes: index.estimatedBytes(),
       jsHeapBytes: heap.used,
       jsHeapLimitBytes: heap.limit,
       textures: loaded.textureManager?.memoryStats(),

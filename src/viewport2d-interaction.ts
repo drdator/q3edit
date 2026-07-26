@@ -1047,9 +1047,9 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
         }
       } else {
         const filter = ctx.editor.selectionFilter;
-        const spatialCandidates = ctx.editor.spatialCandidates2D(ctx.axisH, ctx.axisV, minH, minV, maxH, maxV);
+        const boundsCandidates = ctx.editor.boundsCandidates2D(ctx.axisH, ctx.axisV, minH, minV, maxH, maxV);
         if (filter === 'all' || filter === 'brushes') {
-          for (const candidate of spatialCandidates) {
+          for (const candidate of boundsCandidates) {
             if (candidate.kind !== 'brush') continue;
             const { entity, brush } = candidate;
             if (!ctx.editor.isBrushVisible(brush, entity)) continue;
@@ -1060,7 +1060,7 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
           }
         }
         if (filter === 'all' || filter === 'patches') {
-          for (const candidate of spatialCandidates) {
+          for (const candidate of boundsCandidates) {
             if (candidate.kind !== 'patch') continue;
             const { entity, patch } = candidate;
             if (!ctx.editor.isPatchVisible(patch, entity)) continue;
@@ -1071,7 +1071,7 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
           }
         }
         if (filter === 'all' || filter === 'entities') {
-          for (const candidate of spatialCandidates) {
+          for (const candidate of boundsCandidates) {
             if (candidate.kind !== 'entity') continue;
             const { entity } = candidate;
             if (!ctx.editor.isEntityVisible(entity)) continue;
