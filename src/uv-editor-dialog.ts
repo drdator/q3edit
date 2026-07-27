@@ -107,6 +107,7 @@ export function openUvEditorDialog(editor: Editor): void {
   let dragCanvasBounds: DOMRect | null = null;
   let dragCenterScreen: [number, number] | null = null;
   let dragPointerPoint: [number, number] | null = null;
+  let dragPointerOffset: [number, number] = [0, 0];
   let dragViewportScale = 1;
   let drawFrame: number | null = null;
   let imagePattern: CanvasPattern | null = null;
@@ -223,9 +224,14 @@ export function openUvEditorDialog(editor: Editor): void {
     const screenPoints = polygon.map(point => uvToScreen(point, viewport));
     const topY = Math.min(...screenPoints.map(point => point[1]));
     const rightX = Math.max(...screenPoints.map(point => point[0]));
-    const interactionCenter = (dragMode === 'rotate' || dragMode === 'scale') && dragCenterScreen
-      ? dragCenterScreen
-      : centerScreen;
+    const interactionCenter: [number, number] = dragMode === 'translate' && dragPointerPoint
+      ? [
+          dragPointerPoint[0] + dragPointerOffset[0],
+          dragPointerPoint[1] + dragPointerOffset[1],
+        ]
+      : (dragMode === 'rotate' || dragMode === 'scale') && dragCenterScreen
+        ? dragCenterScreen
+        : centerScreen;
     rotateHandle = dragMode === 'rotate' && dragPointerPoint
       ? dragPointerPoint
       : [centerScreen[0], topY - 44];
@@ -248,21 +254,21 @@ export function openUvEditorDialog(editor: Editor): void {
 
     context.strokeStyle = 'rgba(232,160,48,.65)';
     context.lineWidth = 2;
-    if (dragMode !== 'scale') {
+    if (dragMode !== 'scale' && dragMode !== 'translate') {
       context.beginPath(); context.moveTo(interactionCenter[0], interactionCenter[1]); context.lineTo(rotateHandle[0], rotateHandle[1]); context.stroke();
     }
-    if (dragMode !== 'rotate') {
+    if (dragMode !== 'rotate' && dragMode !== 'translate') {
       context.beginPath(); context.moveTo(interactionCenter[0], interactionCenter[1]); context.lineTo(scaleHandle[0], scaleHandle[1]); context.stroke();
     }
     context.fillStyle = '#e8a030';
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 11, 0, Math.PI * 2); context.fill();
     context.fillStyle = '#151515';
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 4, 0, Math.PI * 2); context.fill();
-    if (dragMode !== 'scale') {
+    if (dragMode !== 'scale' && dragMode !== 'translate') {
       context.fillStyle = '#67b7d1';
       context.beginPath(); context.arc(rotateHandle[0], rotateHandle[1], 10, 0, Math.PI * 2); context.fill();
     }
-    if (dragMode !== 'rotate') {
+    if (dragMode !== 'rotate' && dragMode !== 'translate') {
       context.fillStyle = '#78c46b';
       context.fillRect(scaleHandle[0] - 9, scaleHandle[1] - 9, 18, 18);
     }
@@ -304,6 +310,9 @@ export function openUvEditorDialog(editor: Editor): void {
     previousPoint = point;
     dragCenterScreen = [...centerScreen];
     dragPointerPoint = [...point];
+    dragPointerOffset = dragMode === 'translate'
+      ? [centerScreen[0] - point[0], centerScreen[1] - point[1]]
+      : [0, 0];
     dragViewportScale = viewport.scale;
     previousAngle = Math.atan2(point[1] - dragCenterScreen[1], point[0] - dragCenterScreen[0]);
     previousRadius = Math.max(1, distance(point, dragCenterScreen));
@@ -319,9 +328,10 @@ export function openUvEditorDialog(editor: Editor): void {
     }
     if (dragMode === 'translate') {
       const [textureWidth, textureHeight] = textureSize();
-      const dx = (point[0] - previousPoint[0]) / viewport.scale * textureWidth;
-      const dy = (point[1] - previousPoint[1]) / viewport.scale * textureHeight;
+      const dx = (point[0] - previousPoint[0]) / dragViewportScale * textureWidth;
+      const dy = (point[1] - previousPoint[1]) / dragViewportScale * textureHeight;
       editor.shiftTexture(dx, dy);
+      dragPointerPoint = [...point];
     } else if (dragMode === 'rotate') {
       const rotationCenter = dragCenterScreen ?? centerScreen;
       const angle = Math.atan2(point[1] - rotationCenter[1], point[0] - rotationCenter[0]);
@@ -343,6 +353,7 @@ export function openUvEditorDialog(editor: Editor): void {
     dragMode = null;
     dragCenterScreen = null;
     dragPointerPoint = null;
+    dragPointerOffset = [0, 0];
     if (dragTransactionOpen) {
       editor.commitTransaction();
       dragTransactionOpen = false;
