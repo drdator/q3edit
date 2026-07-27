@@ -1,6 +1,16 @@
 import type { Editor } from './editor';
 import { inspectPatch } from './patch-operations';
 import type { Patch } from './patch';
+import { openPatchDeformDialog } from './patch-deform-dialog';
+
+function action(label: string, run: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn';
+  button.textContent = label;
+  button.onmousedown = event => { event.stopPropagation(); run(); };
+  return button;
+}
 
 export function buildPatchInspector(container: HTMLElement, editor: Editor, patches: Patch[]): void {
   const title = document.createElement('label'); title.style.fontWeight = 'bold';
@@ -20,6 +30,14 @@ export function buildPatchInspector(container: HTMLElement, editor: Editor, patc
     input.addEventListener('change', () => editor.updatePatchProperties(patch, { [key]: key === 'texture' ? input.value : Number(input.value) }));
     container.append(label, input);
   }
+  const shapeActions = document.createElement('div');
+  shapeActions.className = 'patch-inspector-actions';
+  shapeActions.append(
+    action('Smooth Rows', () => editor.applyPatchOperation('smooth-rows')),
+    action('Smooth Columns', () => editor.applyPatchOperation('smooth-columns')),
+    action('Deform…', () => openPatchDeformDialog(editor)),
+  );
+  container.appendChild(shapeActions);
   const details = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = `${model.controlPoints.length} control points`;
   const pre = document.createElement('pre'); pre.className = 'patch-control-data';
   pre.textContent = model.controlPoints.map(point => `${point.row},${point.col}: (${point.xyz.join(' ')}) uv(${point.uv.join(' ')})`).join('\n');
