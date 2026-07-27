@@ -281,6 +281,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'csg.subtract', label: 'CSG Subtract', defaultShortcut: 'Mod+Shift+S', menu: menu('CSG', 0, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgSubtract() },
     { id: 'csg.hollow', label: 'Make Hollow', defaultShortcut: 'Mod+Shift+H', menu: menu('CSG', 10, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgHollow() },
     { id: 'csg.merge', label: 'Merge Brushes', defaultShortcut: 'Mod+Shift+M', menu: menu('CSG', 20, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgMerge() },
+    { id: 'csg.intersect', label: 'Intersect Brushes', menu: menu('CSG', 30, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgIntersect() },
     ...[1, 2, 4, 8, 16, 32, 64].map((size, index): CommandDefinition<EditorCommandContext> => ({ id: `grid.set-${size}`, label: `Grid ${size}`, menu: menu('Grid', index * 10, 'sizes'), checked: ({ editor }) => editor.gridSize === size, execute: ctx => ctx.setGrid(size) })),
     { id: 'grid.smaller', label: 'Smaller Grid', defaultShortcut: 'BracketLeft', menu: menu('Grid', 80, 'adjust'), execute: ctx => ctx.decreaseGrid() },
     { id: 'grid.larger', label: 'Larger Grid', defaultShortcut: 'BracketRight', menu: menu('Grid', 90, 'adjust'), execute: ctx => ctx.increaseGrid() },

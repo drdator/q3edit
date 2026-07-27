@@ -1,5 +1,5 @@
 import { Brush, BrushFace, clipBrush, cloneTextureProjection, computeBrushGeometry, validateBrush } from './brush';
-import { Plane, Vec3, planePointDistance, vec3Copy, vec3Scale, vec3Sub } from './math';
+import { Plane, Vec3, planePointDistance, vec3Copy, vec3Dot, vec3Scale, vec3Sub } from './math';
 
 const ON_EPSILON = 0.1;
 const NORMAL_EPSILON = 1e-4;
@@ -282,4 +282,54 @@ export function mergeBrushes(brushes: Brush[]): Brush | null {
   if (!validation.valid) return null;
 
   return newBrush;
+}
+
+/**
+ * Build the common convex volume shared by all input brushes.
+ *
+ * A convex brush is the intersection of the back half-spaces defined by its
+ * face planes, so intersecting brushes only requires combining and
+ * deduplicating those planes. Materials are inherited from the first brush by
+ * matching each result plane to its closest outward-facing source face.
+ */
+export function intersectBrushes(brushes: Brush[]): Brush | null {
+  if (brushes.length < 2) return null;
+  for (let index = 1; index < brushes.length; index++) {
+    if (!aabbOverlap(brushes[0], brushes[index])) return null;
+  }
+
+  const firstBrush = brushes[0];
+  const faces: BrushFace[] = [];
+  for (const brush of brushes) {
+    for (const face of brush.faces) {
+      if (faces.some(existing => planeEqual(existing.plane, face.plane))) continue;
+
+      const material = firstBrush.faces.reduce((closest, candidate) =>
+        vec3Dot(candidate.plane.normal, face.plane.normal)
+          > vec3Dot(closest.plane.normal, face.plane.normal)
+          ? candidate
+          : closest);
+      const resultFace = cloneFace(face);
+      resultFace.editorObjectId = undefined;
+      resultFace.texture = material.texture;
+      resultFace.textureProjection = cloneTextureProjection(material.textureProjection);
+      resultFace.contentFlags = material.contentFlags;
+      resultFace.surfaceFlags = material.surfaceFlags;
+      resultFace.value = material.value;
+      faces.push(resultFace);
+    }
+  }
+
+  const intersection: Brush = {
+    faces,
+    properties: firstBrush.properties ? { ...firstBrush.properties } : undefined,
+    mins: [0, 0, 0],
+    maxs: [0, 0, 0],
+  };
+  computeBrushGeometry(intersection);
+  intersection.faces = intersection.faces.filter(face => face.polygon.length >= 3);
+  if (intersection.faces.length < 4) return null;
+  if (intersection.maxs.some((value, axis) => value - intersection.mins[axis] <= ON_EPSILON)) return null;
+  if (!validateBrush(intersection).valid) return null;
+  return intersection;
 }

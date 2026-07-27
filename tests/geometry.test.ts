@@ -6,7 +6,7 @@ import {
   createBoxBrush,
   validateBrush,
 } from '../src/brush';
-import { hollowBrush, mergeBrushes, subtractBrush } from '../src/csg';
+import { hollowBrush, intersectBrushes, mergeBrushes, subtractBrush } from '../src/csg';
 import { vec3Add, vec3MirrorAxis, vec3RotateAxis, type Vec3 } from '../src/math';
 import {
   mirrorBrushLocked,
@@ -132,5 +132,26 @@ describe('clipping and CSG invariants', () => {
     expectVecClose(merged!.mins, [0, 0, 0]);
     expectVecClose(merged!.maxs, [64, 64, 64]);
     expect(validateBrush(merged!).valid).toBe(true);
+  });
+
+  test('intersects overlapping brushes into their common volume', () => {
+    const first = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/first');
+    const intersection = intersectBrushes([
+      first,
+      createBoxBrush([32, 16, -16], [96, 48, 48], 'base_wall/second'),
+    ]);
+
+    expect(intersection).not.toBeNull();
+    expectVecClose(intersection!.mins, [32, 16, 0]);
+    expectVecClose(intersection!.maxs, [64, 48, 48]);
+    expect(intersection!.faces.every(face => face.texture === 'base_wall/first')).toBe(true);
+    expect(validateBrush(intersection!).valid).toBe(true);
+  });
+
+  test('returns null when brushes have no common volume', () => {
+    expect(intersectBrushes([
+      createBoxBrush([0, 0, 0], [32, 32, 32]),
+      createBoxBrush([64, 64, 64], [96, 96, 96]),
+    ])).toBeNull();
   });
 });
