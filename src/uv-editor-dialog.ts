@@ -4,6 +4,7 @@ import {
   faceUvPolygon,
   fitUvViewport,
   screenToUv,
+  shortestAngleDelta,
   uvPolygonCenter,
   uvToScreen,
   type UvPoint,
@@ -104,6 +105,9 @@ export function openUvEditorDialog(editor: Editor): void {
   let previousRadius = 0;
   let dragTransactionOpen = false;
   let dragCanvasBounds: DOMRect | null = null;
+  let dragCenterScreen: [number, number] | null = null;
+  let dragPointerPoint: [number, number] | null = null;
+  let dragViewportScale = 1;
   let drawFrame: number | null = null;
   let imagePattern: CanvasPattern | null = null;
   let checkerPattern: CanvasPattern | null = null;
@@ -219,7 +223,12 @@ export function openUvEditorDialog(editor: Editor): void {
     const screenPoints = polygon.map(point => uvToScreen(point, viewport));
     const topY = Math.min(...screenPoints.map(point => point[1]));
     const rightX = Math.max(...screenPoints.map(point => point[0]));
-    rotateHandle = [centerScreen[0], topY - 44];
+    const interactionCenter = dragMode === 'rotate' && dragCenterScreen
+      ? dragCenterScreen
+      : centerScreen;
+    rotateHandle = dragMode === 'rotate' && dragPointerPoint
+      ? dragPointerPoint
+      : [centerScreen[0], topY - 44];
     scaleHandle = [rightX + 24, centerScreen[1]];
     drawBackdrop(context, clipTexture.checked ? screenPoints : null);
 
@@ -237,16 +246,24 @@ export function openUvEditorDialog(editor: Editor): void {
 
     context.strokeStyle = 'rgba(232,160,48,.65)';
     context.lineWidth = 2;
-    context.beginPath(); context.moveTo(centerScreen[0], centerScreen[1]); context.lineTo(rotateHandle[0], rotateHandle[1]); context.stroke();
-    context.beginPath(); context.moveTo(centerScreen[0], centerScreen[1]); context.lineTo(scaleHandle[0], scaleHandle[1]); context.stroke();
+    if (dragMode !== 'scale') {
+      context.beginPath(); context.moveTo(interactionCenter[0], interactionCenter[1]); context.lineTo(rotateHandle[0], rotateHandle[1]); context.stroke();
+    }
+    if (dragMode !== 'rotate') {
+      context.beginPath(); context.moveTo(centerScreen[0], centerScreen[1]); context.lineTo(scaleHandle[0], scaleHandle[1]); context.stroke();
+    }
     context.fillStyle = '#e8a030';
-    context.beginPath(); context.arc(centerScreen[0], centerScreen[1], 11, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 11, 0, Math.PI * 2); context.fill();
     context.fillStyle = '#151515';
-    context.beginPath(); context.arc(centerScreen[0], centerScreen[1], 4, 0, Math.PI * 2); context.fill();
-    context.fillStyle = '#67b7d1';
-    context.beginPath(); context.arc(rotateHandle[0], rotateHandle[1], 10, 0, Math.PI * 2); context.fill();
-    context.fillStyle = '#78c46b';
-    context.fillRect(scaleHandle[0] - 9, scaleHandle[1] - 9, 18, 18);
+    context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 4, 0, Math.PI * 2); context.fill();
+    if (dragMode !== 'scale') {
+      context.fillStyle = '#67b7d1';
+      context.beginPath(); context.arc(rotateHandle[0], rotateHandle[1], 10, 0, Math.PI * 2); context.fill();
+    }
+    if (dragMode !== 'rotate') {
+      context.fillStyle = '#78c46b';
+      context.fillRect(scaleHandle[0] - 9, scaleHandle[1] - 9, 18, 18);
+    }
     status.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${projectionSummary(face)}`;
   };
   const scheduleDraw = () => {
@@ -283,8 +300,11 @@ export function openUvEditorDialog(editor: Editor): void {
     );
     dragTransactionOpen = true;
     previousPoint = point;
-    previousAngle = Math.atan2(point[1] - centerScreen[1], point[0] - centerScreen[0]);
-    previousRadius = Math.max(1, distance(point, centerScreen));
+    dragCenterScreen = [...centerScreen];
+    dragPointerPoint = [...point];
+    dragViewportScale = viewport.scale;
+    previousAngle = Math.atan2(point[1] - dragCenterScreen[1], point[0] - dragCenterScreen[0]);
+    previousRadius = Math.max(1, distance(point, dragCenterScreen));
     canvas.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
@@ -301,15 +321,15 @@ export function openUvEditorDialog(editor: Editor): void {
       const dy = (point[1] - previousPoint[1]) / viewport.scale * textureHeight;
       editor.shiftTexture(dx, dy);
     } else if (dragMode === 'rotate') {
-      const angle = Math.atan2(point[1] - centerScreen[1], point[0] - centerScreen[0]);
-      let delta = (angle - previousAngle) * 180 / Math.PI;
-      if (delta > 180) delta -= 360;
-      if (delta < -180) delta += 360;
-      editor.rotateTexture(delta);
+      const rotationCenter = dragCenterScreen ?? centerScreen;
+      const angle = Math.atan2(point[1] - rotationCenter[1], point[0] - rotationCenter[0]);
+      editor.rotateTexture(shortestAngleDelta(previousAngle, angle) * 180 / Math.PI);
       previousAngle = angle;
+      dragPointerPoint = [...point];
     } else {
-      const radius = Math.max(1, distance(point, centerScreen));
-      editor.scaleTexture((radius - previousRadius) / Math.max(80, viewport.scale));
+      const scaleCenter = dragCenterScreen ?? centerScreen;
+      const radius = Math.max(1, distance(point, scaleCenter));
+      editor.scaleTexture((radius - previousRadius) / Math.max(80, dragViewportScale));
       previousRadius = radius;
     }
     previousPoint = point;
@@ -318,13 +338,16 @@ export function openUvEditorDialog(editor: Editor): void {
   const finishDrag = (event: PointerEvent) => {
     if (!dragMode) return;
     dragMode = null;
+    dragCenterScreen = null;
+    dragPointerPoint = null;
     if (dragTransactionOpen) {
       editor.commitTransaction();
       dragTransactionOpen = false;
     }
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-    updateCursor(eventPoint(event, canvas, dragCanvasBounds ?? undefined));
+    canvas.style.cursor = 'default';
     dragCanvasBounds = null;
+    scheduleDraw();
   };
   canvas.addEventListener('pointerup', finishDrag);
   canvas.addEventListener('pointercancel', finishDrag);

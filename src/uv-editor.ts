@@ -81,3 +81,10 @@ export function uvPolygonCenter(points: UvPoint[]): UvPoint {
     v: points.reduce((sum, point) => sum + point.v, 0) / points.length,
   };
 }
+
+export function shortestAngleDelta(previous: number, current: number): number {
+  let delta = current - previous;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
