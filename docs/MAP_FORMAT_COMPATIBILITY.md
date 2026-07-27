@@ -23,3 +23,18 @@ Confirming the warning explicitly exports only the editable representation.
 
 Compiler output is always generated from the supported editable representation
 and strips Q3Edit-only metadata.
+
+## Linked geometry groups
+
+Linked groups use ordinary flattened brushes and patches, so compiled maps and
+other editors see complete valid geometry without understanding Q3Edit
+instances. A `group_info` entity records the source group and instance offset in
+`_q3edit_link_source_group` and `_q3edit_link_offset` epairs. Q3Edit reconstructs
+that relationship on load and keeps each locked instance synchronized when its
+source geometry changes.
+
+Linked groups intentionally cover brush and patch geometry only. Point entities
+and entity properties remain independent. Saving through another editor may
+remove the Q3Edit metadata; the flattened geometry remains intact, but the link
+cannot be reconstructed. If only part of the metadata survives, the Groups panel
+marks the instance as a broken link so it can be explicitly unlinked.

@@ -199,6 +199,7 @@ import {
 } from './editor-grouping';
 import {
   addSelectionToNamedGroup as addEditorSelectionToNamedGroup,
+  createLinkedGroupCopy as createEditorLinkedGroupCopy,
   createNamedGroup as createEditorNamedGroup,
   deleteNamedGroup as deleteEditorNamedGroup,
   listNamedGroups,
@@ -208,6 +209,8 @@ import {
   setNamedGroupHidden as setEditorNamedGroupHidden,
   setNamedGroupLocked as setEditorNamedGroupLocked,
   setNamedGroupParent as setEditorNamedGroupParent,
+  setLinkedGroupOffset as setEditorLinkedGroupOffset,
+  unlinkNamedGroup as unlinkEditorNamedGroup,
   type NamedGroup,
 } from './named-groups';
 import {
@@ -901,6 +904,7 @@ export class Editor {
 
   namedGroups(): NamedGroup[] { return listNamedGroups(this.entities); }
   createNamedGroup(name: string): NamedGroup | null { return createEditorNamedGroup(this, name); }
+  createLinkedGroupCopy(id: string, offset: Vec3): NamedGroup | null { return createEditorLinkedGroupCopy(this, id, offset); }
   renameNamedGroup(id: string, name: string): void { renameEditorNamedGroup(this, id, name); }
   deleteNamedGroup(id: string): void { deleteEditorNamedGroup(this, id); }
   addSelectionToNamedGroup(id: string): void { addEditorSelectionToNamedGroup(this, id); }
@@ -909,6 +913,8 @@ export class Editor {
   setNamedGroupHidden(id: string, hidden: boolean): void { setEditorNamedGroupHidden(this, id, hidden); }
   setNamedGroupLocked(id: string, locked: boolean): void { setEditorNamedGroupLocked(this, id, locked); }
   setNamedGroupParent(id: string, parentId?: string): void { setEditorNamedGroupParent(this, id, parentId); }
+  setLinkedGroupOffset(id: string, offset: Vec3): void { setEditorLinkedGroupOffset(this, id, offset); }
+  unlinkNamedGroup(id: string): void { unlinkEditorNamedGroup(this, id); }
 
   connectSelectedEntities(): void {
     connectEditorSelectedEntities(this);

@@ -1,6 +1,7 @@
 import type { Editor } from './editor';
 import { deduplicateEditorObjectIds } from './editor-object-ids';
 import { cloneMapSnapshot, type MapSnapshot } from './history';
+import { synchronizeLinkedGroups } from './named-groups';
 import {
   cloneTransformDescriptor,
   type TransformDescriptor,
@@ -73,6 +74,7 @@ export function commitTransaction(editor: Editor): boolean {
   if (active.depth > 0) return false;
   activeTransactions.delete(editor);
 
+  synchronizeLinkedGroups(editor, active.before);
   deduplicateEditorObjectIds(editor.entities);
   if (!active.options.assumeChanged && documentsEqual(active.before, editor.entities)) return false;
 
