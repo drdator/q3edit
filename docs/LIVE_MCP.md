@@ -226,7 +226,7 @@ Initial `map_apply` operations are:
 - `create_box`
 - `create_box_array` for evenly spaced, optionally detail-classified geometry
 - `create_room`
-- `create_primitive` (`box`, `cylinder`, `cone`, `sphere`, or `pyramid`)
+- `create_primitive` (`box`, `cylinder`, `cone`, `sphere`, `icosahedron`, `rock`, or `pyramid`)
 - `create_wedge`
 - `create_tapered` for convex tapered or asymmetrically offset trapezoid brushes
 - `create_stairs`

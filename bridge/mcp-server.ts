@@ -599,7 +599,7 @@ const mapOperationVariants = [
     type: z.literal('create_primitive'),
     ...creationMetadataSchema,
     parent: operationRef.optional(),
-    primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'pyramid']),
+    primitive: z.enum(['box', 'cylinder', 'cone', 'sphere', 'icosahedron', 'rock', 'pyramid']),
     mins: vec3,
     maxs: vec3,
     texture: z.string().min(1).optional(),

@@ -19,6 +19,7 @@ import {
   type ProjectConfiguration,
 } from './project-config';
 import { refreshEditorThemeColors } from './theme-colors';
+import { BRUSH_PRIMITIVES } from './brush-primitives';
 
 const THEME_VARIABLES = ['background', 'panel', 'text', 'accent', 'viewport', 'gridMajor', 'gridMinor'] as const;
 
@@ -158,7 +159,7 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
   const snap = select(['off', 'abs', 'rel'], preferences.editorDefaults.gridSnapMode);
   const geoSnap = checkbox(preferences.editorDefaults.snapToGeometry);
   const textureLock = checkbox(preferences.editorDefaults.textureLock);
-  const primitive = select(['box', 'cylinder', 'cone', 'sphere', 'pyramid'], preferences.editorDefaults.brushPrimitive);
+  const primitive = select(BRUSH_PRIMITIVES.map(option => option.value), preferences.editorDefaults.brushPrimitive);
   const sides = input(String(preferences.editorDefaults.brushSides), 'number'); sides.min = '3'; sides.max = '64';
   const invisible = select(['show', 'dim', 'hide'], preferences.editorDefaults.invisibleMode);
   general.append(labeled('Grid size', grid), labeled('Grid snap', snap), labeled('Geometry snap', geoSnap),

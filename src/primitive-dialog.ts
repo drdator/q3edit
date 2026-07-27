@@ -4,7 +4,10 @@ import type { Vec3 } from './math';
 
 function numberInput(value: number, min?: number, max?: number): HTMLInputElement {
   const input = document.createElement('input');
-  input.type = 'number'; input.step = 'any'; input.value = String(value);
+  const displayValue = Math.abs(value - Math.round(value)) < 1e-6
+    ? Math.round(value)
+    : Number(value.toFixed(6));
+  input.type = 'number'; input.step = 'any'; input.value = String(displayValue);
   if (min !== undefined) input.min = String(min);
   if (max !== undefined) input.max = String(max);
   return input;

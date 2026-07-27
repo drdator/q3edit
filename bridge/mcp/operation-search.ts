@@ -15,7 +15,7 @@ const entries: OperationDiscoveryEntry[] = [
   { type: 'create_box', category: 'geometry', summary: 'Create one axis-aligned box brush with semantic top, bottom, and side materials.', keywords: ['block', 'cube', 'platform', 'wall', 'floor'] },
   { type: 'create_box_array', category: 'geometry', summary: 'Create repeated evenly spaced box brushes in one operation.', keywords: ['repeat', 'columns', 'beams', 'platforms'] },
   { type: 'create_room', category: 'geometry', summary: 'Create a sealed rectangular room shell with separate wall, floor, and ceiling materials.', keywords: ['shell', 'arena', 'interior'] },
-  { type: 'create_primitive', category: 'geometry', summary: 'Create a box, cylinder, cone, sphere, or pyramid brush primitive.', keywords: ['round', 'circular', 'column', 'dome'] },
+  { type: 'create_primitive', category: 'geometry', summary: 'Create a box, cylinder, cone, sphere, icosahedron, rock, or pyramid brush primitive.', keywords: ['round', 'circular', 'column', 'dome', 'faceted', 'boulder'] },
   { type: 'create_wedge', category: 'geometry', summary: 'Create a sloped wedge brush.', keywords: ['ramp', 'slope', 'triangle'] },
   { type: 'create_tapered', category: 'geometry', summary: 'Create a tapered or offset convex brush.', keywords: ['trapezoid', 'slanted', 'leaning'] },
   { type: 'create_stairs', category: 'geometry', summary: 'Create a run of stairs with semantic tread, riser, side, and underside materials.', keywords: ['steps', 'staircase', 'vertical route'] },

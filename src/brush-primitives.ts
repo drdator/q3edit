@@ -1,13 +1,15 @@
 import { type Brush, createBoxBrush, createFace, computeBrushGeometry } from './brush';
 import { planeFromPoints, vec3Add, vec3Copy, vec3Dot, vec3Scale, vec3Sub, type Vec3 } from './math';
 
-export type BrushPrimitive = 'box' | 'cylinder' | 'cone' | 'sphere' | 'pyramid';
+export type BrushPrimitive = 'box' | 'cylinder' | 'cone' | 'sphere' | 'icosahedron' | 'rock' | 'pyramid';
 
 export const BRUSH_PRIMITIVES: { value: BrushPrimitive; label: string; usesSides: boolean }[] = [
   { value: 'box', label: 'Box', usesSides: false },
   { value: 'cylinder', label: 'Cylinder', usesSides: true },
   { value: 'cone', label: 'Cone', usesSides: true },
   { value: 'sphere', label: 'Sphere', usesSides: true },
+  { value: 'icosahedron', label: 'Icosahedron', usesSides: false },
+  { value: 'rock', label: 'Rock', usesSides: false },
   { value: 'pyramid', label: 'Pyramid', usesSides: false },
 ];
 
@@ -16,6 +18,8 @@ const BRUSH_PRIMITIVE_ICON_NAMES: Record<BrushPrimitive, string> = {
   cylinder: 'cylinder',
   cone: 'triangle',
   sphere: 'sphere',
+  icosahedron: 'sphere',
+  rock: 'cube',
   pyramid: 'triangle',
 };
 
@@ -276,6 +280,47 @@ function createSphereBrush(mins: Vec3, maxs: Vec3, texture: string, sides: numbe
   return createBrushFromPolygons(polygons, texture);
 }
 
+const ICOSAHEDRON_FACES: [number, number, number][] = [
+  [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+  [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+  [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+  [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+];
+
+function icosahedronPolygons(): Vec3[][] {
+  const phi = (1 + Math.sqrt(5)) / 2;
+  const vertices: Vec3[] = [
+    [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
+    [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
+    [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1],
+  ];
+  return ICOSAHEDRON_FACES.map(indices => indices.map(index => vec3Copy(vertices[index])));
+}
+
+function createIcosahedronBrush(texture: string): Brush {
+  return createBrushFromPolygons(icosahedronPolygons(), texture);
+}
+
+/**
+ * Create an irregular but strictly convex faceted solid. Each regular
+ * icosahedron plane is moved independently while retaining its normal, so the
+ * result remains an intersection of half-spaces rather than a non-convex mesh.
+ */
+function createRockBrush(texture: string): Brush {
+  const polygons = icosahedronPolygons().map((points, index) => {
+    const plane = planeFromPoints(points[0], points[1], points[2]);
+    const center = faceCenter(points);
+    const normal = vec3Dot(plane.normal, center) >= 0
+      ? plane.normal
+      : vec3Scale(plane.normal, -1);
+    const distance = vec3Dot(normal, points[0]);
+    const variation = 0.9 + (((index * 37 + 11) % 23) / 22) * 0.2;
+    const offset = vec3Scale(normal, distance * (variation - 1));
+    return points.map(point => vec3Add(point, offset));
+  });
+  return createBrushFromPolygons(polygons, texture);
+}
+
 export function brushPrimitiveUsesSides(primitive: BrushPrimitive): boolean {
   return BRUSH_PRIMITIVES.some(option => option.value === primitive && option.usesSides);
 }
@@ -319,6 +364,10 @@ export function createBrushPrimitive(
       brush = createConeBrush(mins, maxs, texture, axis, sides); break;
     case 'sphere':
       brush = createSphereBrush(mins, maxs, texture, sides); break;
+    case 'icosahedron':
+      brush = createIcosahedronBrush(texture); break;
+    case 'rock':
+      brush = createRockBrush(texture); break;
     case 'pyramid':
       brush = createPyramidBrush(mins, maxs, texture, axis); break;
   }
