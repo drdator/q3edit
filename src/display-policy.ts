@@ -9,7 +9,7 @@ export type DisplayCategory =
   | 'coordinates' | 'dimensions' | 'blocks' | 'sky' | 'models'
   | 'triggers' | 'translucent' | 'decals' | 'pointEntities'
   | 'structural' | 'areaportals' | 'visportals' | 'clusterportals'
-  | 'botclips' | 'funcGroups' | 'lightgrid';
+  | 'botclips' | 'funcGroups' | 'lightgrid' | 'lightRadii';
 export type RendererMode = 'wireframe' | 'flat' | 'textured' | 'lightmap' | 'overdraw';
 export type TextureFiltering = 'nearest' | 'linear' | 'trilinear';
 
@@ -25,11 +25,14 @@ export const DISPLAY_CATEGORIES: readonly DisplayCategory[] = [
   'caulk', 'curves', 'names', 'angles', 'coordinates', 'dimensions', 'blocks',
   'sky', 'models', 'triggers', 'translucent', 'decals', 'pointEntities',
   'structural', 'areaportals', 'visportals', 'clusterportals', 'botclips',
-  'funcGroups', 'lightgrid',
+  'funcGroups', 'lightgrid', 'lightRadii',
 ];
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
-  categories: Object.fromEntries(DISPLAY_CATEGORIES.map(category => [category, true])) as Record<DisplayCategory, boolean>,
+  categories: {
+    ...Object.fromEntries(DISPLAY_CATEGORIES.map(category => [category, true])),
+    lightRadii: false,
+  } as Record<DisplayCategory, boolean>,
   rendererMode: 'textured',
   textureFiltering: 'trilinear',
   dynamicLights: false,

@@ -1,12 +1,12 @@
 import { Vec3 } from './math';
-import { effectiveDynamicLightRadius } from './dynamic-lighting';
 import { Editor } from './editor';
 import { BrushFace, computeFaceUV } from './brush';
-import { entityColor, entityOrigin, parseLightColor } from './entity';
+import { entityColor, parseLightColor } from './entity';
 import { terrainDefCellTexture, type Patch } from './patch';
 import { DrawGroup, LightRadiusDraw } from './viewport3d-render';
 import { buildModelGeometry } from './model-geometry';
 import { bspOverlayLines } from './bsp-inspection';
+import { lightVolumeSegments, resolveLightVolume } from './light-volume';
 
 const faceVertexCache = new WeakMap<BrushFace, { signature: string; vertices: number[] }>();
 const patchVertexCache = new WeakMap<Patch, { tessVerts: Patch['tessVerts']; tessIndices: Patch['tessIndices']; vertices: number[] }>();
@@ -508,36 +508,16 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   const lightRadiusVerts: number[] = [];
   const lightRadiusDraws: LightRadiusDraw[] = [];
-  const circleSegments = 48;
   for (const entity of ctx.editor.nonWorldspawnEntities()) {
-    if (entity.classname !== 'light' || !entity.properties['light']) continue;
+    if (entity.classname !== 'light') continue;
     if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
-    if (!ctx.editor.isEntitySelected(entity)) continue;
-    const intensity = parseFloat(entity.properties['light']);
-    if (!(intensity > 0)) continue;
-    const radius = effectiveDynamicLightRadius(intensity);
-    const origin = entityOrigin(entity);
-    if (!origin || !ctx.editor.isPointVisibleIn3D(origin)) continue;
+    if (!ctx.editor.isEntitySelected(entity) && !ctx.editor.display.categories.lightRadii) continue;
+    const volume = resolveLightVolume(ctx.editor.entities, entity);
+    if (!volume || !ctx.editor.isPointVisibleIn3D(volume.origin)) continue;
     const color: [number, number, number] = parseLightColor(entity) ?? [1.0, 1.0, 0.4];
     const start = lightRadiusVerts.length / 3;
-    for (let axis = 0; axis < 3; axis++) {
-      for (let i = 0; i < circleSegments; i++) {
-        const a0 = (i / circleSegments) * Math.PI * 2;
-        const a1 = ((i + 1) / circleSegments) * Math.PI * 2;
-        const p0: Vec3 = [origin[0], origin[1], origin[2]];
-        const p1: Vec3 = [origin[0], origin[1], origin[2]];
-        if (axis === 0) {
-          p0[0] += Math.cos(a0) * radius; p0[1] += Math.sin(a0) * radius;
-          p1[0] += Math.cos(a1) * radius; p1[1] += Math.sin(a1) * radius;
-        } else if (axis === 1) {
-          p0[0] += Math.cos(a0) * radius; p0[2] += Math.sin(a0) * radius;
-          p1[0] += Math.cos(a1) * radius; p1[2] += Math.sin(a1) * radius;
-        } else {
-          p0[1] += Math.cos(a0) * radius; p0[2] += Math.sin(a0) * radius;
-          p1[1] += Math.cos(a1) * radius; p1[2] += Math.sin(a1) * radius;
-        }
-        lightRadiusVerts.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2]);
-      }
+    for (const [from, to] of lightVolumeSegments(volume)) {
+      lightRadiusVerts.push(from[0], from[1], from[2], to[0], to[1], to[2]);
     }
     lightRadiusDraws.push({ start, count: lightRadiusVerts.length / 3 - start, color });
   }

@@ -7,6 +7,7 @@ import { collectBrushEdges } from './vertex';
 import { leafAtPoint } from './bsp-inspection';
 import { CONTENTS_DETAIL } from './map-flags';
 import { editorThemeColors, themeRgba } from './theme-colors';
+import { lightVolumeSegments, resolveLightVolume } from './light-volume';
 
 interface GeoSnapLine {
   axis: 'h' | 'v';
@@ -733,20 +734,28 @@ function drawEntity(ctx: Viewport2DRenderContext, entity: Entity, selected: bool
   }
 
   const entityLightOrigin = entityOrigin(entity);
-  if (selected && entity.classname === 'light' && entity.properties['light'] && entityLightOrigin) {
-    const radius = parseFloat(entity.properties['light']);
-    if (radius > 0) {
-      const screenRadius = radius * ctx.zoom;
+  if (entity.classname === 'light' && (selected || ctx.editor.display.categories.lightRadii)) {
+    const volume = resolveLightVolume(ctx.editor.entities, entity);
+    if (volume) {
       const lc = lightColorCSS(entity) ?? '#ffcc00';
+      ctx.ctx.save();
       ctx.ctx.strokeStyle = lc;
-      ctx.ctx.globalAlpha = 0.5;
-      ctx.ctx.lineWidth = 1;
-      ctx.ctx.setLineDash([4, 4]);
+      ctx.ctx.globalAlpha = selected ? 0.65 : 0.35;
+      ctx.ctx.lineWidth = selected ? 1.25 : 1;
+      if (!selected) ctx.ctx.setLineDash([4, 4]);
       ctx.ctx.beginPath();
-      ctx.ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
+      if (volume.kind === 'point') {
+        ctx.ctx.arc(sx, sy, volume.radius * ctx.zoom, 0, Math.PI * 2);
+      } else {
+        for (const [from, to] of lightVolumeSegments(volume)) {
+          const [fromX, fromY] = ctx.worldToScreen(from[ctx.axisH], from[ctx.axisV]);
+          const [toX, toY] = ctx.worldToScreen(to[ctx.axisH], to[ctx.axisV]);
+          ctx.ctx.moveTo(fromX, fromY);
+          ctx.ctx.lineTo(toX, toY);
+        }
+      }
       ctx.ctx.stroke();
-      ctx.ctx.setLineDash([]);
-      ctx.ctx.globalAlpha = 1.0;
+      ctx.ctx.restore();
     }
   }
 

@@ -92,8 +92,11 @@ describe('display policy', () => {
 
   it('inverts and resets every display filter', () => {
     const preferences = structuredClone(DEFAULT_DISPLAY_PREFERENCES);
+    const before = { ...preferences.categories };
     invertDisplayCategories(preferences);
-    expect(Object.values(preferences.categories).every(value => !value)).toBe(true);
+    for (const [category, visible] of Object.entries(before)) {
+      expect(preferences.categories[category as keyof typeof preferences.categories]).toBe(!visible);
+    }
     setAllDisplayCategories(preferences, true);
     expect(Object.values(preferences.categories).every(Boolean)).toBe(true);
   });
@@ -125,6 +128,7 @@ describe('display policy', () => {
 
     expect(preferences.categories.entities).toBe(false);
     expect(preferences.categories.dimensions).toBe(true);
+    expect(preferences.categories.lightRadii).toBe(false);
   });
 
   it('keeps hidden-category selections selected but non-interactive', () => {
