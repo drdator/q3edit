@@ -2958,8 +2958,28 @@ body.sidepanel-resizing * {
 .build-surface-classes strong { color: var(--accent); }
 .build-lightmaps canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; background: #000; border: 1px solid var(--border-light); }
 
-.release-package-dialog { width: min(1180px, calc(100vw - 56px)); height: min(900px, calc(100vh - 56px)); }
-.release-package-body { overflow: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-height: 0; padding-right: 4px; }
+.release-package-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, calc(100vw - 56px));
+  height: min(900px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  box-sizing: border-box;
+}
+.release-package-dialog > .editor-dialog-title,
+.release-package-dialog > .editor-dialog-description,
+.release-package-dialog > .editor-dialog-actions { flex: 0 0 auto; }
+.release-package-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1 1 auto;
+  gap: 12px;
+  min-height: 0;
+  padding-right: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
 .release-package-body section { padding: 14px; background: var(--bg); border: 1px solid var(--border-dark); }
 .release-package-body h3 { margin: 0 0 12px; color: var(--text); font-size: 15px; }
 .release-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
