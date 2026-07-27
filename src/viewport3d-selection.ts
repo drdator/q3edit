@@ -55,6 +55,31 @@ function isGroupedGeometrySelection(ctx: Viewport3DSelectionContext, entity: Ent
 
 export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEvent): void {
   const [sx, sy] = ctx.dragStart;
+  if (ctx.editor.activeTool === 'clip') {
+    const { rayOrigin, rayDir } = ctx.getRay(sx, sy);
+    const surfaceHit = pickPrimarySurface(ctx, sx, sy);
+    let point: Vec3 | null = null;
+    if (surfaceHit?.type === 'patch') {
+      point = surfaceHit.point;
+    } else if (surfaceHit?.type === 'brush') {
+      let bestDist = Infinity;
+      for (let i = 1; i < surfaceHit.face.polygon.length - 1; i++) {
+        const t = rayTriangleIntersect(
+          rayOrigin,
+          rayDir,
+          surfaceHit.face.polygon[0],
+          surfaceHit.face.polygon[i],
+          surfaceHit.face.polygon[i + 1],
+        );
+        if (t !== null && t < bestDist) bestDist = t;
+      }
+      if (Number.isFinite(bestDist)) point = vec3Add(rayOrigin, vec3Scale(rayDir, bestDist));
+    }
+    if (point) ctx.editor.addClipPoint(point, -1);
+    else ctx.editor.statusMessage = 'Clip: click visible geometry to place a 3D point';
+    return;
+  }
+
   if (ctx.editor.vertexMode) {
     const { rayOrigin, rayDir } = ctx.getRay(sx, sy);
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
