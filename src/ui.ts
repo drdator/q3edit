@@ -175,6 +175,7 @@ export class UI {
       quickPlay: () => this.quickPlay(),
       openQuickPlayOptions: () => this.openQuickPlayOptions(),
       managePakFiles: () => this.onManagePakFiles?.(),
+      reloadAssets: () => this.onReloadAssets?.(),
       openPreferences: () => this.openPreferences(),
       openProjectSettings: () => this.openProjectSettings(),
       openVersionHistory: () => {
@@ -934,6 +935,7 @@ export class UI {
   }
 
   onManagePakFiles: (() => Promise<void>) | null = null;
+  onReloadAssets: (() => Promise<void>) | null = null;
   onProjectConfigurationChanged: ((project: ProjectConfiguration) => Promise<void>) | null = null;
 
   setTextureAssetStatus(status: string, importedPakNames: string[] = this.importedPakNames): void {

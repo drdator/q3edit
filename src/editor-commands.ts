@@ -16,6 +16,7 @@ export interface EditorCommandContext {
   quickPlay: () => void | Promise<void>;
   openQuickPlayOptions: () => void;
   managePakFiles: () => void | Promise<void>;
+  reloadAssets?: () => void | Promise<void>;
   openPreferences: () => void;
   openProjectSettings: () => void;
   openVersionHistory?: () => void;
@@ -359,6 +360,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tools.find-brush', label: 'Find Brush…', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
     { id: 'tools.brush-macros', label: 'Brush Macros…', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },
     { id: 'tools.surface-alignment', label: 'Surface Alignment…', menu: menu('Tools', 340, 'surface'), enabled: ctx => (hasSelectedFaces(ctx) || hasSelectedPatches(ctx) || ctx.editor.textureDensityReport() !== null) && !!ctx.openSurfaceAlignment, execute: ctx => ctx.openSurfaceAlignment?.() },
+    { id: 'tools.reload-assets', label: 'Reload Assets', menu: menu('Tools', 290, 'assets'), enabled: ctx => !!ctx.reloadAssets, execute: ctx => ctx.reloadAssets?.() },
 
     { id: 'texture.fit', label: 'Fit Texture', defaultShortcut: 'Mod+Shift+F', enabled: hasSelectedFaces, execute: ({ editor }) => editor.fitTexture() },
     { id: 'texture.reset', label: 'Reset Texture Alignment', defaultShortcut: 'Mod+Shift+N', enabled: hasSelectedFaces, execute: ({ editor }) => editor.resetTextureAlignment() },

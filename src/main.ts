@@ -234,6 +234,57 @@ async function init() {
     return stored.map(pak => pak.name);
   };
 
+  let reloadingAssets = false;
+  ui.onReloadAssets = async () => {
+    if (reloadingAssets) {
+      editor.statusMessage = 'Asset reload already in progress';
+      return;
+    }
+    reloadingAssets = true;
+    const assetLoading = ui.showAssetLoading('Reloading entity definitions, shaders, textures, and models…');
+    const revisionBefore = editor.documentRevision;
+    const undoCountBefore = editor.history.undoCount;
+    try {
+      await assetLoading.ready;
+      const names = await rebuildWithStoredPaks();
+      const description = describeAssetStack(names, openArenaEnabled);
+      ui.setTextureAssetStatus(description, names);
+      await activeTextureManager?.waitForIdle();
+      editor.redrawRequested = true;
+      editor.statusMessage = `Reloaded assets · ${description}`;
+      editor.activityHistory.record({
+        source: 'system',
+        status: 'success',
+        category: 'system',
+        title: 'Reload assets',
+        summary: `Rebuilt entity definitions, shaders, textures, and models from ${description}`,
+        revisionBefore,
+        revisionAfter: editor.documentRevision,
+        undoable: false,
+      });
+      if (editor.documentRevision !== revisionBefore || editor.history.undoCount !== undoCountBefore) {
+        console.warn('Asset reload unexpectedly changed document history');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Failed to reload assets:', error);
+      editor.statusMessage = `Could not reload assets: ${message}`;
+      editor.activityHistory.record({
+        source: 'system',
+        status: 'error',
+        category: 'system',
+        title: 'Reload assets',
+        summary: message,
+        revisionBefore,
+        revisionAfter: editor.documentRevision,
+        undoable: false,
+      });
+    } finally {
+      reloadingAssets = false;
+      assetLoading.close();
+    }
+  };
+
   ui.onProjectConfigurationChanged = async (project: ProjectConfiguration) => {
     openArenaEnabled = project.assets.configured ? project.assets.openArenaEnabled : await loadOpenArenaEnabled();
     const names = await rebuildWithStoredPaks();
