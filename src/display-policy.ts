@@ -6,7 +6,7 @@ import type { Patch } from './patch';
 export type DisplayCategory =
   | 'entities' | 'lights' | 'paths' | 'world' | 'detail' | 'water'
   | 'clip' | 'hint' | 'caulk' | 'curves' | 'names' | 'angles'
-  | 'coordinates' | 'blocks';
+  | 'coordinates' | 'dimensions' | 'blocks';
 export type RendererMode = 'wireframe' | 'flat' | 'textured' | 'lightmap' | 'overdraw';
 export type TextureFiltering = 'nearest' | 'linear' | 'trilinear';
 
@@ -19,7 +19,7 @@ export interface DisplayPreferences {
 
 export const DISPLAY_CATEGORIES: readonly DisplayCategory[] = [
   'entities', 'lights', 'paths', 'world', 'detail', 'water', 'clip', 'hint',
-  'caulk', 'curves', 'names', 'angles', 'coordinates', 'blocks',
+  'caulk', 'curves', 'names', 'angles', 'coordinates', 'dimensions', 'blocks',
 ];
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
