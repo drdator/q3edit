@@ -140,6 +140,7 @@ export class TextureManager {
   private shaderNames = new Set<string>();
   private shaderSourcePaths = new Map<string, string>();
   private shaderMetadata = new Map<string, ShaderMetadata>();
+  private projectShaderFiles: Record<string, string> = {};
 
   // Callback when a texture finishes loading (triggers redraw)
   onTextureLoaded: (() => void) | null = null;
@@ -169,10 +170,14 @@ export class TextureManager {
 
   /** Parse all scripts/*.shader files to build shader name → editor image mapping */
   private parseShaders(): void {
-    for (const asset of this.assets.shaders()) {
-      const path = asset.normalizedPath;
-      if (!path.startsWith('scripts/') || !path.endsWith('.shader')) continue;
-      const text = this.assets.readText(path) ?? '';
+    const sources = [
+      ...this.assets.shaders()
+        .filter(asset => asset.normalizedPath.startsWith('scripts/') && asset.normalizedPath.endsWith('.shader'))
+        .map(asset => ({ path: asset.normalizedPath, text: this.assets.readText(asset.normalizedPath) ?? '' })),
+      ...Object.entries(this.projectShaderFiles).map(([path, text]) => ({ path, text })),
+    ];
+    for (const source of sources) {
+      const { path, text } = source;
       let i = 0;
       const len = text.length;
 
@@ -325,6 +330,28 @@ export class TextureManager {
         this.shaderMetadata.set(key, metadata);
       }
     }
+  }
+
+  setProjectShaderFiles(files: Record<string, string>): void {
+    const oldShaderNames = new Set(this.shaderNames);
+    this.projectShaderFiles = structuredClone(files);
+    this.shaderImages.clear();
+    this.shaderBlendModes.clear();
+    this.shaderNames.clear();
+    this.shaderSourcePaths.clear();
+    this.shaderMetadata.clear();
+    this.parseShaders();
+    for (const name of new Set([...oldShaderNames, ...this.shaderNames])) {
+      const cached = this.cache.get(name);
+      if (cached && cached !== this.missing && cached !== this.white) this.gl.deleteTexture(cached.glTexture);
+      this.cache.delete(name);
+      this.cache.delete(`textures/${name}`);
+    }
+    this.onTextureLoaded?.();
+  }
+
+  getProjectShaderFiles(): Record<string, string> {
+    return structuredClone(this.projectShaderFiles);
   }
 
   getBlendMode(name: string): BlendMode {
@@ -508,7 +535,7 @@ export class TextureManager {
         result[path] = this.assets.readText(path) ?? '';
       }
     }
-    return result;
+    return { ...result, ...this.projectShaderFiles };
   }
 
   /**
@@ -558,6 +585,10 @@ export class TextureManager {
         }
       }
     }
+    for (const name of this.shaderNames) {
+      const directory = name.split('/')[0];
+      if (directory) dirs.add(directory);
+    }
     return [...dirs].sort();
   }
 
@@ -569,6 +600,9 @@ export class TextureManager {
       if (path.startsWith(prefix) && IMAGE_EXTENSION.test(path)) {
         textures.add(path.replace(IMAGE_EXTENSION, '').replace(/^textures\//, ''));
       }
+    }
+    for (const name of this.shaderNames) {
+      if (name.startsWith(`${dir}/`)) textures.add(name);
     }
     return [...textures].sort();
   }

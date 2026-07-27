@@ -236,7 +236,10 @@ export function scanProjectAssets(
 
   for (const [texture, usedBy] of textureRefs) {
     const shaderPath = textures.getShaderSourcePath(texture);
-    if (shaderPath) mergeDependency(dependencies, resolveDependency(shaderPath, 'shader', usedBy, assets, licenses));
+    const projectShaderFiles = textures.getProjectShaderFiles?.() ?? {};
+    if (shaderPath && projectShaderFiles[shaderPath] === undefined) {
+      mergeDependency(dependencies, resolveDependency(shaderPath, 'shader', usedBy, assets, licenses));
+    }
     const metadata = textures.getShaderMetadata(texture);
     const imageReferences = new Set<string>([
       ...(metadata?.referencedImages ?? []),
@@ -315,6 +318,9 @@ export function buildReleasePackage(input: ReleasePackageInput): ReleasePackageR
   addEntry(entries, `scripts/${mapName}.arena`, arenaText);
   if (input.levelshot) addEntry(entries, `levelshots/${mapName}.${input.levelshotExtension ?? 'png'}`, input.levelshot);
   if (input.includeSourceMap) addEntry(entries, `maps/${mapName}.map`, input.includeSourceMap);
+  for (const [path, source] of Object.entries(input.textures.getProjectShaderFiles?.() ?? {})) {
+    addEntry(entries, path, source);
+  }
   if (input.files?.readme) addEntry(entries, 'README.txt', input.files.readme);
   if (input.files?.license) addEntry(entries, 'LICENSE.txt', input.files.license);
   if (input.files?.attribution) addEntry(entries, 'ATTRIBUTION.txt', input.files.attribution);

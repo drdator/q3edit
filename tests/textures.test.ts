@@ -102,4 +102,28 @@ describe('texture image resolution', () => {
       },
     });
   });
+
+  it('applies project shader overrides to metadata and compiler files', () => {
+    const packed = zipSync({
+      'scripts/base.shader': strToU8('textures/custom/override { surfaceparm nonsolid }'),
+    });
+    const gl = {
+      TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TEXTURE_MIN_FILTER: 4, TEXTURE_MAG_FILTER: 5,
+      LINEAR_MIPMAP_LINEAR: 6, LINEAR: 7, TEXTURE_WRAP_S: 8, TEXTURE_WRAP_T: 9, REPEAT: 10,
+      createTexture: () => ({}), bindTexture: () => {}, texImage2D: () => {}, generateMipmap: () => {},
+      texParameteri: () => {}, deleteTexture: () => {},
+    } as unknown as WebGL2RenderingContext;
+    const manager = new TextureManager(gl, new AssetIndex([{ name: 'base.pk3', data: new Uint8Array(packed).buffer }]));
+    const projectSource = 'textures/custom/override\n{\n surfaceparm sky\n q3map_surfacelight 600\n}';
+
+    manager.setProjectShaderFiles({ 'scripts/project.shader': projectSource });
+
+    expect(manager.getShaderSourcePath('custom/override')).toBe('scripts/project.shader');
+    expect(manager.getShaderMetadata('custom/override')).toMatchObject({
+      semantics: { sky: true, emissive: true, emission: 600 },
+    });
+    expect(manager.getShaderFiles()['scripts/project.shader']).toBe(projectSource);
+    expect(manager.listTextureDirectories()).toContain('custom');
+    expect(manager.listTexturesInDir('custom')).toContain('custom/override');
+  });
 });

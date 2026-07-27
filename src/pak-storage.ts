@@ -5,6 +5,8 @@ const DB_VERSION = 3;
 const STORE_NAME = 'pk3-files';
 const SETTINGS_STORE_NAME = 'settings';
 const OPENARENA_ENABLED_KEY = 'openarena-enabled';
+const PROJECT_SHADER_FILES_KEY = 'project-shader-files';
+let cachedProjectShaderFiles: Record<string, string> = {};
 
 interface StoredPak extends PakArchive {
   updatedAt: number;
@@ -109,6 +111,40 @@ export async function loadOpenArenaEnabled(): Promise<boolean> {
     const record = await requestResult(tx.objectStore(SETTINGS_STORE_NAME).get(OPENARENA_ENABLED_KEY)) as
       { key: string; value: boolean } | undefined;
     return record?.value ?? true;
+  } finally {
+    db.close();
+  }
+}
+
+export async function loadProjectShaderFiles(): Promise<Record<string, string>> {
+  const db = await openDatabase();
+  try {
+    const tx = db.transaction(SETTINGS_STORE_NAME, 'readonly');
+    const record = await requestResult(tx.objectStore(SETTINGS_STORE_NAME).get(PROJECT_SHADER_FILES_KEY)) as
+      { key: string; value: Record<string, string> } | undefined;
+    cachedProjectShaderFiles = Object.fromEntries(Object.entries(record?.value ?? {})
+      .filter(([path, source]) => path.startsWith('scripts/') && path.endsWith('.shader') && typeof source === 'string'));
+    return structuredClone(cachedProjectShaderFiles);
+  } finally {
+    db.close();
+  }
+}
+
+export function getCachedProjectShaderFiles(): Record<string, string> {
+  return structuredClone(cachedProjectShaderFiles);
+}
+
+export async function saveProjectShaderFiles(files: Record<string, string>): Promise<void> {
+  cachedProjectShaderFiles = structuredClone(files);
+  const db = await openDatabase();
+  try {
+    const tx = db.transaction(SETTINGS_STORE_NAME, 'readwrite');
+    tx.objectStore(SETTINGS_STORE_NAME).put({ key: PROJECT_SHADER_FILES_KEY, value: cachedProjectShaderFiles });
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('Could not store project shaders'));
+      tx.onabort = () => reject(tx.error ?? new Error('Project shader storage was aborted'));
+    });
   } finally {
     db.close();
   }
