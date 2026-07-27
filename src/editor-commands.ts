@@ -105,6 +105,10 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     entities: 'Entities', lights: 'Lights', paths: 'Paths', world: 'World', detail: 'Detail Geometry',
     water: 'Water', clip: 'Clip', hint: 'Hint', caulk: 'Caulk', curves: 'Curves', names: 'Names',
     angles: 'Angles', coordinates: 'Coordinates', dimensions: 'Selection Dimensions', blocks: 'Blocks',
+    sky: 'Sky', models: 'Models', triggers: 'Triggers', translucent: 'Translucent',
+    decals: 'Decals', pointEntities: 'Point Entities', structural: 'Structural Geometry',
+    areaportals: 'Areaportals', visportals: 'Visportals', clusterportals: 'Clusterportals',
+    botclips: 'Bot Clips', funcGroups: 'func_group', lightgrid: 'Lightgrid',
   };
   const displayCommands: CommandDefinition<EditorCommandContext>[] = DISPLAY_CATEGORIES.map((category, index) => ({
     id: `view.display.${category}`,
@@ -113,6 +117,20 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     checked: ({ editor }) => editor.display.categories[category],
     execute: ({ editor }) => editor.toggleDisplayCategory(category),
   }));
+  displayCommands.push(
+    {
+      id: 'view.display.invert',
+      label: 'Invert Filters',
+      menu: menu('View', 100 + DISPLAY_CATEGORIES.length, 'display-actions', 'Display Categories'),
+      execute: ({ editor }) => editor.invertDisplayFilters(),
+    },
+    {
+      id: 'view.display.reset',
+      label: 'Reset Filters',
+      menu: menu('View', 101 + DISPLAY_CATEGORIES.length, 'display-actions', 'Display Categories'),
+      execute: ({ editor }) => editor.resetDisplayFilters(),
+    },
+  );
   const rendererModes: RendererMode[] = ['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'];
   const rendererCommands: CommandDefinition<EditorCommandContext>[] = rendererModes.map((mode, index) => ({
     id: `view.renderer.${mode}`,
