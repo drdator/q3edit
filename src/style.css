@@ -4342,6 +4342,56 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
   gap: 7px;
 }
 
+.uv-editor-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  color: var(--text, #ccc);
+  cursor: default;
+}
+
+.uv-editor-option input[type="checkbox"] {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-light);
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 var(--border-dark);
+}
+
+.uv-editor-option input[type="checkbox"]::after {
+  width: 4px;
+  height: 7px;
+  border: solid #17130b;
+  border-width: 0 2px 2px 0;
+  content: '';
+  transform: translateY(-1px) rotate(45deg) scale(0);
+}
+
+.uv-editor-option input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent-dim);
+  box-shadow: none;
+}
+
+.uv-editor-option input[type="checkbox"]:checked::after {
+  transform: translateY(-1px) rotate(45deg) scale(1);
+}
+
+.uv-editor-option:hover input[type="checkbox"] {
+  border-color: var(--accent-dim);
+}
+
+.uv-editor-option input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .uv-handle-swatch {
   display: inline-block;
   width: 10px;

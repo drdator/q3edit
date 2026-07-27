@@ -79,6 +79,13 @@ export function openUvEditorDialog(editor: Editor): void {
   const hint = document.createElement('div');
   hint.className = 'uv-editor-hint';
   hint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span>';
+  const clipOption = document.createElement('label');
+  clipOption.className = 'uv-editor-option';
+  const clipTexture = document.createElement('input');
+  clipTexture.type = 'checkbox';
+  clipTexture.setAttribute('aria-label', 'Clip texture preview to face');
+  clipOption.append(clipTexture, document.createTextNode('Clip texture to face'));
+  hint.appendChild(clipOption);
   const body = document.createElement('div');
   body.className = 'uv-editor-body';
   body.append(canvas, hint, status);
@@ -130,7 +137,10 @@ export function openUvEditorDialog(editor: Editor): void {
     }
   };
 
-  const drawBackdrop = (context: CanvasRenderingContext2D) => {
+  const drawBackdrop = (
+    context: CanvasRenderingContext2D,
+    clipPoints: Array<[number, number]> | null,
+  ) => {
     context.fillStyle = '#151515';
     context.fillRect(0, 0, canvas.width, canvas.height);
     const topLeft = screenToUv(0, 0, viewport);
@@ -170,8 +180,19 @@ export function openUvEditorDialog(editor: Editor): void {
         0, viewport.scale / sourceHeight,
         viewport.offsetX, viewport.offsetY,
       ]));
+      context.save();
+      if (clipPoints && clipPoints.length >= 3) {
+        context.beginPath();
+        context.moveTo(clipPoints[0][0], clipPoints[0][1]);
+        for (let index = 1; index < clipPoints.length; index++) {
+          context.lineTo(clipPoints[index][0], clipPoints[index][1]);
+        }
+        context.closePath();
+        context.clip();
+      }
       context.fillStyle = pattern;
       context.fillRect(0, 0, canvas.width, canvas.height);
+      context.restore();
     }
     context.strokeStyle = 'rgba(255,255,255,.08)';
     context.lineWidth = 1;
@@ -200,7 +221,7 @@ export function openUvEditorDialog(editor: Editor): void {
     const rightX = Math.max(...screenPoints.map(point => point[0]));
     rotateHandle = [centerScreen[0], topY - 44];
     scaleHandle = [rightX + 24, centerScreen[1]];
-    drawBackdrop(context);
+    drawBackdrop(context, clipTexture.checked ? screenPoints : null);
 
     if (screenPoints.length > 0) {
       context.beginPath();
@@ -232,6 +253,7 @@ export function openUvEditorDialog(editor: Editor): void {
     if (drawFrame !== null) return;
     drawFrame = window.requestAnimationFrame(draw);
   };
+  clipTexture.onchange = scheduleDraw;
 
   const updateCursor = (point: [number, number]) => {
     if (dragMode) return;
