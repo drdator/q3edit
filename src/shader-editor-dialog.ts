@@ -3,8 +3,10 @@ import { loadProjectShaderFiles, saveProjectShaderFiles } from './pak-storage';
 import {
   defaultProjectShaderSource,
   normalizeProjectShaderPath,
-  validateShaderSource,
+  validateProjectShaderFiles,
 } from './q3-shader-source';
+
+let shaderDialogRequest = 0;
 
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
   const result = document.createElement('button');
@@ -16,13 +18,18 @@ function button(label: string, action: () => void, primary = false): HTMLButtonE
 }
 
 export async function openShaderEditorDialog(editor: Editor): Promise<void> {
+  const request = ++shaderDialogRequest;
   document.getElementById('shader-editor-dialog')?.remove();
-  const textureManager = editor.textureManager;
-  if (!textureManager) {
+  if (!editor.textureManager) {
     editor.statusMessage = 'Shader Editor is available after assets finish loading';
     return;
   }
   let files = await loadProjectShaderFiles();
+  if (request !== shaderDialogRequest) return;
+  if (!editor.textureManager) {
+    editor.statusMessage = 'Shader Editor is available after assets finish loading';
+    return;
+  }
   if (Object.keys(files).length === 0) {
     files = { 'scripts/q3edit_custom.shader': defaultProjectShaderSource() };
   }
@@ -70,24 +77,30 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
     fileSelect.value = currentPath;
   };
   const validateAndPreview = (scheduleSave: boolean) => {
-    const validation = validateShaderSource(source.value);
     files[currentPath] = source.value;
-    status.dataset.valid = String(validation.valid);
+    const projectValidation = validateProjectShaderFiles(files);
+    const validation = projectValidation.files[currentPath];
+    status.dataset.valid = String(projectValidation.valid);
     status.dataset.saved = 'false';
-    status.textContent = validation.valid
-      ? `${validation.shaderNames.length} shader${validation.shaderNames.length === 1 ? '' : 's'} · valid`
-      : validation.diagnostics.map(item => `Line ${item.line}: ${item.message}`).join(' · ');
+    const otherInvalidPaths = Object.entries(projectValidation.files)
+      .filter(([path, result]) => path !== currentPath && !result.valid)
+      .map(([path]) => path);
+    status.textContent = !validation.valid
+      ? validation.diagnostics.map(item => `Line ${item.line}: ${item.message}`).join(' · ')
+      : otherInvalidPaths.length > 0
+        ? `Current file valid · Fix ${otherInvalidPaths.join(', ')} before previewing or saving`
+        : `${validation.shaderNames.length} shader${validation.shaderNames.length === 1 ? '' : 's'} · valid`;
     declared.textContent = validation.shaderNames.length > 0
       ? `Declared: ${validation.shaderNames.join(', ')}`
       : 'No declared shaders';
-    if (!validation.valid) {
+    if (!projectValidation.valid) {
       if (saveTimer !== null) {
         window.clearTimeout(saveTimer);
         saveTimer = null;
       }
       return;
     }
-    textureManager.setProjectShaderFiles(files);
+    editor.textureManager?.setProjectShaderFiles(files);
     editor.onShaderSourcesChanged?.();
     editor.redrawRequested = true;
     if (scheduleSave) {
@@ -101,14 +114,32 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
     source.value = files[currentPath] ?? '';
     validateAndPreview(false);
   };
-  const persist = async () => {
+  const persist = async (): Promise<boolean> => {
+    if (!validateProjectShaderFiles(files).valid) return false;
     if (saveTimer !== null) {
       window.clearTimeout(saveTimer);
       saveTimer = null;
     }
-    await saveProjectShaderFiles(files);
-    status.dataset.saved = 'true';
-    status.textContent = `${status.textContent?.replace(/ · saved$/, '') ?? ''} · saved`;
+    try {
+      await saveProjectShaderFiles(files);
+      editor.textureManager?.setProjectShaderFiles(files);
+      editor.onShaderSourcesChanged?.();
+      editor.redrawRequested = true;
+      if (overlay.isConnected) {
+        status.dataset.saved = 'true';
+        status.textContent = `${status.textContent?.replace(/ · saved$/, '') ?? ''} · saved`;
+      }
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      editor.statusMessage = `Could not save project shaders: ${message}`;
+      if (overlay.isConnected) {
+        status.dataset.saved = 'false';
+        status.dataset.valid = 'false';
+        status.textContent = `Could not save: ${message}`;
+      }
+      return false;
+    }
   };
 
   fileSelect.onchange = () => {
@@ -133,10 +164,13 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
   source.oninput = () => validateAndPreview(true);
 
   const newFile = button('New File', () => {
-    let suffix = 1;
+    let suffix = 0;
     let path = 'scripts/q3edit_custom.shader';
-    while (files[path] !== undefined) path = `scripts/q3edit_custom_${suffix++}.shader`;
-    files[path] = defaultProjectShaderSource(`q3edit/custom_${suffix}`);
+    while (files[path] !== undefined) {
+      suffix++;
+      path = `scripts/q3edit_custom_${suffix}.shader`;
+    }
+    files[path] = defaultProjectShaderSource(suffix === 0 ? 'q3edit/custom' : `q3edit/custom_${suffix}`);
     currentPath = path;
     showCurrent();
     validateAndPreview(true);
@@ -162,16 +196,24 @@ export async function openShaderEditorDialog(editor: Editor): Promise<void> {
   body.append(toolbar, pathField, source, declared, status);
 
   const close = async () => {
-    const validation = validateShaderSource(source.value);
-    if (validation.valid) await persist();
-    else textureManager.setProjectShaderFiles(await loadProjectShaderFiles());
+    files[currentPath] = source.value;
+    const validation = validateProjectShaderFiles(files);
+    if (validation.valid) {
+      if (!(await persist())) return;
+    } else {
+      editor.textureManager?.setProjectShaderFiles(await loadProjectShaderFiles());
+    }
     editor.onShaderSourcesChanged?.();
+    if (request === shaderDialogRequest) shaderDialogRequest++;
     overlay.remove();
   };
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
   actions.append(
-    button('Save', () => { if (validateShaderSource(source.value).valid) void persist(); }, true),
+    button('Save', () => {
+      files[currentPath] = source.value;
+      if (validateProjectShaderFiles(files).valid) void persist();
+    }, true),
     button('Close', () => { void close(); }),
   );
   dialog.append(title, description, body, actions);

@@ -184,6 +184,10 @@ export function selectFace(
   face: BrushFace,
   additive = false,
 ): void {
+  if (isObjectInLockedGroup(editor, brush, entity)) {
+    editor.statusMessage = 'Named group is locked';
+    return;
+  }
   if (additive) {
     const allFaces = editor.selection.every(s => s.type === 'face');
     if (allFaces && editor.selection.length > 0) {

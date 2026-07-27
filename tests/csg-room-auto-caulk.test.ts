@@ -16,6 +16,10 @@ describe('CSG room', () => {
       expect(shell.faces.filter(face => face.texture === 'common/caulk').length).toBe(shell.faces.length - 1);
     }
   });
+
+  test('rejects a wall thickness that would consume the room interior', () => {
+    expect(roomBrushes(createBoxBrush([0, 0, 0], [32, 128, 128]), 16)).toEqual([]);
+  });
 });
 
 describe('conservative auto caulk', () => {
@@ -59,5 +63,38 @@ describe('conservative auto caulk', () => {
     expect(selected.faces.every(face => face.texture === 'base_wall/metal')).toBe(true);
     expect(editor.history.canUndo).toBe(false);
     expect(editor.statusMessage).toContain('no fully covered');
+  });
+
+  test('does not treat trigger volumes as visible occluding geometry', () => {
+    const editor = new Editor();
+    const selected = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/metal');
+    editor.worldspawn.brushes.push(selected);
+    const trigger = createEntity('trigger_multiple');
+    trigger.brushes.push(createBoxBrush([64, -16, -16], [96, 80, 80], 'common/trigger'));
+    editor.entities.push(trigger);
+    editor.selection = [{ type: 'brush', entity: editor.worldspawn, brush: selected }];
+
+    editor.autoCaulkSelected();
+
+    expect(selected.faces.every(face => face.texture === 'base_wall/metal')).toBe(true);
+    expect(editor.history.canUndo).toBe(false);
+  });
+
+  test('does not alter a selected tool or trigger brush', () => {
+    const editor = new Editor();
+    const trigger = createEntity('trigger_multiple');
+    const triggerBrush = createBoxBrush([0, 0, 0], [64, 64, 64], 'common/trigger');
+    trigger.brushes.push(triggerBrush);
+    editor.entities.push(trigger);
+    editor.worldspawn.brushes.push(
+      createBoxBrush([64, -16, -16], [96, 80, 80], 'base_wall/stone'),
+    );
+    editor.selection = [{ type: 'brush', entity: trigger, brush: triggerBrush }];
+
+    editor.autoCaulkSelected();
+
+    expect(triggerBrush.faces.every(face => face.texture === 'common/trigger')).toBe(true);
+    expect(editor.history.canUndo).toBe(false);
+    expect(editor.statusMessage).toContain('visible solid');
   });
 });

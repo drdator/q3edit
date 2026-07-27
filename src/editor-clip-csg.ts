@@ -5,6 +5,7 @@ import {
   intersectBrushes,
   mergeBrushes,
   roomBrushes,
+  roomThicknessFits,
   subtractBrush,
 } from './csg';
 import { vec3Cross, vec3Length, vec3Sub, type Vec3 } from './math';
@@ -40,7 +41,8 @@ export function executeClip(editor: Editor): void {
     editor.statusMessage = 'Clip: place at least two points';
     return;
   }
-  if (editor.selection.length === 0) {
+  const brushItems = getSelectedBrushItems(editor);
+  if (brushItems.length === 0) {
     editor.statusMessage = 'Clip: select brushes first';
     return;
   }
@@ -70,7 +72,6 @@ export function executeClip(editor: Editor): void {
 
   editor.transact('Clip selection', () => {
     const newSelection: SelectionItem[] = [];
-    const brushItems = getSelectedBrushItems(editor);
 
     for (const item of brushItems) {
       const idx = item.entity.brushes.indexOf(item.brush);
@@ -186,6 +187,12 @@ export function csgRoom(editor: Editor): void {
     return;
   }
 
+  const tooThin = brushItems.filter(item => !roomThicknessFits(item.brush, editor.gridSize));
+  if (tooThin.length > 0) {
+    editor.statusMessage = `CSG Room: ${tooThin.length} selected ${tooThin.length === 1 ? 'brush is' : 'brushes are'} too thin for ${editor.gridSize}-unit walls`;
+    return;
+  }
+
   editor.transact('CSG room', () => {
     const newSelection: SelectionItem[] = [];
     for (const item of brushItems) {
@@ -206,15 +213,18 @@ export function csgRoom(editor: Editor): void {
 }
 
 export function autoCaulkSelected(editor: Editor): void {
-  const brushItems = getSelectedBrushItems(editor);
+  const isVisibleSolid = ({ entity, brush }: ReturnType<typeof getSelectedBrushItems>[number]) =>
+    !/^trigger_/i.test(entity.classname) &&
+    !brush.faces.every(face => face.texture.toLowerCase().replace(/^textures\//, '').startsWith('common/'));
+  const brushItems = getSelectedBrushItems(editor).filter(isVisibleSolid);
   if (brushItems.length === 0) {
-    editor.statusMessage = 'Auto Caulk: select brushes first';
+    editor.statusMessage = 'Auto Caulk: select visible solid brushes first';
     return;
   }
-  const allBrushes = [...editor.allBrushes()].map(item => item.brush);
+  const allBrushes = [...editor.allBrushes()].filter(isVisibleSolid);
   const changes = brushItems.flatMap(item => item.brush.faces.filter(face => {
     if (face.texture.toLowerCase() === 'common/caulk') return false;
-    return allBrushes.some(other => other !== item.brush &&
+    return allBrushes.some(({ brush: other }) => other !== item.brush &&
       other.faces.some(opposing => faceFullyCoveredByOpposingFace(face, opposing)));
   }));
   if (changes.length === 0) {

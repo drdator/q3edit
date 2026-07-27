@@ -66,6 +66,15 @@ export function openPatchDeformDialog(editor: Editor): void {
   dialog.append(title, description, fields, error, actions);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
+  overlay.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      close();
+      event.stopPropagation();
+    } else if (event.key === 'Enter') {
+      apply();
+      event.preventDefault();
+    }
+  });
   amount.focus();
   amount.select();
 }

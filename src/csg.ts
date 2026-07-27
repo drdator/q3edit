@@ -197,34 +197,41 @@ export function hollowBrush(brush: Brush, thickness: number): Brush[] {
   const shells: Brush[] = [];
 
   for (const face of brush.faces) {
-    if (face.polygon.length < 3) continue;
-
-    // Offset face inward along its outward normal
-    const offset = vec3Scale(face.plane.normal, thickness);
-
-    // clipBrush keeps the back side, so flip the offset face to keep the
-    // outer shell (between original surface and offset plane)
-    const shell = clipBrush(brush, [
-      vec3Sub(face.points[1], offset),
-      vec3Sub(face.points[0], offset),
-      vec3Sub(face.points[2], offset),
-    ]);
+    const shell = hollowShellForFace(brush, face, thickness);
     if (shell) shells.push(shell);
   }
 
   return shells;
 }
 
+function hollowShellForFace(brush: Brush, face: BrushFace, thickness: number): Brush | null {
+  if (face.polygon.length < 3) return null;
+  const offset = vec3Scale(face.plane.normal, thickness);
+  return clipBrush(brush, [
+    vec3Sub(face.points[1], offset),
+    vec3Sub(face.points[0], offset),
+    vec3Sub(face.points[2], offset),
+  ]);
+}
+
 /**
  * Create an inward-facing room shell. Only the face visible from inside keeps
  * the source face material; exterior and edge faces are caulked.
  */
+export function roomThicknessFits(brush: Brush, thickness: number): boolean {
+  return Number.isFinite(thickness) && thickness > 0 &&
+    brush.maxs.every((maximum, axis) =>
+      maximum - brush.mins[axis] > thickness * 2 + ON_EPSILON);
+}
+
 export function roomBrushes(brush: Brush, thickness: number): Brush[] {
-  const shells = hollowBrush(brush, thickness);
-  for (let index = 0; index < shells.length; index++) {
-    const source = brush.faces[index];
+  if (!roomThicknessFits(brush, thickness)) return [];
+  const shells: Brush[] = [];
+  for (const source of brush.faces) {
+    const shell = hollowShellForFace(brush, source, thickness);
+    if (!shell) continue;
     const expectedDist = -source.plane.dist + thickness;
-    for (const face of shells[index].faces) {
+    for (const face of shell.faces) {
       face.texture = 'common/caulk';
       const opposite = vec3Dot(face.plane.normal, source.plane.normal) < -1 + NORMAL_EPSILON;
       if (!opposite || Math.abs(face.plane.dist - expectedDist) >= DIST_EPSILON) continue;
@@ -234,6 +241,7 @@ export function roomBrushes(brush: Brush, thickness: number): Brush[] {
       face.surfaceFlags = source.surfaceFlags;
       face.value = source.value;
     }
+    shells.push(shell);
   }
   return shells;
 }
@@ -321,6 +329,10 @@ export function mergeBrushes(brushes: Brush[]): Brush | null {
 
   const newBrush: Brush = {
     faces: mergedFaces,
+    name: brushes.every(brush => brush.name === brushes[0].name) ? brushes[0].name : undefined,
+    editorGroupId: brushes.every(brush => brush.editorGroupId === brushes[0].editorGroupId)
+      ? brushes[0].editorGroupId
+      : undefined,
     properties: brushes[0].properties ? { ...brushes[0].properties } : undefined,
     mins: [0, 0, 0],
     maxs: [0, 0, 0],
@@ -376,6 +388,10 @@ export function intersectBrushes(brushes: Brush[]): Brush | null {
 
   const intersection: Brush = {
     faces,
+    name: brushes.every(brush => brush.name === firstBrush.name) ? firstBrush.name : undefined,
+    editorGroupId: brushes.every(brush => brush.editorGroupId === firstBrush.editorGroupId)
+      ? firstBrush.editorGroupId
+      : undefined,
     properties: firstBrush.properties ? { ...firstBrush.properties } : undefined,
     mins: [0, 0, 0],
     maxs: [0, 0, 0],

@@ -16,6 +16,11 @@ describe('texture tags', () => {
     expect(listTextureTags(tags)).toEqual(['rusty metal', 'warm']);
   });
 
+  test('ignores tags that have no texture path', () => {
+    expect(normalizeTextureTags({ '  ': ['unused'] })).toEqual({});
+    expect(setTextureTags({}, '', ['unused'])).toEqual({});
+  });
+
   test('renames and deletes tags across texture paths', () => {
     const tags = normalizeTextureTags({
       'a/one': ['metal', 'warm'],

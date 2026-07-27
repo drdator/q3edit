@@ -9,8 +9,8 @@ import type { ModelManager } from './model-manager';
 import {
   DEFAULT_DISPLAY_PREFERENCES,
   invertDisplayCategories,
+  resetDisplayCategories,
   saveDisplayPreferences,
-  setAllDisplayCategories,
   setDisplayCategory,
   type DisplayCategory,
   type RendererMode,
@@ -510,10 +510,10 @@ export class Editor {
   }
 
   resetDisplayFilters(): void {
-    setAllDisplayCategories(this.display, true);
+    resetDisplayCategories(this.display);
     this.persistCurrentPreferences();
     this.redrawRequested = true;
-    this.statusMessage = 'All display filters shown';
+    this.statusMessage = 'Display filters reset';
   }
 
   setRendererMode(mode: RendererMode): void {

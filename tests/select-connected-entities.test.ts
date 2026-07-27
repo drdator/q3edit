@@ -38,4 +38,20 @@ describe('select connected entities', () => {
     expect(editor.selection.map(item => item.entity)).toEqual([trigger, relay, door, speaker]);
     expect(editor.statusMessage).toContain('4 entities');
   });
+
+  it('keeps the selection when every seed is locked', () => {
+    const editor = new Editor();
+    const trigger = linkedEntity('trigger_once', { target: 'relay' });
+    const relay = linkedEntity('target_relay', { targetname: 'relay' });
+    editor.entities.push(trigger, relay);
+    editor.selection = [{ type: 'entity', entity: trigger }];
+    const group = editor.createNamedGroup('Locked chain')!;
+    editor.setNamedGroupLocked(group.id, true);
+    editor.selection = [{ type: 'entity', entity: trigger }];
+
+    editor.selectConnectedEntities(true);
+
+    expect(editor.selection).toEqual([{ type: 'entity', entity: trigger }]);
+    expect(editor.statusMessage).toContain('hidden or locked');
+  });
 });

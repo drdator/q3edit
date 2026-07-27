@@ -50,9 +50,12 @@ export function openVersionHistoryDialog(recovery: DocumentRecoveryService, edit
   status.className = 'version-history-status';
   const list = document.createElement('div');
   list.className = 'version-history-list';
+  let renderRequest = 0;
 
   const render = async () => {
+    const request = ++renderRequest;
     const [versions, usage] = await Promise.all([recovery.listVersions(), recovery.storageUsage()]);
+    if (request !== renderRequest || !overlay.isConnected) return;
     list.replaceChildren();
     status.textContent = `${usage.snapshots} versions · ${formatBytes(usage.bytes)} · ${usage.protectedSnapshots} protected`;
     if (versions.length === 0) {

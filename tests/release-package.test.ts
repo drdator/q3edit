@@ -85,6 +85,19 @@ describe('release packaging', () => {
     expect(new TextDecoder().decode(unzipSync(result.pk3)['scripts/q3edit_custom.shader'])).toBe(shaderSource);
   });
 
+  it('rejects malformed project shaders before creating an archive', () => {
+    const assets = new AssetIndex([]);
+    const textures = {
+      getProjectShaderFiles: () => ({
+        'scripts/broken.shader': 'textures/custom/broken {',
+      }),
+    } as never;
+    expect(() => buildReleasePackage({
+      mapName: 'broken_shader', bsp: strToU8('bsp'), entities: [createEntity('worldspawn')], assets, textures,
+      metadata: { title: '', gameTypes: ['ffa'], botSupport: false, recommendedPlayers: '', author: '', description: '' },
+    })).toThrow(/Project shader validation failed/);
+  });
+
   it('never packages base-game archives even when they contain a license file', () => {
     const assets = new AssetIndex([archive('pak0.pk3', {
       'textures/base/wall.tga': 'image',

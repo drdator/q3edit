@@ -73,8 +73,12 @@ export function lookThroughCameraPath(editor: Editor): void {
   }
   const index = Math.max(0, path.points.findIndex(point => point.entity === selected));
   const point = path.points[index];
-  const next = path.points[(index + 1) % path.points.length];
-  const target = point.lookPosition ?? next?.position;
+  const next = path.points[index + 1] ?? (path.closed ? path.points[0] : undefined);
+  const previous = path.points[index - 1];
+  const continuation = previous
+    ? point.position.map((value, axis) => value + value - previous.position[axis]) as Vec3
+    : undefined;
+  const target = point.lookPosition ?? next?.position ?? continuation;
   if (!target) {
     editor.statusMessage = 'Camera path needs another point or a look target';
     return;

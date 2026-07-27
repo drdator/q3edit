@@ -73,4 +73,19 @@ describe('three-point clipping', () => {
     expect(editor.clipPoints).toEqual([[8, 8, 8]]);
     expect(editor.clipDepthAxis).toBe(2);
   });
+
+  test('does not consume clip points when the selection has no brushes', () => {
+    const editor = new Editor();
+    const light = createEntity('light', [32, 32, 32]);
+    editor.entities.push(light);
+    editor.selection = [{ type: 'entity', entity: light }];
+    editor.addClipPoint([0, 0, 0], 2);
+    editor.addClipPoint([64, 0, 0], 2);
+
+    editor.executeClip();
+
+    expect(editor.clipPoints).toHaveLength(2);
+    expect(editor.history.canUndo).toBe(false);
+    expect(editor.statusMessage).toContain('select brushes');
+  });
 });

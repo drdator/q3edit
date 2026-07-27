@@ -69,6 +69,24 @@ describe('camera conveniences', () => {
     expect(editor.statusMessage).toContain('Test Camera');
   });
 
+  it('keeps an open path facing forward from its last point instead of wrapping to its start', () => {
+    const editor = new Editor();
+    const first = createEntity('info_null', [0, 0, 64]);
+    const second = createEntity('info_null', [128, 0, 64]);
+    editor.entities = [createEntity('worldspawn'), first, second];
+    editor.selection = [
+      { type: 'entity', entity: first },
+      { type: 'entity', entity: second },
+    ];
+    editor.createCameraPathFromSelection('Open Camera');
+    editor.selection = [{ type: 'entity', entity: second }];
+
+    lookThroughCameraPath(editor);
+
+    expect(editor.camera3d.position).toEqual([128, 0, 64]);
+    expect(editor.camera3d.yaw).toBeCloseTo(0);
+  });
+
   it('moves the selection center exactly to the current camera', () => {
     const editor = new Editor();
     const world = createEntity('worldspawn');

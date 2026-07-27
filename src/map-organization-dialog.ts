@@ -36,7 +36,11 @@ function row(title: string, description: string, actions: HTMLElement[]): HTMLEl
   const result = document.createElement('article');
   result.className = 'organization-row';
   const text = document.createElement('div');
-  text.innerHTML = `<strong>${title}</strong><span>${description}</span>`;
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+  const detail = document.createElement('span');
+  detail.textContent = description;
+  text.append(heading, detail);
   const controls = document.createElement('div');
   controls.append(...actions);
   result.append(text, controls);

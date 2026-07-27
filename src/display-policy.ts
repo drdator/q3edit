@@ -166,6 +166,13 @@ export function setAllDisplayCategories(preferences: DisplayPreferences, visible
   saveDisplayPreferences(preferences);
 }
 
+export function resetDisplayCategories(preferences: DisplayPreferences): void {
+  for (const category of DISPLAY_CATEGORIES) {
+    preferences.categories[category] = DEFAULT_DISPLAY_PREFERENCES.categories[category];
+  }
+  saveDisplayPreferences(preferences);
+}
+
 export function invertDisplayCategories(preferences: DisplayPreferences): void {
   for (const category of DISPLAY_CATEGORIES) {
     preferences.categories[category] = !preferences.categories[category];
