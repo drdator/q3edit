@@ -240,6 +240,8 @@ import {
   addClipPoint as addEditorClipPoint,
   cancelClip as cancelEditorClip,
   csgHollow as hollowEditorBrushes,
+  csgRoom as roomEditorBrushes,
+  autoCaulkSelected as autoCaulkEditorBrushes,
   csgIntersect as intersectEditorBrushes,
   csgMerge as mergeEditorBrushes,
   csgSubtract as subtractEditorBrushes,
@@ -844,6 +846,14 @@ export class Editor {
 
   csgHollow(): void {
     hollowEditorBrushes(this);
+  }
+
+  csgRoom(): void {
+    roomEditorBrushes(this);
+  }
+
+  autoCaulkSelected(): void {
+    autoCaulkEditorBrushes(this);
   }
 
   csgMerge(): void {

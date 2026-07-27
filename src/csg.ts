@@ -216,6 +216,60 @@ export function hollowBrush(brush: Brush, thickness: number): Brush[] {
 }
 
 /**
+ * Create an inward-facing room shell. Only the face visible from inside keeps
+ * the source face material; exterior and edge faces are caulked.
+ */
+export function roomBrushes(brush: Brush, thickness: number): Brush[] {
+  const shells = hollowBrush(brush, thickness);
+  for (let index = 0; index < shells.length; index++) {
+    const source = brush.faces[index];
+    const expectedDist = -source.plane.dist + thickness;
+    for (const face of shells[index].faces) {
+      face.texture = 'common/caulk';
+      const opposite = vec3Dot(face.plane.normal, source.plane.normal) < -1 + NORMAL_EPSILON;
+      if (!opposite || Math.abs(face.plane.dist - expectedDist) >= DIST_EPSILON) continue;
+      face.texture = source.texture;
+      face.textureProjection = cloneTextureProjection(source.textureProjection);
+      face.contentFlags = source.contentFlags;
+      face.surfaceFlags = source.surfaceFlags;
+      face.value = source.value;
+    }
+  }
+  return shells;
+}
+
+function dominantAxis(normal: Vec3): number {
+  const absolute = normal.map(Math.abs);
+  return absolute[0] > absolute[1]
+    ? (absolute[0] > absolute[2] ? 0 : 2)
+    : (absolute[1] > absolute[2] ? 1 : 2);
+}
+
+function pointInsideConvexFace(point: Vec3, face: BrushFace): boolean {
+  const polygon = faceVertices(face);
+  const drop = dominantAxis(face.plane.normal);
+  const axes = [0, 1, 2].filter(axis => axis !== drop);
+  let positive = false;
+  let negative = false;
+  for (let index = 0; index < polygon.length; index++) {
+    const from = polygon[index];
+    const to = polygon[(index + 1) % polygon.length];
+    const cross = (to[axes[0]] - from[axes[0]]) * (point[axes[1]] - from[axes[1]]) -
+      (to[axes[1]] - from[axes[1]]) * (point[axes[0]] - from[axes[0]]);
+    if (cross > ON_EPSILON) positive = true;
+    else if (cross < -ON_EPSILON) negative = true;
+    if (positive && negative) return false;
+  }
+  return true;
+}
+
+/** True only when an opposing coplanar face completely covers the target face. */
+export function faceFullyCoveredByOpposingFace(target: BrushFace, opposing: BrushFace): boolean {
+  if (!planeEqual(target.plane, opposing.plane, true)) return false;
+  return faceVertices(target).every(point => pointInsideConvexFace(point, opposing));
+}
+
+/**
  * Merge multiple brushes into a single convex brush.
  * Follows Radiant's outer-face merge logic: shared touching faces are removed,
  * the remaining outer faces must form a convex hull, and the result is rebuilt
