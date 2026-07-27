@@ -11,6 +11,7 @@ export interface ProjectConfiguration {
   assets: { archives: string[]; searchPaths: string[]; openArenaEnabled: boolean; configured: boolean };
   compile: { bspArgs: string[]; vis: boolean; visArgs: string[]; light: boolean; lightArgs: string[] };
   entityDefinitions: { sources: string[] };
+  diagnostics: { mutedCodes: string[] };
   overrides: {
     gridSize?: number;
     gridSnapMode?: GridSnapMode;
@@ -31,6 +32,7 @@ export const DEFAULT_PROJECT_CONFIGURATION: ProjectConfiguration = {
   assets: { archives: [], searchPaths: [], openArenaEnabled: true, configured: false },
   compile: { bspArgs: [], vis: true, visArgs: [], light: true, lightArgs: [] },
   entityDefinitions: { sources: [] },
+  diagnostics: { mutedCodes: [] },
   overrides: {},
 };
 
@@ -53,6 +55,7 @@ export function normalizeProjectConfiguration(value: unknown): ProjectConfigurat
   const assets = isRecord(value.assets) ? value.assets : {};
   const compile = isRecord(value.compile) ? value.compile : {};
   const entityDefinitions = isRecord(value.entityDefinitions) ? value.entityDefinitions : {};
+  const diagnostics = isRecord(value.diagnostics) ? value.diagnostics : {};
   const overrides = isRecord(value.overrides) ? value.overrides : {};
   result.name = text(value.name, result.name).slice(0, 120);
   result.game = {
@@ -69,6 +72,7 @@ export function normalizeProjectConfiguration(value: unknown): ProjectConfigurat
     lightArgs: strings(compile.lightArgs),
   };
   result.entityDefinitions.sources = strings(entityDefinitions.sources);
+  result.diagnostics.mutedCodes = strings(diagnostics.mutedCodes).slice(0, 128);
   const rawGrid = Number(overrides.gridSize);
   if (Number.isFinite(rawGrid)) result.overrides.gridSize = Math.min(256, Math.max(1, Math.round(rawGrid)));
   if (['off', 'abs', 'rel'].includes(String(overrides.gridSnapMode))) result.overrides.gridSnapMode = overrides.gridSnapMode as GridSnapMode;
