@@ -35,7 +35,6 @@ import { openMcpConnectionDialog } from './live-bridge/connection-dialog';
 import { openQuickPlayDialog } from './quick-play-dialog';
 import {
   saveGlobalPreferences,
-  type BuildProfile,
   type QuickPlayPreferences,
   type ViewportLayout,
 } from './preferences';
@@ -129,7 +128,6 @@ export class UI {
   private readonly recovery: DocumentRecoveryService | null;
   private readonly buildHistory = new BuildHistoryService();
   private lastBuildSettings: BuildSettings | null = null;
-  private lastBuildProfileName: string | null = null;
   private captureEditorLevelshot: (() => { mimeType: string; data: string; width: number; height: number }) | null = null;
   private organization: MapOrganizationController | null = null;
   private mcpConnectionUrl: string | null = null;
@@ -2668,7 +2666,7 @@ export class UI {
       this.editor.statusMessage = 'No build has been run in this session';
       return;
     }
-    void this.compileBSP({ ...this.lastBuildSettings }, 0, 2, false, this.lastBuildProfileName);
+    void this.compileBSP({ ...this.lastBuildSettings }, 0, 2, false);
   }
 
   private async compileBSP(
@@ -2676,7 +2674,6 @@ export class UI {
     botCount = 0,
     botSkill = 2,
     launchAfterCompile = autoPlaySettings !== null,
-    requestedProfileName: string | null = null,
   ): Promise<void> {
     document.getElementById('compile-dialog')?.remove();
     const automated = autoPlaySettings !== null;
@@ -2685,17 +2682,8 @@ export class UI {
       ? autoPlaySettings.quality[0].toUpperCase() + autoPlaySettings.quality.slice(1)
       : '';
     const regionActive = this.editor.isRegionActive();
-    const selectedProfile = this.editor.preferences.buildProfiles.profiles.find(
-      profile => profile.id === this.editor.preferences.buildProfiles.selectedId,
-    ) ?? null;
     const initialBuildSettings = autoPlaySettings
-      ?? (selectedProfile
-        ? {
-            quality: selectedProfile.quality,
-            generateAas: selectedProfile.generateAas,
-            scope: selectedProfile.scope,
-          }
-        : buildSettingsFromPreferences(this.editor.preferences.quickPlay));
+      ?? buildSettingsFromPreferences(this.editor.preferences.quickPlay);
     const buildControls = createBuildSettingsControls(initialBuildSettings, regionActive);
 
     const overlay = document.createElement('div');
@@ -2717,7 +2705,7 @@ export class UI {
           ? `Quick Play (${autoPlayLabel}${botTitle}, Region)`
           : `Quick Play (${autoPlayLabel}${botTitle})`)
       : automated
-        ? `Compile BSP${requestedProfileName ? ` — ${requestedProfileName}` : ''}`
+        ? 'Compile BSP'
       : 'Compile BSP';
     dialog.appendChild(title);
 
@@ -2732,120 +2720,16 @@ export class UI {
           : `Compile the current map at ${autoPlaySettings?.quality} quality, then start it in browser ioquake3${botDescription}.`)
       : automated
         ? 'Rerunning the previous build settings with the browser-based q3map toolchain.'
-        : 'Choose a build profile or adjust how to compile the current map with the browser-based q3map toolchain.';
+        : 'Choose how to compile the current map with the browser-based q3map toolchain.';
     dialog.appendChild(description);
 
     const settingsSection = document.createElement('div');
     settingsSection.className = 'compile-dialog-settings';
     const settingsTitle = document.createElement('h3');
     settingsTitle.textContent = 'Build';
-    const profileSelect = document.createElement('select');
-    profileSelect.setAttribute('aria-label', 'Build profile');
-    const customOption = document.createElement('option');
-    customOption.value = '';
-    customOption.textContent = 'Custom settings';
-    profileSelect.append(customOption);
-    const renderProfiles = (selectedId = this.editor.preferences.buildProfiles.selectedId): void => {
-      profileSelect.replaceChildren(customOption);
-      for (const profile of this.editor.preferences.buildProfiles.profiles) {
-        const item = document.createElement('option');
-        item.value = profile.id;
-        item.textContent = profile.name;
-        item.selected = profile.id === selectedId;
-        profileSelect.append(item);
-      }
-      profileSelect.value = selectedId ?? '';
-    };
-    renderProfiles();
-    const profileName = document.createElement('input');
-    profileName.type = 'text';
-    profileName.maxLength = 64;
-    profileName.placeholder = 'Profile name';
-    profileName.setAttribute('aria-label', 'Build profile name');
-    profileName.value = selectedProfile?.name ?? '';
-    const saveProfile = document.createElement('button');
-    saveProfile.type = 'button';
-    saveProfile.className = 'btn';
-    saveProfile.textContent = 'Save Profile';
-    const deleteProfile = document.createElement('button');
-    deleteProfile.type = 'button';
-    deleteProfile.className = 'btn';
-    deleteProfile.textContent = 'Delete';
-    deleteProfile.disabled = !selectedProfile;
-    const profileActions = document.createElement('div');
-    profileActions.className = 'build-profile-actions';
-    profileActions.append(profileName, saveProfile, deleteProfile);
-    const profileField = document.createElement('label');
-    profileField.className = 'preferences-field';
-    const profileCaption = document.createElement('span');
-    profileCaption.textContent = 'Profile';
-    profileField.append(profileCaption, profileSelect);
-    settingsSection.append(settingsTitle, profileField, profileActions, buildControls.element);
+    settingsSection.append(settingsTitle, buildControls.element);
     settingsSection.hidden = automated;
     dialog.appendChild(settingsSection);
-
-    const persistProfiles = (): void => {
-      saveGlobalPreferences(this.editor.preferences);
-      this.commands.notifyStateChanged();
-    };
-    profileSelect.onchange = () => {
-      const profile = this.editor.preferences.buildProfiles.profiles.find(item => item.id === profileSelect.value);
-      this.editor.preferences.buildProfiles.selectedId = profile?.id ?? null;
-      if (profile) {
-        profileName.value = profile.name;
-        buildControls.set(profile);
-      }
-      deleteProfile.disabled = !profile;
-      persistProfiles();
-    };
-    buildControls.onChange(() => {
-      profileSelect.value = '';
-      deleteProfile.disabled = true;
-    });
-    saveProfile.onclick = () => {
-      const name = profileName.value.trim();
-      if (!name) {
-        this.editor.statusMessage = 'Enter a build profile name';
-        profileName.focus();
-        return;
-      }
-      const current = buildControls.read();
-      const selectedId = profileSelect.value;
-      let profile = this.editor.preferences.buildProfiles.profiles.find(item => item.id === selectedId);
-      if (!profile) {
-        if (this.editor.preferences.buildProfiles.profiles.length >= 24) {
-          this.editor.statusMessage = 'Build profiles are limited to 24';
-          return;
-        }
-        const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'profile';
-        let id = base;
-        let suffix = 2;
-        while (this.editor.preferences.buildProfiles.profiles.some(item => item.id === id)) id = `${base}-${suffix++}`;
-        profile = { id, name, ...current };
-        this.editor.preferences.buildProfiles.profiles.push(profile);
-      } else {
-        Object.assign(profile, { name, ...current });
-      }
-      this.editor.preferences.buildProfiles.selectedId = profile.id;
-      renderProfiles(profile.id);
-      deleteProfile.disabled = false;
-      persistProfiles();
-      this.editor.statusMessage = `Saved build profile “${name}”`;
-    };
-    deleteProfile.onclick = () => {
-      const id = profileSelect.value;
-      const profile = this.editor.preferences.buildProfiles.profiles.find(item => item.id === id);
-      if (!profile) return;
-      this.editor.preferences.buildProfiles.profiles = this.editor.preferences.buildProfiles.profiles.filter(item => item.id !== id);
-      const next = this.editor.preferences.buildProfiles.profiles[0] ?? null;
-      this.editor.preferences.buildProfiles.selectedId = next?.id ?? null;
-      renderProfiles(next?.id ?? null);
-      profileName.value = next?.name ?? '';
-      if (next) buildControls.set(next);
-      deleteProfile.disabled = !next;
-      persistProfiles();
-      this.editor.statusMessage = `Deleted build profile “${profile.name}”`;
-    };
 
     let buildStatus = '';
 
@@ -2911,11 +2795,7 @@ export class UI {
       }
       const shaderFiles = this.texMgr?.getShaderFiles();
       const quality = buildSettings.quality;
-      const activeProfile = requestedProfileName
-        ?? this.editor.preferences.buildProfiles.profiles.find(profile => profile.id === profileSelect.value)?.name
-        ?? null;
       this.lastBuildSettings = { ...buildSettings };
-      this.lastBuildProfileName = activeProfile;
       this.commands.notifyStateChanged();
       const activityTitle = autoPlay ? 'Quick Play build' : 'BSP compilation';
       compileAbort = new AbortController();
@@ -2928,7 +2808,7 @@ export class UI {
         status: 'info',
         category: 'build',
         title: `Started ${activityTitle}`,
-        summary: `${activeProfile ? `${activeProfile} · ` : ''}${quality} quality${compileWithRegion ? ' · active region' : ''}`,
+        summary: `${quality} quality${compileWithRegion ? ' · active region' : ''}`,
         revisionBefore: this.editor.documentRevision,
         revisionAfter: this.editor.documentRevision,
         undoable: false,
@@ -2983,7 +2863,7 @@ export class UI {
         documentRevision: compiledDocumentRevision,
         compileSourceFingerprint: buildSourceFingerprint(mapText),
         quality,
-        profileName: activeProfile,
+        profileName: null,
         region: compileWithRegion,
         settings: {
           bspArgs: compile.bspArgs.length > 0 ? [...compile.bspArgs] : ['-v'],
