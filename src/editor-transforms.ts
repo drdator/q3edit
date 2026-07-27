@@ -26,6 +26,7 @@ import type { Editor, SelectionItem } from './editor';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { mirrorBrushLocked, rotateBrushLocked, scaleBrushLocked, translateBrushLocked } from './texture-lock';
 import { getEntityClassRegistry } from './entity-definitions';
+import { cloneTransformDescriptor } from './transform-descriptor';
 
 export interface BrushScaleOriginal {
   brush: Brush;
@@ -324,6 +325,7 @@ export function deleteSelection(editor: Editor): void {
 export function moveSelection(editor: Editor, delta: Vec3): void {
   if (editor.selection.length === 0 || (delta[0] === 0 && delta[1] === 0 && delta[2] === 0)) return;
   editor.transact('Move selection', () => {
+    editor.recordTransactionTransform({ kind: 'move', delta }, 'accumulate');
     const selectedEntities = selectedEntitySet(editor);
 
     for (const item of editor.selection) {
@@ -353,6 +355,7 @@ export function rotateSelection(editor: Editor, angleDeg: number): void {
     (bounds.mins[2] + bounds.maxs[2]) / 2,
   ];
   editor.transact('Rotate selection', () => {
+    editor.recordTransactionTransform({ kind: 'rotate', angleDeg, axis, centerMode: 'selection' });
     const selectedEntities = selectedEntitySet(editor);
 
     for (const item of editor.selection) {
@@ -379,6 +382,7 @@ export function flipSelection(editor: Editor, axis: number): void {
   if (!center) return;
 
   editor.transact('Flip selection', () => {
+    editor.recordTransactionTransform({ kind: 'flip', axis, centerMode: 'selection' });
     const selectedEntities = selectedEntitySet(editor);
 
     for (const item of editor.selection) {
@@ -413,6 +417,7 @@ export function scaleSelection(editor: Editor, scale: Vec3): void {
   if (!center) return;
 
   editor.transact('Scale selection', () => {
+    editor.recordTransactionTransform({ kind: 'scale', scale, centerMode: 'selection' });
     const brushItems = getSelectedBrushItems(editor);
     const patchItems = getSelectedPatchItems(editor);
     const brushOriginals = brushItems.map(({ brush }) =>
@@ -456,6 +461,34 @@ export function scaleSelection(editor: Editor, scale: Vec3): void {
     editor.redrawRequested = true;
     editor.statusMessage = `Scaled x${scale[0].toFixed(2)} y${scale[1].toFixed(2)} z${scale[2].toFixed(2)}`;
   });
+}
+
+export function repeatLastTransform(editor: Editor): void {
+  if (editor.selection.length === 0) {
+    editor.statusMessage = 'Select objects to repeat a transform';
+    return;
+  }
+  if (!editor.lastTransform) {
+    editor.statusMessage = 'No transform to repeat';
+    return;
+  }
+
+  const transform = cloneTransformDescriptor(editor.lastTransform);
+  if (transform.kind === 'move') {
+    moveSelection(editor, transform.delta);
+  } else if (transform.kind === 'rotate') {
+    const previousAxis = editor.rotationAxis;
+    editor.rotationAxis = transform.axis;
+    try {
+      rotateSelection(editor, transform.angleDeg);
+    } finally {
+      editor.rotationAxis = previousAxis;
+    }
+  } else if (transform.kind === 'scale') {
+    scaleSelection(editor, transform.scale);
+  } else {
+    flipSelection(editor, transform.axis);
+  }
 }
 
 const FALLBACK_INCOMING_RELATIONSHIP_KEYS = ['targetname'] as const;

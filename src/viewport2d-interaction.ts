@@ -793,6 +793,7 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
       scaleOrigin,
       scale,
     );
+    ctx.editor.recordTransactionTransform({ kind: 'scale', scale, centerMode: 'selection' });
     return;
   }
 
@@ -831,6 +832,12 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
         axis,
         totalAngle,
       );
+      ctx.editor.recordTransactionTransform({
+        kind: 'rotate',
+        angleDeg: totalAngle * 180 / Math.PI,
+        axis,
+        centerMode: 'selection',
+      });
 
       state.rotateAppliedAngle = totalAngle;
       const degrees = totalAngle * 180 / Math.PI;

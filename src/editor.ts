@@ -170,6 +170,7 @@ import {
   duplicateSelectionInPlace as duplicateEditorSelectionInPlace,
   flipSelection as flipEditorSelection,
   moveSelection as moveEditorSelection,
+  repeatLastTransform as repeatEditorLastTransform,
   rotateSelection as rotateEditorSelection,
   scaleSelection as scaleEditorSelection,
   snapSelectionToGrid as snapEditorSelectionToGrid,
@@ -283,9 +284,11 @@ import {
   beginTransaction as beginEditorTransaction,
   cancelTransaction as cancelEditorTransaction,
   commitTransaction as commitEditorTransaction,
+  recordTransactionTransform as recordEditorTransactionTransform,
   transact as transactEditorDocument,
   type TransactionOptions,
 } from './editor-transactions';
+import type { TransformDescriptor } from './transform-descriptor';
 
 export interface EditorDocumentChange {
   label: string;
@@ -326,6 +329,7 @@ export class Editor {
   projectConfiguration: ProjectConfiguration = structuredClone(DEFAULT_PROJECT_CONFIGURATION);
   entities: Entity[] = [createWorldspawn()];
   selection: SelectionItem[] = [];
+  lastTransform: TransformDescriptor | null = null;
   activeTool: Tool = 'select';
   gridSize = 16;
   gridSnapMode: 'off' | 'abs' | 'rel' = 'rel';
@@ -781,6 +785,10 @@ export class Editor {
     flipEditorSelection(this, axis);
   }
 
+  repeatLastTransform(): void {
+    repeatEditorLastTransform(this);
+  }
+
   // ── Clip tool ──
 
   addClipPoint(point: Vec3, depthAxis: number): void {
@@ -983,6 +991,13 @@ export class Editor {
 
   transact<T>(label: string, mutation: () => T, options: TransactionOptions = {}): T {
     return transactEditorDocument(this, label, mutation, options);
+  }
+
+  recordTransactionTransform(
+    transform: TransformDescriptor,
+    mode: 'replace' | 'accumulate' = 'replace',
+  ): void {
+    recordEditorTransactionTransform(this, transform, mode);
   }
 
   undo(): void {

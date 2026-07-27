@@ -42,6 +42,53 @@ describe('transactional editor mutations', () => {
     expect(editor.entities[0].brushes[0].mins[0]).toBeCloseTo(0);
   });
 
+  test('repeats the complete accumulated move as one undoable transform', () => {
+    const editor = editorWithBrush();
+
+    editor.beginTransaction('Drag selection');
+    editor.moveSelection([8, 0, 0]);
+    editor.moveSelection([8, 0, 0]);
+    editor.commitTransaction();
+    editor.repeatLastTransform();
+
+    expect(editor.entities[0].brushes[0].mins[0]).toBeCloseTo(32);
+    expect(editor.history.undoLabel).toBe('Move selection');
+    editor.undo();
+    expect(editor.entities[0].brushes[0].mins[0]).toBeCloseTo(16);
+  });
+
+  test('repeats rotation around its recorded axis and recentres on the selection', () => {
+    const editor = editorWithBrush();
+    editor.rotationAxis = 2;
+    editor.rotateSelection(90);
+    editor.rotationAxis = 0;
+
+    editor.repeatLastTransform();
+
+    expect(editor.rotationAxis).toBe(0);
+    expect(editor.lastTransform).toEqual({
+      kind: 'rotate',
+      angleDeg: 90,
+      axis: 2,
+      centerMode: 'selection',
+    });
+    expect(editor.history.undoLabel).toBe('Rotate selection');
+  });
+
+  test('does not retain a transform from a cancelled gesture', () => {
+    const editor = editorWithBrush();
+    editor.moveSelection([4, 0, 0]);
+
+    editor.beginTransaction('Cancelled drag');
+    editor.moveSelection([12, 0, 0]);
+    editor.cancelTransaction();
+    const restoredBrush = editor.entities[0].brushes[0];
+    editor.selection = [{ type: 'brush', entity: editor.entities[0], brush: restoredBrush }];
+    editor.repeatLastTransform();
+
+    expect(restoredBrush.mins[0]).toBeCloseTo(8);
+  });
+
   test('does not add history when a command leaves the document unchanged', () => {
     const editor = editorWithBrush();
 
