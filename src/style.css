@@ -1606,6 +1606,104 @@ body.sidepanel-resizing * {
   gap: 4px;
 }
 
+.entity-spawnflags-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+
+.panel-body label.entity-spawnflags-raw {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 0;
+  color: var(--text-dim);
+}
+
+.entity-spawnflags-raw input {
+  width: 100%;
+  min-width: 0;
+  height: 18px;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.entity-spawnflag-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.panel-body label.entity-spawnflag-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 20px;
+  padding: 1px 0;
+  margin-bottom: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.entity-spawnflag-option input[type="checkbox"] {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-light);
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 var(--border-dark);
+}
+
+.entity-spawnflag-option input[type="checkbox"]::after {
+  width: 4px;
+  height: 7px;
+  border: solid #17130b;
+  border-width: 0 2px 2px 0;
+  content: '';
+  transform: translateY(-1px) rotate(45deg) scale(0);
+}
+
+.entity-spawnflag-option input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent-dim);
+  box-shadow: none;
+}
+
+.entity-spawnflag-option input[type="checkbox"]:checked::after {
+  transform: translateY(-1px) rotate(45deg) scale(1);
+}
+
+.entity-spawnflag-option:hover input[type="checkbox"] {
+  border-color: var(--accent-dim);
+}
+
+.entity-spawnflag-option input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.entity-spawnflag-option input[type="checkbox"]:indeterminate {
+  background: var(--accent);
+  border-color: var(--accent-dim);
+  box-shadow: none;
+}
+
+.entity-spawnflag-option input[type="checkbox"]:indeterminate::after {
+  width: 7px;
+  height: 2px;
+  border: 0;
+  background: #17130b;
+  transform: none;
+}
+
 .brush-list {
   display: flex;
   flex-direction: column;

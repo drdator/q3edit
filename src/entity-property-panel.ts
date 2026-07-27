@@ -242,16 +242,21 @@ export function buildDefinedEntityProperties(
   }
 
   if (definition.spawnflags.length > 0) {
-    const flags = document.createElement('fieldset');
-    flags.className = 'entity-spawnflags';
-    const legend = document.createElement('legend');
-    legend.textContent = 'Spawnflags';
-    flags.appendChild(legend);
+    const flags = document.createElement('details');
+    flags.className = 'entity-property-category entity-spawnflags';
+    flags.open = true;
+    const summary = document.createElement('summary');
+    summary.textContent = 'Spawnflags';
+    const body = document.createElement('div');
+    body.className = 'entity-spawnflags-body';
+    flags.append(summary, body);
     const currentValues = entities.map(entity => Number.parseInt(entity.properties.spawnflags ?? '0', 10) || 0);
     const current = currentValues[0];
     const mixedCurrent = currentValues.some(value => value !== current);
     const rawRow = document.createElement('label');
-    rawRow.textContent = 'Raw value';
+    rawRow.className = 'entity-spawnflags-raw';
+    const rawLabel = document.createElement('span');
+    rawLabel.textContent = 'Raw value';
     const rawInput = document.createElement('input');
     rawInput.type = 'number';
     rawInput.value = mixedCurrent ? '' : String(current);
@@ -259,10 +264,13 @@ export function buildDefinedEntityProperties(
     rawInput.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.set;
     rawInput.addEventListener('change', () => setTypedEntityProperties(
       editor, entities, 'spawnflags', rawInput.value, 'number'));
-    rawRow.appendChild(rawInput);
-    flags.appendChild(rawRow);
+    rawRow.append(rawLabel, rawInput);
+    body.appendChild(rawRow);
+    const options = document.createElement('div');
+    options.className = 'entity-spawnflag-options';
     for (const flag of definition.spawnflags) {
       const label = document.createElement('label');
+      label.className = 'entity-spawnflag-option';
       label.title = flag.description ?? '';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -272,8 +280,9 @@ export function buildDefinedEntityProperties(
       checkbox.dataset.commandId = ENTITY_PROPERTY_COMMAND_IDS.spawnflag;
       checkbox.addEventListener('change', () => setEntitySpawnflags(editor, entities, flag.bit, checkbox.checked));
       label.append(checkbox, document.createTextNode(flag.name));
-      flags.appendChild(label);
+      options.appendChild(label);
     }
+    body.appendChild(options);
     container.appendChild(flags);
   }
 }
