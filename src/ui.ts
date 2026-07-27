@@ -2035,7 +2035,7 @@ export class UI {
     let selLabel: string;
     if (e.vertexMode) {
       const vc = e.vertexSelection.length;
-      selLabel = `Sel: ${vc} vtx (drag verts/edges, V to exit)`;
+      selLabel = `Sel: ${vc} vtx (drag verts/edges, Alt-drag face, V to exit)`;
     } else if (e.patchEditMode) {
       const pc = e.patchControlSelection.length;
       selLabel = e.terrainBrushMode === 'texture'
