@@ -166,6 +166,7 @@ import {
   addEntity as addEditorEntity,
   deleteSelection as deleteEditorSelection,
   duplicateSelection as duplicateEditorSelection,
+  duplicateSelectionAndMakeUnique as duplicateEditorSelectionAndMakeUnique,
   duplicateSelectionInPlace as duplicateEditorSelectionInPlace,
   flipSelection as flipEditorSelection,
   moveSelection as moveEditorSelection,
@@ -818,6 +819,10 @@ export class Editor {
 
   duplicateSelection(): void {
     duplicateEditorSelection(this);
+  }
+
+  duplicateSelectionAndMakeUnique(): void {
+    duplicateEditorSelectionAndMakeUnique(this);
   }
 
   snapSelectionToGrid(): void {

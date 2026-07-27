@@ -198,6 +198,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     } },
     { id: 'groups.remove-selection', label: 'Remove Selection from Groups', menu: menu('Groups', 20, 'membership'), enabled: hasSelection, execute: ({ editor }) => editor.removeSelectionFromNamedGroups() },
     { id: 'edit.duplicate', label: 'Duplicate', defaultShortcut: 'Mod+D', menu: menu('Edit', 190, 'change'), enabled: hasSelection, execute: ({ editor }) => editor.duplicateSelection() },
+    { id: 'edit.duplicate-unique', label: 'Duplicate and Make Unique', menu: menu('Edit', 195, 'change'), enabled: hasSelection, execute: ({ editor }) => editor.duplicateSelectionAndMakeUnique() },
     { id: 'edit.delete', label: 'Delete', defaultShortcut: 'Delete', alternateShortcuts: ['Backspace'], menu: menu('Edit', 200, 'change'), enabled: hasSelection, execute: ({ editor }) => editor.deleteSelection() },
     { id: 'edit.rotate-90', label: 'Rotate 90°', defaultShortcut: 'R', menu: menu('Edit', 210, 'transform'), enabled: hasSelection, execute: ({ editor }) => editor.rotateSelection(90) },
     { id: 'edit.rotate-15', label: 'Rotate 15°', defaultShortcut: 'Shift+R', menu: menu('Edit', 220, 'transform'), enabled: hasSelection, execute: ({ editor }) => editor.rotateSelection(15) },
