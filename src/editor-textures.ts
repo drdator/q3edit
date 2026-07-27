@@ -251,24 +251,32 @@ export function resetTextureAlignment(editor: Editor): void {
   });
 }
 
-export function fitTexture(editor: Editor): void {
+export type TextureFitAxis = 'both' | 'width' | 'height';
+
+export function fitTexture(editor: Editor, axis: TextureFitAxis = 'both'): void {
   const faces = getTextureFaces(editor);
   if (faces.length === 0) return;
-  editor.transact('Fit texture', () => {
+  const label = axis === 'both' ? 'Fit texture' : `Fit texture ${axis}`;
+  editor.transact(label, () => {
     for (const face of faces) {
       const projection = classicTextureProjection(face);
       if (face.polygon.length < 3) continue;
       const [textureWidth, textureHeight] = faceTextureDimensions(editor, face);
 
       const [sv, tv] = textureAxisFromPlane(face.plane.normal);
+      const rotation = projection && axis !== 'both' ? projection.rotation * Math.PI / 180 : 0;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      const fitS: Vec3 = sv.map((value, index) => cos * value - sin * tv[index]) as Vec3;
+      const fitT: Vec3 = sv.map((value, index) => sin * value + cos * tv[index]) as Vec3;
 
       let minS = Infinity;
       let maxS = -Infinity;
       let minT = Infinity;
       let maxT = -Infinity;
       for (const vertex of face.polygon) {
-        const s = vec3Dot(vertex, sv);
-        const t = vec3Dot(vertex, tv);
+        const s = vec3Dot(vertex, fitS);
+        const t = vec3Dot(vertex, fitT);
         minS = Math.min(minS, s);
         maxS = Math.max(maxS, s);
         minT = Math.min(minT, t);
@@ -280,21 +288,45 @@ export function fitTexture(editor: Editor): void {
       if (sRange < 0.001 || tRange < 0.001) continue;
 
       if (projection) {
-        projection.scaleX = sRange / textureWidth;
-        projection.scaleY = tRange / textureHeight;
-        projection.rotation = 0;
-        projection.offsetX = -minS / projection.scaleX;
-        projection.offsetY = -minT / projection.scaleY;
+        if (axis !== 'height') {
+          projection.scaleX = sRange / textureWidth;
+          projection.offsetX = -minS / projection.scaleX;
+        }
+        if (axis !== 'width') {
+          projection.scaleY = tRange / textureHeight;
+          projection.offsetY = -minT / projection.scaleY;
+        }
+        if (axis === 'both') projection.rotation = 0;
       } else {
         if (face.textureProjection.kind !== 'brush-primitive') continue;
-        face.textureProjection.matrix = [
-          [1 / sRange, 0, -minS / sRange],
-          [0, 1 / tRange, -minT / tRange],
-        ];
+        if (axis === 'both') {
+          face.textureProjection.matrix = [
+            [1 / sRange, 0, -minS / sRange],
+            [0, 1 / tRange, -minT / tRange],
+          ];
+        } else {
+          const rowIndex = axis === 'width' ? 0 : 1;
+          const row = face.textureProjection.matrix[rowIndex];
+          const values = face.polygon.map(vertex => {
+            const s = vec3Dot(vertex, sv);
+            const t = vec3Dot(vertex, tv);
+            return row[0] * s + row[1] * t + row[2];
+          });
+          const minimum = Math.min(...values);
+          const range = Math.max(...values) - minimum;
+          if (range < 0.001) continue;
+          face.textureProjection.matrix[rowIndex] = [
+            row[0] / range,
+            row[1] / range,
+            (row[2] - minimum) / range,
+          ];
+        }
       }
     }
     editor.redrawRequested = true;
-    editor.statusMessage = 'Texture fit to face';
+    editor.statusMessage = axis === 'both'
+      ? 'Texture fit to face'
+      : `Texture ${axis} fit to face`;
   });
 }
 

@@ -114,6 +114,7 @@ import {
   wrapTextureSelection as wrapEditorTextureSelection,
   type TextureReplaceMatch,
   type TextureReplaceScope,
+  type TextureFitAxis,
 } from './editor-textures';
 import {
   clearVertexSelection as clearEditorVertexSelection,
@@ -1371,8 +1372,8 @@ export class Editor {
   }
 
   /** Fit texture to face polygon bounds */
-  fitTexture(): void {
-    fitEditorTexture(this);
+  fitTexture(axis: TextureFitAxis = 'both'): void {
+    fitEditorTexture(this, axis);
   }
 
   copyTextureProjection(mode: 'world' | 'local' = 'world'): number { return copyEditorProjectionFromFirst(this, mode); }

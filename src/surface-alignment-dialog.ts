@@ -61,6 +61,8 @@ export function openSurfaceAlignmentDialog(editor: Editor): void {
       button('Align Adjacent Chain', () => { editor.alignTextureFaceChain(); updateStatus(); }),
       button('Wrap Convex Loop', () => { editor.wrapTextureSelection(); updateStatus(); }),
       button('Fit Current Bounds', () => { editor.fitTexture(); updateStatus(); }),
+      button('Fit Width', () => { editor.fitTexture('width'); updateStatus(); }),
+      button('Fit Height', () => { editor.fitTexture('height'); updateStatus(); }),
     );
     transfer.appendChild(transferActions);
 

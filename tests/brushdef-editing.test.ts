@@ -125,6 +125,39 @@ describe('brushDef texture editing', () => {
       }
     }
   });
+
+  test('fits one texture axis without changing the other projection axis', () => {
+    const widthOnly = editorWithSelectedFace();
+    const widthFace = widthOnly.brush.faces[0];
+    if (widthFace.textureProjection.kind !== 'brush-primitive') throw new Error('expected primitive projection');
+    const originalV = [...widthFace.textureProjection.matrix[1]];
+    fitTexture(widthOnly.editor, 'width');
+    expect(widthFace.textureProjection.matrix[1]).toEqual(originalV);
+    const uValues = widthFace.polygon.map(vertex => computeFaceUV(vertex, widthFace, 128, 128)[0]);
+    expect(Math.max(...uValues) - Math.min(...uValues)).toBeCloseTo(1, 6);
+
+    const editor = new Editor();
+    const worldspawn = createEntity('worldspawn');
+    const classic = createBoxBrush([0, 0, 0], [96, 64, 32], 'textures/common/caulk');
+    const classicFace = classic.faces[4];
+    if (classicFace.textureProjection.kind !== 'classic') throw new Error('expected classic projection');
+    Object.assign(classicFace.textureProjection, {
+      offsetX: 13,
+      offsetY: 27,
+      rotation: 30,
+      scaleX: 0.25,
+      scaleY: 0.75,
+    });
+    worldspawn.brushes.push(classic);
+    editor.entities = [worldspawn];
+    editor.selection = [{ type: 'face', entity: worldspawn, brush: classic, face: classicFace }];
+    fitTexture(editor, 'width');
+    expect(classicFace.textureProjection.rotation).toBe(30);
+    expect(classicFace.textureProjection.scaleY).toBe(0.75);
+    expect(classicFace.textureProjection.offsetY).toBe(27);
+    const classicU = classicFace.polygon.map(vertex => computeFaceUV(vertex, classicFace, 128, 128)[0]);
+    expect(Math.max(...classicU) - Math.min(...classicU)).toBeCloseTo(1, 6);
+  });
 });
 
 describe('brushDef geometry operations', () => {
