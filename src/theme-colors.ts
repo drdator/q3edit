@@ -11,12 +11,12 @@ export interface EditorThemeRenderColors {
 
 const FALLBACK_COLORS: EditorThemeRenderColors = {
   viewport: '#1e1e1e',
-  gridMajor: 'rgba(100, 100, 100, 0.8)',
-  gridMinor: 'rgba(60, 60, 60, 0.5)',
-  gridOrigin: 'rgba(0, 120, 215, 0.6)',
+  gridMajor: 'rgba(70, 70, 70, 0.8)',
+  gridMinor: 'rgba(50, 50, 50, 0.6)',
+  gridOrigin: 'rgba(0, 100, 180, 0.5)',
   selection: '#ff6600',
   viewportRgb: [30 / 255, 30 / 255, 30 / 255],
-  gridMajorRgb: [100 / 255, 100 / 255, 100 / 255],
+  gridMajorRgb: [62 / 255, 62 / 255, 62 / 255],
   selectionRgb: [1, 102 / 255, 0],
 };
 

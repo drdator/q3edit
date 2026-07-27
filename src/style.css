@@ -35,9 +35,9 @@ html:not(.landing-active) * {
   --disabled-text: #666;
   --disabled-bg: #343434;
   --selection: #ff6600;
-  --grid-major: rgba(100, 100, 100, 0.8);
-  --grid-minor: rgba(60, 60, 60, 0.5);
-  --grid-origin: rgba(0, 120, 215, 0.6);
+  --grid-major: rgba(70, 70, 70, 0.8);
+  --grid-minor: rgba(50, 50, 50, 0.6);
+  --grid-origin: rgba(0, 100, 180, 0.5);
   --viewport-bg: #1e1e1e;
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ccc' stroke-width='1.75' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='m5 9 7 7 7-7'/%3E%3C/svg%3E");
 }

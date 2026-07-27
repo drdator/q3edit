@@ -92,7 +92,7 @@ export interface PreferenceLoadResult {
 
 export const DEFAULT_THEME_COLORS: ThemeColors = {
   background: '#3c3c3c', panel: '#3c3c3c', text: '#cccccc', accent: '#e8a030',
-  viewport: '#1e1e1e', gridMajor: 'rgba(100, 100, 100, 0.8)', gridMinor: 'rgba(60, 60, 60, 0.5)',
+  viewport: '#1e1e1e', gridMajor: 'rgba(70, 70, 70, 0.8)', gridMinor: 'rgba(50, 50, 50, 0.6)',
 };
 
 export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
