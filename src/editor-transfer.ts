@@ -1,6 +1,6 @@
 import { cloneBrush, type Brush } from './brush';
 import type { Editor, SelectionItem } from './editor';
-import { cloneEntity, createEntity, translateEntity, type Entity } from './entity';
+import { cloneEntity, createEntity, entityOrigin, translateEntity, type Entity } from './entity';
 import { parseMap } from './mapfile';
 import type { Vec3 } from './math';
 import { clonePatch, type Patch } from './patch';
@@ -126,6 +126,30 @@ export function transferOffset(editor: Editor): Vec3 {
   delta[editor.nudgeAxisH] += editor.gridSize;
   delta[editor.nudgeAxisV] += editor.gridSize;
   return delta;
+}
+
+export function transferOffsetToPoint(entities: Entity[], target: Vec3): Vec3 {
+  const mins: Vec3 = [Infinity, Infinity, Infinity];
+  const maxs: Vec3 = [-Infinity, -Infinity, -Infinity];
+  const include = (pointMins: Vec3, pointMaxs: Vec3 = pointMins): void => {
+    for (let axis = 0; axis < 3; axis++) {
+      mins[axis] = Math.min(mins[axis], pointMins[axis]);
+      maxs[axis] = Math.max(maxs[axis], pointMaxs[axis]);
+    }
+  };
+  for (const entity of entities) {
+    if (isGroupInfoEntity(entity)) continue;
+    for (const brush of entity.brushes) include(brush.mins, brush.maxs);
+    for (const patch of entity.patches) include(patch.mins, patch.maxs);
+    const origin = entityOrigin(entity);
+    if (origin && entity.brushes.length === 0 && entity.patches.length === 0) include(origin);
+  }
+  if (!mins.every(Number.isFinite) || !maxs.every(Number.isFinite)) return [0, 0, 0];
+  return [
+    target[0] - (mins[0] + maxs[0]) / 2,
+    target[1] - (mins[1] + maxs[1]) / 2,
+    target[2] - (mins[2] + maxs[2]) / 2,
+  ];
 }
 
 export function formatTransferCount(totalItems: number): string {
