@@ -31,6 +31,20 @@ function replaceId(object: IdentifiedObject, kind: 'entity' | 'brush' | 'face' |
   else object.editorObjectId = value;
 }
 
+function visitEditorObjects(
+  entities: Entity[],
+  visit: (object: IdentifiedObject, kind: 'entity' | 'brush' | 'face' | 'patch') => void,
+): void {
+  for (const entity of entities) {
+    visit(entity, 'entity');
+    for (const brush of entity.brushes) {
+      visit(brush, 'brush');
+      for (const face of brush.faces) visit(face, 'face');
+    }
+    for (const patch of entity.patches) visit(patch, 'patch');
+  }
+}
+
 /**
  * Cloning is used both for history snapshots and authoring duplicates. Preserve
  * IDs in snapshots, then make duplicate IDs unique at transaction commit.
@@ -43,12 +57,18 @@ export function deduplicateEditorObjectIds(entities: Entity[]): void {
     if (used.has(value)) replaceId(object, kind);
     else used.add(value);
   };
-  for (const entity of entities) {
-    visit(entity, 'entity');
-    for (const brush of entity.brushes) {
-      visit(brush, 'brush');
-      for (const face of brush.faces) visit(face, 'face');
+  visitEditorObjects(entities, visit);
+}
+
+/** Assigns persistent IDs after a real edit without turning no-op transactions into edits. */
+export function ensureEditorObjectIds(entities: Entity[]): void {
+  const used = new Set<string>();
+  visitEditorObjects(entities, (object, kind) => {
+    let value = existingId(object);
+    if (!value || used.has(value)) {
+      replaceId(object, kind);
+      value = existingId(object);
     }
-    for (const patch of entity.patches) visit(patch, 'patch');
-  }
+    if (value) used.add(value);
+  });
 }
