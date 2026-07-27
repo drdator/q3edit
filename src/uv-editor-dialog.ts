@@ -223,13 +223,15 @@ export function openUvEditorDialog(editor: Editor): void {
     const screenPoints = polygon.map(point => uvToScreen(point, viewport));
     const topY = Math.min(...screenPoints.map(point => point[1]));
     const rightX = Math.max(...screenPoints.map(point => point[0]));
-    const interactionCenter = dragMode === 'rotate' && dragCenterScreen
+    const interactionCenter = (dragMode === 'rotate' || dragMode === 'scale') && dragCenterScreen
       ? dragCenterScreen
       : centerScreen;
     rotateHandle = dragMode === 'rotate' && dragPointerPoint
       ? dragPointerPoint
       : [centerScreen[0], topY - 44];
-    scaleHandle = [rightX + 24, centerScreen[1]];
+    scaleHandle = dragMode === 'scale' && dragPointerPoint
+      ? dragPointerPoint
+      : [rightX + 24, centerScreen[1]];
     drawBackdrop(context, clipTexture.checked ? screenPoints : null);
 
     if (screenPoints.length > 0) {
@@ -250,7 +252,7 @@ export function openUvEditorDialog(editor: Editor): void {
       context.beginPath(); context.moveTo(interactionCenter[0], interactionCenter[1]); context.lineTo(rotateHandle[0], rotateHandle[1]); context.stroke();
     }
     if (dragMode !== 'rotate') {
-      context.beginPath(); context.moveTo(centerScreen[0], centerScreen[1]); context.lineTo(scaleHandle[0], scaleHandle[1]); context.stroke();
+      context.beginPath(); context.moveTo(interactionCenter[0], interactionCenter[1]); context.lineTo(scaleHandle[0], scaleHandle[1]); context.stroke();
     }
     context.fillStyle = '#e8a030';
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 11, 0, Math.PI * 2); context.fill();
@@ -331,6 +333,7 @@ export function openUvEditorDialog(editor: Editor): void {
       const radius = Math.max(1, distance(point, scaleCenter));
       editor.scaleTexture((radius - previousRadius) / Math.max(80, dragViewportScale));
       previousRadius = radius;
+      dragPointerPoint = [...point];
     }
     previousPoint = point;
     scheduleDraw();
