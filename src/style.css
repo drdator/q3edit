@@ -2442,6 +2442,22 @@ body.sidepanel-resizing * {
   gap: 9px;
 }
 
+.build-profile-actions {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto auto;
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+.build-profile-actions input {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--bg-darker);
+  border: 1px solid var(--border-light);
+}
+
 .quick-play-bot-settings {
   display: flex;
   flex-direction: column;

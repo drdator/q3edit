@@ -22,6 +22,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]!);
+}
+
 function button(label: string, action: () => void): HTMLButtonElement {
   const result = document.createElement('button');
   result.type = 'button';
@@ -211,7 +217,7 @@ function buildHistoryPanel(records: BuildRecord[]): HTMLElement {
   panel.className = 'build-history-list';
   for (const record of records) {
     const row = document.createElement('article');
-    row.innerHTML = `<strong>${record.quality} · ${record.success ? 'success' : 'failed'}</strong>
+    row.innerHTML = `<strong>${record.profileName ? `${escapeHtml(record.profileName)} · ` : ''}${record.quality} · ${record.success ? 'success' : 'failed'}</strong>
       <span>${new Date(record.startedAt).toLocaleString()} · rev ${record.documentRevision} · ${record.durationMs} ms</span>
       <span>${record.statistics ? `${record.statistics.leaves} leaves · ${record.statistics.drawSurfaces} surfaces · ${record.statistics.lightmaps} lightmaps` : 'No BSP statistics'}</span>`;
     panel.appendChild(row);

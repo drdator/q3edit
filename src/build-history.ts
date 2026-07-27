@@ -14,6 +14,7 @@ export interface BuildRecord {
   documentRevision: number;
   compileSourceFingerprint?: string;
   quality: string;
+  profileName?: string | null;
   region: boolean;
   settings?: {
     bspArgs: string[];

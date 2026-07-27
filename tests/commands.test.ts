@@ -23,6 +23,8 @@ describe('CommandRegistry', () => {
     const noop = () => {};
     const quickPlay = vi.fn();
     const reloadAssets = vi.fn();
+    const rerunLastBuild = vi.fn();
+    let canRerunLastBuild = false;
     const editor = {
       preferences: {
         quickPlay: {
@@ -41,6 +43,8 @@ describe('CommandRegistry', () => {
       openRotateDialog: noop,
       openScaleDialog: noop,
       compileBSP: noop,
+      rerunLastBuild,
+      canRerunLastBuild: () => canRerunLastBuild,
       quickPlay,
       openQuickPlayOptions: noop,
       managePakFiles: noop,
@@ -74,6 +78,12 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.build-results').enabled).toBe(true);
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     expect(registry.getState('file.quick-play').shortcut).toBe('F5');
+    expect(registry.getState('file.rerun-last-build').enabled).toBe(false);
+    canRerunLastBuild = true;
+    expect(registry.getState('file.rerun-last-build').enabled).toBe(true);
+    expect(registry.getState('file.rerun-last-build').shortcut).toBe('F6');
+    registry.execute('file.rerun-last-build');
+    expect(rerunLastBuild).toHaveBeenCalledOnce();
     expect(registry.getState('tools.reload-assets').enabled).toBe(true);
     for (const id of [
       'patch.transpose',
@@ -108,7 +118,7 @@ describe('CommandRegistry', () => {
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
-      compileBSP: noop, quickPlay: noop, openQuickPlayOptions: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
+      compileBSP: noop, rerunLastBuild: noop, canRerunLastBuild: () => false, quickPlay: noop, openQuickPlayOptions: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
       toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
       toggleBuildResults: noop, isBuildResultsOpen: () => false,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },

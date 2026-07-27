@@ -29,6 +29,19 @@ export interface QuickPlayPreferences {
   botSkill: number;
 }
 
+export interface BuildProfile {
+  id: string;
+  name: string;
+  quality: QuickPlayQuality;
+  generateAas: boolean;
+  scope: QuickPlayBuildScope;
+}
+
+export interface BuildProfilePreferences {
+  profiles: BuildProfile[];
+  selectedId: string | null;
+}
+
 export interface ThemeColors {
   background: string;
   panel: string;
@@ -46,6 +59,7 @@ export interface GlobalPreferences {
   sidebar: { visible: boolean; width: number };
   mcpActivity: { visible: boolean; height: number };
   quickPlay: QuickPlayPreferences;
+  buildProfiles: BuildProfilePreferences;
   theme: { preset: ThemePreset; colors: ThemeColors };
   viewportLayout: ViewportLayout;
   editorDefaults: {
@@ -84,6 +98,13 @@ export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
     botsEnabled: false,
     botCount: 1,
     botSkill: 2,
+  },
+  buildProfiles: {
+    selectedId: 'fast-test',
+    profiles: [
+      { id: 'fast-test', name: 'Fast Test', quality: 'fast', generateAas: false, scope: 'full' },
+      { id: 'final-build', name: 'Final Build', quality: 'full', generateAas: true, scope: 'full' },
+    ],
   },
   theme: { preset: 'dark', colors: DEFAULT_THEME_COLORS },
   viewportLayout: 'quad',
@@ -131,6 +152,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   const sidebar = isRecord(value.sidebar) ? value.sidebar : {};
   const mcpActivity = isRecord(value.mcpActivity) ? value.mcpActivity : {};
   const quickPlay = isRecord(value.quickPlay) ? value.quickPlay : {};
+  const buildProfiles = isRecord(value.buildProfiles) ? value.buildProfiles : {};
   const colors = isRecord(theme.colors) ? theme.colors : {};
   const rawGrid = Number(editor.gridSize);
   const gridSize = Number.isFinite(rawGrid) ? Math.min(256, Math.max(1, Math.round(rawGrid))) : defaults.editorDefaults.gridSize;
@@ -157,6 +179,29 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   const quickPlayScopes: QuickPlayBuildScope[] = ['full', 'region'];
   const rawBotCount = Number(quickPlay.botCount);
   const rawBotSkill = Number(quickPlay.botSkill);
+  const normalizedProfiles: BuildProfile[] = [];
+  if (Array.isArray(buildProfiles.profiles)) {
+    for (const raw of buildProfiles.profiles) {
+      if (!isRecord(raw) || normalizedProfiles.length >= 24) continue;
+      const id = typeof raw.id === 'string' ? raw.id.trim().slice(0, 64) : '';
+      const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 64) : '';
+      if (!id || !name || normalizedProfiles.some(profile => profile.id === id)) continue;
+      normalizedProfiles.push({
+        id,
+        name,
+        quality: quickPlayQualities.includes(raw.quality as QuickPlayQuality)
+          ? raw.quality as QuickPlayQuality : defaults.quickPlay.quality,
+        generateAas: raw.generateAas === true,
+        scope: quickPlayScopes.includes(raw.scope as QuickPlayBuildScope)
+          ? raw.scope as QuickPlayBuildScope : defaults.quickPlay.scope,
+      });
+    }
+  }
+  if (normalizedProfiles.length === 0) normalizedProfiles.push(...defaults.buildProfiles.profiles);
+  const selectedBuildProfile = typeof buildProfiles.selectedId === 'string' &&
+    normalizedProfiles.some(profile => profile.id === buildProfiles.selectedId)
+    ? buildProfiles.selectedId
+    : normalizedProfiles[0]?.id ?? null;
   return {
     version: PREFERENCES_VERSION,
     shortcuts,
@@ -179,6 +224,10 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
       botsEnabled: typeof quickPlay.botsEnabled === 'boolean' ? quickPlay.botsEnabled : defaults.quickPlay.botsEnabled,
       botCount: Number.isFinite(rawBotCount) ? Math.min(3, Math.max(1, Math.round(rawBotCount))) : defaults.quickPlay.botCount,
       botSkill: Number.isFinite(rawBotSkill) ? Math.min(5, Math.max(1, Math.round(rawBotSkill))) : defaults.quickPlay.botSkill,
+    },
+    buildProfiles: {
+      profiles: normalizedProfiles,
+      selectedId: selectedBuildProfile,
     },
     theme: {
       preset: presets.includes(theme.preset as ThemePreset) ? theme.preset as ThemePreset : defaults.theme.preset,

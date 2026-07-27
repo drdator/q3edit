@@ -13,6 +13,8 @@ export interface BuildSettings {
 export interface BuildSettingsControls {
   element: HTMLDivElement;
   read: () => BuildSettings;
+  set: (settings: BuildSettings) => void;
+  onChange: (listener: () => void) => void;
   setAasRequired: (required: boolean) => void;
   setDisabled: (disabled: boolean) => void;
   focus: () => void;
@@ -81,6 +83,10 @@ export function createBuildSettingsControls(
 
   let aasRequired = false;
   let disabled = false;
+  let changeListener = () => {};
+  quality.onchange = () => changeListener();
+  generateAas.onchange = () => changeListener();
+  if (scope) scope.onchange = () => changeListener();
   const updateDisabledState = (): void => {
     quality.disabled = disabled;
     if (scope) scope.disabled = disabled;
@@ -95,6 +101,13 @@ export function createBuildSettingsControls(
       generateAas: generateAas.checked,
       scope: regionActive ? scope?.value as QuickPlayBuildScope ?? initial.scope : initial.scope,
     }),
+    set: (settings) => {
+      quality.value = settings.quality;
+      generateAas.checked = settings.generateAas;
+      if (scope) scope.value = settings.scope;
+      updateDisabledState();
+    },
+    onChange: (listener) => { changeListener = listener; },
     setAasRequired: (required) => {
       aasRequired = required;
       if (required) generateAas.checked = true;

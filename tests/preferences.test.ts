@@ -106,6 +106,28 @@ describe('global preferences', () => {
     });
   });
 
+  it('persists valid named build profiles and rejects malformed entries', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 2,
+      buildProfiles: {
+        selectedId: 'final',
+        profiles: [
+          { id: 'final', name: 'Release Candidate', quality: 'full', generateAas: true, scope: 'full' },
+          { id: '', name: 'Invalid', quality: 'fast' },
+          { id: 'broken', name: '', quality: 'instant' },
+        ],
+      },
+    }));
+
+    expect(loadGlobalPreferences(storage).preferences.buildProfiles).toEqual({
+      selectedId: 'final',
+      profiles: [
+        { id: 'final', name: 'Release Candidate', quality: 'full', generateAas: true, scope: 'full' },
+      ],
+    });
+  });
+
   it('migrates the legacy display settings', () => {
     const storage = new MemoryStorage();
     storage.setItem(LEGACY_DISPLAY_STORAGE_KEY, JSON.stringify({
