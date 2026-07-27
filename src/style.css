@@ -2980,7 +2980,7 @@ body.sidepanel-resizing * {
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
-.release-package-body section { padding: 14px; background: var(--bg); border: 1px solid var(--border-dark); }
+.release-package-body section { padding: 14px; background: var(--bg-darker); border: 1px solid var(--border-dark); }
 .release-package-body h3 { margin: 0 0 12px; color: var(--text); font-size: 15px; }
 .release-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .release-fields label, .release-package-body > section > label { display: grid; gap: 5px; color: var(--text-dim); }
