@@ -277,9 +277,14 @@ function resolveRef(editor: Editor, encodedRef: string): SelectionItem[] {
 }
 
 function setSelection(editor: Editor, refs: string[]): void {
-  editor.selection = refs.flatMap(ref => resolveRef(editor, ref));
+  const resolved = refs.map(ref => resolveRef(editor, ref));
+  editor.selection = resolved.flat();
   editor.redrawRequested = true;
   if (editor.selection.length > 0) editor.centerOnSelection();
+  const stale = resolved.filter(items => items.length === 0).length;
+  editor.statusMessage = stale > 0
+    ? `Selected ${editor.selection.length} saved ${editor.selection.length === 1 ? 'object' : 'objects'} · ${stale} stale ${stale === 1 ? 'reference' : 'references'} skipped`
+    : `Selected ${editor.selection.length} saved ${editor.selection.length === 1 ? 'object' : 'objects'}`;
 }
 
 function hiddenRefs(editor: Editor, persistent = false): string[] {
