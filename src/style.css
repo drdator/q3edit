@@ -4168,6 +4168,40 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
   border-color: var(--accent);
 }
 
+.texture-tag-row {
+  display: flex;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.texture-tag-row select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.texture-tag-current {
+  min-width: 86px;
+  white-space: nowrap;
+}
+
+.texture-tags-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.texture-tags-field {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+}
+
+.texture-tags-existing {
+  margin-top: 10px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
 /* Texture thumbnail grid */
 
 .uv-editor-dialog {

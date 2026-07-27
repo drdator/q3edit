@@ -1,4 +1,5 @@
 import { isPk3Data, PakArchive } from './pak';
+import { normalizeTextureTags, type TextureTagMap } from './texture-tags';
 
 const DB_NAME = 'q3edit-assets';
 const DB_VERSION = 3;
@@ -6,7 +7,9 @@ const STORE_NAME = 'pk3-files';
 const SETTINGS_STORE_NAME = 'settings';
 const OPENARENA_ENABLED_KEY = 'openarena-enabled';
 const PROJECT_SHADER_FILES_KEY = 'project-shader-files';
+const TEXTURE_TAGS_KEY = 'texture-tags';
 let cachedProjectShaderFiles: Record<string, string> = {};
+let cachedTextureTags: TextureTagMap = {};
 
 interface StoredPak extends PakArchive {
   updatedAt: number;
@@ -144,6 +147,39 @@ export async function saveProjectShaderFiles(files: Record<string, string>): Pro
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error('Could not store project shaders'));
       tx.onabort = () => reject(tx.error ?? new Error('Project shader storage was aborted'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function loadTextureTags(): Promise<TextureTagMap> {
+  const db = await openDatabase();
+  try {
+    const tx = db.transaction(SETTINGS_STORE_NAME, 'readonly');
+    const record = await requestResult(tx.objectStore(SETTINGS_STORE_NAME).get(TEXTURE_TAGS_KEY)) as
+      { key: string; value: unknown } | undefined;
+    cachedTextureTags = normalizeTextureTags(record?.value);
+    return structuredClone(cachedTextureTags);
+  } finally {
+    db.close();
+  }
+}
+
+export function getCachedTextureTags(): TextureTagMap {
+  return structuredClone(cachedTextureTags);
+}
+
+export async function saveTextureTags(tags: TextureTagMap): Promise<void> {
+  cachedTextureTags = normalizeTextureTags(tags);
+  const db = await openDatabase();
+  try {
+    const tx = db.transaction(SETTINGS_STORE_NAME, 'readwrite');
+    tx.objectStore(SETTINGS_STORE_NAME).put({ key: TEXTURE_TAGS_KEY, value: cachedTextureTags });
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('Could not store texture tags'));
+      tx.onabort = () => reject(tx.error ?? new Error('Texture tag storage was aborted'));
     });
   } finally {
     db.close();

@@ -55,6 +55,10 @@ import { openReleasePackageDialog } from './release-package-dialog';
 import { MapOrganizationController, type NavigationState } from './map-organization';
 import { openMapOrganizationDialog } from './map-organization-dialog';
 import { openSurfaceAlignmentDialog } from './surface-alignment-dialog';
+import { getCachedTextureTags, saveTextureTags } from './pak-storage';
+import { listTextureTags, setTextureTags, textureTagsFor, type TextureTagMap } from './texture-tags';
+import { textureSearchScore } from './texture-search';
+import { openTextureTagsDialog } from './texture-tags-dialog';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -102,6 +106,8 @@ export class UI {
   private showTextureThumbnails = false;
   private textureDir = '';
   private textureSearch = '';
+  private textureTagFilter = '';
+  private textureTags: TextureTagMap = getCachedTextureTags();
   private textureFind = '';
   private textureReplace = '';
   private textureReplaceScope: 'selection' | 'map' = 'selection';
@@ -2172,6 +2178,39 @@ export class UI {
     searchInput.style.marginTop = '4px';
     body.appendChild(searchInput);
 
+    const tagRow = document.createElement('div');
+    tagRow.className = 'texture-tag-row';
+    const tagSelect = document.createElement('select');
+    tagSelect.setAttribute('aria-label', 'Texture tag filter');
+    tagSelect.append(
+      Object.assign(document.createElement('option'), { value: '', textContent: 'All tags' }),
+      Object.assign(document.createElement('option'), { value: '__untagged__', textContent: 'Untagged' }),
+    );
+    for (const tag of listTextureTags(this.textureTags)) {
+      tagSelect.appendChild(Object.assign(document.createElement('option'), { value: tag, textContent: tag }));
+    }
+    tagSelect.value = Array.from(tagSelect.options).some(option => option.value === this.textureTagFilter)
+      ? this.textureTagFilter
+      : '';
+    const tagCurrent = document.createElement('button');
+    tagCurrent.type = 'button';
+    tagCurrent.className = 'btn texture-tag-current';
+    tagCurrent.textContent = 'Tag Current…';
+    tagCurrent.title = `Edit tags for ${this.editor.currentTexture}`;
+    tagCurrent.onclick = () => {
+      const texture = this.editor.currentTexture;
+      openTextureTagsDialog(texture, this.textureTags, values => {
+        this.textureTags = setTextureTags(this.textureTags, texture, values);
+        void saveTextureTags(this.textureTags);
+        this.editor.statusMessage = values.some(value => value.trim())
+          ? `Tagged ${texture}`
+          : `Removed tags from ${texture}`;
+        this.buildTexturePanel();
+      });
+    };
+    tagRow.append(tagSelect, tagCurrent);
+    body.appendChild(tagRow);
+
     const list = document.createElement('div');
     list.className = 'texture-list';
     list.id = 'texture-list';
@@ -2182,12 +2221,28 @@ export class UI {
     const repopulate = () => {
       const query = this.textureSearch.trim().toLowerCase();
       const dir = this.textureDir;
+      const filterByTag = (texture: string) => {
+        const tags = textureTagsFor(this.textureTags, texture);
+        return !this.textureTagFilter
+          || (this.textureTagFilter === '__untagged__' ? tags.length === 0 : tags.includes(this.textureTagFilter));
+      };
       if (query) {
-        const filtered = allTextures.filter(t => t.toLowerCase().includes(query));
+        const filtered = allTextures.filter(texture => {
+          if (!filterByTag(texture)) return false;
+          const metadata = texMgr.getShaderMetadata(texture);
+          return textureSearchScore(
+            texture,
+            query,
+            metadata?.semantics as unknown as Record<string, unknown> | null,
+            metadata?.surfaceParms ?? [],
+            textureTagsFor(this.textureTags, texture),
+          ) !== null;
+        });
         this.populateTextureList(list, filtered, null);
         return;
       }
-      const textures = dir ? texMgr.listTexturesInDir(dir) : COMMON_TEXTURES;
+      const baseTextures = dir ? texMgr.listTexturesInDir(dir) : this.textureTagFilter ? allTextures : COMMON_TEXTURES;
+      const textures = baseTextures.filter(filterByTag);
       this.populateTextureList(list, textures, dir || null);
     };
 
@@ -2202,6 +2257,10 @@ export class UI {
     });
     searchInput.addEventListener('input', () => {
       this.textureSearch = searchInput.value;
+      repopulate();
+    });
+    tagSelect.addEventListener('change', () => {
+      this.textureTagFilter = tagSelect.value;
       repopulate();
     });
   }
@@ -3370,11 +3429,16 @@ export class UI {
       const item = document.createElement('div');
       item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
       const asset = this.texMgr?.getTextureAsset(tex);
+      const tags = textureTagsFor(this.textureTags, tex);
       if (asset) {
         const overrides = asset.overriddenSources.length > 0
           ? `; overrides ${asset.overriddenSources.map(source => source.archiveName).join(', ')}`
           : '';
         item.title = `${asset.path} — ${asset.source.archiveName}${overrides}`;
+      }
+      if (tags.length > 0) {
+        item.title = `${item.title ? `${item.title}\n` : ''}Tags: ${tags.join(', ')}`;
+        item.dataset.tags = tags.join(' ');
       }
 
       // Strip textures/ prefix, then strip selected dir prefix in list mode
