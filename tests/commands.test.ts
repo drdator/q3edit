@@ -59,6 +59,7 @@ describe('CommandRegistry', () => {
       openMcpConnection: noop,
       openTerrainPanel: noop,
       toggleSidebar: noop,
+      setViewportLayout: noop,
       cycleInvisibleMode: noop,
       setTool: noop,
       setGrid: noop,
@@ -122,6 +123,7 @@ describe('CommandRegistry', () => {
       toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
       toggleBuildResults: noop, isBuildResultsOpen: () => false,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
+      setViewportLayout: layout => { editor.preferences.viewportLayout = layout; },
       cycleInvisibleMode: noop, setTool, setGrid: noop, increaseGrid: noop,
       decreaseGrid: noop, toggleSnap: noop, toggleGeoSnap: noop,
     });
@@ -132,6 +134,8 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.renderer.flat').checked).toBe(true);
     registry.execute('view.texture-filter.nearest');
     expect(registry.getState('view.texture-filter.nearest').checked).toBe(true);
+    registry.execute('view.layout.single-xy');
+    expect(registry.getState('view.layout.single-xy').checked).toBe(true);
     registry.execute('view.dynamic-lights');
     expect(registry.getState('view.dynamic-lights').checked).toBe(true);
     expect(registry.getState('view.bsp-overlay.portals').enabled).toBe(false);

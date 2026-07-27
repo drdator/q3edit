@@ -33,7 +33,12 @@ import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
 import { openMcpConnectionDialog } from './live-bridge/connection-dialog';
 import { openQuickPlayDialog } from './quick-play-dialog';
-import { saveGlobalPreferences, type BuildProfile, type QuickPlayPreferences } from './preferences';
+import {
+  saveGlobalPreferences,
+  type BuildProfile,
+  type QuickPlayPreferences,
+  type ViewportLayout,
+} from './preferences';
 import {
   buildSettingsFromPreferences,
   createBuildSettingsControls,
@@ -211,6 +216,7 @@ export class UI {
       openMcpConnection: () => this.openMcpConnection(),
       openTerrainPanel: () => this.openTerrainPanel(),
       toggleSidebar: () => this.toggleSidebar(),
+      setViewportLayout: layout => this.setViewportLayout(layout),
       cycleInvisibleMode: () => this.cycleInvisibleMode(),
       setTool: tool => this.setTool(tool),
       setGrid: size => this.setGrid(size),
@@ -2583,6 +2589,15 @@ export class UI {
     openQuickPlayDialog({
       editor: this.editor,
     });
+  }
+
+  private setViewportLayout(layout: ViewportLayout): void {
+    this.editor.preferences.viewportLayout = layout;
+    saveGlobalPreferences(this.editor.preferences);
+    applyAppearancePreferences(this.editor.preferences);
+    this.editor.redrawRequested = true;
+    this.editor.statusMessage = `Viewport layout: ${layout.replace(/-/g, ' ')}`;
+    this.commands.notifyStateChanged();
   }
 
   private rerunLastBuild(): void {

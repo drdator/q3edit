@@ -76,6 +76,14 @@ describe('global preferences', () => {
     });
   });
 
+  it('persists focused and multi-pane viewport layouts', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 2, viewportLayout: 'single-xz' }));
+    expect(loadGlobalPreferences(storage).preferences.viewportLayout).toBe('single-xz');
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 2, viewportLayout: 'unsupported' }));
+    expect(loadGlobalPreferences(storage).preferences.viewportLayout).toBe('quad');
+  });
+
   it('normalizes persisted MCP activity panel visibility and height', () => {
     const storage = new MemoryStorage();
     storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({

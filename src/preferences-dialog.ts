@@ -166,7 +166,10 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
 
   const appearance = section('Appearance');
   const theme = select(['dark', 'light', 'high-contrast', 'custom'], preferences.theme.preset);
-  const layout = select(['quad', 'wide-3d', 'wide-2d'], preferences.viewportLayout);
+  const layout = select([
+    'quad', 'wide-3d', 'wide-2d', 'three-pane', 'two-vertical', 'two-horizontal',
+    'single-3d', 'single-xy', 'single-xz', 'single-yz',
+  ], preferences.viewportLayout);
   appearance.append(labeled('Theme', theme), labeled('Viewport layout', layout));
   const colorControls = new Map<typeof THEME_VARIABLES[number], HTMLInputElement>();
   for (const name of THEME_VARIABLES) {

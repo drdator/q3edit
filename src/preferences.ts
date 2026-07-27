@@ -15,7 +15,17 @@ export const PREFERENCES_STORAGE_KEY = 'q3edit.preferences.v2';
 export const LEGACY_DISPLAY_STORAGE_KEY = 'q3edit.display.v1';
 
 export type ThemePreset = 'dark' | 'light' | 'high-contrast' | 'custom';
-export type ViewportLayout = 'quad' | 'wide-3d' | 'wide-2d';
+export type ViewportLayout =
+  | 'quad'
+  | 'wide-3d'
+  | 'wide-2d'
+  | 'three-pane'
+  | 'two-vertical'
+  | 'two-horizontal'
+  | 'single-3d'
+  | 'single-xy'
+  | 'single-xz'
+  | 'single-yz';
 export type GridSnapMode = 'off' | 'abs' | 'rel';
 export type QuickPlayQuality = 'fast' | 'normal' | 'full';
 export type QuickPlayBuildScope = 'full' | 'region';
@@ -171,7 +181,10 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
     }
   }
   const presets: ThemePreset[] = ['dark', 'light', 'high-contrast', 'custom'];
-  const layouts: ViewportLayout[] = ['quad', 'wide-3d', 'wide-2d'];
+  const layouts: ViewportLayout[] = [
+    'quad', 'wide-3d', 'wide-2d', 'three-pane', 'two-vertical', 'two-horizontal',
+    'single-3d', 'single-xy', 'single-xz', 'single-yz',
+  ];
   const snapModes: GridSnapMode[] = ['off', 'abs', 'rel'];
   const primitives: BrushPrimitive[] = ['box', 'cylinder', 'cone', 'sphere', 'pyramid'];
   const invisibleModes: InvisibleMode[] = ['show', 'dim', 'hide'];
