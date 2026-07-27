@@ -72,6 +72,18 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.build-results').enabled).toBe(true);
     expect(registry.getState('file.quick-play').label).toBe('Quick Play');
     expect(registry.getState('file.quick-play').shortcut).toBe('F5');
+    for (const id of [
+      'patch.transpose',
+      'patch.invert',
+      'patch.cycle-cap',
+      'patch.redisperse-rows',
+      'patch.redisperse-columns',
+      'patch.naturalize',
+    ]) {
+      const command = registry.get(id);
+      expect(command.menu?.menu).toBe('Patch');
+      expect(command.label).toEqual(expect.stringMatching(/^Patch [A-Z]/));
+    }
     context.editor.preferences.quickPlay = {
       quality: 'full',
       generateAas: true,
