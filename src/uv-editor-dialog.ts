@@ -21,8 +21,11 @@ function button(label: string, action: () => void, primary = false): HTMLButtonE
   return result;
 }
 
-function eventPoint(event: PointerEvent, canvas: HTMLCanvasElement): [number, number] {
-  const bounds = canvas.getBoundingClientRect();
+function eventPoint(
+  event: PointerEvent,
+  canvas: HTMLCanvasElement,
+  bounds = canvas.getBoundingClientRect(),
+): [number, number] {
   return [
     (event.clientX - bounds.left) * canvas.width / Math.max(1, bounds.width),
     (event.clientY - bounds.top) * canvas.height / Math.max(1, bounds.height),
@@ -50,6 +53,11 @@ export function openUvEditorDialog(editor: Editor): void {
   }
 
   const face = selectedFaces[0];
+  const faceSelection = editor.selection.find(item => item.type === 'face' && item.face === face);
+  if (!faceSelection || faceSelection.type !== 'face') {
+    editor.statusMessage = 'UV Editor requires exactly one selected brush face';
+    return;
+  }
   const overlay = document.createElement('div');
   overlay.id = 'uv-editor-dialog';
   overlay.className = 'editor-dialog-overlay';
@@ -87,10 +95,17 @@ export function openUvEditorDialog(editor: Editor): void {
   let previousPoint: [number, number] = [0, 0];
   let previousAngle = 0;
   let previousRadius = 0;
+  let dragTransactionOpen = false;
+  let dragCanvasBounds: DOMRect | null = null;
+  let drawFrame: number | null = null;
+  let imagePattern: CanvasPattern | null = null;
+  let checkerPattern: CanvasPattern | null = null;
   let close = () => overlay.remove();
 
   const faceIsCurrent = () =>
-    [...editor.allBrushes()].some(item => item.brush.faces.includes(face));
+    editor.entities.includes(faceSelection.entity)
+    && faceSelection.entity.brushes.includes(faceSelection.brush)
+    && faceSelection.brush.faces.includes(face);
   const requireCurrentFace = (): boolean => {
     if (faceIsCurrent()) return true;
     editor.statusMessage = 'UV Editor closed because the selected face changed';
@@ -124,16 +139,39 @@ export function openUvEditorDialog(editor: Editor): void {
     const lastU = Math.ceil(Math.max(topLeft.u, bottomRight.u)) + 1;
     const firstV = Math.floor(Math.min(topLeft.v, bottomRight.v)) - 1;
     const lastV = Math.ceil(Math.max(topLeft.v, bottomRight.v)) + 1;
-    for (let v = firstV; v < lastV; v++) {
-      for (let u = firstU; u < lastU; u++) {
-        const [x, y] = uvToScreen({ u, v }, viewport);
-        if (image && imageReady) {
-          context.drawImage(image, x, y, viewport.scale, viewport.scale);
-        } else {
-          context.fillStyle = ((u + v) & 1) === 0 ? '#292929' : '#202020';
-          context.fillRect(x, y, viewport.scale, viewport.scale);
+    let pattern: CanvasPattern | null;
+    let sourceWidth: number;
+    let sourceHeight: number;
+    if (image && imageReady) {
+      imagePattern ??= context.createPattern(image, 'repeat');
+      pattern = imagePattern;
+      sourceWidth = Math.max(1, image.naturalWidth);
+      sourceHeight = Math.max(1, image.naturalHeight);
+    } else {
+      if (!checkerPattern) {
+        const checker = document.createElement('canvas');
+        checker.width = checker.height = 2;
+        const checkerContext = checker.getContext('2d');
+        if (checkerContext) {
+          checkerContext.fillStyle = '#292929';
+          checkerContext.fillRect(0, 0, 2, 2);
+          checkerContext.fillStyle = '#202020';
+          checkerContext.fillRect(1, 0, 1, 1);
+          checkerContext.fillRect(0, 1, 1, 1);
+          checkerPattern = context.createPattern(checker, 'repeat');
         }
       }
+      pattern = checkerPattern;
+      sourceWidth = sourceHeight = 1;
+    }
+    if (pattern) {
+      pattern.setTransform(new DOMMatrix([
+        viewport.scale / sourceWidth, 0,
+        0, viewport.scale / sourceHeight,
+        viewport.offsetX, viewport.offsetY,
+      ]));
+      context.fillStyle = pattern;
+      context.fillRect(0, 0, canvas.width, canvas.height);
     }
     context.strokeStyle = 'rgba(255,255,255,.08)';
     context.lineWidth = 1;
@@ -148,6 +186,7 @@ export function openUvEditorDialog(editor: Editor): void {
   };
 
   const draw = () => {
+    drawFrame = null;
     resizeCanvas();
     const context = canvas.getContext('2d');
     if (!context) return;
@@ -189,6 +228,10 @@ export function openUvEditorDialog(editor: Editor): void {
     context.fillRect(scaleHandle[0] - 9, scaleHandle[1] - 9, 18, 18);
     status.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${projectionSummary(face)}`;
   };
+  const scheduleDraw = () => {
+    if (drawFrame !== null) return;
+    drawFrame = window.requestAnimationFrame(draw);
+  };
 
   const updateCursor = (point: [number, number]) => {
     if (dragMode) return;
@@ -200,11 +243,23 @@ export function openUvEditorDialog(editor: Editor): void {
 
   canvas.addEventListener('pointerdown', event => {
     if (!requireCurrentFace()) return;
-    const point = eventPoint(event, canvas);
+    dragCanvasBounds = canvas.getBoundingClientRect();
+    const point = eventPoint(event, canvas, dragCanvasBounds);
     if (distance(point, rotateHandle) <= 22) dragMode = 'rotate';
     else if (distance(point, scaleHandle) <= 22) dragMode = 'scale';
     else if (distance(point, centerScreen) <= 28) dragMode = 'translate';
-    else return;
+    else {
+      dragCanvasBounds = null;
+      return;
+    }
+    editor.beginTransaction(
+      dragMode === 'translate'
+        ? 'Shift texture'
+        : dragMode === 'rotate'
+          ? 'Rotate texture'
+          : 'Scale texture',
+    );
+    dragTransactionOpen = true;
     previousPoint = point;
     previousAngle = Math.atan2(point[1] - centerScreen[1], point[0] - centerScreen[0]);
     previousRadius = Math.max(1, distance(point, centerScreen));
@@ -213,7 +268,7 @@ export function openUvEditorDialog(editor: Editor): void {
   });
   canvas.addEventListener('pointermove', event => {
     if (dragMode && !requireCurrentFace()) return;
-    const point = eventPoint(event, canvas);
+    const point = eventPoint(event, canvas, dragCanvasBounds ?? undefined);
     if (!dragMode) {
       updateCursor(point);
       return;
@@ -236,14 +291,18 @@ export function openUvEditorDialog(editor: Editor): void {
       previousRadius = radius;
     }
     previousPoint = point;
-    draw();
+    scheduleDraw();
   });
   const finishDrag = (event: PointerEvent) => {
     if (!dragMode) return;
     dragMode = null;
-    editor.history.breakCoalescing();
+    if (dragTransactionOpen) {
+      editor.commitTransaction();
+      dragTransactionOpen = false;
+    }
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-    updateCursor(eventPoint(event, canvas));
+    updateCursor(eventPoint(event, canvas, dragCanvasBounds ?? undefined));
+    dragCanvasBounds = null;
   };
   canvas.addEventListener('pointerup', finishDrag);
   canvas.addEventListener('pointercancel', finishDrag);
@@ -251,35 +310,42 @@ export function openUvEditorDialog(editor: Editor): void {
   const thumbnail = editor.textureManager?.getThumbnailUrl(face.texture);
   if (thumbnail) {
     image = new Image();
-    image.onload = () => { imageReady = true; draw(); };
+    image.onload = () => {
+      imageReady = true;
+      imagePattern = null;
+      scheduleDraw();
+    };
     image.src = thumbnail;
   }
 
   close = () => {
-    window.removeEventListener('resize', draw);
+    if (dragTransactionOpen) {
+      editor.commitTransaction();
+      dragTransactionOpen = false;
+    }
+    if (drawFrame !== null) window.cancelAnimationFrame(drawFrame);
+    window.removeEventListener('resize', scheduleDraw);
     overlay.remove();
   };
   const actions = document.createElement('div');
   actions.className = 'editor-dialog-actions';
   actions.append(
-    button('Reset', () => { if (requireCurrentFace()) { editor.resetTextureAlignment(); draw(); } }),
-    button('Fit', () => { if (requireCurrentFace()) { editor.fitTexture(); draw(); } }),
-    button('Fit Width', () => { if (requireCurrentFace()) { editor.fitTexture('width'); draw(); } }),
-    button('Fit Height', () => { if (requireCurrentFace()) { editor.fitTexture('height'); draw(); } }),
+    button('Reset', () => { if (requireCurrentFace()) { editor.resetTextureAlignment(); scheduleDraw(); } }),
+    button('Fit', () => { if (requireCurrentFace()) { editor.fitTexture(); scheduleDraw(); } }),
+    button('Fit Width', () => { if (requireCurrentFace()) { editor.fitTexture('width'); scheduleDraw(); } }),
+    button('Fit Height', () => { if (requireCurrentFace()) { editor.fitTexture('height'); scheduleDraw(); } }),
     button('Close', close, true),
   );
   dialog.append(title, description, body, actions);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  window.addEventListener('resize', draw);
+  window.addEventListener('resize', scheduleDraw);
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       close();
       event.stopPropagation();
     }
   });
-  requestAnimationFrame(() => {
-    draw();
-    canvas.focus();
-  });
+  scheduleDraw();
+  canvas.focus();
 }

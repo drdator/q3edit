@@ -42,6 +42,30 @@ describe('transactional editor mutations', () => {
     expect(editor.entities[0].brushes[0].mins[0]).toBeCloseTo(0);
   });
 
+  test('commits a continuous UV drag as one document transaction', () => {
+    const editor = editorWithBrush();
+    const entity = editor.entities[0];
+    const brush = entity.brushes[0];
+    const face = brush.faces[4];
+    editor.selection = [{ type: 'face', entity, brush, face }];
+    const projection = face.textureProjection;
+    expect(projection.kind).toBe('classic');
+    if (projection.kind !== 'classic') return;
+    const originalOffset = projection.offsetX;
+
+    editor.beginTransaction('Shift texture');
+    for (let index = 0; index < 120; index++) editor.shiftTexture(0.5, 0);
+    editor.commitTransaction();
+
+    expect(editor.history.undoCount).toBe(1);
+    expect(editor.history.undoLabel).toBe('Shift texture');
+    expect(projection.offsetX).toBeCloseTo(originalOffset + 60);
+    editor.undo();
+    const restored = editor.entities[0].brushes[0].faces[4].textureProjection;
+    expect(restored.kind).toBe('classic');
+    if (restored.kind === 'classic') expect(restored.offsetX).toBeCloseTo(originalOffset);
+  });
+
   test('repeats the complete accumulated move as one undoable transform', () => {
     const editor = editorWithBrush();
 
