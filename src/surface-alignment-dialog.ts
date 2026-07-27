@@ -66,6 +66,28 @@ export function openSurfaceAlignmentDialog(editor: Editor): void {
     );
     transfer.appendChild(transferActions);
 
+    const projection = document.createElement('section');
+    projection.innerHTML = '<h3>Projection basis</h3>';
+    const basisMode = document.createElement('select');
+    basisMode.className = 'app-select';
+    basisMode.append(
+      Object.assign(document.createElement('option'), { value: 'axial', textContent: 'Axial (face canonical)' }),
+      Object.assign(document.createElement('option'), { value: 'camera', textContent: 'Current 3D camera' }),
+      Object.assign(document.createElement('option'), { value: 'top', textContent: 'Top orthographic (XY)' }),
+      Object.assign(document.createElement('option'), { value: 'front', textContent: 'Front orthographic (XZ)' }),
+      Object.assign(document.createElement('option'), { value: 'side', textContent: 'Side orthographic (YZ)' }),
+    );
+    const projectionActions = document.createElement('div');
+    projectionActions.className = 'surface-alignment-actions';
+    projectionActions.append(
+      field('Basis', basisMode),
+      button('Project Selected Faces', () => {
+        editor.projectTexture(basisMode.value as 'axial' | 'camera' | 'top' | 'front' | 'side');
+        updateStatus();
+      }, true),
+    );
+    projection.appendChild(projectionActions);
+
     const manipulator = document.createElement('section');
     manipulator.innerHTML = '<h3>Live projection controls</h3>';
     const sliderGrid = document.createElement('div');
@@ -95,7 +117,7 @@ export function openSurfaceAlignmentDialog(editor: Editor): void {
       button('Fit by Map Units', () => { editor.fitTextureByMapUnits(Number(unitsInput.value)); updateStatus(); }),
     );
     density.appendChild(densityActions);
-    body.append(transfer, manipulator, density);
+    body.append(transfer, projection, manipulator, density);
   }
 
   if (editor.selection.some(item => item.type === 'patch')) {

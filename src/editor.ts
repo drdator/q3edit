@@ -103,6 +103,7 @@ import {
   fitTextureByMapUnits as fitEditorTextureByMapUnits,
   getTextureFaces as collectTextureFaces,
   replaceTextures as replaceEditorTextures,
+  projectTexture as projectEditorTexture,
   resetTextureAlignment as resetEditorTextureAlignment,
   rotateTexture as rotateEditorTexture,
   scaleTexture as scaleEditorTexture,
@@ -115,6 +116,7 @@ import {
   type TextureReplaceMatch,
   type TextureReplaceScope,
   type TextureFitAxis,
+  type TextureProjectionMode,
 } from './editor-textures';
 import {
   clearVertexSelection as clearEditorVertexSelection,
@@ -1374,6 +1376,10 @@ export class Editor {
   /** Fit texture to face polygon bounds */
   fitTexture(axis: TextureFitAxis = 'both'): void {
     fitEditorTexture(this, axis);
+  }
+
+  projectTexture(mode: TextureProjectionMode): void {
+    projectEditorTexture(this, mode);
   }
 
   copyTextureProjection(mode: 'world' | 'local' = 'world'): number { return copyEditorProjectionFromFirst(this, mode); }

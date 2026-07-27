@@ -5,6 +5,7 @@ import type { Editor } from './editor';
 
 export type TextureReplaceScope = 'selection' | 'map';
 export type TextureReplaceMatch = 'exact' | 'contains';
+export type TextureProjectionMode = 'axial' | 'camera' | 'top' | 'front' | 'side';
 
 type TextureTarget =
   | { kind: 'face'; face: BrushFace }
@@ -248,6 +249,81 @@ export function resetTextureAlignment(editor: Editor): void {
     }
     editor.redrawRequested = true;
     editor.statusMessage = 'Texture alignment reset';
+  });
+}
+
+function projectedUnit(vector: Vec3, normal: Vec3): Vec3 | null {
+  const projection = vector.map((value, axis) => value - normal[axis] * vec3Dot(vector, normal)) as Vec3;
+  const length = vec3Length(projection);
+  return length > 1e-6 ? vec3Scale(projection, 1 / length) : null;
+}
+
+function projectionHints(editor: Editor, mode: TextureProjectionMode): [Vec3, Vec3] | null {
+  if (mode === 'camera') {
+    const { yaw, pitch } = editor.camera3d;
+    const forward: Vec3 = [
+      Math.cos(yaw) * Math.cos(pitch),
+      Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+    ];
+    const right: Vec3 = [Math.cos(yaw - Math.PI / 2), Math.sin(yaw - Math.PI / 2), 0];
+    return [right, vec3Cross(forward, right)];
+  }
+  if (mode === 'top') return [[1, 0, 0], [0, -1, 0]];
+  if (mode === 'front') return [[1, 0, 0], [0, 0, -1]];
+  if (mode === 'side') return [[0, 1, 0], [0, 0, -1]];
+  return null;
+}
+
+export function projectTexture(editor: Editor, mode: TextureProjectionMode): void {
+  const faces = getTextureFaces(editor);
+  if (faces.length === 0) return;
+  editor.transact(`Project texture ${mode}`, () => {
+    const hints = projectionHints(editor, mode);
+    for (const face of faces) {
+      const [sv, tv] = textureAxisFromPlane(face.plane.normal);
+      let u = sv;
+      let v = tv;
+      if (hints) {
+        const projectedU = projectedUnit(hints[0], face.plane.normal)
+          ?? projectedUnit(hints[1], face.plane.normal);
+        if (!projectedU) continue;
+        u = projectedU;
+        const projectedV = projectedUnit(hints[1], face.plane.normal);
+        const orthogonalV = projectedV
+          ? projectedV.map((value, axis) => value - u[axis] * vec3Dot(projectedV, u)) as Vec3
+          : vec3Cross(face.plane.normal, u);
+        const vLength = vec3Length(orthogonalV);
+        if (vLength < 1e-6) continue;
+        v = vec3Scale(orthogonalV, 1 / vLength);
+      }
+
+      if (face.textureProjection.kind === 'classic') {
+        const projection = face.textureProjection;
+        const cosine = vec3Dot(u, sv);
+        const sine = -vec3Dot(u, tv);
+        const angle = Math.atan2(sine, cosine);
+        const expectedV = sv.map((value, axis) => Math.sin(angle) * value + Math.cos(angle) * tv[axis]) as Vec3;
+        const sign = vec3Dot(expectedV, v) < 0 ? -1 : 1;
+        projection.rotation = ((angle * 180 / Math.PI) % 360 + 360) % 360;
+        projection.scaleX = Math.abs(projection.scaleX || 0.5);
+        projection.scaleY = Math.abs(projection.scaleY || 0.5) * sign;
+        projection.offsetX = 0;
+        projection.offsetY = 0;
+      } else {
+        const [width, height] = faceTextureDimensions(editor, face);
+        const currentU = face.textureProjection.matrix[0];
+        const currentV = face.textureProjection.matrix[1];
+        const uMagnitude = Math.hypot(currentU[0], currentU[1]) || 2 / width;
+        const vMagnitude = Math.hypot(currentV[0], currentV[1]) || 2 / height;
+        face.textureProjection.matrix = [
+          [vec3Dot(u, sv) * uMagnitude, vec3Dot(u, tv) * uMagnitude, 0],
+          [vec3Dot(v, sv) * vMagnitude, vec3Dot(v, tv) * vMagnitude, 0],
+        ];
+      }
+    }
+    editor.redrawRequested = true;
+    editor.statusMessage = `Texture projection: ${mode}`;
   });
 }
 
