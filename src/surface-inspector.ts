@@ -308,7 +308,7 @@ export class SurfaceInspector {
     this.overlayOption.className = 'uv-editor-option surface-inspector-overlay';
     this.overlaySurfaces = document.createElement('input');
     this.overlaySurfaces.type = 'checkbox';
-    this.overlaySurfaces.checked = true;
+    this.overlaySurfaces.checked = false;
     this.overlaySurfaces.setAttribute('aria-label', 'Overlay selected surfaces in shared UV space');
     this.overlayOption.append(this.overlaySurfaces, document.createTextNode('Overlay'));
     uvControls.append(this.interactiveHint, this.overlayOption, clip);
