@@ -1302,9 +1302,8 @@ body.sidepanel-resizing * {
   border: 1px solid var(--border-dark);
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
-  min-height: 64px;
-  max-height: 45%;
+  flex: 1;
+  min-height: 0;
 }
 
 .panel.floating-panel {
@@ -1327,21 +1326,10 @@ body.sidepanel-resizing * {
 
 .panel.collapsed {
   flex: 0 0 auto;
-  min-height: 0;
-  max-height: none;
 }
 
 .panel.collapsed .panel-body {
   display: none;
-}
-
-#sidepanel > .panel:not(.floating-panel) > .panel-body {
-  flex: 0 1 auto;
-}
-
-#sidepanel > .panel:has(> .panel-header .panel-solo-button.active) {
-  flex: 1 1 auto;
-  max-height: none;
 }
 
 .panel-header {
