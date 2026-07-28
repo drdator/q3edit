@@ -24,6 +24,7 @@ import { DocumentRecoveryService } from './document-recovery';
 import { currentEditorSessionId } from './editor-session';
 import { installDialogEscapeDismissal } from './dialog-dismissal';
 import { startupDialogsEnabled } from './startup-options';
+import { installNumberInputSteppers } from './number-input-stepper';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -97,6 +98,7 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor, recovery);
+  installNumberInputSteppers();
   ui.configureEditorCapture(() => vp3D.capturePng(1024, 768));
   ui.configureNavigation(
     () => ({

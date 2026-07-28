@@ -5135,6 +5135,104 @@ html:not(.landing-active) input:is(
   font: inherit;
 }
 
+html:not(.landing-active) input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+html:not(.landing-active) input[type="number"]::-webkit-inner-spin-button,
+html:not(.landing-active) input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.number-input-stepper {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: var(--control-height);
+}
+
+.panel-body .number-input-stepper {
+  margin-bottom: 4px;
+}
+
+.number-input-stepper > input[type="number"] {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding-right: 20px !important;
+}
+
+.number-input-stepper-controls {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  display: grid;
+  width: 18px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  border-left: 1px solid var(--border-light);
+}
+
+.number-input-stepper-button {
+  appearance: none;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  place-items: center;
+  color: var(--text-dim);
+  background: var(--bg-light);
+  border: 0;
+  font: inherit;
+  line-height: 1;
+}
+
+.number-input-stepper-button + .number-input-stepper-button {
+  border-top: 1px solid var(--border-dark);
+}
+
+.number-input-stepper-button .ph {
+  font-size: 8px;
+  line-height: 1;
+}
+
+.number-input-stepper-button:hover:not(:disabled) {
+  color: var(--text-bright);
+  background: var(--bg-lighter);
+}
+
+.number-input-stepper-button:active:not(:disabled) {
+  color: var(--accent);
+  background: var(--bg-dark);
+}
+
+.number-input-stepper-button:disabled {
+  color: var(--disabled-text);
+  background: var(--disabled-bg);
+}
+
+.kv-row > .number-input-stepper {
+  flex: 1;
+  height: 18px;
+  margin: 0;
+}
+
+.entity-value > .number-input-stepper {
+  flex: 1 1 100px;
+  height: 18px;
+  margin: 0;
+}
+
+.surface-inspector-field > .number-input-stepper,
+.preferences-field > .number-input-stepper,
+.exact-primitive-field > .number-input-stepper {
+  height: var(--control-height);
+  margin: 0;
+}
+
 html:not(.landing-active) select {
   min-height: var(--control-height);
   padding-right: 27px;
