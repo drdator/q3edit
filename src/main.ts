@@ -400,11 +400,11 @@ async function init() {
 
   // Start render loop immediately (untextured)
   function frame(time: number): void {
+    ui.update();
     vp3D.render(time);
     vpXY.render();
     vpXZ.render();
     vpYZ.render();
-    ui.update();
     editor.redrawRequested = false;
     requestAnimationFrame(frame);
   }

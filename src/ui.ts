@@ -53,7 +53,7 @@ import { BuildPanel } from './build-panel';
 import { openReleasePackageDialog } from './release-package-dialog';
 import { MapOrganizationController, type NavigationState } from './map-organization';
 import { openMapOrganizationDialog } from './map-organization-dialog';
-import { openSurfaceAlignmentDialog } from './surface-alignment-dialog';
+import { SurfaceInspector } from './surface-inspector';
 import { getCachedTextureTags, saveTextureTags } from './pak-storage';
 import { listTextureTags, setTextureTags, textureTagsFor, type TextureTagMap } from './texture-tags';
 import { textureSearchScore } from './texture-search';
@@ -102,6 +102,7 @@ export class UI {
   private openMenu: HTMLElement | null = null;
   private commands: CommandRegistry<EditorCommandContext>;
   private propertiesPanel: PropertiesPanel;
+  private readonly surfaceInspector: SurfaceInspector;
   private texMgr: TextureManager | null = null;
   private showTextureThumbnails = false;
   private textureDir = '';
@@ -143,6 +144,7 @@ export class UI {
     this.editor = editor;
     this.recovery = recovery;
     this.propertiesPanel = new PropertiesPanel(editor);
+    this.surfaceInspector = new SurfaceInspector(editor, document.getElementById('surface-body')!);
     this.buildPanel = new BuildPanel({
       editor: this.editor,
       initialHeight: this.editor.preferences.mcpActivity.height,
@@ -212,7 +214,6 @@ export class UI {
       openOrganization: () => {
         if (this.organization) openMapOrganizationDialog(this.editor, this.organization);
       },
-      openSurfaceAlignment: () => openSurfaceAlignmentDialog(this.editor),
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
@@ -2119,6 +2120,7 @@ export class UI {
     this.buildGroupsPanel();
     this.buildCameraPanel();
     this.propertiesPanel.update();
+    this.surfaceInspector.update();
   }
 
   // ── Texture browser with pak textures ──

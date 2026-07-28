@@ -14,6 +14,7 @@ import {
   resetTextureAlignment,
   rotateTexture,
   scaleTexture,
+  scaleTextureFromProjection,
   shiftTexture,
 } from '../src/editor-textures';
 import {
@@ -72,6 +73,64 @@ describe('brushDef texture editing', () => {
       kind: 'brush-primitive',
       matrix: [[0.01, 0.002, 0.125], [-0.003, 0.012, -0.25]],
     });
+  });
+
+  test('can edit one face without changing the rest of a multi-face selection', () => {
+    const { editor, brush } = editorWithSelectedFace();
+    editor.selection = [{ type: 'brush', entity: editor.entities[0], brush }];
+    const target = brush.faces[0];
+    const untouched = brush.faces[1];
+    const originalTarget = structuredClone(target.textureProjection);
+    const originalUntouched = structuredClone(untouched.textureProjection);
+
+    shiftTexture(editor, 8, -16, [target]);
+    rotateTexture(editor, 15, [target]);
+    scaleTexture(editor, 0.25, [target]);
+
+    expect(target.textureProjection).not.toEqual(originalTarget);
+    expect(untouched.textureProjection).toEqual(originalUntouched);
+  });
+
+  test('scales UVs from their starting projection around a fixed anchor', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_floor/concrete');
+    editor.worldspawn.brushes.push(brush);
+    const face = brush.faces[4];
+    const center = face.polygon.reduce<Vec3>(
+      (sum, point) => vec3Add(sum, point),
+      [0, 0, 0],
+    ).map(value => value / face.polygon.length) as Vec3;
+    const anchor = computeFaceUV(center, face, 128, 128);
+    const initial = cloneTextureProjection(face.textureProjection);
+    const before = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const beforeWidth = Math.max(...before.map(uv => uv[0])) - Math.min(...before.map(uv => uv[0]));
+
+    scaleTextureFromProjection(editor, face, initial, 1.5, anchor);
+
+    const after = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const afterWidth = Math.max(...after.map(uv => uv[0])) - Math.min(...after.map(uv => uv[0]));
+    expect(afterWidth).toBeCloseTo(beforeWidth * 1.5);
+    expectUvClose(computeFaceUV(center, face, 128, 128), anchor);
+  });
+
+  test('directly scales brush primitive UV matrices around a fixed anchor', () => {
+    const { editor, brush } = editorWithSelectedFace();
+    const face = brush.faces[0];
+    const center = face.polygon.reduce<Vec3>(
+      (sum, point) => vec3Add(sum, point),
+      [0, 0, 0],
+    ).map(value => value / face.polygon.length) as Vec3;
+    const anchor = computeFaceUV(center, face, 128, 128);
+    const initial = cloneTextureProjection(face.textureProjection);
+    const before = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const beforeHeight = Math.max(...before.map(uv => uv[1])) - Math.min(...before.map(uv => uv[1]));
+
+    scaleTextureFromProjection(editor, face, initial, 0.6, anchor);
+
+    const after = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const afterHeight = Math.max(...after.map(uv => uv[1])) - Math.min(...after.map(uv => uv[1]));
+    expect(afterHeight).toBeCloseTo(beforeHeight * 0.6);
+    expectUvClose(computeFaceUV(center, face, 128, 128), anchor);
   });
 
   test('scales and rotates primitive matrices', () => {
