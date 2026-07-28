@@ -29,6 +29,7 @@ import {
 } from './sidebar-layout';
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import { panelSubhead } from './ui-controls';
+import { BrushPanel } from './brush-panel';
 import 'virtual:phosphor-icons.css';
 import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
@@ -102,6 +103,7 @@ export class UI {
   editor: Editor;
   private openMenu: HTMLElement | null = null;
   private commands: CommandRegistry<EditorCommandContext>;
+  private readonly brushPanel: BrushPanel;
   private propertiesPanel: PropertiesPanel;
   private readonly surfaceInspector: SurfaceInspector;
   private texMgr: TextureManager | null = null;
@@ -116,8 +118,6 @@ export class UI {
   private textureReplaceMatch: 'exact' | 'contains' = 'exact';
   private textureAssetStatus = 'Loading OpenArena assets…';
   private importedPakNames: string[] = [];
-  private collapsedBrushPanelEntities = new WeakSet<Entity>();
-  private collapsedBrushPanelTerrainGroups = new Set<string>();
   private groupsPanelSignature = '';
   private cameraPanelSignature = '';
   private soloedPanelId: string | null = null;
@@ -144,6 +144,7 @@ export class UI {
   constructor(editor: Editor, recovery: DocumentRecoveryService | null = null) {
     this.editor = editor;
     this.recovery = recovery;
+    this.brushPanel = new BrushPanel(editor);
     this.propertiesPanel = new PropertiesPanel(editor);
     this.surfaceInspector = new SurfaceInspector(editor, document.getElementById('surface-body')!);
     this.buildPanel = new BuildPanel({
@@ -348,7 +349,7 @@ export class UI {
       });
     }
 
-    this.buildBrushPanel();
+    this.brushPanel.mount();
     this.buildGroupsPanel();
     this.buildCameraPanel();
     this.buildEntityPanel();
@@ -543,368 +544,6 @@ export class UI {
       if (!panel.classList.contains('open')) return;
       this.positionTerrainPanel();
     }, true);
-  }
-
-  private brushPanelMode: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
-  private brushPanelSignature = '';
-
-  private buildBrushPanel(): void {
-    const body = document.getElementById('brush-body')!;
-    const modeSelect = document.getElementById('brush-panel-mode') as HTMLSelectElement;
-
-    modeSelect.addEventListener('change', () => {
-      this.brushPanelMode = modeSelect.value as typeof this.brushPanelMode;
-      this.editor.selectionFilter = this.brushPanelMode;
-      this.brushPanelSignature = '';
-      this.editor.redrawRequested = true;
-    });
-    // Stop click from toggling panel collapse
-    modeSelect.addEventListener('mousedown', (ev) => ev.stopPropagation());
-
-    // Add hamburger icon before the select
-    const icon = document.createElement('span');
-    icon.className = 'panel-dropdown-icon';
-    icon.textContent = '\u2630';
-    modeSelect.before(icon);
-
-    const filterBtn = document.createElement('div');
-    filterBtn.className = 'btn';
-    filterBtn.id = 'brush-filter-btn';
-    filterBtn.textContent = 'Render: All';
-    filterBtn.addEventListener('mousedown', () => {
-      this.editor.renderSelectedOnly = !this.editor.renderSelectedOnly;
-      filterBtn.textContent = this.editor.renderSelectedOnly ? 'Render: Selected' : 'Render: All';
-      this.editor.redrawRequested = true;
-    });
-    body.appendChild(filterBtn);
-
-    const list = document.createElement('div');
-    list.className = 'brush-list';
-    list.id = 'brush-list';
-    body.appendChild(list);
-
-    body.addEventListener('mousedown', (ev) => {
-      if (ev.target !== body) return;
-      // Don't clear selection when clicking the scrollbar
-      if (ev.offsetX >= body.clientWidth) return;
-      this.editor.clearSelection();
-    });
-  }
-
-  private updateBrushPanel(): void {
-    const list = document.getElementById('brush-list');
-    if (!list) return;
-
-    const e = this.editor;
-    const mode = this.brushPanelMode;
-
-    type ListItem =
-      | {
-          kind: 'entity';
-          entity: Entity;
-          entityIdx: number;
-          label: string;
-          meta: string;
-          collapsible: boolean;
-          collapsed: boolean;
-        }
-      | {
-          kind: 'terrainGroup';
-          entity: Entity;
-          entityIdx: number;
-          groupId: string;
-          representative: Patch;
-          patches: Array<{ patch: Patch; index: number }>;
-          label: string;
-          meta: string;
-          collapsible: boolean;
-          collapsed: boolean;
-        }
-      | {
-          kind: 'brush';
-          entity: Entity;
-          brush: Brush;
-          index: number;
-          entityIdx: number;
-          label: string;
-        }
-      | {
-          kind: 'patch';
-          entity: Entity;
-          patch: Patch;
-          index: number;
-          entityIdx: number;
-          label: string;
-          grouped: boolean;
-        };
-
-    const items: ListItem[] = [];
-    const regionSignature = e.regionBounds
-      ? `${e.regionBounds.mins.join(',')}:${e.regionBounds.maxs.join(',')}`
-      : 'none';
-    const signatureParts: string[] = [mode, regionSignature, JSON.stringify(e.display.categories)];
-
-    for (let ei = 0; ei < e.entities.length; ei++) {
-      const entity = e.entities[ei];
-      if (!e.isEntityVisible(entity)) continue;
-      const brushChildren = (mode === 'all' || mode === 'brushes')
-        ? entity.brushes
-          .filter(brush => e.isBrushVisible(brush, entity))
-          .map((brush, index) => ({
-            kind: 'brush' as const,
-            entity,
-            brush,
-            index,
-            entityIdx: ei,
-            label: brush.name || `brush ${index}`,
-          }))
-        : [];
-      const patchChildren = (mode === 'all' || mode === 'patches')
-        ? (() => {
-          const visiblePatches = entity.patches
-            .map((patch, index) => ({ patch, index }))
-            .filter(item => e.isPatchVisible(item.patch, entity));
-          const groupedPatches = new Map<string, Array<{ patch: Patch; index: number }>>();
-          for (const item of visiblePatches) {
-            if (!item.patch.terrainGroupId) continue;
-            const group = groupedPatches.get(item.patch.terrainGroupId) ?? [];
-            group.push(item);
-            groupedPatches.set(item.patch.terrainGroupId, group);
-          }
-
-          const patchItems: Array<Extract<ListItem, { kind: 'terrainGroup' | 'patch' }>> = [];
-          const emittedGroups = new Set<string>();
-          for (const item of visiblePatches) {
-            const groupId = item.patch.terrainGroupId;
-            const grouped = groupId ? groupedPatches.get(groupId) : null;
-            if (groupId && grouped && grouped.length > 1) {
-              if (emittedGroups.has(groupId)) continue;
-              emittedGroups.add(groupId);
-              const collapseKey = `${ei}:${groupId}`;
-              const collapsed = this.collapsedBrushPanelTerrainGroups.has(collapseKey);
-              patchItems.push({
-                kind: 'terrainGroup',
-                entity,
-                entityIdx: ei,
-                groupId,
-                representative: grouped[0].patch,
-                patches: grouped,
-                label: 'terrain set',
-                meta: `${grouped.length} patches`,
-                collapsible: true,
-                collapsed,
-              });
-              signatureParts.push(`tg:${collapseKey}:${grouped.length}:${collapsed ? 1 : 0}`);
-              if (!collapsed) {
-                patchItems.push(...grouped.map(groupItem => ({
-                  kind: 'patch' as const,
-                  entity,
-                  patch: groupItem.patch,
-                  index: groupItem.index,
-                  entityIdx: ei,
-                  label: `patch ${groupItem.index}`,
-                  grouped: true,
-                })));
-              }
-              continue;
-            }
-
-            patchItems.push({
-              kind: 'patch',
-              entity,
-              patch: item.patch,
-              index: item.index,
-              entityIdx: ei,
-              label: `patch ${item.index}`,
-              grouped: false,
-            });
-          }
-          return patchItems;
-        })()
-        : [];
-
-      const includeEntity =
-        mode === 'entities' ||
-        mode === 'all' ||
-        brushChildren.length > 0 ||
-        patchChildren.length > 0;
-      if (!includeEntity) continue;
-
-      const childCount = brushChildren.length + patchChildren.length;
-      const collapsed = childCount > 0 && this.collapsedBrushPanelEntities.has(entity);
-      const label = this.objectTreeEntityLabel(entity, ei === 0);
-      const meta = this.objectTreeEntityMeta(entity, brushChildren.length, patchChildren.length);
-
-      items.push({
-        kind: 'entity',
-        entity,
-        entityIdx: ei,
-        label,
-        meta,
-        collapsible: mode !== 'entities' && childCount > 0,
-        collapsed,
-      });
-      signatureParts.push(`${ei}:${entity.classname}:${entity.brushes.length}:${entity.patches.length}:${collapsed ? 1 : 0}`);
-
-      if (mode !== 'entities' && !collapsed) {
-        items.push(...brushChildren, ...patchChildren);
-      }
-    }
-
-    const signature = signatureParts.join('|');
-
-    if (this.brushPanelSignature !== signature) {
-      this.brushPanelSignature = signature;
-      list.innerHTML = '';
-      for (const item of items) {
-        const el = document.createElement('div');
-        el.className = item.kind === 'entity'
-          ? 'brush-item brush-tree-entity'
-          : item.kind === 'terrainGroup'
-            ? 'brush-item brush-tree-child brush-tree-group'
-            : item.kind === 'patch' && item.grouped
-              ? 'brush-item brush-tree-grandchild'
-              : 'brush-item brush-tree-child';
-
-        const row = document.createElement('div');
-        row.className = 'brush-tree-row';
-
-        if (item.kind === 'entity') {
-          const toggle = document.createElement('span');
-          toggle.className = 'brush-tree-toggle' + (item.collapsible ? '' : ' empty');
-          toggle.textContent = item.collapsible ? (item.collapsed ? '+' : '\u2212') : '';
-          if (item.collapsible) {
-            toggle.addEventListener('mousedown', (ev) => {
-              ev.stopPropagation();
-              if (this.collapsedBrushPanelEntities.has(item.entity)) {
-                this.collapsedBrushPanelEntities.delete(item.entity);
-              } else {
-                this.collapsedBrushPanelEntities.add(item.entity);
-              }
-              this.brushPanelSignature = '';
-              this.editor.redrawRequested = true;
-            });
-          }
-
-          const label = document.createElement('span');
-          label.className = 'brush-tree-label';
-          label.textContent = item.label;
-
-          const meta = document.createElement('span');
-          meta.className = 'brush-tree-meta';
-          meta.textContent = item.meta;
-
-          row.appendChild(toggle);
-          row.appendChild(label);
-          row.appendChild(meta);
-        } else if (item.kind === 'terrainGroup') {
-          const indent = document.createElement('span');
-          indent.className = 'brush-tree-indent';
-
-          const toggle = document.createElement('span');
-          toggle.className = 'brush-tree-toggle' + (item.collapsible ? '' : ' empty');
-          toggle.textContent = item.collapsible ? (item.collapsed ? '+' : '\u2212') : '';
-          if (item.collapsible) {
-            toggle.addEventListener('mousedown', (ev) => {
-              ev.stopPropagation();
-              const collapseKey = `${item.entityIdx}:${item.groupId}`;
-              if (this.collapsedBrushPanelTerrainGroups.has(collapseKey)) {
-                this.collapsedBrushPanelTerrainGroups.delete(collapseKey);
-              } else {
-                this.collapsedBrushPanelTerrainGroups.add(collapseKey);
-              }
-              this.brushPanelSignature = '';
-              this.editor.redrawRequested = true;
-            });
-          }
-
-          const kind = document.createElement('span');
-          kind.className = 'brush-tree-kind';
-          kind.textContent = 'T';
-
-          const label = document.createElement('span');
-          label.className = 'brush-tree-label';
-          label.textContent = item.label;
-
-          const meta = document.createElement('span');
-          meta.className = 'brush-tree-meta';
-          meta.textContent = item.meta;
-
-          row.appendChild(indent);
-          row.appendChild(toggle);
-          row.appendChild(kind);
-          row.appendChild(label);
-          row.appendChild(meta);
-        } else {
-          const indent = document.createElement('span');
-          indent.className = 'brush-tree-indent';
-
-          const kind = document.createElement('span');
-          kind.className = 'brush-tree-kind';
-          kind.textContent = item.kind === 'brush' ? 'B' : 'P';
-
-          const label = document.createElement('span');
-          label.className = 'brush-tree-label';
-          label.textContent = item.label;
-
-          row.appendChild(indent);
-          row.appendChild(kind);
-          row.appendChild(label);
-        }
-
-        el.appendChild(row);
-        el.addEventListener('mousedown', (ev) => {
-          const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
-          if (item.kind === 'brush') {
-            e.selectBrushDirect(item.entity, item.brush, additive);
-          } else if (item.kind === 'patch') {
-            e.selectPatchDirect(item.entity, item.patch, additive);
-          } else if (item.kind === 'terrainGroup') {
-            e.selectPatch(item.entity, item.representative, additive);
-          } else {
-            e.selectEntity(item.entity, additive);
-          }
-          e.centerOnSelection();
-        });
-        list.appendChild(el);
-      }
-    }
-
-    const children = list.children;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const el = children[i] as HTMLElement;
-      let selected: boolean;
-      if (item.kind === 'brush') {
-        selected = e.isSelected(item.brush);
-      } else if (item.kind === 'patch') {
-        selected = e.isPatchSelected(item.patch);
-      } else if (item.kind === 'terrainGroup') {
-        selected = item.patches.every(groupPatch => e.isPatchSelected(groupPatch.patch));
-      } else {
-        selected = e.isEntitySelected(item.entity);
-      }
-      el.classList.toggle('selected', selected);
-    }
-  }
-
-  private objectTreeEntityLabel(entity: Entity, isWorldspawn: boolean): string {
-    if (isWorldspawn) return 'worldspawn';
-    const name = entity.properties['targetname'] || entity.properties['name'];
-    return name ? `${entity.classname} "${name}"` : entity.classname;
-  }
-
-  private objectTreeEntityMeta(entity: Entity, brushCount: number, patchCount: number): string {
-    const parts: string[] = [];
-    if (brushCount > 0) parts.push(`${brushCount} brush${brushCount === 1 ? '' : 'es'}`);
-    if (patchCount > 0) parts.push(`${patchCount} patch${patchCount === 1 ? '' : 'es'}`);
-    if (parts.length === 0 && this.editor.isPointEntity(entity)) {
-      const origin = this.editor.entityDisplayOrigin(entity);
-      if (origin) {
-        parts.push(`@ ${origin[0].toFixed(0)} ${origin[1].toFixed(0)} ${origin[2].toFixed(0)}`);
-      }
-    }
-    return parts.join(', ');
   }
 
   private buildEntityPanel(): void {
@@ -2107,7 +1746,7 @@ export class UI {
     }
 
     // Update panels
-    this.updateBrushPanel();
+    this.brushPanel.update();
     this.buildGroupsPanel();
     this.buildCameraPanel();
     this.propertiesPanel.update();
