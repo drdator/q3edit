@@ -1471,8 +1471,14 @@ body.sidepanel-resizing * {
   min-width: 0;
 }
 
-.surface-inspector-actions .btn {
+.panel-body .surface-inspector-actions .btn {
   min-height: var(--control-height);
+  margin: 0;
+}
+
+.surface-inspector-actions .surface-inspector-field input,
+.surface-inspector-actions .surface-inspector-field select {
+  margin: 0;
 }
 
 .surface-inspector-field {
