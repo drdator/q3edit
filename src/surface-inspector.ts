@@ -686,15 +686,15 @@ export class SurfaceInspector {
         cell.x + displayScale,
         cell.y + displayScale,
         cell.width - displayScale * 2,
-        24 * displayScale,
+        18 * displayScale,
       );
       context.fillStyle = surface.source ? '#e8a030' : '#67b7d1';
-      context.font = `${13 * displayScale}px monospace`;
+      context.font = `${9 * displayScale}px monospace`;
       context.textBaseline = 'middle';
       context.fillText(
         `Face ${index + 1} · ${surface.texture}`,
         cell.x + 6 * displayScale,
-        cell.y + 13 * displayScale,
+        cell.y + 10 * displayScale,
         Math.max(1, cell.width - 12 * displayScale),
       );
     });
