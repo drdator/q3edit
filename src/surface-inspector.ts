@@ -207,6 +207,7 @@ export class SurfaceInspector {
     clip.className = 'uv-editor-option surface-inspector-clip';
     this.clipTexture = document.createElement('input');
     this.clipTexture.type = 'checkbox';
+    this.clipTexture.checked = true;
     this.clipTexture.setAttribute('aria-label', 'Clip texture preview to face');
     clip.append(this.clipTexture, document.createTextNode('Clip'));
     this.interactiveHint.appendChild(clip);
