@@ -29,6 +29,7 @@ export function fitUvViewport(
   width: number,
   height: number,
   padding = 72,
+  mode: 'texture' | 'surface' = 'texture',
 ): UvViewport {
   const safeWidth = Math.max(1, width);
   const safeHeight = Math.max(1, height);
@@ -46,11 +47,13 @@ export function fitUvViewport(
   const maxU = Math.max(...points.map(point => point.u));
   const minV = Math.min(...points.map(point => point.v));
   const maxV = Math.max(...points.map(point => point.v));
-  const rangeU = Math.max(0.25, maxU - minU);
-  const rangeV = Math.max(0.25, maxV - minV);
+  const minimumRange = mode === 'surface' ? 1e-9 : 0.25;
+  const rangeU = Math.max(minimumRange, maxU - minU);
+  const rangeV = Math.max(minimumRange, maxV - minV);
   const availableWidth = Math.max(1, safeWidth - padding * 2);
   const availableHeight = Math.max(1, safeHeight - padding * 2);
-  const scale = Math.max(8, Math.min(256, availableWidth / rangeU, availableHeight / rangeV));
+  const fittedScale = Math.min(availableWidth / rangeU, availableHeight / rangeV);
+  const scale = mode === 'surface' ? fittedScale : Math.max(8, Math.min(256, fittedScale));
   return {
     scale,
     offsetX: safeWidth / 2 - ((minU + maxU) / 2) * scale,

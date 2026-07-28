@@ -153,8 +153,12 @@ function faceTextureDimensions(editor: Editor, face: BrushFace): [number, number
   return [texture?.width ?? 128, texture?.height ?? 128];
 }
 
-export function shiftTexture(editor: Editor, du: number, dv: number): void {
-  const faces = getTextureFaces(editor);
+export function shiftTexture(
+  editor: Editor,
+  du: number,
+  dv: number,
+  faces = getTextureFaces(editor),
+): void {
   if (faces.length === 0) return;
   editor.transact('Shift texture', () => {
     for (const face of faces) {
@@ -173,8 +177,7 @@ export function shiftTexture(editor: Editor, du: number, dv: number): void {
   }, { coalesceKey: 'shift-texture' });
 }
 
-export function scaleTexture(editor: Editor, ds: number): void {
-  const faces = getTextureFaces(editor);
+export function scaleTexture(editor: Editor, ds: number, faces = getTextureFaces(editor)): void {
   if (faces.length === 0) return;
   editor.transact('Scale texture', () => {
     for (const face of faces) {
@@ -202,8 +205,7 @@ export function scaleTexture(editor: Editor, ds: number): void {
   }, { coalesceKey: 'scale-texture' });
 }
 
-export function rotateTexture(editor: Editor, angle: number): void {
-  const faces = getTextureFaces(editor);
+export function rotateTexture(editor: Editor, angle: number, faces = getTextureFaces(editor)): void {
   if (faces.length === 0) return;
   editor.transact('Rotate texture', () => {
     for (const face of faces) {

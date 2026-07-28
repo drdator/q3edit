@@ -74,6 +74,22 @@ describe('brushDef texture editing', () => {
     });
   });
 
+  test('can edit one face without changing the rest of a multi-face selection', () => {
+    const { editor, brush } = editorWithSelectedFace();
+    editor.selection = [{ type: 'brush', entity: editor.entities[0], brush }];
+    const target = brush.faces[0];
+    const untouched = brush.faces[1];
+    const originalTarget = structuredClone(target.textureProjection);
+    const originalUntouched = structuredClone(untouched.textureProjection);
+
+    shiftTexture(editor, 8, -16, [target]);
+    rotateTexture(editor, 15, [target]);
+    scaleTexture(editor, 0.25, [target]);
+
+    expect(target.textureProjection).not.toEqual(originalTarget);
+    expect(untouched.textureProjection).toEqual(originalUntouched);
+  });
+
   test('scales and rotates primitive matrices', () => {
     const scaled = editorWithSelectedFace();
     const face = scaled.brush.faces[0];

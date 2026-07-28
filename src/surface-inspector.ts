@@ -1,6 +1,11 @@
 import type { BrushFace } from './brush';
 import type { Editor } from './editor';
-import { getTextureFaces } from './editor-textures';
+import {
+  getTextureFaces,
+  rotateTexture as rotateFaceTexture,
+  scaleTexture as scaleFaceTexture,
+  shiftTexture as shiftFaceTexture,
+} from './editor-textures';
 import { updateFaceProperties } from './editor-properties';
 import {
   faceUvPolygon,
@@ -14,6 +19,8 @@ import {
 } from './uv-editor';
 
 type DragMode = 'translate' | 'rotate' | 'scale';
+
+export const MAX_SURFACE_PREVIEWS = 12;
 
 export function surfaceDragMultiplier(fineControl: boolean): number {
   return fineControl ? 0.1 : 1;
@@ -36,6 +43,7 @@ interface PreviewSurface {
   clipPoints: UvPoint[];
   rows?: UvPoint[][];
   source: boolean;
+  face?: BrushFace;
 }
 
 interface PreviewTextureImage {
@@ -49,6 +57,14 @@ interface PreviewCell {
   y: number;
   width: number;
   height: number;
+}
+
+interface PreviewInteraction {
+  face: BrushFace;
+  center: [number, number];
+  rotateHandle: [number, number];
+  scaleHandle: [number, number];
+  viewport: UvViewport;
 }
 
 export function surfacePreviewCells(
@@ -69,6 +85,10 @@ export function surfacePreviewCells(
     width: cellWidth,
     height: cellHeight,
   }));
+}
+
+export function surfacePreviewLimit(columns: number): number {
+  return Math.min(MAX_SURFACE_PREVIEWS, Math.max(1, columns) * 6);
 }
 
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
@@ -166,6 +186,7 @@ function collectPreviewSurfaces(editor: Editor): PreviewSurface[] {
       points,
       clipPoints: points,
       source: index === 0,
+      face,
     };
   });
   const patches = editor.selection.filter(item => item.type === 'patch').map(item => item.patch);
@@ -232,6 +253,7 @@ export class SurfaceInspector {
   private readonly clipTexture: HTMLInputElement;
   private readonly overlaySurfaces: HTMLInputElement;
   private readonly overlayOption: HTMLLabelElement;
+  private previewInteractions: PreviewInteraction[] = [];
   private drawFrame: number | null = null;
   private lastSelectionSignature = '';
   private readonly previewTextureImages = new Map<string, PreviewTextureImage>();
@@ -251,6 +273,7 @@ export class SurfaceInspector {
   private previousRadius = 0;
   private dragViewportScale = 1;
   private dragTransactionOpen = false;
+  private dragFace: BrushFace | null = null;
 
   constructor(private readonly editor: Editor, private readonly body: HTMLElement) {
     body.innerHTML = '';
@@ -412,7 +435,7 @@ export class SurfaceInspector {
     );
     this.bindUvCanvas();
     this.clipTexture.addEventListener('change', () => this.scheduleDraw());
-    this.overlaySurfaces.addEventListener('change', () => this.scheduleDraw());
+    this.overlaySurfaces.addEventListener('change', () => this.update(true));
     window.addEventListener('resize', () => this.scheduleDraw());
     this.update(true);
   }
@@ -470,17 +493,22 @@ export class SurfaceInspector {
     this.patchSection.hidden = patches.length === 0;
 
     const interactive = this.currentUvFace() !== null;
-    this.interactiveHint.hidden = !interactive;
+    const separateInteractive = !this.overlaySurfaces.checked
+      && faces.length > 0
+      && faces.length + patches.length > 1;
+    this.interactiveHint.hidden = !(interactive || separateInteractive);
     this.overlayOption.hidden = interactive || faces.length + patches.length < 2;
-    this.previewLegend.hidden = interactive;
-    if (!interactive) {
+    this.previewLegend.hidden = interactive || separateInteractive;
+    if (!interactive && !separateInteractive) {
       this.previewLegend.innerHTML = faces.length + patches.length > 1
         ? '<span><i class="source"></i>Source</span><span><i class="target"></i>Targets</span>'
         : '<span><i class="source"></i>Surface preview</span>';
     }
     this.uvCanvas.title = interactive
       ? 'Drag the handles to edit this face. Hold Shift for fine control.'
-      : 'Select exactly one brush face to use interactive handles.';
+      : separateInteractive
+        ? 'Drag the handles in any face preview to edit that face. Hold Shift for fine control.'
+        : 'Turn off Overlay to edit selected brush faces individually.';
 
     this.updateTextureImages(textures);
     if (hasSurfaces && this.editor.display.categories.textureAxes) {
@@ -559,9 +587,13 @@ export class SurfaceInspector {
 
   private drawAlignmentPreview(): void {
     if (this.workspace.hidden || this.empty.hidden === false) return;
-    const surfaces = collectPreviewSurfaces(this.editor);
-    const separate = surfaces.length > 1 && !this.overlaySurfaces.checked;
+    const allSurfaces = collectPreviewSurfaces(this.editor);
     const columns = this.body.clientWidth >= 360 ? 2 : 1;
+    const previewLimit = surfacePreviewLimit(columns);
+    const surfaces = allSurfaces.slice(0, previewLimit);
+    const totalTextureCount = new Set(allSurfaces.map(surface => surface.texture.toLowerCase())).size;
+    this.previewInteractions = [];
+    const separate = surfaces.length > 1 && !this.overlaySurfaces.checked;
     const rows = Math.ceil(surfaces.length / columns);
     this.uvCanvas.style.height = separate
       ? `${Math.min(1200, Math.max(220, rows * 180 + (rows + 1) * 8))}px`
@@ -573,11 +605,17 @@ export class SurfaceInspector {
     const context = this.uvCanvas.getContext('2d');
     if (!context) return;
     if (separate) {
-      this.drawSeparatedPreview(context, surfaces, columns);
+      this.drawSeparatedPreview(context, surfaces, columns, allSurfaces.length, totalTextureCount);
       return;
     }
     const points = surfaces.flatMap(surface => surface.points);
-    this.uvViewport = fitUvViewport(points, this.uvCanvas.width, this.uvCanvas.height, 30);
+    this.uvViewport = fitUvViewport(
+      points,
+      this.uvCanvas.width,
+      this.uvCanvas.height,
+      this.clipTexture.checked ? 20 : 30,
+      this.clipTexture.checked ? 'surface' : 'texture',
+    );
     const ordered = [...surfaces].sort((left, right) => Number(left.source) - Number(right.source));
     const textureCount = new Set(surfaces.map(surface => surface.texture.toLowerCase())).size;
 
@@ -596,20 +634,28 @@ export class SurfaceInspector {
     this.drawUvGrid(context);
 
     for (const surface of ordered) this.drawPreviewSurfaceOutline(context, surface, this.uvViewport);
-    this.updatePreviewStatus(surfaces);
+    this.updatePreviewStatus(surfaces, allSurfaces.length, totalTextureCount);
   }
 
   private drawSeparatedPreview(
     context: CanvasRenderingContext2D,
     surfaces: PreviewSurface[],
     columns: number,
+    totalSurfaceCount = surfaces.length,
+    totalTextureCount?: number,
   ): void {
     context.fillStyle = '#151515';
     context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
     const cells = surfacePreviewCells(surfaces.length, this.uvCanvas.width, this.uvCanvas.height, columns);
     surfaces.forEach((surface, index) => {
       const cell = cells[index];
-      const local = fitUvViewport(surface.points, cell.width, cell.height, 24);
+      const local = fitUvViewport(
+        surface.points,
+        cell.width,
+        cell.height,
+        this.clipTexture.checked ? (surface.face ? 32 : 18) : (surface.face ? 48 : 24),
+        this.clipTexture.checked ? 'surface' : 'texture',
+      );
       const viewport: UvViewport = {
         ...local,
         offsetX: local.offsetX + cell.x,
@@ -623,6 +669,8 @@ export class SurfaceInspector {
       this.drawTexturePattern(context, surface.texture, clipPoints, viewport, cell);
       this.drawUvGrid(context, viewport, cell);
       this.drawPreviewSurfaceOutline(context, surface, viewport);
+      const interaction = this.drawPreviewHandles(context, surface, viewport);
+      if (interaction) this.previewInteractions.push(interaction);
 
       context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
       context.lineWidth = 1;
@@ -635,7 +683,69 @@ export class SurfaceInspector {
       const role = surface.source ? 'Source' : `Target ${index}`;
       context.fillText(`${role} · ${surface.texture}`, cell.x + 6, cell.y + 10, Math.max(1, cell.width - 12));
     });
-    this.updatePreviewStatus(surfaces);
+    this.updatePreviewStatus(surfaces, totalSurfaceCount, totalTextureCount);
+  }
+
+  private drawPreviewHandles(
+    context: CanvasRenderingContext2D,
+    surface: PreviewSurface,
+    viewport: UvViewport,
+  ): PreviewInteraction | null {
+    if (!surface.face) return null;
+    const points = surface.points.map(point => uvToScreen(point, viewport));
+    if (points.length === 0) return null;
+    const center = uvToScreen(uvPolygonCenter(surface.points), viewport);
+    const topY = Math.min(...points.map(point => point[1]));
+    const rightX = Math.max(...points.map(point => point[0]));
+    const active = this.dragFace === surface.face && this.dragMode !== null;
+    const interactionCenter: [number, number] = active && this.dragMode === 'translate' && this.dragPointerPoint
+      ? [
+          this.dragPointerPoint[0] + this.dragPointerOffset[0],
+          this.dragPointerPoint[1] + this.dragPointerOffset[1],
+        ]
+      : active && this.dragCenterScreen
+        ? this.dragCenterScreen
+        : center;
+    const rotateHandle: [number, number] = active && this.dragMode === 'rotate' && this.dragPointerPoint
+      ? this.dragPointerPoint
+      : [center[0], topY - 24];
+    const scaleHandle: [number, number] = active && this.dragMode === 'scale' && this.dragPointerPoint
+      ? this.dragPointerPoint
+      : [rightX + 14, center[1]];
+
+    context.strokeStyle = 'rgba(232,160,48,.65)';
+    context.lineWidth = 1.5;
+    if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
+      context.beginPath();
+      context.moveTo(interactionCenter[0], interactionCenter[1]);
+      context.lineTo(rotateHandle[0], rotateHandle[1]);
+      context.stroke();
+    }
+    if (!(active && (this.dragMode === 'rotate' || this.dragMode === 'translate'))) {
+      context.beginPath();
+      context.moveTo(interactionCenter[0], interactionCenter[1]);
+      context.lineTo(scaleHandle[0], scaleHandle[1]);
+      context.stroke();
+    }
+    context.fillStyle = '#e8a030';
+    context.beginPath();
+    context.arc(interactionCenter[0], interactionCenter[1], 7, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#151515';
+    context.beginPath();
+    context.arc(interactionCenter[0], interactionCenter[1], 2, 0, Math.PI * 2);
+    context.fill();
+    if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
+      context.fillStyle = '#67b7d1';
+      context.beginPath();
+      context.arc(rotateHandle[0], rotateHandle[1], 7, 0, Math.PI * 2);
+      context.fill();
+    }
+    if (!(active && (this.dragMode === 'rotate' || this.dragMode === 'translate'))) {
+      context.fillStyle = '#78c46b';
+      context.fillRect(scaleHandle[0] - 6, scaleHandle[1] - 6, 12, 12);
+    }
+    return { face: surface.face, center, rotateHandle, scaleHandle, viewport };
   }
 
   private drawPreviewSurfaceOutline(
@@ -664,11 +774,17 @@ export class SurfaceInspector {
     context.stroke();
   }
 
-  private updatePreviewStatus(surfaces: PreviewSurface[]): void {
-    const textureCount = new Set(surfaces.map(surface => surface.texture.toLowerCase())).size;
+  private updatePreviewStatus(
+    surfaces: PreviewSurface[],
+    totalSurfaceCount = surfaces.length,
+    totalTextureCount = new Set(surfaces.map(surface => surface.texture.toLowerCase())).size,
+  ): void {
     const report = this.editor.textureDensityReport();
     const mode = surfaces.length > 1 && !this.overlaySurfaces.checked ? 'separate' : 'overlaid';
-    const summary = `${surfaces.length} surface${surfaces.length === 1 ? '' : 's'} · ${textureCount} texture${textureCount === 1 ? '' : 's'} · ${mode}`;
+    const count = totalSurfaceCount > surfaces.length
+      ? `${surfaces.length} of ${totalSurfaceCount} surfaces shown`
+      : `${surfaces.length} surface${surfaces.length === 1 ? '' : 's'}`;
+    const summary = `${count} · ${totalTextureCount} texture${totalTextureCount === 1 ? '' : 's'} · ${mode}`;
     this.uvStatus.textContent = report
       ? `${summary} · ${report.minimum.toFixed(3)}–${report.maximum.toFixed(3)} texels/unit · median ${report.median.toFixed(3)}`
       : summary;
@@ -783,7 +899,13 @@ export class SurfaceInspector {
     if (!context) return;
     const [textureWidth, textureHeight] = this.textureSize(face.texture);
     this.uvPolygon = faceUvPolygon(face, textureWidth, textureHeight);
-    this.uvViewport = fitUvViewport(this.uvPolygon, this.uvCanvas.width, this.uvCanvas.height, 58);
+    this.uvViewport = fitUvViewport(
+      this.uvPolygon,
+      this.uvCanvas.width,
+      this.uvCanvas.height,
+      this.clipTexture.checked ? 32 : 58,
+      this.clipTexture.checked ? 'surface' : 'texture',
+    );
     const center = uvPolygonCenter(this.uvPolygon);
     this.uvCenterScreen = uvToScreen(center, this.uvViewport);
     const points = this.uvPolygon.map(point => uvToScreen(point, this.uvViewport));
@@ -799,7 +921,7 @@ export class SurfaceInspector {
         : this.uvCenterScreen;
     this.rotateHandle = this.dragMode === 'rotate' && this.dragPointerPoint
       ? this.dragPointerPoint
-      : [this.uvCenterScreen[0], topY - 34];
+      : [this.uvCenterScreen[0], topY - (this.clipTexture.checked ? 24 : 34)];
     this.scaleHandle = this.dragMode === 'scale' && this.dragPointerPoint
       ? this.dragPointerPoint
       : [rightX + 20, this.uvCenterScreen[1]];
@@ -846,28 +968,44 @@ export class SurfaceInspector {
 
   private bindUvCanvas(): void {
     this.uvCanvas.addEventListener('pointerdown', event => {
-      const face = this.currentUvFace();
-      if (!face) return;
       this.dragCanvasBounds = this.uvCanvas.getBoundingClientRect();
       const point = eventPoint(event, this.uvCanvas, this.dragCanvasBounds);
-      if (distance(point, this.rotateHandle) <= 18) this.dragMode = 'rotate';
-      else if (distance(point, this.scaleHandle) <= 18) this.dragMode = 'scale';
-      else if (distance(point, this.uvCenterScreen) <= 22) this.dragMode = 'translate';
+      const singleFace = this.currentUvFace();
+      const interaction: PreviewInteraction | null = singleFace
+        ? {
+            face: singleFace,
+            center: this.uvCenterScreen,
+            rotateHandle: this.rotateHandle,
+            scaleHandle: this.scaleHandle,
+            viewport: this.uvViewport,
+          }
+        : this.previewInteractions.find(candidate =>
+            distance(point, candidate.rotateHandle) <= 16
+            || distance(point, candidate.scaleHandle) <= 16
+            || distance(point, candidate.center) <= 18) ?? null;
+      if (!interaction) {
+        this.dragCanvasBounds = null;
+        return;
+      }
+      if (distance(point, interaction.rotateHandle) <= 16) this.dragMode = 'rotate';
+      else if (distance(point, interaction.scaleHandle) <= 16) this.dragMode = 'scale';
+      else if (distance(point, interaction.center) <= 18) this.dragMode = 'translate';
       else {
         this.dragCanvasBounds = null;
         return;
       }
+      this.dragFace = interaction.face;
       this.editor.beginTransaction(
         this.dragMode === 'translate' ? 'Shift texture' : this.dragMode === 'rotate' ? 'Rotate texture' : 'Scale texture',
       );
       this.dragTransactionOpen = true;
       this.previousPoint = point;
-      this.dragCenterScreen = [...this.uvCenterScreen];
+      this.dragCenterScreen = [...interaction.center];
       this.dragPointerPoint = [...point];
       this.dragPointerOffset = this.dragMode === 'translate'
-        ? [this.uvCenterScreen[0] - point[0], this.uvCenterScreen[1] - point[1]]
+        ? [interaction.center[0] - point[0], interaction.center[1] - point[1]]
         : [0, 0];
-      this.dragViewportScale = this.uvViewport.scale;
+      this.dragViewportScale = interaction.viewport.scale;
       this.previousAngle = Math.atan2(point[1] - this.dragCenterScreen[1], point[0] - this.dragCenterScreen[0]);
       this.previousRadius = Math.max(1, distance(point, this.dragCenterScreen));
       this.uvCanvas.setPointerCapture(event.pointerId);
@@ -875,31 +1013,41 @@ export class SurfaceInspector {
     });
 
     this.uvCanvas.addEventListener('pointermove', event => {
-      if (!this.currentUvFace() && !this.dragMode) {
-        this.uvCanvas.style.cursor = 'default';
-        return;
-      }
       const point = eventPoint(event, this.uvCanvas, this.dragCanvasBounds ?? undefined);
       if (!this.dragMode) {
-        if (distance(point, this.rotateHandle) <= 15) this.uvCanvas.style.cursor = 'crosshair';
-        else if (distance(point, this.scaleHandle) <= 15) this.uvCanvas.style.cursor = 'nwse-resize';
-        else if (distance(point, this.uvCenterScreen) <= 18) this.uvCanvas.style.cursor = 'move';
+        const singleFace = this.currentUvFace();
+        const interactions: PreviewInteraction[] = singleFace
+          ? [{
+              face: singleFace,
+              center: this.uvCenterScreen,
+              rotateHandle: this.rotateHandle,
+              scaleHandle: this.scaleHandle,
+              viewport: this.uvViewport,
+            }]
+          : this.previewInteractions;
+        if (interactions.some(candidate => distance(point, candidate.rotateHandle) <= 15)) {
+          this.uvCanvas.style.cursor = 'crosshair';
+        } else if (interactions.some(candidate => distance(point, candidate.scaleHandle) <= 15)) {
+          this.uvCanvas.style.cursor = 'nwse-resize';
+        } else if (interactions.some(candidate => distance(point, candidate.center) <= 18)) {
+          this.uvCanvas.style.cursor = 'move';
+        }
         else this.uvCanvas.style.cursor = 'default';
         return;
       }
-      if (!this.currentUvFace()) {
+      const face = this.dragFace;
+      if (!face || !getTextureFaces(this.editor).includes(face)) {
         this.finishUvDrag(event);
         return;
       }
       const multiplier = surfaceDragMultiplier(event.shiftKey);
       if (this.dragMode === 'translate') {
-        const face = this.currentUvFace()!;
         const [textureWidth, textureHeight] = this.textureSize(face.texture);
         const screenDx = point[0] - this.previousPoint[0];
         const screenDy = point[1] - this.previousPoint[1];
         const dx = screenDx / this.dragViewportScale * textureWidth * multiplier;
         const dy = screenDy / this.dragViewportScale * textureHeight * multiplier;
-        this.editor.shiftTexture(dx, dy);
+        shiftFaceTexture(this.editor, dx, dy, [face]);
         const visual = this.dragPointerPoint ?? this.previousPoint;
         this.dragPointerPoint = [
           visual[0] + screenDx * multiplier,
@@ -909,7 +1057,7 @@ export class SurfaceInspector {
         const center = this.dragCenterScreen ?? this.uvCenterScreen;
         const angle = Math.atan2(point[1] - center[1], point[0] - center[0]);
         const angleDelta = shortestAngleDelta(this.previousAngle, angle) * multiplier;
-        this.editor.rotateTexture(angleDelta * 180 / Math.PI);
+        rotateFaceTexture(this.editor, angleDelta * 180 / Math.PI, [face]);
         this.previousAngle = angle;
         const visual = this.dragPointerPoint ?? point;
         const visualRadius = Math.max(1, distance(visual, center));
@@ -922,7 +1070,7 @@ export class SurfaceInspector {
         const center = this.dragCenterScreen ?? this.uvCenterScreen;
         const radius = Math.max(1, distance(point, center));
         const radiusDelta = radius - this.previousRadius;
-        this.editor.scaleTexture(radiusDelta / Math.max(80, this.dragViewportScale) * multiplier);
+        scaleFaceTexture(this.editor, radiusDelta / Math.max(80, this.dragViewportScale) * multiplier, [face]);
         this.previousRadius = radius;
         const visual = this.dragPointerPoint ?? point;
         const visualRadius = Math.max(1, distance(visual, center) + radiusDelta * multiplier);
@@ -942,6 +1090,7 @@ export class SurfaceInspector {
   private finishUvDrag(event: PointerEvent): void {
     if (!this.dragMode) return;
     this.dragMode = null;
+    this.dragFace = null;
     this.dragCenterScreen = null;
     this.dragPointerPoint = null;
     this.dragPointerOffset = [0, 0];

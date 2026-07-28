@@ -6,6 +6,7 @@ import {
   patchClipPolygon,
   surfaceDragMultiplier,
   surfacePreviewCells,
+  surfacePreviewLimit,
   surfaceSelectionSignature,
 } from '../src/surface-inspector';
 
@@ -43,6 +44,17 @@ describe('UV editor view model', () => {
     const screen = uvToScreen(point, viewport);
 
     expect(screenToUv(screen[0], screen[1], viewport)).toEqual(point);
+  });
+
+  it('fits a clipped face even when its UV range is very small', () => {
+    const points = [{ u: 0, v: 0 }, { u: 0.01, v: 0.01 }];
+    const textureViewport = fitUvViewport(points, 200, 200, 20);
+    const surfaceViewport = fitUvViewport(points, 200, 200, 20, 'surface');
+    const textureSpan = uvToScreen(points[1], textureViewport)[0] - uvToScreen(points[0], textureViewport)[0];
+    const surfaceSpan = uvToScreen(points[1], surfaceViewport)[0] - uvToScreen(points[0], surfaceViewport)[0];
+
+    expect(textureSpan).toBeLessThan(10);
+    expect(surfaceSpan).toBeCloseTo(160);
   });
 
   it('keeps rotation deltas continuous across the angle wrap boundary', () => {
@@ -92,5 +104,11 @@ describe('UV editor view model', () => {
     const wide = surfacePreviewCells(3, 500, 380);
     expect(wide[1].x).toBeGreaterThan(wide[0].x + wide[0].width);
     expect(wide[2].y).toBeGreaterThan(wide[0].y + wide[0].height);
+  });
+
+  it('limits separate previews to six usable rows', () => {
+    expect(surfacePreviewLimit(1)).toBe(6);
+    expect(surfacePreviewLimit(2)).toBe(12);
+    expect(surfacePreviewLimit(3)).toBe(12);
   });
 });

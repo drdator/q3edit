@@ -1566,15 +1566,30 @@ body.sidepanel-resizing * {
   color: #67b7d1;
 }
 
-.surface-inspector-clip {
+.surface-inspector-uv-controls .uv-editor-option {
   display: inline-flex !important;
+  flex-direction: row;
   align-items: center;
   gap: 5px;
-  margin: 0 0 0 auto !important;
+  margin: 0 !important;
   color: var(--text) !important;
+  white-space: nowrap;
 }
 
-.surface-inspector-clip input {
+.surface-inspector-uv-controls .surface-inspector-overlay {
+  margin-left: auto !important;
+}
+
+.surface-inspector-uv-controls .surface-inspector-overlay[hidden],
+.surface-inspector-uv-controls .surface-inspector-clip[hidden] {
+  display: none !important;
+}
+
+.surface-inspector-uv-controls .surface-inspector-overlay[hidden] + .surface-inspector-clip {
+  margin-left: auto !important;
+}
+
+.surface-inspector-uv-controls .uv-editor-option input {
   margin: 0;
   accent-color: var(--accent);
 }
