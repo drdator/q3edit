@@ -1577,18 +1577,10 @@ body.sidepanel-resizing * {
   white-space: nowrap;
 }
 
-.surface-inspector-uv-controls .surface-inspector-overlay {
-  margin-left: auto !important;
-}
-
 .surface-inspector-uv-controls .surface-inspector-overlay[hidden],
 .surface-inspector-uv-controls .surface-inspector-auto-fit[hidden],
 .surface-inspector-uv-controls .surface-inspector-clip[hidden] {
   display: none !important;
-}
-
-.surface-inspector-uv-controls .surface-inspector-overlay[hidden] + .surface-inspector-auto-fit {
-  margin-left: auto !important;
 }
 
 .surface-inspector-uv-controls .uv-editor-option input {
