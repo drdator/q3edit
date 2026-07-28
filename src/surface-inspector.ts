@@ -681,12 +681,14 @@ export class SurfaceInspector {
       context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
       context.lineWidth = 1;
       context.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.width - 1, cell.height - 1);
+      const labelHeight = 18 * displayScale;
+      const labelTop = cell.y + cell.height - labelHeight - displayScale;
       context.fillStyle = 'rgba(15,15,15,.84)';
       context.fillRect(
         cell.x + displayScale,
-        cell.y + displayScale,
+        labelTop,
         cell.width - displayScale * 2,
-        18 * displayScale,
+        labelHeight,
       );
       context.fillStyle = surface.source ? '#e8a030' : '#67b7d1';
       context.font = `${9 * displayScale}px monospace`;
@@ -694,7 +696,7 @@ export class SurfaceInspector {
       context.fillText(
         `Face ${index + 1} · ${surface.texture}`,
         cell.x + 6 * displayScale,
-        cell.y + 10 * displayScale,
+        labelTop + 10 * displayScale,
         Math.max(1, cell.width - 12 * displayScale),
       );
     });
