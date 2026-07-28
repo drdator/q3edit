@@ -11,6 +11,9 @@ export interface UvViewport {
   offsetY: number;
   width: number;
   height: number;
+  axisX?: [number, number];
+  axisY?: [number, number];
+  orientationCenter?: [number, number];
 }
 
 export function faceUvPolygon(
@@ -64,17 +67,39 @@ export function fitUvViewport(
 }
 
 export function uvToScreen(point: UvPoint, viewport: UvViewport): [number, number] {
+  const x = viewport.offsetX + point.u * viewport.scale;
+  const y = viewport.offsetY + point.v * viewport.scale;
+  const axisX = viewport.axisX ?? [1, 0];
+  const axisY = viewport.axisY ?? [0, 1];
+  const center = viewport.orientationCenter ?? [viewport.width / 2, viewport.height / 2];
+  const dx = x - center[0];
+  const dy = y - center[1];
   return [
-    viewport.offsetX + point.u * viewport.scale,
-    viewport.offsetY + point.v * viewport.scale,
+    center[0] + axisX[0] * dx + axisY[0] * dy,
+    center[1] + axisX[1] * dx + axisY[1] * dy,
   ];
 }
 
 export function screenToUv(x: number, y: number, viewport: UvViewport): UvPoint {
+  const axisX = viewport.axisX ?? [1, 0];
+  const axisY = viewport.axisY ?? [0, 1];
+  const center = viewport.orientationCenter ?? [viewport.width / 2, viewport.height / 2];
+  const dx = x - center[0];
+  const dy = y - center[1];
+  const determinant = axisX[0] * axisY[1] - axisX[1] * axisY[0];
+  const safeDeterminant = Math.abs(determinant) > 1e-6 ? determinant : 1;
+  const unrotatedX = center[0] + (dx * axisY[1] - dy * axisY[0]) / safeDeterminant;
+  const unrotatedY = center[1] + (-dx * axisX[1] + dy * axisX[0]) / safeDeterminant;
   return {
-    u: (x - viewport.offsetX) / viewport.scale,
-    v: (y - viewport.offsetY) / viewport.scale,
+    u: (unrotatedX - viewport.offsetX) / viewport.scale,
+    v: (unrotatedY - viewport.offsetY) / viewport.scale,
   };
+}
+
+export function uvViewportDeterminant(viewport: UvViewport): number {
+  const axisX = viewport.axisX ?? [1, 0];
+  const axisY = viewport.axisY ?? [0, 1];
+  return axisX[0] * axisY[1] - axisX[1] * axisY[0];
 }
 
 export function uvPolygonCenter(points: UvPoint[]): UvPoint {

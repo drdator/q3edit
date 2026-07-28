@@ -8,6 +8,8 @@ import {
   surfacePreviewCells,
   surfacePreviewLimit,
   surfaceCameraSide,
+  surfaceCameraUvBasis,
+  surfaceResizeCursor,
   surfaceScaledDragPoint,
   surfaceScaleFactor,
   surfaceSelectionSignature,
@@ -29,6 +31,62 @@ describe('UV editor view model', () => {
     const top = brush.faces[4];
     expect(surfaceCameraSide(top, [64, 64, 256])).toBe('front/outside');
     expect(surfaceCameraSide(top, [64, 64, 32])).toBe('back/inside');
+  });
+
+  it('matches both UV axes to their camera-space directions', () => {
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_wall/concrete');
+    const north = brush.faces.find(face => face.plane.normal[1] > 0.9);
+    expect(north).toBeDefined();
+    expect(surfaceCameraUvBasis(north!, [64, 256, 64], -Math.PI / 2, 0).axisX[0]).toBeCloseTo(-1);
+    expect(surfaceCameraUvBasis(north!, [64, 256, 64], -Math.PI / 2, 0).axisY[1]).toBeCloseTo(1);
+    expect(surfaceCameraUvBasis(north!, [64, 0, 64], Math.PI / 2, 0).axisX[0]).toBeCloseTo(1);
+    expect(surfaceCameraUvBasis(north!, [64, 0, 64], Math.PI / 2, 0).axisY[1]).toBeCloseTo(1);
+  });
+
+  it('round-trips UV coordinates through a mirrored viewport', () => {
+    const viewport = {
+      scale: 10,
+      offsetX: 0,
+      offsetY: 0,
+      width: 100,
+      height: 100,
+      axisX: [-1, 0] as [number, number],
+      axisY: [0, 1] as [number, number],
+      orientationCenter: [50, 50] as [number, number],
+    };
+    expect(uvToScreen({ u: 2, v: 3 }, viewport)).toEqual([80, 30]);
+    expect(screenToUv(80, 30, viewport)).toEqual({ u: 2, v: 3 });
+  });
+
+  it('round-trips UV coordinates through a rotated viewport', () => {
+    const viewport = {
+      scale: 10,
+      offsetX: 50,
+      offsetY: 50,
+      width: 100,
+      height: 100,
+      axisX: [0, 1] as [number, number],
+      axisY: [-1, 0] as [number, number],
+      orientationCenter: [50, 50] as [number, number],
+    };
+    expect(uvToScreen({ u: 2, v: 3 }, viewport)).toEqual([20, 70]);
+    expect(screenToUv(20, 70, viewport)).toEqual({ u: 2, v: 3 });
+  });
+
+  it('round-trips UV coordinates through an oblique camera-facing viewport', () => {
+    const viewport = {
+      scale: 10,
+      offsetX: 50,
+      offsetY: 50,
+      width: 100,
+      height: 100,
+      axisX: [1, 0] as [number, number],
+      axisY: [-0.5, Math.sqrt(0.75)] as [number, number],
+      orientationCenter: [50, 50] as [number, number],
+    };
+    const screen = uvToScreen({ u: 2, v: 3 }, viewport);
+    expect(screenToUv(screen[0], screen[1], viewport).u).toBeCloseTo(2);
+    expect(screenToUv(screen[0], screen[1], viewport).v).toBeCloseTo(3);
   });
 
   it('projects brush primitive matrices without converting them', () => {
@@ -78,6 +136,15 @@ describe('UV editor view model', () => {
     expect(surfaceDragMultiplier(true, false)).toBe(0.1);
     expect(surfaceDragMultiplier(false, true)).toBe(10);
     expect(surfaceDragMultiplier(true, true)).toBe(1);
+  });
+
+  it('chooses resize cursors from each handle screen direction', () => {
+    const center: [number, number] = [100, 100];
+    expect(surfaceResizeCursor(center, [140, 100])).toBe('ew-resize');
+    expect(surfaceResizeCursor(center, [100, 60])).toBe('ns-resize');
+    expect(surfaceResizeCursor(center, [140, 140])).toBe('nwse-resize');
+    expect(surfaceResizeCursor(center, [60, 140])).toBe('nesw-resize');
+    expect(surfaceResizeCursor(center, [135, 70])).toBe('nesw-resize');
   });
 
   it('maps scale-handle span directly to UV scale', () => {
