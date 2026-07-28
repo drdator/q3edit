@@ -44,6 +44,33 @@ interface PreviewTextureImage {
   pattern: CanvasPattern | null;
 }
 
+interface PreviewCell {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function surfacePreviewCells(
+  count: number,
+  width: number,
+  height: number,
+  columns = width >= 360 ? 2 : 1,
+): PreviewCell[] {
+  if (count <= 0) return [];
+  const gap = 8;
+  const columnCount = Math.max(1, Math.min(count, columns));
+  const rowCount = Math.ceil(count / columnCount);
+  const cellWidth = Math.max(1, (width - gap * (columnCount + 1)) / columnCount);
+  const cellHeight = Math.max(1, (height - gap * (rowCount + 1)) / rowCount);
+  return Array.from({ length: count }, (_, index) => ({
+    x: gap + (index % columnCount) * (cellWidth + gap),
+    y: gap + Math.floor(index / columnCount) * (cellHeight + gap),
+    width: cellWidth,
+    height: cellHeight,
+  }));
+}
+
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
   const result = document.createElement('button');
   result.type = 'button';
@@ -203,6 +230,8 @@ export class SurfaceInspector {
   private readonly uvCanvas: HTMLCanvasElement;
   private readonly uvStatus: HTMLElement;
   private readonly clipTexture: HTMLInputElement;
+  private readonly overlaySurfaces: HTMLInputElement;
+  private readonly overlayOption: HTMLLabelElement;
   private drawFrame: number | null = null;
   private lastSelectionSignature = '';
   private readonly previewTextureImages = new Map<string, PreviewTextureImage>();
@@ -252,7 +281,14 @@ export class SurfaceInspector {
     this.clipTexture.checked = true;
     this.clipTexture.setAttribute('aria-label', 'Clip texture previews to selected surfaces');
     clip.append(this.clipTexture, document.createTextNode('Clip'));
-    uvControls.append(this.interactiveHint, clip);
+    this.overlayOption = document.createElement('label');
+    this.overlayOption.className = 'uv-editor-option surface-inspector-overlay';
+    this.overlaySurfaces = document.createElement('input');
+    this.overlaySurfaces.type = 'checkbox';
+    this.overlaySurfaces.checked = true;
+    this.overlaySurfaces.setAttribute('aria-label', 'Overlay selected surfaces in shared UV space');
+    this.overlayOption.append(this.overlaySurfaces, document.createTextNode('Overlay'));
+    uvControls.append(this.interactiveHint, this.overlayOption, clip);
 
     this.previewLegend = document.createElement('div');
     this.previewLegend.className = 'surface-inspector-preview-legend';
@@ -376,6 +412,7 @@ export class SurfaceInspector {
     );
     this.bindUvCanvas();
     this.clipTexture.addEventListener('change', () => this.scheduleDraw());
+    this.overlaySurfaces.addEventListener('change', () => this.scheduleDraw());
     window.addEventListener('resize', () => this.scheduleDraw());
     this.update(true);
   }
@@ -434,6 +471,7 @@ export class SurfaceInspector {
 
     const interactive = this.currentUvFace() !== null;
     this.interactiveHint.hidden = !interactive;
+    this.overlayOption.hidden = interactive || faces.length + patches.length < 2;
     this.previewLegend.hidden = interactive;
     if (!interactive) {
       this.previewLegend.innerHTML = faces.length + patches.length > 1
@@ -521,13 +559,23 @@ export class SurfaceInspector {
 
   private drawAlignmentPreview(): void {
     if (this.workspace.hidden || this.empty.hidden === false) return;
+    const surfaces = collectPreviewSurfaces(this.editor);
+    const separate = surfaces.length > 1 && !this.overlaySurfaces.checked;
+    const columns = this.body.clientWidth >= 360 ? 2 : 1;
+    const rows = Math.ceil(surfaces.length / columns);
+    this.uvCanvas.style.height = separate
+      ? `${Math.min(1200, Math.max(220, rows * 180 + (rows + 1) * 8))}px`
+      : '';
     if (resizeCanvas(this.uvCanvas, 1, 1)) {
       for (const entry of this.previewTextureImages.values()) entry.pattern = null;
       this.checkerPattern = null;
     }
     const context = this.uvCanvas.getContext('2d');
     if (!context) return;
-    const surfaces = collectPreviewSurfaces(this.editor);
+    if (separate) {
+      this.drawSeparatedPreview(context, surfaces, columns);
+      return;
+    }
     const points = surfaces.flatMap(surface => surface.points);
     this.uvViewport = fitUvViewport(points, this.uvCanvas.width, this.uvCanvas.height, 30);
     const ordered = [...surfaces].sort((left, right) => Number(left.source) - Number(right.source));
@@ -547,29 +595,80 @@ export class SurfaceInspector {
     context.globalAlpha = 1;
     this.drawUvGrid(context);
 
-    for (const surface of ordered) {
+    for (const surface of ordered) this.drawPreviewSurfaceOutline(context, surface, this.uvViewport);
+    this.updatePreviewStatus(surfaces);
+  }
+
+  private drawSeparatedPreview(
+    context: CanvasRenderingContext2D,
+    surfaces: PreviewSurface[],
+    columns: number,
+  ): void {
+    context.fillStyle = '#151515';
+    context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
+    const cells = surfacePreviewCells(surfaces.length, this.uvCanvas.width, this.uvCanvas.height, columns);
+    surfaces.forEach((surface, index) => {
+      const cell = cells[index];
+      const local = fitUvViewport(surface.points, cell.width, cell.height, 24);
+      const viewport: UvViewport = {
+        ...local,
+        offsetX: local.offsetX + cell.x,
+        offsetY: local.offsetY + cell.y,
+        width: this.uvCanvas.width,
+        height: this.uvCanvas.height,
+      };
+      const clipPoints = this.clipTexture.checked
+        ? surface.clipPoints.map(point => uvToScreen(point, viewport))
+        : null;
+      this.drawTexturePattern(context, surface.texture, clipPoints, viewport, cell);
+      this.drawUvGrid(context, viewport, cell);
+      this.drawPreviewSurfaceOutline(context, surface, viewport);
+
       context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
-      context.fillStyle = surface.source ? 'rgba(232,160,48,.16)' : 'rgba(103,183,209,.10)';
-      context.lineWidth = surface.source ? 3 : 2;
-      if (surface.rows) {
-        for (const row of surface.rows) drawPolyline(context, row, this.uvViewport);
-        const columns = surface.rows[0]?.length ?? 0;
-        for (let column = 0; column < columns; column++) {
-          drawPolyline(context, surface.rows.map(row => row[column]).filter(Boolean), this.uvViewport);
-        }
-      } else {
-        const screen = surface.points.map(point => uvToScreen(point, this.uvViewport));
-        if (screen.length === 0) continue;
-        context.beginPath();
-        context.moveTo(screen[0][0], screen[0][1]);
-        for (const point of screen.slice(1)) context.lineTo(point[0], point[1]);
-        context.closePath();
-        context.fill();
-        context.stroke();
+      context.lineWidth = 1;
+      context.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.width - 1, cell.height - 1);
+      context.fillStyle = 'rgba(15,15,15,.84)';
+      context.fillRect(cell.x + 1, cell.y + 1, cell.width - 2, 18);
+      context.fillStyle = surface.source ? '#e8a030' : '#67b7d1';
+      context.font = '10px monospace';
+      context.textBaseline = 'middle';
+      const role = surface.source ? 'Source' : `Target ${index}`;
+      context.fillText(`${role} · ${surface.texture}`, cell.x + 6, cell.y + 10, Math.max(1, cell.width - 12));
+    });
+    this.updatePreviewStatus(surfaces);
+  }
+
+  private drawPreviewSurfaceOutline(
+    context: CanvasRenderingContext2D,
+    surface: PreviewSurface,
+    viewport: UvViewport,
+  ): void {
+    context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
+    context.fillStyle = surface.source ? 'rgba(232,160,48,.16)' : 'rgba(103,183,209,.10)';
+    context.lineWidth = surface.source ? 3 : 2;
+    if (surface.rows) {
+      for (const row of surface.rows) drawPolyline(context, row, viewport);
+      const columns = surface.rows[0]?.length ?? 0;
+      for (let column = 0; column < columns; column++) {
+        drawPolyline(context, surface.rows.map(row => row[column]).filter(Boolean), viewport);
       }
+      return;
     }
+    const screen = surface.points.map(point => uvToScreen(point, viewport));
+    if (screen.length === 0) return;
+    context.beginPath();
+    context.moveTo(screen[0][0], screen[0][1]);
+    for (const point of screen.slice(1)) context.lineTo(point[0], point[1]);
+    context.closePath();
+    context.fill();
+    context.stroke();
+  }
+
+  private updatePreviewStatus(surfaces: PreviewSurface[]): void {
+    const textureCount = new Set(surfaces.map(surface => surface.texture.toLowerCase())).size;
     const report = this.editor.textureDensityReport();
-    const summary = `${surfaces.length} surface${surfaces.length === 1 ? '' : 's'} · ${textureCount} texture${textureCount === 1 ? '' : 's'}`;
+    const mode = surfaces.length > 1 && !this.overlaySurfaces.checked ? 'separate' : 'overlaid';
+    const summary = `${surfaces.length} surface${surfaces.length === 1 ? '' : 's'} · ${textureCount} texture${textureCount === 1 ? '' : 's'} · ${mode}`;
     this.uvStatus.textContent = report
       ? `${summary} · ${report.minimum.toFixed(3)}–${report.maximum.toFixed(3)} texels/unit · median ${report.median.toFixed(3)}`
       : summary;
@@ -596,6 +695,8 @@ export class SurfaceInspector {
     context: CanvasRenderingContext2D,
     texture: string,
     clipPoints: Array<[number, number]> | null,
+    viewport = this.uvViewport,
+    bounds: PreviewCell = { x: 0, y: 0, width: this.uvCanvas.width, height: this.uvCanvas.height },
   ): void {
     const entry = this.textureImage(texture);
     let pattern = entry?.pattern ?? null;
@@ -624,11 +725,14 @@ export class SurfaceInspector {
     }
     if (pattern) {
       pattern.setTransform(new DOMMatrix([
-        this.uvViewport.scale / sourceWidth, 0,
-        0, this.uvViewport.scale / sourceHeight,
-        this.uvViewport.offsetX, this.uvViewport.offsetY,
+        viewport.scale / sourceWidth, 0,
+        0, viewport.scale / sourceHeight,
+        viewport.offsetX, viewport.offsetY,
       ]));
       context.save();
+      context.beginPath();
+      context.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+      context.clip();
       if (clipPoints && clipPoints.length >= 3) {
         context.beginPath();
         context.moveTo(clipPoints[0][0], clipPoints[0][1]);
@@ -637,30 +741,40 @@ export class SurfaceInspector {
         context.clip();
       }
       context.fillStyle = pattern;
-      context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
+      context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
       context.restore();
     }
   }
 
-  private drawUvGrid(context: CanvasRenderingContext2D): void {
-    const topLeft = screenToUv(0, 0, this.uvViewport);
-    const bottomRight = screenToUv(this.uvCanvas.width, this.uvCanvas.height, this.uvViewport);
+  private drawUvGrid(
+    context: CanvasRenderingContext2D,
+    viewport = this.uvViewport,
+    bounds: PreviewCell = { x: 0, y: 0, width: this.uvCanvas.width, height: this.uvCanvas.height },
+  ): void {
+    const topLeft = screenToUv(bounds.x, bounds.y, viewport);
+    const bottomRight = screenToUv(bounds.x + bounds.width, bounds.y + bounds.height, viewport);
+    context.save();
+    context.beginPath();
+    context.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+    context.clip();
     context.strokeStyle = 'rgba(255,255,255,.08)';
     context.lineWidth = 1;
     for (let u = Math.floor(Math.min(topLeft.u, bottomRight.u)) - 1; u <= Math.ceil(Math.max(topLeft.u, bottomRight.u)) + 1; u++) {
-      const [x] = uvToScreen({ u, v: 0 }, this.uvViewport);
-      context.beginPath(); context.moveTo(x, 0); context.lineTo(x, this.uvCanvas.height); context.stroke();
+      const [x] = uvToScreen({ u, v: 0 }, viewport);
+      context.beginPath(); context.moveTo(x, bounds.y); context.lineTo(x, bounds.y + bounds.height); context.stroke();
     }
     for (let v = Math.floor(Math.min(topLeft.v, bottomRight.v)) - 1; v <= Math.ceil(Math.max(topLeft.v, bottomRight.v)) + 1; v++) {
-      const [, y] = uvToScreen({ u: 0, v }, this.uvViewport);
-      context.beginPath(); context.moveTo(0, y); context.lineTo(this.uvCanvas.width, y); context.stroke();
+      const [, y] = uvToScreen({ u: 0, v }, viewport);
+      context.beginPath(); context.moveTo(bounds.x, y); context.lineTo(bounds.x + bounds.width, y); context.stroke();
     }
+    context.restore();
   }
 
   private drawUvEditor(): void {
     if (this.workspace.hidden) return;
     const face = this.currentUvFace();
     if (!face) return;
+    this.uvCanvas.style.height = '';
     if (resizeCanvas(this.uvCanvas, 1, 1)) {
       for (const entry of this.previewTextureImages.values()) entry.pattern = null;
       this.checkerPattern = null;

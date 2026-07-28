@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { computeBrushGeometry, createBoxBrush } from '../src/brush';
 import { Editor } from '../src/editor';
 import { faceUvPolygon, fitUvViewport, screenToUv, shortestAngleDelta, uvToScreen } from '../src/uv-editor';
-import { patchClipPolygon, surfaceDragMultiplier, surfaceSelectionSignature } from '../src/surface-inspector';
+import {
+  patchClipPolygon,
+  surfaceDragMultiplier,
+  surfacePreviewCells,
+  surfaceSelectionSignature,
+} from '../src/surface-inspector';
 
 describe('UV editor view model', () => {
   it('projects a classic brush face into texture space', () => {
@@ -77,5 +82,15 @@ describe('UV editor view model', () => {
       { u: 1, v: 2 }, { u: 0, v: 2 },
       { u: 0, v: 1 },
     ]);
+  });
+
+  it('lays out separate surface previews responsively', () => {
+    const narrow = surfacePreviewCells(3, 200, 560);
+    expect(narrow.map(cell => cell.x)).toEqual([8, 8, 8]);
+    expect(narrow[1].y).toBeGreaterThan(narrow[0].y + narrow[0].height);
+
+    const wide = surfacePreviewCells(3, 500, 380);
+    expect(wide[1].x).toBeGreaterThan(wide[0].x + wide[0].width);
+    expect(wide[2].y).toBeGreaterThan(wide[0].y + wide[0].height);
   });
 });
