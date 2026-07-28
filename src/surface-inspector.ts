@@ -680,7 +680,7 @@ export class SurfaceInspector {
       const interaction = this.drawPreviewHandles(context, surface, viewport);
       if (interaction) this.previewInteractions.push(interaction);
 
-      context.strokeStyle = '#67b7d1';
+      context.strokeStyle = '#e8a030';
       context.lineWidth = 1;
       context.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.width - 1, cell.height - 1);
       const labelHeight = 18 * displayScale;
