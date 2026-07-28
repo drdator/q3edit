@@ -63,9 +63,11 @@ describe('UV editor view model', () => {
     expect(shortestAngleDelta(degrees(-179), degrees(179)) * 180 / Math.PI).toBeCloseTo(-2);
   });
 
-  it('uses Shift to reduce interactive surface adjustments to one tenth', () => {
-    expect(surfaceDragMultiplier(false)).toBe(1);
-    expect(surfaceDragMultiplier(true)).toBe(0.1);
+  it('supports fine and coarse interactive surface adjustments', () => {
+    expect(surfaceDragMultiplier(false, false)).toBe(1);
+    expect(surfaceDragMultiplier(true, false)).toBe(0.1);
+    expect(surfaceDragMultiplier(false, true)).toBe(10);
+    expect(surfaceDragMultiplier(true, true)).toBe(1);
   });
 
   it('distinguishes equal-looking surface selections', () => {

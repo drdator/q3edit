@@ -22,8 +22,10 @@ type DragMode = 'translate' | 'rotate' | 'scale';
 
 export const MAX_SURFACE_PREVIEWS = 12;
 
-export function surfaceDragMultiplier(fineControl: boolean): number {
-  return fineControl ? 0.1 : 1;
+export function surfaceDragMultiplier(fineControl: boolean, coarseControl = false): number {
+  if (fineControl && coarseControl) return 1;
+  if (fineControl) return 0.1;
+  return coarseControl ? 10 : 1;
 }
 
 export function surfaceSelectionSignature(editor: Editor): string {
@@ -299,7 +301,7 @@ export class SurfaceInspector {
 
     this.interactiveHint = document.createElement('div');
     this.interactiveHint.className = 'surface-inspector-uv-hint';
-    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span><span class="surface-inspector-fine-hint">Shift-drag: fine</span>';
+    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span><span class="surface-inspector-fine-hint">Shift: fine · Alt: coarse</span>';
     const uvControls = document.createElement('div');
     uvControls.className = 'surface-inspector-uv-controls';
     const clip = document.createElement('label');
@@ -510,9 +512,9 @@ export class SurfaceInspector {
         : '<span><i class="source"></i>Surface preview</span>';
     }
     this.uvCanvas.title = interactive
-      ? 'Drag the handles to edit this face. Hold Shift for fine control.'
+      ? 'Drag the handles to edit this face. Hold Shift for fine control or Alt for coarse control.'
       : separateInteractive
-        ? 'Drag the handles in any face preview to edit that face. Hold Shift for fine control.'
+        ? 'Drag the handles in any face preview to edit that face. Hold Shift for fine control or Alt for coarse control.'
         : 'Turn off Overlay to edit selected brush faces individually.';
 
     this.updateTextureImages(textures);
@@ -1057,7 +1059,7 @@ export class SurfaceInspector {
         this.finishUvDrag(event);
         return;
       }
-      const multiplier = surfaceDragMultiplier(event.shiftKey);
+      const multiplier = surfaceDragMultiplier(event.shiftKey, event.altKey);
       if (this.dragMode === 'translate') {
         const [textureWidth, textureHeight] = this.textureSize(face.texture);
         const screenDx = point[0] - this.previousPoint[0];
