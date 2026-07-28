@@ -214,7 +214,6 @@ export class UI {
       openOrganization: () => {
         if (this.organization) openMapOrganizationDialog(this.editor, this.organization);
       },
-      openSurfaceInspector: () => this.openSurfaceInspector(),
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
@@ -489,23 +488,6 @@ export class UI {
 
   private setPanelCollapsed(panel: HTMLElement, collapsed: boolean): void {
     panel.classList.toggle('collapsed', collapsed);
-  }
-
-  private openSurfaceInspector(): void {
-    const panel = document.getElementById('surface-panel');
-    if (!panel) return;
-    if (!this.editor.preferences.sidebar.visible) {
-      this.editor.preferences.sidebar.visible = true;
-      this.applySidePanelLayout();
-      this.commands.notifyStateChanged();
-    }
-    this.setPanelCollapsed(panel, false);
-    this.editor.preferences.collapsedPanels[panel.id] = false;
-    if (this.soloedPanelId !== panel.id) this.toggleSoloPanel(panel);
-    this.editor.persistCurrentPreferences();
-    this.surfaceInspector.open();
-    panel.scrollIntoView({ block: 'nearest' });
-    this.editor.statusMessage = 'Opened Surface Inspector';
   }
 
   private positionTerrainPanel(): void {

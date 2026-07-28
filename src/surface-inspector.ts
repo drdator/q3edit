@@ -338,13 +338,6 @@ export class SurfaceInspector {
     this.update(true);
   }
 
-  open(): void {
-    this.update(true);
-    if (this.currentUvFace()) {
-      requestAnimationFrame(() => this.uvCanvas.focus());
-    }
-  }
-
   update(force = false): void {
     const faces = getTextureFaces(this.editor);
     const explicitFaces = this.editor.selectedFaces;
