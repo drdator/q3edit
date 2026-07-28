@@ -65,11 +65,6 @@ export class BrushPanel {
     });
     modeSelect.addEventListener('mousedown', event => event.stopPropagation());
 
-    const icon = document.createElement('span');
-    icon.className = 'panel-dropdown-icon';
-    icon.textContent = '\u2630';
-    modeSelect.before(icon);
-
     const filter = document.createElement('div');
     filter.className = 'btn';
     filter.id = 'brush-filter-btn';
@@ -79,7 +74,10 @@ export class BrushPanel {
       filter.textContent = this.editor.renderSelectedOnly ? 'Render: Selected' : 'Render: All';
       this.editor.redrawRequested = true;
     });
-    body.appendChild(filter);
+    const controls = document.createElement('div');
+    controls.className = 'brush-panel-controls';
+    controls.append(modeSelect, filter);
+    body.appendChild(controls);
 
     this.list = document.createElement('div');
     this.list.className = 'brush-list';

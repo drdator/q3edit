@@ -1413,12 +1413,20 @@ body.sidepanel-resizing * {
   background: var(--bg-light);
 }
 
-.panel-dropdown-icon {
-  font-size: 10px;
-  color: var(--text-dim);
-  pointer-events: none;
-  position: relative;
-  top: -2px;
+.brush-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.brush-panel-controls select {
+  min-width: 0;
+  flex: 1;
+}
+
+.brush-panel-controls .btn {
+  flex: 0 0 auto;
 }
 
 .surface-inspector {
