@@ -23,6 +23,7 @@ html:not(.landing-active) * {
   --text-bright: #eee;
   --panel: #303030;
   --panel-hover: #3a3a3a;
+  --panel-card-bg: rgba(0, 0, 0, 0.2);
   --accent: #e8a030;
   --accent-dim: #a07020;
   --accent-hover: #f1b44f;
@@ -1451,7 +1452,7 @@ body.sidepanel-resizing * {
   overflow: hidden;
   padding: 6px 8px;
   color: var(--text);
-  background: var(--bg-darker);
+  background: var(--panel-card-bg);
   border: 1px solid var(--border-dark);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1460,7 +1461,7 @@ body.sidepanel-resizing * {
 .surface-inspector-section {
   flex: 0 0 auto;
   padding: 7px;
-  background: var(--bg-darker);
+  background: var(--panel-card-bg);
   border: 1px solid var(--border-dark);
 }
 
@@ -1646,8 +1647,12 @@ body.sidepanel-resizing * {
 .panel-body input[type="text"],
 .panel-body input[type="search"],
 .panel-body input[type="number"],
+.panel-body input[type="color"],
 .panel-body select {
   width: 100%;
+  height: var(--control-height);
+  min-height: var(--control-height);
+  box-sizing: border-box;
   background: var(--bg-darker);
   border: 1px solid var(--border-dark);
   color: var(--text);
@@ -1664,6 +1669,9 @@ body.sidepanel-resizing * {
 
 .panel-body .btn {
   gap: 3px;
+  height: var(--control-height);
+  min-height: var(--control-height);
+  box-sizing: border-box;
   font-size: 10px;
   -webkit-user-select: none;
 }
@@ -1705,7 +1713,7 @@ body.sidepanel-resizing * {
 .kv-row input {
   flex: 1;
   min-width: 0;
-  height: 18px;
+  height: var(--control-height);
   box-sizing: border-box;
 }
 
@@ -1714,9 +1722,9 @@ body.sidepanel-resizing * {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  min-height: 18px;
+  width: var(--control-height);
+  height: var(--control-height);
+  min-height: var(--control-height);
   padding: 0;
   margin: 0;
 }
@@ -1727,8 +1735,8 @@ body.sidepanel-resizing * {
 }
 
 .kv-color {
-  flex: 0 0 18px;
-  height: 18px;
+  flex: 0 0 var(--control-height);
+  height: var(--control-height);
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -1759,8 +1767,8 @@ body.sidepanel-resizing * {
 
 .entity-property-controls > select {
   width: auto;
-  height: 18px;
-  min-height: 18px;
+  height: var(--control-height);
+  min-height: var(--control-height);
   box-sizing: border-box;
 }
 
@@ -1779,15 +1787,15 @@ body.sidepanel-resizing * {
   flex: 1 1 100px;
   min-width: 0;
   width: auto;
-  height: 18px;
+  height: var(--control-height);
   margin-bottom: 0;
   box-sizing: border-box;
 }
 
 .entity-value > input[type="color"] {
-  flex: 0 0 25px;
-  width: 25px;
-  height: 18px;
+  flex: 0 0 var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
   padding: 1px;
   border: 1px solid var(--border-dark);
   background: var(--bg-light);
@@ -1795,8 +1803,8 @@ body.sidepanel-resizing * {
 
 .entity-value > .btn {
   margin: 0;
-  height: 18px;
-  min-height: 18px;
+  height: var(--control-height);
+  min-height: var(--control-height);
   box-sizing: border-box;
 }
 
@@ -1865,7 +1873,7 @@ body.sidepanel-resizing * {
 .entity-spawnflags-raw input {
   width: 100%;
   min-width: 0;
-  height: 18px;
+  height: var(--control-height);
   margin: 0;
   box-sizing: border-box;
 }
@@ -2169,7 +2177,7 @@ body.sidepanel-resizing * {
 
 .camera-path-card {
   overflow: hidden;
-  background: color-mix(in srgb, var(--bg-dark) 55%, var(--bg) 45%);
+  background: var(--panel-card-bg);
   border: 1px solid var(--border-dark);
 }
 
@@ -2389,8 +2397,8 @@ body.sidepanel-resizing * {
 .panel-body .btn.icon-btn.camera-point-expand {
   position: relative;
   z-index: 2;
-  width: 24px;
-  height: 24px;
+  width: var(--control-height);
+  height: var(--control-height);
   margin: 0;
   color: var(--text-dim);
   background: transparent;
@@ -2421,8 +2429,8 @@ body.sidepanel-resizing * {
 }
 
 .panel-body .btn.camera-point-icon-button {
-  width: 24px;
-  height: 24px;
+  width: var(--control-height);
+  height: var(--control-height);
   color: var(--text-dim);
   background: transparent;
   border-color: transparent;
@@ -2467,7 +2475,7 @@ body.sidepanel-resizing * {
 
 .panel-body .camera-point-field > input {
   min-width: 0;
-  height: 22px;
+  height: var(--control-height);
   margin: 0;
 }
 
@@ -2513,12 +2521,12 @@ body.sidepanel-resizing * {
   flex-direction: column;
   gap: 4px;
   padding: 6px;
-  background: var(--bg-dark);
+  background: var(--panel-card-bg);
   border: 1px solid var(--border-dark);
 }
 
 .panel-body .named-group-name[type="text"] {
-  height: 22px;
+  height: var(--control-height);
   margin: 0;
   box-sizing: border-box;
 }
@@ -2548,8 +2556,8 @@ body.sidepanel-resizing * {
 }
 
 .panel-body .named-group-actions > .btn.icon-btn {
-  width: 22px;
-  height: 22px;
+  width: var(--control-height);
+  height: var(--control-height);
   padding: 0;
 }
 
@@ -2582,7 +2590,7 @@ body.sidepanel-resizing * {
   gap: 6px;
   margin-top: 2px;
   padding: 4px;
-  background: var(--bg-darker);
+  background: var(--panel-card-bg);
   border: 1px solid var(--border-dark);
   user-select: none;
 }
@@ -5249,13 +5257,13 @@ html:not(.landing-active) input[type="number"]::-webkit-outer-spin-button {
 
 .kv-row > .number-input-stepper {
   flex: 1;
-  height: 18px;
+  height: var(--control-height);
   margin: 0;
 }
 
 .entity-value > .number-input-stepper {
   flex: 1 1 100px;
-  height: 18px;
+  height: var(--control-height);
   margin: 0;
 }
 
