@@ -740,6 +740,7 @@ export function fitTextureByMapUnits(editor: Editor, unitsPerRepeat: number): vo
 export interface TextureAxisOverlayLines {
   u: Vec3[];
   v: Vec3[];
+  normal: Vec3[];
 }
 
 function appendTextureAxisArrow(
@@ -760,7 +761,7 @@ function appendTextureAxisArrow(
 }
 
 export function textureAxisLines(editor: Editor): TextureAxisOverlayLines {
-  const lines: TextureAxisOverlayLines = { u: [], v: [] };
+  const lines: TextureAxisOverlayLines = { u: [], v: [], normal: [] };
   for (const face of getTextureFaces(editor)) {
     if (face.polygon.length < 3) continue;
     const center = [0, 1, 2].map(axis => face.polygon.reduce((sum, point) => sum + point[axis], 0) / face.polygon.length) as Vec3;
@@ -791,6 +792,7 @@ export function textureAxisLines(editor: Editor): TextureAxisOverlayLines {
     v = vec3Scale(v, 1 / Math.max(1e-9, vec3Length(v)));
     appendTextureAxisArrow(lines.u, center, u, v, uLength);
     appendTextureAxisArrow(lines.v, center, v, u, vLength);
+    appendTextureAxisArrow(lines.normal, center, face.plane.normal, u, 48);
   }
   return lines;
 }

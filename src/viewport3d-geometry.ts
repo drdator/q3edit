@@ -62,6 +62,7 @@ export interface Viewport3DGeometryContext {
   bspOverlayVBO: WebGLBuffer;
   textureUAxisVBO: WebGLBuffer;
   textureVAxisVBO: WebGLBuffer;
+  textureNormalVBO: WebGLBuffer;
   paintPreviewVBO: WebGLBuffer;
   lineVBO: WebGLBuffer;
   wireVBO: WebGLBuffer;
@@ -84,6 +85,7 @@ export interface Viewport3DGeometryBuild {
   bspOverlayCount: number;
   textureUAxisCount: number;
   textureVAxisCount: number;
+  textureNormalCount: number;
   paintPreviewCount: number;
   lineCount: number;
   wireCount: number;
@@ -469,6 +471,11 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(textureVAxisVerts), ctx.gl.DYNAMIC_DRAW);
   const textureVAxisCount = textureVAxisVerts.length / 3;
 
+  const textureNormalVerts = ctx.editor.textureNormalOverlayLines.flat();
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.textureNormalVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(textureNormalVerts), ctx.gl.DYNAMIC_DRAW);
+  const textureNormalCount = textureNormalVerts.length / 3;
+
   const paintPreviewLineVerts: number[] = [];
   if (textureTerrainMode) {
     for (const target of ctx.editor.hoveredTerrainPaintTargets()) {
@@ -644,6 +651,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     bspOverlayCount,
     textureUAxisCount,
     textureVAxisCount,
+    textureNormalCount,
     paintPreviewCount,
     lineCount,
     wireCount,

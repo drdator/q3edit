@@ -121,6 +121,7 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
   const mode = ctx.editor.compiledBspOverlay;
   if ((!inspection || mode === 'none') && ctx.editor.designReviewOverlayLines.length === 0 &&
       ctx.editor.textureUAxisOverlayLines.length === 0 && ctx.editor.textureVAxisOverlayLines.length === 0 &&
+      ctx.editor.textureNormalOverlayLines.length === 0 &&
       ctx.editor.entityRelationshipOverlayLines.length === 0) return;
   ctx.ctx.save();
   if (inspection && (mode === 'leaves' || mode === 'both' || mode === 'visible')) {
@@ -176,6 +177,7 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
   drawLines(editorOverlayLines, 'rgba(255, 176, 48, 0.9)');
   drawLines(ctx.editor.textureUAxisOverlayLines, 'rgba(255, 112, 80, 0.95)');
   drawLines(ctx.editor.textureVAxisOverlayLines, 'rgba(80, 190, 255, 0.95)');
+  drawLines(ctx.editor.textureNormalOverlayLines, 'rgba(255, 210, 72, 0.95)');
   ctx.ctx.restore();
 }
 

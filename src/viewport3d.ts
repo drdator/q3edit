@@ -103,6 +103,9 @@ export class Viewport3D {
   private textureVAxisVAO!: WebGLVertexArrayObject;
   private textureVAxisVBO!: WebGLBuffer;
   private textureVAxisCount = 0;
+  private textureNormalVAO!: WebGLVertexArrayObject;
+  private textureNormalVBO!: WebGLBuffer;
+  private textureNormalCount = 0;
   private paintPreviewVAO!: WebGLVertexArrayObject;
   private paintPreviewVBO!: WebGLBuffer;
   private paintPreviewCount = 0;
@@ -389,6 +392,8 @@ export class Viewport3D {
     this.textureUAxisVAO = textureUAxis.vao; this.textureUAxisVBO = textureUAxis.vbo;
     const textureVAxis = createLineBuffer(gl);
     this.textureVAxisVAO = textureVAxis.vao; this.textureVAxisVBO = textureVAxis.vbo;
+    const textureNormal = createLineBuffer(gl);
+    this.textureNormalVAO = textureNormal.vao; this.textureNormalVBO = textureNormal.vbo;
     const paintPreview = createLineBuffer(gl);
     this.paintPreviewVAO = paintPreview.vao; this.paintPreviewVBO = paintPreview.vbo;
     const line = createLineBuffer(gl);
@@ -439,6 +444,7 @@ export class Viewport3D {
       bspOverlayVBO: this.bspOverlayVBO,
       textureUAxisVBO: this.textureUAxisVBO,
       textureVAxisVBO: this.textureVAxisVBO,
+      textureNormalVBO: this.textureNormalVBO,
       paintPreviewVBO: this.paintPreviewVBO,
       lineVBO: this.lineVBO,
       wireVBO: this.wireVBO,
@@ -459,6 +465,7 @@ export class Viewport3D {
     this.bspOverlayCount = result.bspOverlayCount;
     this.textureUAxisCount = result.textureUAxisCount;
     this.textureVAxisCount = result.textureVAxisCount;
+    this.textureNormalCount = result.textureNormalCount;
     this.paintPreviewCount = result.paintPreviewCount;
     this.lineCount = result.lineCount;
     this.wireCount = result.wireCount;
@@ -542,6 +549,8 @@ export class Viewport3D {
       textureUAxisCount: this.textureUAxisCount,
       textureVAxisVAO: this.textureVAxisVAO,
       textureVAxisCount: this.textureVAxisCount,
+      textureNormalVAO: this.textureNormalVAO,
+      textureNormalCount: this.textureNormalCount,
       paintPreviewVAO: this.paintPreviewVAO,
       paintPreviewCount: this.paintPreviewCount,
       lineVAO: this.lineVAO,

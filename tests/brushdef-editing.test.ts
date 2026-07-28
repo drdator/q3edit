@@ -170,8 +170,10 @@ describe('brushDef texture editing', () => {
     const positive = textureAxisLines(editor);
     expect(positive.u).toHaveLength(6);
     expect(positive.v).toHaveLength(6);
+    expect(positive.normal).toHaveLength(6);
     expect(positive.u[1][0]).toBeGreaterThan(positive.u[0][0]);
     expect(positive.v[1][1]).toBeLessThan(positive.v[0][1]);
+    expect(positive.normal[1][2]).toBeGreaterThan(positive.normal[0][2]);
 
     if (face.textureProjection.kind !== 'classic') throw new Error('Expected classic projection');
     face.textureProjection.scaleX = -face.textureProjection.scaleX;

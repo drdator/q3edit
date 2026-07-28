@@ -390,6 +390,7 @@ export class Editor {
   designReviewOverlayLines: Vec3[] = [];
   textureUAxisOverlayLines: Vec3[] = [];
   textureVAxisOverlayLines: Vec3[] = [];
+  textureNormalOverlayLines: Vec3[] = [];
   entityRelationshipOverlayLines: Vec3[] = [];
   runtimeEntityMessages: string[] = [];
   pendingReviewMapText: string | null = null;
@@ -1393,6 +1394,7 @@ export class Editor {
     const lines = getEditorTextureAxisLines(this);
     this.textureUAxisOverlayLines = lines.u;
     this.textureVAxisOverlayLines = lines.v;
+    this.textureNormalOverlayLines = lines.normal;
     this.redrawRequested = true;
   }
   alignPatchBoundaries(): boolean { return alignEditorPatchBoundaries(this); }

@@ -7,6 +7,7 @@ import {
   surfaceDragMultiplier,
   surfacePreviewCells,
   surfacePreviewLimit,
+  surfaceCameraSide,
   surfaceScaledDragPoint,
   surfaceScaleFactor,
   surfaceSelectionSignature,
@@ -21,6 +22,13 @@ describe('UV editor view model', () => {
     expect(polygon).toHaveLength(4);
     expect(Math.max(...polygon.map(point => point.u)) - Math.min(...polygon.map(point => point.u))).toBeCloseTo(2);
     expect(Math.max(...polygon.map(point => point.v)) - Math.min(...polygon.map(point => point.v))).toBeCloseTo(2);
+  });
+
+  it('detects whether the camera views a face from outside or inside the brush', () => {
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_wall/concrete');
+    const top = brush.faces[4];
+    expect(surfaceCameraSide(top, [64, 64, 256])).toBe('front/outside');
+    expect(surfaceCameraSide(top, [64, 64, 32])).toBe('back/inside');
   });
 
   it('projects brush primitive matrices without converting them', () => {

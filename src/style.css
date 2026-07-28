@@ -4744,6 +4744,11 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
   background: #78c46b;
 }
 
+.uv-handle-swatch.normal {
+  background: #ffd248;
+  transform: rotate(45deg) scale(0.72);
+}
+
 .shader-editor-dialog {
   display: flex;
   flex-direction: column;

@@ -7,6 +7,7 @@ import {
   shiftTexture as shiftFaceTexture,
 } from './editor-textures';
 import { updateFaceProperties } from './editor-properties';
+import { vec3Dot, type Vec3 } from './math';
 import {
   faceUvPolygon,
   fitUvViewport,
@@ -37,6 +38,16 @@ function isScaleDrag(mode: DragMode | null): mode is ScaleDragMode {
 }
 
 export const MAX_SURFACE_PREVIEWS = 12;
+export type SurfaceCameraSide = 'front/outside' | 'back/inside';
+
+export function surfaceCameraSide(face: BrushFace, cameraPosition: Vec3): SurfaceCameraSide {
+  if (face.polygon.length === 0) return 'front/outside';
+  const center = [0, 1, 2].map(axis =>
+    face.polygon.reduce((sum, point) => sum + point[axis], 0) / face.polygon.length,
+  ) as Vec3;
+  const cameraVector = center.map((value, axis) => cameraPosition[axis] - value) as Vec3;
+  return vec3Dot(cameraVector, face.plane.normal) >= 0 ? 'front/outside' : 'back/inside';
+}
 
 export function surfaceDragMultiplier(fineControl: boolean, coarseControl = false): number {
   if (fineControl && coarseControl) return 1;
@@ -539,7 +550,7 @@ export class SurfaceInspector {
 
     this.interactiveHint = document.createElement('div');
     this.interactiveHint.className = 'surface-inspector-uv-hint';
-    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale edges / corners</span><span class="surface-inspector-fine-hint">Shift: fine · Alt: coarse</span>';
+    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale edges / corners</span><span><i class="uv-handle-swatch normal"></i>N points outside</span><span class="surface-inspector-fine-hint">Shift: fine · Alt: coarse</span>';
     const uvControls = document.createElement('div');
     uvControls.className = 'surface-inspector-uv-controls';
     const clip = document.createElement('label');
@@ -725,7 +736,18 @@ export class SurfaceInspector {
       const parts: string[] = [];
       if (faces.length > 0) parts.push(`${faces.length} face${faces.length === 1 ? '' : 's'}`);
       if (patches.length > 0) parts.push(`${patches.length} patch${patches.length === 1 ? '' : 'es'}`);
-      this.summary.textContent = `${parts.join(' · ')} · ${textures.length === 1 ? textures[0] : `${textures.length} textures`}`;
+      const singleCameraSide = faces.length === 1
+        ? surfaceCameraSide(faces[0], this.editor.camera3d.position)
+        : null;
+      const cameraSide = singleCameraSide
+        ? singleCameraSide === 'front/outside'
+          ? ' · OUTSIDE'
+          : ' · INSIDE/BACK'
+        : '';
+      this.summary.textContent = `${parts.join(' · ')}${cameraSide} · ${textures.length === 1 ? textures[0] : `${textures.length} textures`}`;
+      this.summary.title = singleCameraSide
+        ? `${singleCameraSide === 'back/inside' ? 'Camera is behind the face, so its on-screen texture appears mirrored.' : 'Camera is in front of the face.'} The yellow N arrow points outside the brush.`
+        : '';
     }
 
     const classic = faces.map(face => face.textureProjection.kind === 'classic' ? face.textureProjection : null);
@@ -766,9 +788,12 @@ export class SurfaceInspector {
     this.updateTextureImages(textures);
     if (hasSurfaces && this.editor.display.categories.textureAxes) {
       this.editor.updateTextureAxisOverlay();
-    } else if (this.editor.textureUAxisOverlayLines.length > 0 || this.editor.textureVAxisOverlayLines.length > 0) {
+    } else if (this.editor.textureUAxisOverlayLines.length > 0
+      || this.editor.textureVAxisOverlayLines.length > 0
+      || this.editor.textureNormalOverlayLines.length > 0) {
       this.editor.textureUAxisOverlayLines = [];
       this.editor.textureVAxisOverlayLines = [];
+      this.editor.textureNormalOverlayLines = [];
       this.editor.redrawRequested = true;
     }
     this.scheduleDraw();
@@ -1261,7 +1286,11 @@ export class SurfaceInspector {
       );
     }
     drawUvAxisCompass(context, this.uvCanvas);
-    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${projectionSummary(face)}`;
+    const cameraSide = surfaceCameraSide(face, this.editor.camera3d.position);
+    const sideHint = cameraSide === 'front/outside'
+      ? 'camera on front/outside'
+      : 'camera on back/inside · screen view is mirrored';
+    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${sideHint} · ${projectionSummary(face)}`;
   }
 
   private bindUvCanvas(): void {
