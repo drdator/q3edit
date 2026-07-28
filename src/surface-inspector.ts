@@ -1144,7 +1144,7 @@ export class SurfaceInspector {
         const center = this.dragCenterScreen ?? this.uvCenterScreen;
         const radius = Math.max(1, distance(point, center));
         const radiusDelta = radius - this.previousRadius;
-        scaleFaceTexture(this.editor, radiusDelta / Math.max(80, this.dragViewportScale) * multiplier, [face]);
+        scaleFaceTexture(this.editor, -radiusDelta / Math.max(80, this.dragViewportScale) * multiplier, [face]);
         this.previousRadius = radius;
         const visual = this.dragPointerPoint ?? point;
         const visualRadius = Math.max(1, distance(visual, center) + radiusDelta * multiplier);
