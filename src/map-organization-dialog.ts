@@ -139,7 +139,8 @@ export function openMapOrganizationDialog(editor: Editor, controller: MapOrganiz
     kindControls.className = 'organization-kind-filters';
     const kindChecks = (['entity', 'brush', 'patch', 'face'] as const).map(kind => {
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = filter.kinds.includes(kind);
-      const label = document.createElement('label'); label.append(checkbox, document.createTextNode(kind));
+      const label = document.createElement('label'); label.className = 'app-checkbox-field';
+      label.append(checkbox, document.createTextNode(kind));
       kindControls.appendChild(label); return [kind, checkbox] as const;
     });
     controls.append(classname, texture, group, area, connection, structural, visibility, diagnostic, combine, kindControls);

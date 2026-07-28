@@ -50,7 +50,7 @@ function labeled(label: string, control: HTMLElement): HTMLLabelElement {
   const caption = document.createElement('span');
   caption.textContent = label;
   if (control instanceof HTMLInputElement && control.type === 'checkbox') {
-    row.classList.add('preferences-checkbox-field');
+    row.classList.add('preferences-checkbox-field', 'app-checkbox-field');
     row.append(control, caption);
   } else {
     row.append(caption, control);
