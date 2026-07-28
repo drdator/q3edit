@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { computeBrushGeometry, createBoxBrush } from '../src/brush';
+import { Editor } from '../src/editor';
 import { faceUvPolygon, fitUvViewport, screenToUv, shortestAngleDelta, uvToScreen } from '../src/uv-editor';
-import { surfaceDragMultiplier } from '../src/surface-inspector';
+import { surfaceDragMultiplier, surfaceSelectionSignature } from '../src/surface-inspector';
 
 describe('UV editor view model', () => {
   it('projects a classic brush face into texture space', () => {
@@ -48,5 +49,18 @@ describe('UV editor view model', () => {
   it('uses Shift to reduce interactive surface adjustments to one tenth', () => {
     expect(surfaceDragMultiplier(false)).toBe(1);
     expect(surfaceDragMultiplier(true)).toBe(0.1);
+  });
+
+  it('distinguishes equal-looking surface selections', () => {
+    const editor = new Editor();
+    const first = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/concrete');
+    const second = createBoxBrush([128, 0, 0], [192, 64, 64], 'base_wall/concrete');
+    editor.worldspawn.brushes.push(first, second);
+    editor.selection = [{ type: 'face', entity: editor.worldspawn, brush: first, face: first.faces[4] }];
+    const firstSignature = surfaceSelectionSignature(editor);
+
+    editor.selection = [{ type: 'face', entity: editor.worldspawn, brush: second, face: second.faces[4] }];
+
+    expect(surfaceSelectionSignature(editor)).not.toBe(firstSignature);
   });
 });

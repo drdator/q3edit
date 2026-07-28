@@ -19,6 +19,17 @@ export function surfaceDragMultiplier(fineControl: boolean): number {
   return fineControl ? 0.1 : 1;
 }
 
+export function surfaceSelectionSignature(editor: Editor): string {
+  return editor.selection.map(item => {
+    const entityIndex = editor.entities.indexOf(item.entity);
+    if (item.type === 'entity') return `e${entityIndex}`;
+    if (item.type === 'patch') return `e${entityIndex}:p${item.entity.patches.indexOf(item.patch)}`;
+    const brushIndex = item.entity.brushes.indexOf(item.brush);
+    if (item.type === 'brush') return `e${entityIndex}:b${brushIndex}`;
+    return `e${entityIndex}:b${brushIndex}:f${item.brush.faces.indexOf(item.face)}`;
+  }).join('|');
+}
+
 interface PreviewSurface {
   points: UvPoint[];
   rows?: UvPoint[][];
@@ -344,6 +355,7 @@ export class SurfaceInspector {
     const patches = this.editor.selection.filter(item => item.type === 'patch').map(item => item.patch);
     const signature = [
       this.editor.documentRevision,
+      surfaceSelectionSignature(this.editor),
       faces.length,
       explicitFaces.length,
       patches.length,
