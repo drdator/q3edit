@@ -16,6 +16,7 @@ import {
   scaleTexture,
   scaleTextureFromProjection,
   shiftTexture,
+  textureAxisLines,
 } from '../src/editor-textures';
 import {
   mirrorBrushLocked,
@@ -157,6 +158,25 @@ describe('brushDef texture editing', () => {
     expect(Math.max(...after.map(uv => uv[0])) - minU).toBeCloseTo((maxU - minU) * 1.5);
     expect(Math.min(...after.map(uv => uv[1]))).toBeCloseTo(minV);
     expect(Math.max(...after.map(uv => uv[1]))).toBeCloseTo(maxV);
+  });
+
+  test('builds distinct directional U and V overlay arrows', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_floor/concrete');
+    editor.worldspawn.brushes.push(brush);
+    const face = brush.faces[4];
+    editor.selection = [{ type: 'face', entity: editor.worldspawn, brush, face }];
+
+    const positive = textureAxisLines(editor);
+    expect(positive.u).toHaveLength(6);
+    expect(positive.v).toHaveLength(6);
+    expect(positive.u[1][0]).toBeGreaterThan(positive.u[0][0]);
+    expect(positive.v[1][1]).toBeLessThan(positive.v[0][1]);
+
+    if (face.textureProjection.kind !== 'classic') throw new Error('Expected classic projection');
+    face.textureProjection.scaleX = -face.textureProjection.scaleX;
+    const mirrored = textureAxisLines(editor);
+    expect(mirrored.u[1][0]).toBeLessThan(mirrored.u[0][0]);
   });
 
   test('directly scales brush primitive UV matrices around a fixed anchor', () => {

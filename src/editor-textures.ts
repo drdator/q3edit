@@ -737,8 +737,30 @@ export function fitTextureByMapUnits(editor: Editor, unitsPerRepeat: number): vo
   });
 }
 
-export function textureAxisLines(editor: Editor): Vec3[] {
-  const lines: Vec3[] = [];
+export interface TextureAxisOverlayLines {
+  u: Vec3[];
+  v: Vec3[];
+}
+
+function appendTextureAxisArrow(
+  lines: Vec3[],
+  center: Vec3,
+  direction: Vec3,
+  perpendicular: Vec3,
+  repeatLength: number,
+): void {
+  const length = Math.min(128, Math.max(32, repeatLength));
+  const end = center.map((value, axis) => value + direction[axis] * length) as Vec3;
+  const headLength = Math.min(14, length * 0.24);
+  const headWidth = Math.min(7, headLength * 0.5);
+  const headCenter = end.map((value, axis) => value - direction[axis] * headLength) as Vec3;
+  const headA = headCenter.map((value, axis) => value + perpendicular[axis] * headWidth) as Vec3;
+  const headB = headCenter.map((value, axis) => value - perpendicular[axis] * headWidth) as Vec3;
+  lines.push(center, end, end, headA, end, headB);
+}
+
+export function textureAxisLines(editor: Editor): TextureAxisOverlayLines {
+  const lines: TextureAxisOverlayLines = { u: [], v: [] };
   for (const face of getTextureFaces(editor)) {
     if (face.polygon.length < 3) continue;
     const center = [0, 1, 2].map(axis => face.polygon.reduce((sum, point) => sum + point[axis], 0) / face.polygon.length) as Vec3;
@@ -752,10 +774,12 @@ export function textureAxisLines(editor: Editor): Vec3[] {
       const radians = face.textureProjection.rotation * Math.PI / 180;
       const cosine = Math.cos(radians);
       const sine = Math.sin(radians);
-      u = s.map((value, axis) => cosine * value - sine * t[axis]) as Vec3;
-      v = s.map((value, axis) => sine * value + cosine * t[axis]) as Vec3;
-      uLength = width * Math.abs(face.textureProjection.scaleX || 0.5);
-      vLength = height * Math.abs(face.textureProjection.scaleY || 0.5);
+      const scaleU = face.textureProjection.scaleX || 0.5;
+      const scaleV = face.textureProjection.scaleY || 0.5;
+      u = s.map((value, axis) => (cosine * value - sine * t[axis]) / scaleU) as Vec3;
+      v = s.map((value, axis) => (sine * value + cosine * t[axis]) / scaleV) as Vec3;
+      uLength = width * Math.abs(scaleU);
+      vLength = height * Math.abs(scaleV);
     } else {
       const [uRow, vRow] = face.textureProjection.matrix;
       u = s.map((value, axis) => value * uRow[0] + t[axis] * uRow[1]) as Vec3;
@@ -765,8 +789,8 @@ export function textureAxisLines(editor: Editor): Vec3[] {
     }
     u = vec3Scale(u, 1 / Math.max(1e-9, vec3Length(u)));
     v = vec3Scale(v, 1 / Math.max(1e-9, vec3Length(v)));
-    lines.push(center, center.map((value, axis) => value + u[axis] * Math.min(512, uLength)) as Vec3);
-    lines.push(center, center.map((value, axis) => value + v[axis] * Math.min(512, vLength)) as Vec3);
+    appendTextureAxisArrow(lines.u, center, u, v, uLength);
+    appendTextureAxisArrow(lines.v, center, v, u, vLength);
   }
   return lines;
 }

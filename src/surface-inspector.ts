@@ -115,6 +115,9 @@ interface PreviewPalette {
   success: string;
 }
 
+const TEXTURE_U_AXIS_COLOR = '#ff7050';
+const TEXTURE_V_AXIS_COLOR = '#50bfff';
+
 function scaleHandlesForPoints(points: Array<[number, number]>): ScaleHandleMap {
   const left = Math.min(...points.map(point => point[0]));
   const right = Math.max(...points.map(point => point[0]));
@@ -225,6 +228,63 @@ function drawScaleBox(
   for (const mode of SCALE_DRAG_MODES) {
     drawScaleHandle(context, handles[mode], mode, color, mode === activeMode ? size * 1.25 : size);
   }
+}
+
+function drawUvAxisCompass(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  bounds: PreviewCell = { x: 0, y: 0, width: canvas.width, height: canvas.height },
+): void {
+  const scale = canvasDisplayScale(canvas);
+  const boxSize = 48 * scale;
+  const boxX = bounds.x + 7 * scale;
+  const boxY = bounds.y + 7 * scale;
+  const originX = boxX + 14 * scale;
+  const originY = boxY + 14 * scale;
+  const axisLength = 22 * scale;
+  const head = 4 * scale;
+  const drawArrow = (
+    endX: number,
+    endY: number,
+    color: string,
+    label: string,
+    horizontal: boolean,
+  ) => {
+    context.strokeStyle = color;
+    context.fillStyle = color;
+    context.lineWidth = 2 * scale;
+    context.beginPath();
+    context.moveTo(originX, originY);
+    context.lineTo(endX, endY);
+    if (horizontal) {
+      context.moveTo(endX, endY);
+      context.lineTo(endX - head, endY - head);
+      context.moveTo(endX, endY);
+      context.lineTo(endX - head, endY + head);
+    } else {
+      context.moveTo(endX, endY);
+      context.lineTo(endX - head, endY - head);
+      context.moveTo(endX, endY);
+      context.lineTo(endX + head, endY - head);
+    }
+    context.stroke();
+    context.font = `bold ${10 * scale}px monospace`;
+    context.textBaseline = 'middle';
+    context.fillText(
+      label,
+      horizontal ? endX + 4 * scale : endX - 3 * scale,
+      horizontal ? endY : endY + 8 * scale,
+    );
+  };
+
+  context.save();
+  context.fillStyle = previewPalette().footer;
+  context.globalAlpha = 0.86;
+  context.fillRect(boxX, boxY, boxSize, boxSize);
+  context.globalAlpha = 1;
+  drawArrow(originX + axisLength, originY, TEXTURE_U_AXIS_COLOR, 'U', true);
+  drawArrow(originX, originY + axisLength, TEXTURE_V_AXIS_COLOR, 'V', false);
+  context.restore();
 }
 
 export function surfacePreviewCells(
@@ -706,8 +766,9 @@ export class SurfaceInspector {
     this.updateTextureImages(textures);
     if (hasSurfaces && this.editor.display.categories.textureAxes) {
       this.editor.updateTextureAxisOverlay();
-    } else if (this.editor.textureAxisOverlayLines.length > 0) {
-      this.editor.textureAxisOverlayLines = [];
+    } else if (this.editor.textureUAxisOverlayLines.length > 0 || this.editor.textureVAxisOverlayLines.length > 0) {
+      this.editor.textureUAxisOverlayLines = [];
+      this.editor.textureVAxisOverlayLines = [];
       this.editor.redrawRequested = true;
     }
     this.scheduleDraw();
@@ -828,6 +889,7 @@ export class SurfaceInspector {
     this.drawUvGrid(context);
 
     for (const surface of ordered) this.drawPreviewSurfaceOutline(context, surface, this.uvViewport);
+    drawUvAxisCompass(context, this.uvCanvas);
     this.updatePreviewStatus(surfaces, allSurfaces.length, totalTextureCount);
   }
 
@@ -894,6 +956,7 @@ export class SurfaceInspector {
         labelTop + 10 * displayScale,
         Math.max(1, cell.width - 12 * displayScale),
       );
+      drawUvAxisCompass(context, this.uvCanvas, cell);
     });
     this.updatePreviewStatus(surfaces, totalSurfaceCount, totalTextureCount);
   }
@@ -1197,6 +1260,7 @@ export class SurfaceInspector {
         isScaleDrag(this.dragMode) ? this.dragMode : null,
       );
     }
+    drawUvAxisCompass(context, this.uvCanvas);
     this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${projectionSummary(face)}`;
   }
 

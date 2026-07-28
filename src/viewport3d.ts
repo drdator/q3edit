@@ -97,6 +97,12 @@ export class Viewport3D {
   private bspOverlayVAO!: WebGLVertexArrayObject;
   private bspOverlayVBO!: WebGLBuffer;
   private bspOverlayCount = 0;
+  private textureUAxisVAO!: WebGLVertexArrayObject;
+  private textureUAxisVBO!: WebGLBuffer;
+  private textureUAxisCount = 0;
+  private textureVAxisVAO!: WebGLVertexArrayObject;
+  private textureVAxisVBO!: WebGLBuffer;
+  private textureVAxisCount = 0;
   private paintPreviewVAO!: WebGLVertexArrayObject;
   private paintPreviewVBO!: WebGLBuffer;
   private paintPreviewCount = 0;
@@ -379,6 +385,10 @@ export class Viewport3D {
     this.pointfileMarkerVAO = pointfileMarker.vao; this.pointfileMarkerVBO = pointfileMarker.vbo;
     const bspOverlay = createLineBuffer(gl);
     this.bspOverlayVAO = bspOverlay.vao; this.bspOverlayVBO = bspOverlay.vbo;
+    const textureUAxis = createLineBuffer(gl);
+    this.textureUAxisVAO = textureUAxis.vao; this.textureUAxisVBO = textureUAxis.vbo;
+    const textureVAxis = createLineBuffer(gl);
+    this.textureVAxisVAO = textureVAxis.vao; this.textureVAxisVBO = textureVAxis.vbo;
     const paintPreview = createLineBuffer(gl);
     this.paintPreviewVAO = paintPreview.vao; this.paintPreviewVBO = paintPreview.vbo;
     const line = createLineBuffer(gl);
@@ -427,6 +437,8 @@ export class Viewport3D {
       pointfileLineVBO: this.pointfileLineVBO,
       pointfileMarkerVBO: this.pointfileMarkerVBO,
       bspOverlayVBO: this.bspOverlayVBO,
+      textureUAxisVBO: this.textureUAxisVBO,
+      textureVAxisVBO: this.textureVAxisVBO,
       paintPreviewVBO: this.paintPreviewVBO,
       lineVBO: this.lineVBO,
       wireVBO: this.wireVBO,
@@ -445,6 +457,8 @@ export class Viewport3D {
     this.pointfileLineCount = result.pointfileLineCount;
     this.pointfileMarkerCount = result.pointfileMarkerCount;
     this.bspOverlayCount = result.bspOverlayCount;
+    this.textureUAxisCount = result.textureUAxisCount;
+    this.textureVAxisCount = result.textureVAxisCount;
     this.paintPreviewCount = result.paintPreviewCount;
     this.lineCount = result.lineCount;
     this.wireCount = result.wireCount;
@@ -524,6 +538,10 @@ export class Viewport3D {
       pointfileMarkerCount: this.pointfileMarkerCount,
       bspOverlayVAO: this.bspOverlayVAO,
       bspOverlayCount: this.bspOverlayCount,
+      textureUAxisVAO: this.textureUAxisVAO,
+      textureUAxisCount: this.textureUAxisCount,
+      textureVAxisVAO: this.textureVAxisVAO,
+      textureVAxisCount: this.textureVAxisCount,
       paintPreviewVAO: this.paintPreviewVAO,
       paintPreviewCount: this.paintPreviewCount,
       lineVAO: this.lineVAO,

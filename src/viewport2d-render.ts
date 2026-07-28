@@ -120,7 +120,8 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
   const inspection = ctx.editor.compiledBspInspection;
   const mode = ctx.editor.compiledBspOverlay;
   if ((!inspection || mode === 'none') && ctx.editor.designReviewOverlayLines.length === 0 &&
-      ctx.editor.textureAxisOverlayLines.length === 0 && ctx.editor.entityRelationshipOverlayLines.length === 0) return;
+      ctx.editor.textureUAxisOverlayLines.length === 0 && ctx.editor.textureVAxisOverlayLines.length === 0 &&
+      ctx.editor.entityRelationshipOverlayLines.length === 0) return;
   ctx.ctx.save();
   if (inspection && (mode === 'leaves' || mode === 'both' || mode === 'visible')) {
     const cameraLeaf = mode === 'visible' ? leafAtPoint(inspection, ctx.editor.camera3d.position) : null;
@@ -155,23 +156,26 @@ function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
   }
   const editorOverlayLines = [
     ...ctx.editor.designReviewOverlayLines,
-    ...ctx.editor.textureAxisOverlayLines,
     ...ctx.editor.entityRelationshipOverlayLines,
   ];
-  if (editorOverlayLines.length > 0) {
-    ctx.ctx.strokeStyle = 'rgba(255, 176, 48, 0.9)';
+  const drawLines = (lines: typeof editorOverlayLines, color: string) => {
+    if (lines.length === 0) return;
+    ctx.ctx.strokeStyle = color;
     ctx.ctx.lineWidth = 1.5;
     ctx.ctx.beginPath();
-    for (let index = 0; index + 1 < editorOverlayLines.length; index += 2) {
-      const first = editorOverlayLines[index];
-      const second = editorOverlayLines[index + 1];
+    for (let index = 0; index + 1 < lines.length; index += 2) {
+      const first = lines[index];
+      const second = lines[index + 1];
       const [x0, y0] = ctx.worldToScreen(first[ctx.axisH], first[ctx.axisV]);
       const [x1, y1] = ctx.worldToScreen(second[ctx.axisH], second[ctx.axisV]);
       ctx.ctx.moveTo(x0, y0);
       ctx.ctx.lineTo(x1, y1);
     }
     ctx.ctx.stroke();
-  }
+  };
+  drawLines(editorOverlayLines, 'rgba(255, 176, 48, 0.9)');
+  drawLines(ctx.editor.textureUAxisOverlayLines, 'rgba(255, 112, 80, 0.95)');
+  drawLines(ctx.editor.textureVAxisOverlayLines, 'rgba(80, 190, 255, 0.95)');
   ctx.ctx.restore();
 }
 
