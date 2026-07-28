@@ -28,6 +28,9 @@ import {
   resizedSidebarWidth,
 } from './sidebar-layout';
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
+import { panelSubhead } from './ui-controls';
+import { BrushPanel } from './brush-panel';
+import { TexturePanel } from './texture-panel';
 import 'virtual:phosphor-icons.css';
 import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
@@ -54,10 +57,6 @@ import { openReleasePackageDialog } from './release-package-dialog';
 import { MapOrganizationController, type NavigationState } from './map-organization';
 import { openMapOrganizationDialog } from './map-organization-dialog';
 import { SurfaceInspector } from './surface-inspector';
-import { getCachedTextureTags, saveTextureTags } from './pak-storage';
-import { listTextureTags, setTextureTags, textureTagsFor, type TextureTagMap } from './texture-tags';
-import { textureSearchScore } from './texture-search';
-import { openTextureTagsDialog } from './texture-tags-dialog';
 import { validateProjectShaderFiles } from './q3-shader-source';
 
 export interface AssetLoadingHandle {
@@ -65,26 +64,6 @@ export interface AssetLoadingHandle {
   update: (message: string, completed?: number, total?: number) => void;
   close: () => void;
 }
-
-const COMMON_TEXTURES = [
-  'common/caulk',
-  'common/clip',
-  'common/trigger',
-  'common/nodraw',
-  'base_wall/basewall03',
-  'base_wall/basewall04',
-  'base_wall/concrete',
-  'base_floor/concrete',
-  'base_floor/diamond2c',
-  'base_floor/pjgrate1',
-  'base_trim/pewter_shiney',
-  'base_trim/dirty_pewter',
-  'gothic_wall/iron01_e',
-  'gothic_wall/skull4',
-  'gothic_floor/blocks17floor',
-  'gothic_trim/baseboard09',
-  'skies/earthsky01',
-];
 
 interface GamePreviewLaunch {
   mapName: string;
@@ -101,22 +80,11 @@ export class UI {
   editor: Editor;
   private openMenu: HTMLElement | null = null;
   private commands: CommandRegistry<EditorCommandContext>;
+  private readonly brushPanel: BrushPanel;
+  private readonly texturePanel: TexturePanel;
   private propertiesPanel: PropertiesPanel;
   private readonly surfaceInspector: SurfaceInspector;
   private texMgr: TextureManager | null = null;
-  private showTextureThumbnails = false;
-  private textureDir = '';
-  private textureSearch = '';
-  private textureTagFilter = '';
-  private textureTags: TextureTagMap = getCachedTextureTags();
-  private textureFind = '';
-  private textureReplace = '';
-  private textureReplaceScope: 'selection' | 'map' = 'selection';
-  private textureReplaceMatch: 'exact' | 'contains' = 'exact';
-  private textureAssetStatus = 'Loading OpenArena assets…';
-  private importedPakNames: string[] = [];
-  private collapsedBrushPanelEntities = new WeakSet<Entity>();
-  private collapsedBrushPanelTerrainGroups = new Set<string>();
   private groupsPanelSignature = '';
   private cameraPanelSignature = '';
   private soloedPanelId: string | null = null;
@@ -143,6 +111,8 @@ export class UI {
   constructor(editor: Editor, recovery: DocumentRecoveryService | null = null) {
     this.editor = editor;
     this.recovery = recovery;
+    this.brushPanel = new BrushPanel(editor);
+    this.texturePanel = new TexturePanel(editor, () => this.onManagePakFiles?.());
     this.propertiesPanel = new PropertiesPanel(editor);
     this.surfaceInspector = new SurfaceInspector(editor, document.getElementById('surface-body')!);
     this.buildPanel = new BuildPanel({
@@ -240,7 +210,7 @@ export class UI {
     this.buildStatusBar();
     this.setupKeyboard();
 
-    this.editor.onLocateTexture = (texture: string) => this.locateTexture(texture);
+    this.editor.onLocateTexture = (texture: string) => this.texturePanel.locateTexture(texture);
     this.editor.onShaderSourcesChanged = () => {
       if (this.texMgr) this.updateTextureBrowser(this.texMgr);
     };
@@ -347,11 +317,11 @@ export class UI {
       });
     }
 
-    this.buildBrushPanel();
+    this.brushPanel.mount();
     this.buildGroupsPanel();
     this.buildCameraPanel();
     this.buildEntityPanel();
-    this.buildTexturePanel();
+    this.texturePanel.mount();
     this.buildTerrainPanel();
     this.setupTerrainPopover();
   }
@@ -544,368 +514,6 @@ export class UI {
     }, true);
   }
 
-  private brushPanelMode: 'all' | 'brushes' | 'patches' | 'entities' = 'all';
-  private brushPanelSignature = '';
-
-  private buildBrushPanel(): void {
-    const body = document.getElementById('brush-body')!;
-    const modeSelect = document.getElementById('brush-panel-mode') as HTMLSelectElement;
-
-    modeSelect.addEventListener('change', () => {
-      this.brushPanelMode = modeSelect.value as typeof this.brushPanelMode;
-      this.editor.selectionFilter = this.brushPanelMode;
-      this.brushPanelSignature = '';
-      this.editor.redrawRequested = true;
-    });
-    // Stop click from toggling panel collapse
-    modeSelect.addEventListener('mousedown', (ev) => ev.stopPropagation());
-
-    // Add hamburger icon before the select
-    const icon = document.createElement('span');
-    icon.className = 'panel-dropdown-icon';
-    icon.textContent = '\u2630';
-    modeSelect.before(icon);
-
-    const filterBtn = document.createElement('div');
-    filterBtn.className = 'btn';
-    filterBtn.id = 'brush-filter-btn';
-    filterBtn.textContent = 'Render: All';
-    filterBtn.addEventListener('mousedown', () => {
-      this.editor.renderSelectedOnly = !this.editor.renderSelectedOnly;
-      filterBtn.textContent = this.editor.renderSelectedOnly ? 'Render: Selected' : 'Render: All';
-      this.editor.redrawRequested = true;
-    });
-    body.appendChild(filterBtn);
-
-    const list = document.createElement('div');
-    list.className = 'brush-list';
-    list.id = 'brush-list';
-    body.appendChild(list);
-
-    body.addEventListener('mousedown', (ev) => {
-      if (ev.target !== body) return;
-      // Don't clear selection when clicking the scrollbar
-      if (ev.offsetX >= body.clientWidth) return;
-      this.editor.clearSelection();
-    });
-  }
-
-  private updateBrushPanel(): void {
-    const list = document.getElementById('brush-list');
-    if (!list) return;
-
-    const e = this.editor;
-    const mode = this.brushPanelMode;
-
-    type ListItem =
-      | {
-          kind: 'entity';
-          entity: Entity;
-          entityIdx: number;
-          label: string;
-          meta: string;
-          collapsible: boolean;
-          collapsed: boolean;
-        }
-      | {
-          kind: 'terrainGroup';
-          entity: Entity;
-          entityIdx: number;
-          groupId: string;
-          representative: Patch;
-          patches: Array<{ patch: Patch; index: number }>;
-          label: string;
-          meta: string;
-          collapsible: boolean;
-          collapsed: boolean;
-        }
-      | {
-          kind: 'brush';
-          entity: Entity;
-          brush: Brush;
-          index: number;
-          entityIdx: number;
-          label: string;
-        }
-      | {
-          kind: 'patch';
-          entity: Entity;
-          patch: Patch;
-          index: number;
-          entityIdx: number;
-          label: string;
-          grouped: boolean;
-        };
-
-    const items: ListItem[] = [];
-    const regionSignature = e.regionBounds
-      ? `${e.regionBounds.mins.join(',')}:${e.regionBounds.maxs.join(',')}`
-      : 'none';
-    const signatureParts: string[] = [mode, regionSignature, JSON.stringify(e.display.categories)];
-
-    for (let ei = 0; ei < e.entities.length; ei++) {
-      const entity = e.entities[ei];
-      if (!e.isEntityVisible(entity)) continue;
-      const brushChildren = (mode === 'all' || mode === 'brushes')
-        ? entity.brushes
-          .filter(brush => e.isBrushVisible(brush, entity))
-          .map((brush, index) => ({
-            kind: 'brush' as const,
-            entity,
-            brush,
-            index,
-            entityIdx: ei,
-            label: brush.name || `brush ${index}`,
-          }))
-        : [];
-      const patchChildren = (mode === 'all' || mode === 'patches')
-        ? (() => {
-          const visiblePatches = entity.patches
-            .map((patch, index) => ({ patch, index }))
-            .filter(item => e.isPatchVisible(item.patch, entity));
-          const groupedPatches = new Map<string, Array<{ patch: Patch; index: number }>>();
-          for (const item of visiblePatches) {
-            if (!item.patch.terrainGroupId) continue;
-            const group = groupedPatches.get(item.patch.terrainGroupId) ?? [];
-            group.push(item);
-            groupedPatches.set(item.patch.terrainGroupId, group);
-          }
-
-          const patchItems: Array<Extract<ListItem, { kind: 'terrainGroup' | 'patch' }>> = [];
-          const emittedGroups = new Set<string>();
-          for (const item of visiblePatches) {
-            const groupId = item.patch.terrainGroupId;
-            const grouped = groupId ? groupedPatches.get(groupId) : null;
-            if (groupId && grouped && grouped.length > 1) {
-              if (emittedGroups.has(groupId)) continue;
-              emittedGroups.add(groupId);
-              const collapseKey = `${ei}:${groupId}`;
-              const collapsed = this.collapsedBrushPanelTerrainGroups.has(collapseKey);
-              patchItems.push({
-                kind: 'terrainGroup',
-                entity,
-                entityIdx: ei,
-                groupId,
-                representative: grouped[0].patch,
-                patches: grouped,
-                label: 'terrain set',
-                meta: `${grouped.length} patches`,
-                collapsible: true,
-                collapsed,
-              });
-              signatureParts.push(`tg:${collapseKey}:${grouped.length}:${collapsed ? 1 : 0}`);
-              if (!collapsed) {
-                patchItems.push(...grouped.map(groupItem => ({
-                  kind: 'patch' as const,
-                  entity,
-                  patch: groupItem.patch,
-                  index: groupItem.index,
-                  entityIdx: ei,
-                  label: `patch ${groupItem.index}`,
-                  grouped: true,
-                })));
-              }
-              continue;
-            }
-
-            patchItems.push({
-              kind: 'patch',
-              entity,
-              patch: item.patch,
-              index: item.index,
-              entityIdx: ei,
-              label: `patch ${item.index}`,
-              grouped: false,
-            });
-          }
-          return patchItems;
-        })()
-        : [];
-
-      const includeEntity =
-        mode === 'entities' ||
-        mode === 'all' ||
-        brushChildren.length > 0 ||
-        patchChildren.length > 0;
-      if (!includeEntity) continue;
-
-      const childCount = brushChildren.length + patchChildren.length;
-      const collapsed = childCount > 0 && this.collapsedBrushPanelEntities.has(entity);
-      const label = this.objectTreeEntityLabel(entity, ei === 0);
-      const meta = this.objectTreeEntityMeta(entity, brushChildren.length, patchChildren.length);
-
-      items.push({
-        kind: 'entity',
-        entity,
-        entityIdx: ei,
-        label,
-        meta,
-        collapsible: mode !== 'entities' && childCount > 0,
-        collapsed,
-      });
-      signatureParts.push(`${ei}:${entity.classname}:${entity.brushes.length}:${entity.patches.length}:${collapsed ? 1 : 0}`);
-
-      if (mode !== 'entities' && !collapsed) {
-        items.push(...brushChildren, ...patchChildren);
-      }
-    }
-
-    const signature = signatureParts.join('|');
-
-    if (this.brushPanelSignature !== signature) {
-      this.brushPanelSignature = signature;
-      list.innerHTML = '';
-      for (const item of items) {
-        const el = document.createElement('div');
-        el.className = item.kind === 'entity'
-          ? 'brush-item brush-tree-entity'
-          : item.kind === 'terrainGroup'
-            ? 'brush-item brush-tree-child brush-tree-group'
-            : item.kind === 'patch' && item.grouped
-              ? 'brush-item brush-tree-grandchild'
-              : 'brush-item brush-tree-child';
-
-        const row = document.createElement('div');
-        row.className = 'brush-tree-row';
-
-        if (item.kind === 'entity') {
-          const toggle = document.createElement('span');
-          toggle.className = 'brush-tree-toggle' + (item.collapsible ? '' : ' empty');
-          toggle.textContent = item.collapsible ? (item.collapsed ? '+' : '\u2212') : '';
-          if (item.collapsible) {
-            toggle.addEventListener('mousedown', (ev) => {
-              ev.stopPropagation();
-              if (this.collapsedBrushPanelEntities.has(item.entity)) {
-                this.collapsedBrushPanelEntities.delete(item.entity);
-              } else {
-                this.collapsedBrushPanelEntities.add(item.entity);
-              }
-              this.brushPanelSignature = '';
-              this.editor.redrawRequested = true;
-            });
-          }
-
-          const label = document.createElement('span');
-          label.className = 'brush-tree-label';
-          label.textContent = item.label;
-
-          const meta = document.createElement('span');
-          meta.className = 'brush-tree-meta';
-          meta.textContent = item.meta;
-
-          row.appendChild(toggle);
-          row.appendChild(label);
-          row.appendChild(meta);
-        } else if (item.kind === 'terrainGroup') {
-          const indent = document.createElement('span');
-          indent.className = 'brush-tree-indent';
-
-          const toggle = document.createElement('span');
-          toggle.className = 'brush-tree-toggle' + (item.collapsible ? '' : ' empty');
-          toggle.textContent = item.collapsible ? (item.collapsed ? '+' : '\u2212') : '';
-          if (item.collapsible) {
-            toggle.addEventListener('mousedown', (ev) => {
-              ev.stopPropagation();
-              const collapseKey = `${item.entityIdx}:${item.groupId}`;
-              if (this.collapsedBrushPanelTerrainGroups.has(collapseKey)) {
-                this.collapsedBrushPanelTerrainGroups.delete(collapseKey);
-              } else {
-                this.collapsedBrushPanelTerrainGroups.add(collapseKey);
-              }
-              this.brushPanelSignature = '';
-              this.editor.redrawRequested = true;
-            });
-          }
-
-          const kind = document.createElement('span');
-          kind.className = 'brush-tree-kind';
-          kind.textContent = 'T';
-
-          const label = document.createElement('span');
-          label.className = 'brush-tree-label';
-          label.textContent = item.label;
-
-          const meta = document.createElement('span');
-          meta.className = 'brush-tree-meta';
-          meta.textContent = item.meta;
-
-          row.appendChild(indent);
-          row.appendChild(toggle);
-          row.appendChild(kind);
-          row.appendChild(label);
-          row.appendChild(meta);
-        } else {
-          const indent = document.createElement('span');
-          indent.className = 'brush-tree-indent';
-
-          const kind = document.createElement('span');
-          kind.className = 'brush-tree-kind';
-          kind.textContent = item.kind === 'brush' ? 'B' : 'P';
-
-          const label = document.createElement('span');
-          label.className = 'brush-tree-label';
-          label.textContent = item.label;
-
-          row.appendChild(indent);
-          row.appendChild(kind);
-          row.appendChild(label);
-        }
-
-        el.appendChild(row);
-        el.addEventListener('mousedown', (ev) => {
-          const additive = ev.ctrlKey || ev.metaKey || ev.shiftKey;
-          if (item.kind === 'brush') {
-            e.selectBrushDirect(item.entity, item.brush, additive);
-          } else if (item.kind === 'patch') {
-            e.selectPatchDirect(item.entity, item.patch, additive);
-          } else if (item.kind === 'terrainGroup') {
-            e.selectPatch(item.entity, item.representative, additive);
-          } else {
-            e.selectEntity(item.entity, additive);
-          }
-          e.centerOnSelection();
-        });
-        list.appendChild(el);
-      }
-    }
-
-    const children = list.children;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const el = children[i] as HTMLElement;
-      let selected: boolean;
-      if (item.kind === 'brush') {
-        selected = e.isSelected(item.brush);
-      } else if (item.kind === 'patch') {
-        selected = e.isPatchSelected(item.patch);
-      } else if (item.kind === 'terrainGroup') {
-        selected = item.patches.every(groupPatch => e.isPatchSelected(groupPatch.patch));
-      } else {
-        selected = e.isEntitySelected(item.entity);
-      }
-      el.classList.toggle('selected', selected);
-    }
-  }
-
-  private objectTreeEntityLabel(entity: Entity, isWorldspawn: boolean): string {
-    if (isWorldspawn) return 'worldspawn';
-    const name = entity.properties['targetname'] || entity.properties['name'];
-    return name ? `${entity.classname} "${name}"` : entity.classname;
-  }
-
-  private objectTreeEntityMeta(entity: Entity, brushCount: number, patchCount: number): string {
-    const parts: string[] = [];
-    if (brushCount > 0) parts.push(`${brushCount} brush${brushCount === 1 ? '' : 'es'}`);
-    if (patchCount > 0) parts.push(`${patchCount} patch${patchCount === 1 ? '' : 'es'}`);
-    if (parts.length === 0 && this.editor.isPointEntity(entity)) {
-      const origin = this.editor.entityDisplayOrigin(entity);
-      if (origin) {
-        parts.push(`@ ${origin[0].toFixed(0)} ${origin[1].toFixed(0)} ${origin[2].toFixed(0)}`);
-      }
-    }
-    return parts.join(', ');
-  }
-
   private buildEntityPanel(): void {
     const body = document.getElementById('entity-body')!;
     buildEntityPanelUI(body, this.editor);
@@ -944,23 +552,12 @@ export class UI {
     this.editor.redrawRequested = true;
   }
 
-  private buildTexturePanel(): void {
-    const body = document.getElementById('texture-body')!;
-    body.innerHTML = '';
-
-    this.buildTextureSourceControls(body);
-    this.buildTextureReplaceControls(body);
-    this.buildTextureBrowser(body);
-  }
-
   onManagePakFiles: (() => Promise<void>) | null = null;
   onReloadAssets: (() => Promise<void>) | null = null;
   onProjectConfigurationChanged: ((project: ProjectConfiguration) => Promise<void>) | null = null;
 
-  setTextureAssetStatus(status: string, importedPakNames: string[] = this.importedPakNames): void {
-    this.textureAssetStatus = status;
-    this.importedPakNames = importedPakNames;
-    this.buildTexturePanel();
+  setTextureAssetStatus(status: string, importedPakNames?: string[]): void {
+    this.texturePanel.setAssetStatus(status, importedPakNames);
   }
 
   showOpenArenaNotice(): Promise<boolean> {
@@ -1092,60 +689,6 @@ export class UI {
       },
       close: () => overlay.remove(),
     };
-  }
-
-  private buildTextureSourceControls(body: HTMLElement): void {
-    const section = document.createElement('div');
-    section.className = 'texture-tools texture-source-tools';
-
-    const title = document.createElement('div');
-    title.className = 'texture-subhead';
-    title.textContent = 'Asset Source';
-    section.appendChild(title);
-
-    const status = document.createElement('div');
-    status.className = 'texture-source-status';
-    status.textContent = this.textureAssetStatus;
-    section.appendChild(status);
-
-    const attribution = document.createElement('a');
-    attribution.className = 'texture-source-attribution';
-    attribution.href = '/openarena/OPENARENA.md';
-    attribution.target = '_blank';
-    attribution.rel = 'noreferrer';
-    attribution.textContent = 'OpenArena license and source';
-    section.appendChild(attribution);
-
-    if (this.importedPakNames.length > 0) {
-      const names = document.createElement('div');
-      names.className = 'texture-source-files';
-      names.textContent = this.importedPakNames.join(', ');
-      names.title = this.importedPakNames.join('\n');
-      section.appendChild(names);
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'texture-source-actions';
-
-    const manageBtn = document.createElement('button');
-    manageBtn.type = 'button';
-    manageBtn.className = 'btn';
-    manageBtn.innerHTML = '<i class="ph ph-files" aria-hidden="true"></i><span>Manage PK3 Files…</span>';
-    manageBtn.title = 'Add, remove, or reorder PK3 files from your Quake III Arena installation';
-    manageBtn.addEventListener('click', async () => {
-      if (!this.onManagePakFiles) return;
-      manageBtn.disabled = true;
-      try {
-        await this.onManagePakFiles();
-      } finally {
-        manageBtn.disabled = false;
-      }
-    });
-
-    actions.appendChild(manageBtn);
-
-    section.appendChild(actions);
-    body.appendChild(section);
   }
 
   openPakManager(
@@ -1403,155 +946,6 @@ export class UI {
     });
   }
 
-  private buildTextureReplaceControls(body: HTMLElement): void {
-    const section = document.createElement('div');
-    section.className = 'texture-tools';
-
-    const title = document.createElement('div');
-    title.className = 'texture-subhead';
-    title.textContent = 'Find / Replace';
-    section.appendChild(title);
-
-    const bindSubmitKey = (input: HTMLInputElement) => {
-      input.addEventListener('keydown', (ev) => {
-        if (ev.key !== 'Enter') return;
-        ev.preventDefault();
-        this.applyTextureReplace();
-      });
-    };
-
-    const findLabel = document.createElement('label');
-    findLabel.textContent = 'Find';
-    section.appendChild(findLabel);
-
-    const findRow = document.createElement('div');
-    findRow.className = 'kv-row';
-
-    const findInput = document.createElement('input');
-    findInput.type = 'text';
-    findInput.value = this.textureFind;
-    findInput.spellcheck = false;
-    findInput.autocomplete = 'off';
-    findInput.addEventListener('input', () => {
-      this.textureFind = findInput.value;
-    });
-    bindSubmitKey(findInput);
-
-    const findCurrentBtn = document.createElement('div');
-    findCurrentBtn.className = 'btn';
-    findCurrentBtn.textContent = 'Current';
-    findCurrentBtn.addEventListener('mousedown', () => {
-      this.textureFind = this.editor.currentTexture;
-      findInput.value = this.textureFind;
-    });
-
-    findRow.appendChild(findInput);
-    findRow.appendChild(findCurrentBtn);
-    section.appendChild(findRow);
-
-    const replaceLabel = document.createElement('label');
-    replaceLabel.textContent = 'Replace With';
-    section.appendChild(replaceLabel);
-
-    const replaceRow = document.createElement('div');
-    replaceRow.className = 'kv-row';
-
-    const replaceInput = document.createElement('input');
-    replaceInput.type = 'text';
-    replaceInput.value = this.textureReplace;
-    replaceInput.spellcheck = false;
-    replaceInput.autocomplete = 'off';
-    replaceInput.addEventListener('input', () => {
-      this.textureReplace = replaceInput.value;
-    });
-    bindSubmitKey(replaceInput);
-
-    const replaceCurrentBtn = document.createElement('div');
-    replaceCurrentBtn.className = 'btn';
-    replaceCurrentBtn.textContent = 'Current';
-    replaceCurrentBtn.addEventListener('mousedown', () => {
-      this.textureReplace = this.editor.currentTexture;
-      replaceInput.value = this.textureReplace;
-    });
-
-    replaceRow.appendChild(replaceInput);
-    replaceRow.appendChild(replaceCurrentBtn);
-    section.appendChild(replaceRow);
-
-    const optionsRow = document.createElement('div');
-    optionsRow.className = 'kv-row';
-
-    const scopeSelect = document.createElement('select');
-    for (const [value, label] of [['selection', 'Selection'], ['map', 'Whole Map']] as const) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (value === this.textureReplaceScope) opt.selected = true;
-      scopeSelect.appendChild(opt);
-    }
-    scopeSelect.addEventListener('change', () => {
-      this.textureReplaceScope = scopeSelect.value as 'selection' | 'map';
-    });
-
-    const matchSelect = document.createElement('select');
-    for (const [value, label] of [['exact', 'Exact Match'], ['contains', 'Name Contains']] as const) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (value === this.textureReplaceMatch) opt.selected = true;
-      matchSelect.appendChild(opt);
-    }
-    matchSelect.addEventListener('change', () => {
-      this.textureReplaceMatch = matchSelect.value as 'exact' | 'contains';
-    });
-
-    optionsRow.appendChild(scopeSelect);
-    optionsRow.appendChild(matchSelect);
-    section.appendChild(optionsRow);
-
-    const replaceBtn = document.createElement('div');
-    replaceBtn.className = 'btn texture-apply-btn';
-    replaceBtn.textContent = 'Replace Textures';
-    replaceBtn.addEventListener('mousedown', () => this.applyTextureReplace());
-    section.appendChild(replaceBtn);
-
-    body.appendChild(section);
-  }
-
-  private applyTextureReplace(): void {
-    this.editor.replaceTextures(
-      this.textureFind,
-      this.textureReplace,
-      this.textureReplaceScope,
-      this.textureReplaceMatch,
-    );
-  }
-
-  private buildTextureBrowser(body: HTMLElement): void {
-    if (this.texMgr) {
-      this.buildManagedTextureBrowser(body, this.texMgr);
-      return;
-    }
-
-    const list = document.createElement('div');
-    list.className = 'texture-list';
-    list.id = 'texture-list';
-
-    for (const tex of COMMON_TEXTURES) {
-      const item = document.createElement('div');
-      item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
-      item.textContent = tex;
-      item.addEventListener('mousedown', () => {
-        this.editor.setTexture(tex);
-        list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
-        item.classList.add('selected');
-      });
-      list.appendChild(item);
-    }
-
-    body.appendChild(list);
-  }
-
   private setTerrainRadius(value: number): void {
     const next = Math.max(8, Math.min(1024, Math.round(value) || 8));
     if (next === this.editor.terrainBrushRadius) return;
@@ -1589,9 +983,7 @@ export class UI {
     const setupSection = document.createElement('div');
     setupSection.className = 'terrain-tools';
 
-    const setupTitle = document.createElement('div');
-    setupTitle.className = 'texture-subhead';
-    setupTitle.textContent = 'Setup';
+    const setupTitle = panelSubhead('Setup');
     setupSection.appendChild(setupTitle);
 
     const createBtn = document.createElement('div');
@@ -1617,9 +1009,7 @@ export class UI {
     const brushSection = document.createElement('div');
     brushSection.className = 'terrain-tools';
 
-    const brushTitle = document.createElement('div');
-    brushTitle.className = 'texture-subhead';
-    brushTitle.textContent = 'Brush';
+    const brushTitle = panelSubhead('Brush');
     brushSection.appendChild(brushTitle);
 
     const modeLabel = document.createElement('label');
@@ -1691,7 +1081,7 @@ export class UI {
     textureInfo.className = 'terrain-current-texture';
     textureInfo.id = 'terrain-current-texture';
     textureInfo.title = 'Locate in Texture panel';
-    textureInfo.addEventListener('mousedown', () => this.locateTexture(this.editor.currentTexture));
+    textureInfo.addEventListener('mousedown', () => this.texturePanel.locateTexture(this.editor.currentTexture));
 
     const textureThumb = document.createElement('img');
     textureThumb.className = 'terrain-current-texture-thumb';
@@ -1726,9 +1116,7 @@ export class UI {
     const actionSection = document.createElement('div');
     actionSection.className = 'terrain-tools';
 
-    const actionTitle = document.createElement('div');
-    actionTitle.className = 'texture-subhead';
-    actionTitle.textContent = 'Actions';
+    const actionTitle = panelSubhead('Actions');
     actionSection.appendChild(actionTitle);
 
     const actionRow = document.createElement('div');
@@ -2116,7 +1504,7 @@ export class UI {
     }
 
     // Update panels
-    this.updateBrushPanel();
+    this.brushPanel.update();
     this.buildGroupsPanel();
     this.buildCameraPanel();
     this.propertiesPanel.update();
@@ -2127,143 +1515,7 @@ export class UI {
 
   updateTextureBrowser(texMgr: TextureManager): void {
     this.texMgr = texMgr;
-    this.buildTexturePanel();
-  }
-
-  private buildManagedTextureBrowser(body: HTMLElement, texMgr: TextureManager): void {
-    // Directory selector + view toggle row
-    const dirRow = document.createElement('div');
-    dirRow.style.display = 'flex';
-    dirRow.style.alignItems = 'stretch';
-    dirRow.style.gap = '2px';
-
-    const dirSelect = document.createElement('select');
-    dirSelect.id = 'texture-dir-select';
-    dirSelect.style.flex = '1';
-    const dirs = texMgr.listTextureDirectories();
-    const defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = '-- select folder --';
-    dirSelect.appendChild(defaultOpt);
-    for (const dir of dirs) {
-      const opt = document.createElement('option');
-      opt.value = dir;
-      opt.textContent = dir;
-      dirSelect.appendChild(opt);
-    }
-    if (Array.from(dirSelect.options).some(opt => opt.value === this.textureDir)) {
-      dirSelect.value = this.textureDir;
-    }
-    dirRow.appendChild(dirSelect);
-
-    // View toggle button
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'texture-view-toggle';
-    toggleBtn.title = 'Toggle thumbnail view';
-    toggleBtn.textContent = this.showTextureThumbnails ? 'Aa' : '\u25A3';
-    toggleBtn.addEventListener('click', () => {
-      this.showTextureThumbnails = !this.showTextureThumbnails;
-      toggleBtn.textContent = this.showTextureThumbnails ? 'Aa' : '\u25A3';
-      repopulate();
-    });
-    dirRow.appendChild(toggleBtn);
-
-    body.appendChild(dirRow);
-
-    // Search input
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.id = 'texture-search';
-    searchInput.placeholder = 'Search textures…';
-    searchInput.value = this.textureSearch;
-    searchInput.style.marginTop = '4px';
-    body.appendChild(searchInput);
-
-    const tagRow = document.createElement('div');
-    tagRow.className = 'texture-tag-row';
-    const tagSelect = document.createElement('select');
-    tagSelect.setAttribute('aria-label', 'Texture tag filter');
-    tagSelect.append(
-      Object.assign(document.createElement('option'), { value: '', textContent: 'All tags' }),
-      Object.assign(document.createElement('option'), { value: '__untagged__', textContent: 'Untagged' }),
-    );
-    for (const tag of listTextureTags(this.textureTags)) {
-      tagSelect.appendChild(Object.assign(document.createElement('option'), { value: tag, textContent: tag }));
-    }
-    tagSelect.value = Array.from(tagSelect.options).some(option => option.value === this.textureTagFilter)
-      ? this.textureTagFilter
-      : '';
-    const tagCurrent = document.createElement('button');
-    tagCurrent.type = 'button';
-    tagCurrent.className = 'btn texture-tag-current';
-    tagCurrent.textContent = 'Tag Current…';
-    tagCurrent.title = `Edit tags for ${this.editor.currentTexture}`;
-    tagCurrent.onclick = () => {
-      const texture = this.editor.currentTexture;
-      openTextureTagsDialog(texture, this.textureTags, values => {
-        this.textureTags = setTextureTags(this.textureTags, texture, values);
-        void saveTextureTags(this.textureTags);
-        this.editor.statusMessage = values.some(value => value.trim())
-          ? `Tagged ${texture}`
-          : `Removed tags from ${texture}`;
-        this.buildTexturePanel();
-      });
-    };
-    tagRow.append(tagSelect, tagCurrent);
-    body.appendChild(tagRow);
-
-    const list = document.createElement('div');
-    list.className = 'texture-list';
-    list.id = 'texture-list';
-    body.appendChild(list);
-
-    const allTextures = texMgr.listTextures();
-
-    const repopulate = () => {
-      const query = this.textureSearch.trim().toLowerCase();
-      const dir = this.textureDir;
-      const filterByTag = (texture: string) => {
-        const tags = textureTagsFor(this.textureTags, texture);
-        return !this.textureTagFilter
-          || (this.textureTagFilter === '__untagged__' ? tags.length === 0 : tags.includes(this.textureTagFilter));
-      };
-      if (query) {
-        const filtered = allTextures.filter(texture => {
-          if (!filterByTag(texture)) return false;
-          const metadata = texMgr.getShaderMetadata(texture);
-          return textureSearchScore(
-            texture,
-            query,
-            metadata?.semantics as unknown as Record<string, unknown> | null,
-            metadata?.surfaceParms ?? [],
-            textureTagsFor(this.textureTags, texture),
-          ) !== null;
-        });
-        this.populateTextureList(list, filtered, null);
-        return;
-      }
-      const baseTextures = dir ? texMgr.listTexturesInDir(dir) : this.textureTagFilter ? allTextures : COMMON_TEXTURES;
-      const textures = baseTextures.filter(filterByTag);
-      this.populateTextureList(list, textures, dir || null);
-    };
-
-    // Show common textures initially
-    repopulate();
-
-    dirSelect.addEventListener('change', () => {
-      this.textureDir = dirSelect.value;
-      this.textureSearch = '';
-      searchInput.value = '';
-      repopulate();
-    });
-    searchInput.addEventListener('input', () => {
-      this.textureSearch = searchInput.value;
-      repopulate();
-    });
-    tagSelect.addEventListener('change', () => {
-      this.textureTagFilter = tagSelect.value;
-      repopulate();
-    });
+    this.texturePanel.setTextureManager(texMgr);
   }
 
   /** Exit vertex mode with geometry validation. Shows warning dialog if brushes are invalid. */
@@ -2277,53 +1529,6 @@ export class UI {
     );
 
     this.showGeometryWarning(issueLines, invalidBrushes);
-  }
-
-  /** Select the folder and scroll to a texture in the texture browser panel. */
-  private locateTexture(texture: string): void {
-    const dirSelect = document.getElementById('texture-dir-select') as HTMLSelectElement | null;
-    if (!dirSelect) return;
-
-    // Determine the folder from the texture path (e.g. "base_wall/concrete" -> "base_wall")
-    const stripped = texture.replace(/^textures\//, '');
-    const slashIdx = stripped.lastIndexOf('/');
-    const dir = slashIdx >= 0 ? stripped.slice(0, slashIdx) : '';
-
-    // Find matching option (could be bare name or textures/ prefixed)
-    let matched = false;
-    for (const opt of Array.from(dirSelect.options)) {
-      const optDir = opt.value.replace(/^textures\//, '');
-      if (optDir === dir) {
-        dirSelect.value = opt.value;
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) {
-      dirSelect.value = '';
-    }
-
-    // Trigger repopulation
-    dirSelect.dispatchEvent(new Event('change'));
-
-    // Scroll to and highlight the texture
-    requestAnimationFrame(() => {
-      const list = document.getElementById('texture-list');
-      if (!list) return;
-      for (const item of Array.from(list.children) as HTMLElement[]) {
-        // Match by checking if clicking this item would set the right texture
-        // The item stores the full texture name in the mousedown handler,
-        // but we can match by checking selected state or text content
-        const itemText = item.textContent || '';
-        const texName = stripped.slice(slashIdx + 1);
-        if (itemText === texName || itemText === stripped || itemText === texture) {
-          list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
-          item.classList.add('selected');
-          item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          break;
-        }
-      }
-    });
   }
 
   private openRotateDialog(): void {
@@ -3314,62 +2519,4 @@ export class UI {
     };
   }
 
-  private populateTextureList(list: HTMLElement, textures: string[], selectedDir: string | null): void {
-    list.innerHTML = '';
-
-    if (this.showTextureThumbnails && this.texMgr) {
-      list.classList.add('texture-grid');
-    } else {
-      list.classList.remove('texture-grid');
-    }
-
-    for (const tex of textures) {
-      const item = document.createElement('div');
-      item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
-      const asset = this.texMgr?.getTextureAsset(tex);
-      const tags = textureTagsFor(this.textureTags, tex);
-      if (asset) {
-        const overrides = asset.overriddenSources.length > 0
-          ? `; overrides ${asset.overriddenSources.map(source => source.archiveName).join(', ')}`
-          : '';
-        item.title = `${asset.path} — ${asset.source.archiveName}${overrides}`;
-      }
-      if (tags.length > 0) {
-        item.title = `${item.title ? `${item.title}\n` : ''}Tags: ${tags.join(', ')}`;
-        item.dataset.tags = tags.join(' ');
-      }
-
-      // Strip textures/ prefix, then strip selected dir prefix in list mode
-      let displayName = tex.replace(/^textures\//, '');
-      if (selectedDir) {
-        const prefix = selectedDir.replace(/^textures\//, '') + '/';
-        if (displayName.startsWith(prefix)) {
-          displayName = displayName.slice(prefix.length);
-        }
-      }
-
-      if (this.showTextureThumbnails && this.texMgr) {
-        item.classList.add('texture-thumb');
-        const img = document.createElement('img');
-        const url = this.texMgr.getThumbnailUrl(tex);
-        if (url) {
-          img.src = url;
-        }
-        item.appendChild(img);
-        const name = document.createElement('span');
-        name.className = 'texture-thumb-name';
-        name.textContent = displayName.split('/').pop() || displayName;
-        item.appendChild(name);
-      } else {
-        item.textContent = displayName;
-      }
-
-      item.addEventListener('mousedown', () => {
-        this.editor.setTexture(tex);
-        list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
-        item.classList.add('selected');
-      });
-      list.appendChild(item);
-    }
-  }
 }
