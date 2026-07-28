@@ -8,6 +8,7 @@ import {
   buildSettingsFromPreferences,
   createBuildSettingsControls,
 } from './build-settings';
+import { openEditorDialog } from './ui-dialog';
 
 export interface QuickPlayDialogOptions {
   editor: Editor;
@@ -30,31 +31,8 @@ function field(label: string, control: HTMLElement): HTMLLabelElement {
   return row;
 }
 
-function button(label: string, primary = false): HTMLButtonElement {
-  const control = document.createElement('button');
-  control.type = 'button';
-  control.className = `btn${primary ? ' primary' : ''}`;
-  control.textContent = label;
-  return control;
-}
-
 export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
-  document.getElementById('quick-play-dialog')?.remove();
   const current = editor.preferences.quickPlay;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'quick-play-dialog';
-  overlay.className = 'editor-dialog-overlay';
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-labelledby', 'quick-play-title');
-
-  const dialog = document.createElement('form');
-  dialog.className = 'editor-dialog quick-play-dialog';
-  const title = document.createElement('div');
-  title.id = 'quick-play-title';
-  title.className = 'editor-dialog-title';
-  title.textContent = 'Quick Play Options';
   const description = document.createElement('div');
   description.className = 'editor-dialog-description';
   description.textContent = 'Choose how the current map is compiled and launched. These settings are remembered.';
@@ -115,11 +93,6 @@ export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
     summary,
   );
 
-  const actions = document.createElement('div');
-  actions.className = 'editor-dialog-actions';
-  const cancel = button('Cancel');
-  const save = button('Save', true);
-
   const persist = (): QuickPlayPreferences => {
     const build = buildControls.read();
     const preferences = normalizeGlobalPreferences({
@@ -138,20 +111,22 @@ export function openQuickPlayDialog({ editor }: QuickPlayDialogOptions): void {
     return preferences;
   };
 
-  cancel.onclick = () => overlay.remove();
-  save.onclick = () => {
-    persist();
-    editor.statusMessage = 'Quick Play settings saved';
-    overlay.remove();
-  };
-  dialog.onsubmit = event => { event.preventDefault(); save.click(); };
-
-  actions.append(cancel, save);
-  dialog.append(title, description, fields, actions);
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-  overlay.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { overlay.remove(); event.stopPropagation(); }
+  openEditorDialog({
+    id: 'quick-play-dialog',
+    title: 'Quick Play Options',
+    titleId: 'quick-play-title',
+    className: 'quick-play-dialog',
+    form: true,
+    body: [description, fields],
+    actions: [
+      { label: 'Cancel', dismiss: true },
+      { label: 'Save', primary: true, type: 'submit' },
+    ],
+    initialFocus: buildControls.element.querySelector<HTMLElement>('input, select, button') ?? undefined,
+    onSubmit: handle => {
+      persist();
+      editor.statusMessage = 'Quick Play settings saved';
+      handle.close();
+    },
   });
-  buildControls.focus();
 }

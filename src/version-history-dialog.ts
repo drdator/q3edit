@@ -4,6 +4,7 @@ import type {
 } from './document-recovery';
 import type { Editor } from './editor';
 import { chooseMapToMerge, openMapDiffDialog } from './map-diff-dialog';
+import { openEditorDialog, type EditorDialogHandle } from './ui-dialog';
 
 function button(label: string, action: () => void | Promise<void>, primary = false): HTMLButtonElement {
   const result = document.createElement('button');
@@ -30,20 +31,6 @@ function exportSnapshot(snapshot: DocumentRecoverySnapshot): void {
 }
 
 export function openVersionHistoryDialog(recovery: DocumentRecoveryService, editor: Editor): void {
-  document.getElementById('version-history-dialog')?.remove();
-  const overlay = document.createElement('div');
-  overlay.id = 'version-history-dialog';
-  overlay.className = 'editor-dialog-overlay';
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-labelledby', 'version-history-title');
-
-  const dialog = document.createElement('div');
-  dialog.className = 'editor-dialog version-history-dialog';
-  const title = document.createElement('div');
-  title.id = 'version-history-title';
-  title.className = 'editor-dialog-title';
-  title.textContent = 'Version History';
   const toolbar = document.createElement('div');
   toolbar.className = 'version-history-toolbar';
   const status = document.createElement('span');
@@ -51,11 +38,12 @@ export function openVersionHistoryDialog(recovery: DocumentRecoveryService, edit
   const list = document.createElement('div');
   list.className = 'version-history-list';
   let renderRequest = 0;
+  let dialogHandle: EditorDialogHandle;
 
   const render = async () => {
     const request = ++renderRequest;
     const [versions, usage] = await Promise.all([recovery.listVersions(), recovery.storageUsage()]);
-    if (request !== renderRequest || !overlay.isConnected) return;
+    if (request !== renderRequest || !dialogHandle?.overlay.isConnected) return;
     list.replaceChildren();
     status.textContent = `${usage.snapshots} versions · ${formatBytes(usage.bytes)} · ${usage.protectedSnapshots} protected`;
     if (versions.length === 0) {
@@ -85,7 +73,7 @@ export function openVersionHistoryDialog(recovery: DocumentRecoveryService, edit
         button('Restore', () => {
           if (globalThis.confirm?.(`Restore “${snapshot.label}” as a new undoable map state?`) ?? true) {
             recovery.restoreVersion(snapshot);
-            overlay.remove();
+            dialogHandle.close();
           }
         }, true),
         button('Export .map', () => exportSnapshot(snapshot)),
@@ -125,11 +113,14 @@ export function openVersionHistoryDialog(recovery: DocumentRecoveryService, edit
   retentionLabel.appendChild(retention);
   toolbar.append(checkpoint, retentionLabel, status);
 
-  const footer = document.createElement('div');
-  footer.className = 'editor-dialog-actions';
-  footer.appendChild(button('Close', () => overlay.remove()));
-  dialog.append(title, toolbar, list, footer);
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
+  dialogHandle = openEditorDialog({
+    id: 'version-history-dialog',
+    title: 'Version History',
+    titleId: 'version-history-title',
+    className: 'version-history-dialog',
+    body: [toolbar, list],
+    actions: [{ label: 'Close', dismiss: true }],
+    initialFocus: checkpoint,
+  });
   void render();
 }
