@@ -44,14 +44,25 @@ export function surfaceDragMultiplier(fineControl: boolean, coarseControl = fals
   return coarseControl ? 10 : 1;
 }
 
-export function surfaceScaleFactor(startSpan: number, currentSpan: number, sensitivity = 1): number {
+export function surfaceScaleFactor(startSpan: number, currentSpan: number): number {
   const safeStartSpan = Math.abs(startSpan) >= 1
     ? startSpan
     : (startSpan < 0 ? -1 : 1);
   const rawRatio = currentSpan / safeStartSpan;
   if (rawRatio <= 0) return 0.02;
-  const spanRatio = Math.max(0.02, rawRatio);
-  return Math.max(0.02, Math.min(50, spanRatio ** sensitivity));
+  return Math.max(0.02, Math.min(50, rawRatio));
+}
+
+export function surfaceScaledDragPoint(
+  startHandle: [number, number],
+  pointerStart: [number, number],
+  pointerPoint: [number, number],
+  multiplier: number,
+): [number, number] {
+  return [
+    startHandle[0] + (pointerPoint[0] - pointerStart[0]) * multiplier,
+    startHandle[1] + (pointerPoint[1] - pointerStart[1]) * multiplier,
+  ];
 }
 
 export function surfaceSelectionSignature(editor: Editor): string {
@@ -1316,22 +1327,22 @@ export class SurfaceInspector {
           center[1] + Math.sin(visualAngle) * visualRadius,
         ];
       } else if (isScaleDrag(this.dragMode)) {
-        const effectivePoint: [number, number] = [
-          this.dragScaleStartHandle[0] + point[0] - this.dragPointerStart[0],
-          this.dragScaleStartHandle[1] + point[1] - this.dragPointerStart[1],
-        ];
+        const effectivePoint = surfaceScaledDragPoint(
+          this.dragScaleStartHandle,
+          this.dragPointerStart,
+          point,
+          multiplier,
+        );
         const factorU = scaleModeAffectsU(this.dragMode)
           ? surfaceScaleFactor(
               this.dragScaleStartHandle[0] - this.dragScaleAnchorScreen[0],
               effectivePoint[0] - this.dragScaleAnchorScreen[0],
-              multiplier,
             )
           : 1;
         const factorV = scaleModeAffectsV(this.dragMode)
           ? surfaceScaleFactor(
               this.dragScaleStartHandle[1] - this.dragScaleAnchorScreen[1],
               effectivePoint[1] - this.dragScaleAnchorScreen[1],
-              multiplier,
             )
           : 1;
         if (this.dragStartProjection && this.dragScaleAnchor) {
