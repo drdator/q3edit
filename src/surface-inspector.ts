@@ -676,12 +676,11 @@ export class SurfaceInspector {
       context.lineWidth = 1;
       context.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.width - 1, cell.height - 1);
       context.fillStyle = 'rgba(15,15,15,.84)';
-      context.fillRect(cell.x + 1, cell.y + 1, cell.width - 2, 18);
+      context.fillRect(cell.x + 1, cell.y + 1, cell.width - 2, 20);
       context.fillStyle = surface.source ? '#e8a030' : '#67b7d1';
-      context.font = '10px monospace';
+      context.font = '11px monospace';
       context.textBaseline = 'middle';
-      const role = surface.source ? 'Source' : `Target ${index}`;
-      context.fillText(`${role} · ${surface.texture}`, cell.x + 6, cell.y + 10, Math.max(1, cell.width - 12));
+      context.fillText(`Face ${index + 1} · ${surface.texture}`, cell.x + 6, cell.y + 11, Math.max(1, cell.width - 12));
     });
     this.updatePreviewStatus(surfaces, totalSurfaceCount, totalTextureCount);
   }
