@@ -3554,7 +3554,11 @@ body.sidepanel-resizing * {
 }
 .preferences-field textarea { min-height: 54px; resize: vertical; }
 .preferences-checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-.preferences-checkbox-grid .preferences-field { grid-template-columns: minmax(54px, 0.8fr) minmax(16px, 1.2fr); }
+.preferences-field.preferences-checkbox-field,
+.preferences-checkbox-grid .preferences-field.preferences-checkbox-field {
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 7px;
+}
 .preferences-field input[type="checkbox"] {
   appearance: none;
   display: grid;

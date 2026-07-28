@@ -49,7 +49,12 @@ function labeled(label: string, control: HTMLElement): HTMLLabelElement {
   row.className = 'preferences-field';
   const caption = document.createElement('span');
   caption.textContent = label;
-  row.append(caption, control);
+  if (control instanceof HTMLInputElement && control.type === 'checkbox') {
+    row.classList.add('preferences-checkbox-field');
+    row.append(control, caption);
+  } else {
+    row.append(caption, control);
+  }
   return row;
 }
 
