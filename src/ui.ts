@@ -28,6 +28,7 @@ import {
   resizedSidebarWidth,
 } from './sidebar-layout';
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
+import { panelSubhead } from './ui-controls';
 import 'virtual:phosphor-icons.css';
 import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
@@ -1098,9 +1099,7 @@ export class UI {
     const section = document.createElement('div');
     section.className = 'texture-tools texture-source-tools';
 
-    const title = document.createElement('div');
-    title.className = 'texture-subhead';
-    title.textContent = 'Asset Source';
+    const title = panelSubhead('Asset source');
     section.appendChild(title);
 
     const status = document.createElement('div');
@@ -1407,9 +1406,7 @@ export class UI {
     const section = document.createElement('div');
     section.className = 'texture-tools';
 
-    const title = document.createElement('div');
-    title.className = 'texture-subhead';
-    title.textContent = 'Find / Replace';
+    const title = panelSubhead('Find / replace');
     section.appendChild(title);
 
     const bindSubmitKey = (input: HTMLInputElement) => {
@@ -1589,9 +1586,7 @@ export class UI {
     const setupSection = document.createElement('div');
     setupSection.className = 'terrain-tools';
 
-    const setupTitle = document.createElement('div');
-    setupTitle.className = 'texture-subhead';
-    setupTitle.textContent = 'Setup';
+    const setupTitle = panelSubhead('Setup');
     setupSection.appendChild(setupTitle);
 
     const createBtn = document.createElement('div');
@@ -1617,9 +1612,7 @@ export class UI {
     const brushSection = document.createElement('div');
     brushSection.className = 'terrain-tools';
 
-    const brushTitle = document.createElement('div');
-    brushTitle.className = 'texture-subhead';
-    brushTitle.textContent = 'Brush';
+    const brushTitle = panelSubhead('Brush');
     brushSection.appendChild(brushTitle);
 
     const modeLabel = document.createElement('label');
@@ -1726,9 +1719,7 @@ export class UI {
     const actionSection = document.createElement('div');
     actionSection.className = 'terrain-tools';
 
-    const actionTitle = document.createElement('div');
-    actionTitle.className = 'texture-subhead';
-    actionTitle.textContent = 'Actions';
+    const actionTitle = panelSubhead('Actions');
     actionSection.appendChild(actionTitle);
 
     const actionRow = document.createElement('div');

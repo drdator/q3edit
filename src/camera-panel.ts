@@ -2,6 +2,7 @@ import { buildCameraPointInspector } from './camera-inspector';
 import { cameraPathDuration } from './camera-paths';
 import type { Editor } from './editor';
 import { entityOrigin } from './entity';
+import { panelSubhead } from './ui-controls';
 
 const CAMERA_PANEL_ICON_NAMES = {
   selection: 'selection-plus',
@@ -46,9 +47,7 @@ export function buildCameraPanel(container: HTMLElement, editor: Editor): void {
 
   const creation = document.createElement('section');
   creation.className = 'camera-create';
-  const creationHeading = document.createElement('div');
-  creationHeading.className = 'camera-section-heading';
-  creationHeading.textContent = 'Create new';
+  const creationHeading = panelSubhead('Create new');
   const creationActions = document.createElement('div');
   creationActions.className = 'camera-create-actions';
   const selectionButton = actionButton('Selected points', CAMERA_PANEL_ICON_NAMES.selection, () => promptForPathName(editor, true));
@@ -149,9 +148,7 @@ export function buildCameraPanel(container: HTMLElement, editor: Editor): void {
     controls.append(timeline, playback, loop);
     content.appendChild(controls);
 
-    const pointsHeading = document.createElement('div');
-    pointsHeading.className = 'camera-section-heading camera-points-heading';
-    pointsHeading.textContent = 'Waypoints';
+    const pointsHeading = panelSubhead('Waypoints', 'camera-points-heading');
     content.appendChild(pointsHeading);
     for (let index = 0; index < path.points.length; index++) {
       buildCameraPointInspector(content, editor, path, path.points[index], index);

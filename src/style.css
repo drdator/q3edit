@@ -1644,9 +1644,7 @@ body.sidepanel-resizing * {
 
 .panel-body .btn {
   gap: 3px;
-  padding: 2px 8px 2px 5px;
   font-size: 10px;
-  margin: 2px 2px 2px 0;
   -webkit-user-select: none;
 }
 
@@ -2036,7 +2034,8 @@ body.sidepanel-resizing * {
   border-bottom: 1px solid var(--border-dark);
 }
 
-.texture-subhead {
+.panel-subhead {
+  margin: 0;
   color: var(--text-dim);
   font-size: 10px;
   font-weight: bold;
@@ -2080,8 +2079,7 @@ body.sidepanel-resizing * {
 .camera-paths-panel {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 7px;
+  gap: 6px;
 }
 
 .camera-create {
@@ -2089,13 +2087,8 @@ body.sidepanel-resizing * {
   border-bottom: 1px solid var(--border-dark);
 }
 
-.camera-section-heading {
+.camera-create > .panel-subhead {
   margin-bottom: 5px;
-  color: var(--text-dim);
-  font-size: 9px;
-  font-weight: bold;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
 }
 
 .camera-create-actions {
@@ -2107,7 +2100,6 @@ body.sidepanel-resizing * {
 .panel-body .camera-action {
   justify-content: center;
   min-width: 0;
-  min-height: 24px;
   margin: 0;
   padding: 3px 5px;
   white-space: nowrap;
@@ -2709,7 +2701,8 @@ body.sidepanel-resizing * {
 
 .texture-source-status {
   color: var(--text);
-  font: 10px/1.35 monospace;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .texture-source-attribution {
