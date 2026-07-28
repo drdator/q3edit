@@ -23,7 +23,9 @@ import { openUnreadReleaseNotesDialog } from './release-notes-dialog';
 import { DocumentRecoveryService } from './document-recovery';
 import { currentEditorSessionId } from './editor-session';
 import { installDialogEscapeDismissal } from './dialog-dismissal';
-import { startupDialogsEnabled } from './startup-options';
+import { startupDialogsEnabled, startupTheme } from './startup-options';
+import { installNumberInputSteppers } from './number-input-stepper';
+import { applyAppearancePreferences } from './preferences-dialog';
 
 let loadingEl: HTMLDivElement;
 const OPENARENA_NOTICE_DISMISSED_KEY = 'q3edit.openarenaNotice.dismissed';
@@ -54,6 +56,7 @@ function setLoadingStatus(msg: string) {
 
 async function init() {
   const showStartupDialogs = startupDialogsEnabled(window.location.search);
+  const requestedTheme = startupTheme(window.location.search);
   installDialogEscapeDismissal();
   const editor = new Editor();
   await loadProjectShaderFiles();
@@ -97,6 +100,12 @@ async function init() {
 
   // Create UI
   const ui = new UI(editor, recovery);
+  if (requestedTheme) {
+    const previewPreferences = structuredClone(editor.preferences);
+    previewPreferences.theme.preset = requestedTheme;
+    applyAppearancePreferences(previewPreferences);
+  }
+  installNumberInputSteppers();
   ui.configureEditorCapture(() => vp3D.capturePng(1024, 768));
   ui.configureNavigation(
     () => ({

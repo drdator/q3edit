@@ -34,6 +34,9 @@ html:not(.landing-active) * {
   --info: #6cbcff;
   --disabled-text: #666;
   --disabled-bg: #343434;
+  --control-height: 26px;
+  --control-bg: #252525;
+  --control-bg-hover: #2d2d2d;
   --selection: #ff6600;
   --grid-major: rgba(70, 70, 70, 0.8);
   --grid-minor: rgba(50, 50, 50, 0.6);
@@ -63,6 +66,8 @@ html:not(.landing-active) * {
   --info: #176aa6;
   --disabled-text: #767676;
   --disabled-bg: #c8c8c8;
+  --control-bg: #fff;
+  --control-bg-hover: #f7f7f7;
   --viewport-bg: #f0f0f0;
   --grid-major: rgba(70, 70, 70, 0.65);
   --grid-minor: rgba(110, 110, 110, 0.35);
@@ -94,6 +99,8 @@ html:not(.landing-active) * {
   --info: #69c9ff;
   --disabled-text: #aaa;
   --disabled-bg: #111;
+  --control-bg: #0d0d0d;
+  --control-bg-hover: #191919;
   --selection: #00ffff;
   --viewport-bg: #000;
   --grid-major: rgba(255, 255, 255, 0.75);
@@ -750,7 +757,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 24px;
+  min-height: var(--control-height);
   padding: 2px 8px;
   color: var(--text);
   background: var(--bg-light);
@@ -1114,7 +1121,7 @@ textarea:focus-visible {
 }
 
 .entity-class-picker input[type="search"] {
-  height: 25px;
+  height: var(--control-height);
   padding: 3px 7px;
   background: var(--bg-darker);
   border: 1px solid var(--border-dark);
@@ -1464,8 +1471,14 @@ body.sidepanel-resizing * {
   min-width: 0;
 }
 
-.surface-inspector-actions .btn {
-  min-height: 26px;
+.panel-body .surface-inspector-actions .btn {
+  min-height: var(--control-height);
+  margin: 0;
+}
+
+.panel-body .surface-inspector-actions .surface-inspector-field input,
+.panel-body .surface-inspector-actions .surface-inspector-field select {
+  margin: 0;
 }
 
 .surface-inspector-field {
@@ -1484,7 +1497,7 @@ body.sidepanel-resizing * {
 .surface-inspector-field select {
   width: 100%;
   min-width: 0;
-  height: 26px;
+  height: var(--control-height);
 }
 
 .surface-inspector-value-grid {
@@ -1655,8 +1668,20 @@ body.sidepanel-resizing * {
 
 .kv-row {
   display: flex;
+  align-items: stretch;
   gap: 2px;
   margin-bottom: 4px;
+}
+
+.panel-body .kv-row > input,
+.panel-body .kv-row > select,
+.panel-body .kv-row > .btn {
+  margin: 0;
+}
+
+.panel-body .kv-row > .btn:not(.icon-btn) {
+  height: var(--control-height);
+  min-height: var(--control-height);
 }
 
 .kv-row input {
@@ -1673,6 +1698,7 @@ body.sidepanel-resizing * {
   flex: 0 0 auto;
   width: 18px;
   height: 18px;
+  min-height: 18px;
   padding: 0;
   margin: 0;
 }
@@ -1716,6 +1742,7 @@ body.sidepanel-resizing * {
 .entity-property-controls > select {
   width: auto;
   height: 18px;
+  min-height: 18px;
   box-sizing: border-box;
 }
 
@@ -1751,6 +1778,7 @@ body.sidepanel-resizing * {
 .entity-value > .btn {
   margin: 0;
   height: 18px;
+  min-height: 18px;
   box-sizing: border-box;
 }
 
@@ -2018,6 +2046,14 @@ body.sidepanel-resizing * {
 
 .texture-tools .kv-row {
   align-items: stretch;
+}
+
+.panel-body .texture-tools .kv-row > input,
+.panel-body .texture-tools .kv-row > select,
+.panel-body .texture-tools .kv-row > .btn {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  margin: 0;
 }
 
 .texture-tools .btn,
@@ -3495,8 +3531,17 @@ body.sidepanel-resizing * {
   min-width: 0;
   padding: 4px 6px;
   color: var(--text);
-  background: var(--bg-darker);
-  border: 1px solid var(--border-light);
+  background: var(--control-bg);
+  border: 1px solid;
+  border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark);
+  border-radius: 0;
+  font: inherit;
+}
+.preferences-field input:not([type="checkbox"]),
+.preferences-field select,
+.preferences-command-row input,
+.preferences-section > input {
+  height: var(--control-height);
 }
 .preferences-field textarea { min-height: 54px; resize: vertical; }
 .preferences-checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
@@ -3954,7 +3999,7 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
 .mcp-activity-controls input,
 .mcp-activity-controls select {
   min-width: 0;
-  height: 25px;
+  height: var(--control-height);
   padding: 3px 7px;
   color: var(--text);
   background: var(--bg-darker);
@@ -4546,6 +4591,7 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
 
 .texture-tag-row {
   display: flex;
+  align-items: stretch;
   gap: 3px;
   margin-top: 3px;
 }
@@ -4553,6 +4599,13 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
 .texture-tag-row select {
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.panel-body .texture-tag-row select,
+.panel-body .texture-tag-row .btn {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  margin: 0;
 }
 
 .texture-tag-current {
@@ -5066,10 +5119,125 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
 }
 
 /* ── Shared dropdown treatment ── */
+html:not(.landing-active) input:is(
+  [type="text"],
+  [type="search"],
+  [type="number"],
+  [type="password"],
+  [type="url"],
+  [type="email"]
+) {
+  color: var(--text);
+  background-color: var(--control-bg);
+  border: 1px solid;
+  border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark);
+  border-radius: 0;
+  font: inherit;
+}
+
+html:not(.landing-active) input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+html:not(.landing-active) input[type="number"]::-webkit-inner-spin-button,
+html:not(.landing-active) input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.number-input-stepper {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: var(--control-height);
+}
+
+.panel-body .number-input-stepper {
+  margin-bottom: 4px;
+}
+
+.number-input-stepper > input[type="number"] {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding-right: 20px !important;
+}
+
+.number-input-stepper-controls {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  display: grid;
+  width: 18px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  border-left: 1px solid var(--border-dark);
+}
+
+.number-input-stepper-button {
+  appearance: none;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  place-items: center;
+  color: var(--text-dim);
+  background: var(--control-bg);
+  border: 0;
+  font: inherit;
+  line-height: 1;
+}
+
+.number-input-stepper-button + .number-input-stepper-button {
+  border-top: 1px solid var(--border-dark);
+}
+
+.number-input-stepper-button .ph {
+  font-size: 8px;
+  line-height: 1;
+}
+
+.number-input-stepper-button:hover:not(:disabled) {
+  color: var(--text-bright);
+  background: color-mix(in srgb, var(--control-bg) 78%, var(--text) 22%);
+}
+
+.number-input-stepper-button:active:not(:disabled) {
+  color: var(--accent);
+  background: var(--bg-dark);
+}
+
+.number-input-stepper-button:disabled {
+  color: var(--disabled-text);
+  background: var(--control-bg);
+}
+
+.kv-row > .number-input-stepper {
+  flex: 1;
+  height: 18px;
+  margin: 0;
+}
+
+.entity-value > .number-input-stepper {
+  flex: 1 1 100px;
+  height: 18px;
+  margin: 0;
+}
+
+.surface-inspector-field > .number-input-stepper,
+.preferences-field > .number-input-stepper,
+.exact-primitive-field > .number-input-stepper {
+  height: var(--control-height);
+  margin: 0;
+}
+
 html:not(.landing-active) select {
+  min-height: var(--control-height);
   padding-right: 27px;
   color: var(--text);
-  background-color: var(--bg-darker);
+  background-color: var(--control-bg);
   background-image: var(--select-chevron);
   background-repeat: no-repeat;
   background-position: right 9px center;
@@ -5078,10 +5246,31 @@ html:not(.landing-active) select {
   border-color: var(--border-dark) var(--border-light) var(--border-light) var(--border-dark);
   border-radius: 0;
   box-shadow: none;
+  font: inherit;
   -webkit-appearance: none;
   appearance: none;
 }
 
+html:not(.landing-active) input:is(
+  [type="text"],
+  [type="search"],
+  [type="number"],
+  [type="password"],
+  [type="url"],
+  [type="email"]
+):hover:not(:disabled),
+html:not(.landing-active) select:hover:not(:disabled) {
+  background-color: var(--control-bg-hover);
+}
+
+html:not(.landing-active) input:is(
+  [type="text"],
+  [type="search"],
+  [type="number"],
+  [type="password"],
+  [type="url"],
+  [type="email"]
+):focus-visible,
 html:not(.landing-active) select:focus-visible {
   outline: 1px solid color-mix(in srgb, var(--accent) 65%, transparent);
   outline-offset: 0;
@@ -5094,10 +5283,11 @@ html:not(.landing-active) select:disabled {
 
 html:not(.landing-active) select option {
   color: var(--text);
-  background: var(--bg-dark);
+  background: var(--control-bg);
 }
 
 html:not(.landing-active) .panel-header select {
+  min-height: 0;
   padding-right: 0;
   background-color: transparent;
   background-image: none;
@@ -5106,4 +5296,8 @@ html:not(.landing-active) .panel-header select {
 
 html:not(.landing-active) .mcp-activity-select select {
   background-image: none;
+}
+
+html:not(.landing-active) #texture-dir-select {
+  min-height: 20px;
 }
