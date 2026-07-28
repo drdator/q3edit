@@ -71,10 +71,17 @@ describe('UV editor view model', () => {
     expect(surfaceDragMultiplier(true, true)).toBe(1);
   });
 
-  it('maps scale-handle radius directly to UV scale', () => {
+  it('maps scale-handle span directly to UV scale', () => {
     expect(surfaceScaleFactor(100, 150)).toBeCloseTo(1.5);
     expect(surfaceScaleFactor(100, 150, 0.1)).toBeCloseTo(1.5 ** 0.1);
     expect(surfaceScaleFactor(100, 110, 10)).toBeCloseTo(1.1 ** 10);
+  });
+
+  it('clamps scaling instead of inverting after crossing the fixed edge', () => {
+    expect(surfaceScaleFactor(100, -10)).toBe(0.02);
+    expect(surfaceScaleFactor(-100, 10)).toBe(0.02);
+    expect(surfaceScaleFactor(100, -10, 0.1)).toBe(0.02);
+    expect(surfaceScaleFactor(-100, 10, 0.1)).toBe(0.02);
   });
 
   it('distinguishes equal-looking surface selections', () => {

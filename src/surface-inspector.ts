@@ -44,9 +44,14 @@ export function surfaceDragMultiplier(fineControl: boolean, coarseControl = fals
   return coarseControl ? 10 : 1;
 }
 
-export function surfaceScaleFactor(startRadius: number, currentRadius: number, sensitivity = 1): number {
-  const radiusRatio = Math.max(0.02, currentRadius / Math.max(1, startRadius));
-  return Math.max(0.02, Math.min(50, radiusRatio ** sensitivity));
+export function surfaceScaleFactor(startSpan: number, currentSpan: number, sensitivity = 1): number {
+  const safeStartSpan = Math.abs(startSpan) >= 1
+    ? startSpan
+    : (startSpan < 0 ? -1 : 1);
+  const rawRatio = currentSpan / safeStartSpan;
+  if (rawRatio <= 0) return 0.02;
+  const spanRatio = Math.max(0.02, rawRatio);
+  return Math.max(0.02, Math.min(50, spanRatio ** sensitivity));
 }
 
 export function surfaceSelectionSignature(editor: Editor): string {
@@ -1133,7 +1138,7 @@ export class SurfaceInspector {
           this.dragPointerPoint[0] + this.dragPointerOffset[0],
           this.dragPointerPoint[1] + this.dragPointerOffset[1],
         ]
-      : (this.dragMode === 'rotate' || isScaleDrag(this.dragMode)) && this.dragCenterScreen
+      : this.dragMode === 'rotate' && this.dragCenterScreen
         ? this.dragCenterScreen
         : this.uvCenterScreen;
     this.rotateHandle = this.dragMode === 'rotate' && this.dragPointerPoint
@@ -1317,15 +1322,15 @@ export class SurfaceInspector {
         ];
         const factorU = scaleModeAffectsU(this.dragMode)
           ? surfaceScaleFactor(
-              Math.abs(this.dragScaleStartHandle[0] - this.dragScaleAnchorScreen[0]),
-              Math.abs(effectivePoint[0] - this.dragScaleAnchorScreen[0]),
+              this.dragScaleStartHandle[0] - this.dragScaleAnchorScreen[0],
+              effectivePoint[0] - this.dragScaleAnchorScreen[0],
               multiplier,
             )
           : 1;
         const factorV = scaleModeAffectsV(this.dragMode)
           ? surfaceScaleFactor(
-              Math.abs(this.dragScaleStartHandle[1] - this.dragScaleAnchorScreen[1]),
-              Math.abs(effectivePoint[1] - this.dragScaleAnchorScreen[1]),
+              this.dragScaleStartHandle[1] - this.dragScaleAnchorScreen[1],
+              effectivePoint[1] - this.dragScaleAnchorScreen[1],
               multiplier,
             )
           : 1;
