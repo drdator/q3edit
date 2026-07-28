@@ -130,6 +130,9 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.display.lights').checked).toBe(true);
     registry.execute('view.display.lights');
     expect(registry.getState('view.display.lights').checked).toBe(false);
+    expect(registry.getState('view.display.textureAxes').checked).toBe(true);
+    registry.execute('view.display.textureAxes');
+    expect(registry.getState('view.display.textureAxes').checked).toBe(false);
     registry.execute('view.renderer.flat');
     expect(registry.getState('view.renderer.flat').checked).toBe(true);
     registry.execute('view.texture-filter.nearest');

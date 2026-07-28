@@ -9,7 +9,7 @@ export type DisplayCategory =
   | 'coordinates' | 'dimensions' | 'blocks' | 'sky' | 'models'
   | 'triggers' | 'translucent' | 'decals' | 'pointEntities'
   | 'structural' | 'areaportals' | 'visportals' | 'clusterportals'
-  | 'botclips' | 'funcGroups' | 'lightgrid' | 'lightRadii';
+  | 'botclips' | 'funcGroups' | 'lightgrid' | 'lightRadii' | 'textureAxes';
 export type RendererMode = 'wireframe' | 'flat' | 'textured' | 'lightmap' | 'overdraw';
 export type TextureFiltering = 'nearest' | 'linear' | 'trilinear';
 
@@ -25,7 +25,7 @@ export const DISPLAY_CATEGORIES: readonly DisplayCategory[] = [
   'caulk', 'curves', 'names', 'angles', 'coordinates', 'dimensions', 'blocks',
   'sky', 'models', 'triggers', 'translucent', 'decals', 'pointEntities',
   'structural', 'areaportals', 'visportals', 'clusterportals', 'botclips',
-  'funcGroups', 'lightgrid', 'lightRadii',
+  'funcGroups', 'lightgrid', 'lightRadii', 'textureAxes',
 ];
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {

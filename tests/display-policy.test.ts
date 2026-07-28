@@ -133,6 +133,7 @@ describe('display policy', () => {
     expect(preferences.categories.entities).toBe(false);
     expect(preferences.categories.dimensions).toBe(true);
     expect(preferences.categories.lightRadii).toBe(false);
+    expect(preferences.categories.textureAxes).toBe(true);
   });
 
   it('keeps hidden-category selections selected but non-interactive', () => {

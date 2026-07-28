@@ -414,7 +414,7 @@ export class SurfaceInspector {
     this.updateTextureImage(faces[0]?.texture ?? patches[0]?.texture ?? '');
     const panelVisible = !this.body.closest('.panel')?.classList.contains('collapsed')
       && this.body.offsetParent !== null;
-    if (hasSurfaces && panelVisible) {
+    if (hasSurfaces && panelVisible && this.editor.display.categories.textureAxes) {
       this.editor.updateTextureAxisOverlay();
     } else if (this.editor.textureAxisOverlayLines.length > 0) {
       this.editor.textureAxisOverlayLines = [];
