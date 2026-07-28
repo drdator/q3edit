@@ -30,6 +30,7 @@ import {
 import { soloPanelCollapseState, type PanelCollapseState } from './panel-layout';
 import { panelSubhead } from './ui-controls';
 import { BrushPanel } from './brush-panel';
+import { TexturePanel } from './texture-panel';
 import 'virtual:phosphor-icons.css';
 import { McpActivityPanel } from './live-bridge/activity-panel';
 import type { GamePreviewStatus, GameScreenshot, McpActivityEntry } from './live-bridge/protocol';
@@ -56,10 +57,6 @@ import { openReleasePackageDialog } from './release-package-dialog';
 import { MapOrganizationController, type NavigationState } from './map-organization';
 import { openMapOrganizationDialog } from './map-organization-dialog';
 import { SurfaceInspector } from './surface-inspector';
-import { getCachedTextureTags, saveTextureTags } from './pak-storage';
-import { listTextureTags, setTextureTags, textureTagsFor, type TextureTagMap } from './texture-tags';
-import { textureSearchScore } from './texture-search';
-import { openTextureTagsDialog } from './texture-tags-dialog';
 import { validateProjectShaderFiles } from './q3-shader-source';
 
 export interface AssetLoadingHandle {
@@ -67,26 +64,6 @@ export interface AssetLoadingHandle {
   update: (message: string, completed?: number, total?: number) => void;
   close: () => void;
 }
-
-const COMMON_TEXTURES = [
-  'common/caulk',
-  'common/clip',
-  'common/trigger',
-  'common/nodraw',
-  'base_wall/basewall03',
-  'base_wall/basewall04',
-  'base_wall/concrete',
-  'base_floor/concrete',
-  'base_floor/diamond2c',
-  'base_floor/pjgrate1',
-  'base_trim/pewter_shiney',
-  'base_trim/dirty_pewter',
-  'gothic_wall/iron01_e',
-  'gothic_wall/skull4',
-  'gothic_floor/blocks17floor',
-  'gothic_trim/baseboard09',
-  'skies/earthsky01',
-];
 
 interface GamePreviewLaunch {
   mapName: string;
@@ -104,20 +81,10 @@ export class UI {
   private openMenu: HTMLElement | null = null;
   private commands: CommandRegistry<EditorCommandContext>;
   private readonly brushPanel: BrushPanel;
+  private readonly texturePanel: TexturePanel;
   private propertiesPanel: PropertiesPanel;
   private readonly surfaceInspector: SurfaceInspector;
   private texMgr: TextureManager | null = null;
-  private showTextureThumbnails = false;
-  private textureDir = '';
-  private textureSearch = '';
-  private textureTagFilter = '';
-  private textureTags: TextureTagMap = getCachedTextureTags();
-  private textureFind = '';
-  private textureReplace = '';
-  private textureReplaceScope: 'selection' | 'map' = 'selection';
-  private textureReplaceMatch: 'exact' | 'contains' = 'exact';
-  private textureAssetStatus = 'Loading OpenArena assets…';
-  private importedPakNames: string[] = [];
   private groupsPanelSignature = '';
   private cameraPanelSignature = '';
   private soloedPanelId: string | null = null;
@@ -145,6 +112,7 @@ export class UI {
     this.editor = editor;
     this.recovery = recovery;
     this.brushPanel = new BrushPanel(editor);
+    this.texturePanel = new TexturePanel(editor, () => this.onManagePakFiles?.());
     this.propertiesPanel = new PropertiesPanel(editor);
     this.surfaceInspector = new SurfaceInspector(editor, document.getElementById('surface-body')!);
     this.buildPanel = new BuildPanel({
@@ -242,7 +210,7 @@ export class UI {
     this.buildStatusBar();
     this.setupKeyboard();
 
-    this.editor.onLocateTexture = (texture: string) => this.locateTexture(texture);
+    this.editor.onLocateTexture = (texture: string) => this.texturePanel.locateTexture(texture);
     this.editor.onShaderSourcesChanged = () => {
       if (this.texMgr) this.updateTextureBrowser(this.texMgr);
     };
@@ -353,7 +321,7 @@ export class UI {
     this.buildGroupsPanel();
     this.buildCameraPanel();
     this.buildEntityPanel();
-    this.buildTexturePanel();
+    this.texturePanel.mount();
     this.buildTerrainPanel();
     this.setupTerrainPopover();
   }
@@ -584,23 +552,12 @@ export class UI {
     this.editor.redrawRequested = true;
   }
 
-  private buildTexturePanel(): void {
-    const body = document.getElementById('texture-body')!;
-    body.innerHTML = '';
-
-    this.buildTextureSourceControls(body);
-    this.buildTextureReplaceControls(body);
-    this.buildTextureBrowser(body);
-  }
-
   onManagePakFiles: (() => Promise<void>) | null = null;
   onReloadAssets: (() => Promise<void>) | null = null;
   onProjectConfigurationChanged: ((project: ProjectConfiguration) => Promise<void>) | null = null;
 
-  setTextureAssetStatus(status: string, importedPakNames: string[] = this.importedPakNames): void {
-    this.textureAssetStatus = status;
-    this.importedPakNames = importedPakNames;
-    this.buildTexturePanel();
+  setTextureAssetStatus(status: string, importedPakNames?: string[]): void {
+    this.texturePanel.setAssetStatus(status, importedPakNames);
   }
 
   showOpenArenaNotice(): Promise<boolean> {
@@ -732,58 +689,6 @@ export class UI {
       },
       close: () => overlay.remove(),
     };
-  }
-
-  private buildTextureSourceControls(body: HTMLElement): void {
-    const section = document.createElement('div');
-    section.className = 'texture-tools texture-source-tools';
-
-    const title = panelSubhead('Asset source');
-    section.appendChild(title);
-
-    const status = document.createElement('div');
-    status.className = 'texture-source-status';
-    status.textContent = this.textureAssetStatus;
-    section.appendChild(status);
-
-    const attribution = document.createElement('a');
-    attribution.className = 'texture-source-attribution';
-    attribution.href = '/openarena/OPENARENA.md';
-    attribution.target = '_blank';
-    attribution.rel = 'noreferrer';
-    attribution.textContent = 'OpenArena license and source';
-    section.appendChild(attribution);
-
-    if (this.importedPakNames.length > 0) {
-      const names = document.createElement('div');
-      names.className = 'texture-source-files';
-      names.textContent = this.importedPakNames.join(', ');
-      names.title = this.importedPakNames.join('\n');
-      section.appendChild(names);
-    }
-
-    const actions = document.createElement('div');
-    actions.className = 'texture-source-actions';
-
-    const manageBtn = document.createElement('button');
-    manageBtn.type = 'button';
-    manageBtn.className = 'btn';
-    manageBtn.innerHTML = '<i class="ph ph-files" aria-hidden="true"></i><span>Manage PK3 Files…</span>';
-    manageBtn.title = 'Add, remove, or reorder PK3 files from your Quake III Arena installation';
-    manageBtn.addEventListener('click', async () => {
-      if (!this.onManagePakFiles) return;
-      manageBtn.disabled = true;
-      try {
-        await this.onManagePakFiles();
-      } finally {
-        manageBtn.disabled = false;
-      }
-    });
-
-    actions.appendChild(manageBtn);
-
-    section.appendChild(actions);
-    body.appendChild(section);
   }
 
   openPakManager(
@@ -1041,153 +946,6 @@ export class UI {
     });
   }
 
-  private buildTextureReplaceControls(body: HTMLElement): void {
-    const section = document.createElement('div');
-    section.className = 'texture-tools';
-
-    const title = panelSubhead('Find / replace');
-    section.appendChild(title);
-
-    const bindSubmitKey = (input: HTMLInputElement) => {
-      input.addEventListener('keydown', (ev) => {
-        if (ev.key !== 'Enter') return;
-        ev.preventDefault();
-        this.applyTextureReplace();
-      });
-    };
-
-    const findLabel = document.createElement('label');
-    findLabel.textContent = 'Find';
-    section.appendChild(findLabel);
-
-    const findRow = document.createElement('div');
-    findRow.className = 'kv-row';
-
-    const findInput = document.createElement('input');
-    findInput.type = 'text';
-    findInput.value = this.textureFind;
-    findInput.spellcheck = false;
-    findInput.autocomplete = 'off';
-    findInput.addEventListener('input', () => {
-      this.textureFind = findInput.value;
-    });
-    bindSubmitKey(findInput);
-
-    const findCurrentBtn = document.createElement('div');
-    findCurrentBtn.className = 'btn';
-    findCurrentBtn.textContent = 'Current';
-    findCurrentBtn.addEventListener('mousedown', () => {
-      this.textureFind = this.editor.currentTexture;
-      findInput.value = this.textureFind;
-    });
-
-    findRow.appendChild(findInput);
-    findRow.appendChild(findCurrentBtn);
-    section.appendChild(findRow);
-
-    const replaceLabel = document.createElement('label');
-    replaceLabel.textContent = 'Replace With';
-    section.appendChild(replaceLabel);
-
-    const replaceRow = document.createElement('div');
-    replaceRow.className = 'kv-row';
-
-    const replaceInput = document.createElement('input');
-    replaceInput.type = 'text';
-    replaceInput.value = this.textureReplace;
-    replaceInput.spellcheck = false;
-    replaceInput.autocomplete = 'off';
-    replaceInput.addEventListener('input', () => {
-      this.textureReplace = replaceInput.value;
-    });
-    bindSubmitKey(replaceInput);
-
-    const replaceCurrentBtn = document.createElement('div');
-    replaceCurrentBtn.className = 'btn';
-    replaceCurrentBtn.textContent = 'Current';
-    replaceCurrentBtn.addEventListener('mousedown', () => {
-      this.textureReplace = this.editor.currentTexture;
-      replaceInput.value = this.textureReplace;
-    });
-
-    replaceRow.appendChild(replaceInput);
-    replaceRow.appendChild(replaceCurrentBtn);
-    section.appendChild(replaceRow);
-
-    const optionsRow = document.createElement('div');
-    optionsRow.className = 'kv-row';
-
-    const scopeSelect = document.createElement('select');
-    for (const [value, label] of [['selection', 'Selection'], ['map', 'Whole Map']] as const) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (value === this.textureReplaceScope) opt.selected = true;
-      scopeSelect.appendChild(opt);
-    }
-    scopeSelect.addEventListener('change', () => {
-      this.textureReplaceScope = scopeSelect.value as 'selection' | 'map';
-    });
-
-    const matchSelect = document.createElement('select');
-    for (const [value, label] of [['exact', 'Exact Match'], ['contains', 'Name Contains']] as const) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (value === this.textureReplaceMatch) opt.selected = true;
-      matchSelect.appendChild(opt);
-    }
-    matchSelect.addEventListener('change', () => {
-      this.textureReplaceMatch = matchSelect.value as 'exact' | 'contains';
-    });
-
-    optionsRow.appendChild(scopeSelect);
-    optionsRow.appendChild(matchSelect);
-    section.appendChild(optionsRow);
-
-    const replaceBtn = document.createElement('div');
-    replaceBtn.className = 'btn texture-apply-btn';
-    replaceBtn.textContent = 'Replace Textures';
-    replaceBtn.addEventListener('mousedown', () => this.applyTextureReplace());
-    section.appendChild(replaceBtn);
-
-    body.appendChild(section);
-  }
-
-  private applyTextureReplace(): void {
-    this.editor.replaceTextures(
-      this.textureFind,
-      this.textureReplace,
-      this.textureReplaceScope,
-      this.textureReplaceMatch,
-    );
-  }
-
-  private buildTextureBrowser(body: HTMLElement): void {
-    if (this.texMgr) {
-      this.buildManagedTextureBrowser(body, this.texMgr);
-      return;
-    }
-
-    const list = document.createElement('div');
-    list.className = 'texture-list';
-    list.id = 'texture-list';
-
-    for (const tex of COMMON_TEXTURES) {
-      const item = document.createElement('div');
-      item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
-      item.textContent = tex;
-      item.addEventListener('mousedown', () => {
-        this.editor.setTexture(tex);
-        list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
-        item.classList.add('selected');
-      });
-      list.appendChild(item);
-    }
-
-    body.appendChild(list);
-  }
-
   private setTerrainRadius(value: number): void {
     const next = Math.max(8, Math.min(1024, Math.round(value) || 8));
     if (next === this.editor.terrainBrushRadius) return;
@@ -1323,7 +1081,7 @@ export class UI {
     textureInfo.className = 'terrain-current-texture';
     textureInfo.id = 'terrain-current-texture';
     textureInfo.title = 'Locate in Texture panel';
-    textureInfo.addEventListener('mousedown', () => this.locateTexture(this.editor.currentTexture));
+    textureInfo.addEventListener('mousedown', () => this.texturePanel.locateTexture(this.editor.currentTexture));
 
     const textureThumb = document.createElement('img');
     textureThumb.className = 'terrain-current-texture-thumb';
@@ -1757,143 +1515,7 @@ export class UI {
 
   updateTextureBrowser(texMgr: TextureManager): void {
     this.texMgr = texMgr;
-    this.buildTexturePanel();
-  }
-
-  private buildManagedTextureBrowser(body: HTMLElement, texMgr: TextureManager): void {
-    // Directory selector + view toggle row
-    const dirRow = document.createElement('div');
-    dirRow.style.display = 'flex';
-    dirRow.style.alignItems = 'stretch';
-    dirRow.style.gap = '2px';
-
-    const dirSelect = document.createElement('select');
-    dirSelect.id = 'texture-dir-select';
-    dirSelect.style.flex = '1';
-    const dirs = texMgr.listTextureDirectories();
-    const defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = '-- select folder --';
-    dirSelect.appendChild(defaultOpt);
-    for (const dir of dirs) {
-      const opt = document.createElement('option');
-      opt.value = dir;
-      opt.textContent = dir;
-      dirSelect.appendChild(opt);
-    }
-    if (Array.from(dirSelect.options).some(opt => opt.value === this.textureDir)) {
-      dirSelect.value = this.textureDir;
-    }
-    dirRow.appendChild(dirSelect);
-
-    // View toggle button
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'texture-view-toggle';
-    toggleBtn.title = 'Toggle thumbnail view';
-    toggleBtn.textContent = this.showTextureThumbnails ? 'Aa' : '\u25A3';
-    toggleBtn.addEventListener('click', () => {
-      this.showTextureThumbnails = !this.showTextureThumbnails;
-      toggleBtn.textContent = this.showTextureThumbnails ? 'Aa' : '\u25A3';
-      repopulate();
-    });
-    dirRow.appendChild(toggleBtn);
-
-    body.appendChild(dirRow);
-
-    // Search input
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.id = 'texture-search';
-    searchInput.placeholder = 'Search textures…';
-    searchInput.value = this.textureSearch;
-    searchInput.style.marginTop = '4px';
-    body.appendChild(searchInput);
-
-    const tagRow = document.createElement('div');
-    tagRow.className = 'texture-tag-row';
-    const tagSelect = document.createElement('select');
-    tagSelect.setAttribute('aria-label', 'Texture tag filter');
-    tagSelect.append(
-      Object.assign(document.createElement('option'), { value: '', textContent: 'All tags' }),
-      Object.assign(document.createElement('option'), { value: '__untagged__', textContent: 'Untagged' }),
-    );
-    for (const tag of listTextureTags(this.textureTags)) {
-      tagSelect.appendChild(Object.assign(document.createElement('option'), { value: tag, textContent: tag }));
-    }
-    tagSelect.value = Array.from(tagSelect.options).some(option => option.value === this.textureTagFilter)
-      ? this.textureTagFilter
-      : '';
-    const tagCurrent = document.createElement('button');
-    tagCurrent.type = 'button';
-    tagCurrent.className = 'btn texture-tag-current';
-    tagCurrent.textContent = 'Tag Current…';
-    tagCurrent.title = `Edit tags for ${this.editor.currentTexture}`;
-    tagCurrent.onclick = () => {
-      const texture = this.editor.currentTexture;
-      openTextureTagsDialog(texture, this.textureTags, values => {
-        this.textureTags = setTextureTags(this.textureTags, texture, values);
-        void saveTextureTags(this.textureTags);
-        this.editor.statusMessage = values.some(value => value.trim())
-          ? `Tagged ${texture}`
-          : `Removed tags from ${texture}`;
-        this.buildTexturePanel();
-      });
-    };
-    tagRow.append(tagSelect, tagCurrent);
-    body.appendChild(tagRow);
-
-    const list = document.createElement('div');
-    list.className = 'texture-list';
-    list.id = 'texture-list';
-    body.appendChild(list);
-
-    const allTextures = texMgr.listTextures();
-
-    const repopulate = () => {
-      const query = this.textureSearch.trim().toLowerCase();
-      const dir = this.textureDir;
-      const filterByTag = (texture: string) => {
-        const tags = textureTagsFor(this.textureTags, texture);
-        return !this.textureTagFilter
-          || (this.textureTagFilter === '__untagged__' ? tags.length === 0 : tags.includes(this.textureTagFilter));
-      };
-      if (query) {
-        const filtered = allTextures.filter(texture => {
-          if (!filterByTag(texture)) return false;
-          const metadata = texMgr.getShaderMetadata(texture);
-          return textureSearchScore(
-            texture,
-            query,
-            metadata?.semantics as unknown as Record<string, unknown> | null,
-            metadata?.surfaceParms ?? [],
-            textureTagsFor(this.textureTags, texture),
-          ) !== null;
-        });
-        this.populateTextureList(list, filtered, null);
-        return;
-      }
-      const baseTextures = dir ? texMgr.listTexturesInDir(dir) : this.textureTagFilter ? allTextures : COMMON_TEXTURES;
-      const textures = baseTextures.filter(filterByTag);
-      this.populateTextureList(list, textures, dir || null);
-    };
-
-    // Show common textures initially
-    repopulate();
-
-    dirSelect.addEventListener('change', () => {
-      this.textureDir = dirSelect.value;
-      this.textureSearch = '';
-      searchInput.value = '';
-      repopulate();
-    });
-    searchInput.addEventListener('input', () => {
-      this.textureSearch = searchInput.value;
-      repopulate();
-    });
-    tagSelect.addEventListener('change', () => {
-      this.textureTagFilter = tagSelect.value;
-      repopulate();
-    });
+    this.texturePanel.setTextureManager(texMgr);
   }
 
   /** Exit vertex mode with geometry validation. Shows warning dialog if brushes are invalid. */
@@ -1907,53 +1529,6 @@ export class UI {
     );
 
     this.showGeometryWarning(issueLines, invalidBrushes);
-  }
-
-  /** Select the folder and scroll to a texture in the texture browser panel. */
-  private locateTexture(texture: string): void {
-    const dirSelect = document.getElementById('texture-dir-select') as HTMLSelectElement | null;
-    if (!dirSelect) return;
-
-    // Determine the folder from the texture path (e.g. "base_wall/concrete" -> "base_wall")
-    const stripped = texture.replace(/^textures\//, '');
-    const slashIdx = stripped.lastIndexOf('/');
-    const dir = slashIdx >= 0 ? stripped.slice(0, slashIdx) : '';
-
-    // Find matching option (could be bare name or textures/ prefixed)
-    let matched = false;
-    for (const opt of Array.from(dirSelect.options)) {
-      const optDir = opt.value.replace(/^textures\//, '');
-      if (optDir === dir) {
-        dirSelect.value = opt.value;
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) {
-      dirSelect.value = '';
-    }
-
-    // Trigger repopulation
-    dirSelect.dispatchEvent(new Event('change'));
-
-    // Scroll to and highlight the texture
-    requestAnimationFrame(() => {
-      const list = document.getElementById('texture-list');
-      if (!list) return;
-      for (const item of Array.from(list.children) as HTMLElement[]) {
-        // Match by checking if clicking this item would set the right texture
-        // The item stores the full texture name in the mousedown handler,
-        // but we can match by checking selected state or text content
-        const itemText = item.textContent || '';
-        const texName = stripped.slice(slashIdx + 1);
-        if (itemText === texName || itemText === stripped || itemText === texture) {
-          list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
-          item.classList.add('selected');
-          item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          break;
-        }
-      }
-    });
   }
 
   private openRotateDialog(): void {
@@ -2944,62 +2519,4 @@ export class UI {
     };
   }
 
-  private populateTextureList(list: HTMLElement, textures: string[], selectedDir: string | null): void {
-    list.innerHTML = '';
-
-    if (this.showTextureThumbnails && this.texMgr) {
-      list.classList.add('texture-grid');
-    } else {
-      list.classList.remove('texture-grid');
-    }
-
-    for (const tex of textures) {
-      const item = document.createElement('div');
-      item.className = 'texture-item' + (tex === this.editor.currentTexture ? ' selected' : '');
-      const asset = this.texMgr?.getTextureAsset(tex);
-      const tags = textureTagsFor(this.textureTags, tex);
-      if (asset) {
-        const overrides = asset.overriddenSources.length > 0
-          ? `; overrides ${asset.overriddenSources.map(source => source.archiveName).join(', ')}`
-          : '';
-        item.title = `${asset.path} — ${asset.source.archiveName}${overrides}`;
-      }
-      if (tags.length > 0) {
-        item.title = `${item.title ? `${item.title}\n` : ''}Tags: ${tags.join(', ')}`;
-        item.dataset.tags = tags.join(' ');
-      }
-
-      // Strip textures/ prefix, then strip selected dir prefix in list mode
-      let displayName = tex.replace(/^textures\//, '');
-      if (selectedDir) {
-        const prefix = selectedDir.replace(/^textures\//, '') + '/';
-        if (displayName.startsWith(prefix)) {
-          displayName = displayName.slice(prefix.length);
-        }
-      }
-
-      if (this.showTextureThumbnails && this.texMgr) {
-        item.classList.add('texture-thumb');
-        const img = document.createElement('img');
-        const url = this.texMgr.getThumbnailUrl(tex);
-        if (url) {
-          img.src = url;
-        }
-        item.appendChild(img);
-        const name = document.createElement('span');
-        name.className = 'texture-thumb-name';
-        name.textContent = displayName.split('/').pop() || displayName;
-        item.appendChild(name);
-      } else {
-        item.textContent = displayName;
-      }
-
-      item.addEventListener('mousedown', () => {
-        this.editor.setTexture(tex);
-        list.querySelectorAll('.texture-item').forEach(el => el.classList.remove('selected'));
-        item.classList.add('selected');
-      });
-      list.appendChild(item);
-    }
-  }
 }
