@@ -249,9 +249,7 @@ export class TexturePanel {
 
   private buildManagedBrowser(body: HTMLElement, textureManager: TextureManager): void {
     const directoryRow = document.createElement('div');
-    directoryRow.style.display = 'flex';
-    directoryRow.style.alignItems = 'stretch';
-    directoryRow.style.gap = '2px';
+    directoryRow.className = 'texture-directory-row';
 
     const directorySelect = document.createElement('select');
     directorySelect.id = 'texture-dir-select';
@@ -273,12 +271,16 @@ export class TexturePanel {
     const toggle = document.createElement('button');
     toggle.className = 'texture-view-toggle';
     toggle.title = 'Toggle thumbnail view';
-    toggle.textContent = this.showThumbnails ? 'Aa' : '\u25A3';
+    toggle.setAttribute('aria-label', 'Show texture thumbnails');
+    toggle.setAttribute('aria-pressed', String(this.showThumbnails));
+    toggle.innerHTML = '<i class="ph ph-image" aria-hidden="true"></i>';
     toggle.addEventListener('click', () => {
       this.showThumbnails = !this.showThumbnails;
-      toggle.textContent = this.showThumbnails ? 'Aa' : '\u25A3';
+      toggle.classList.toggle('active', this.showThumbnails);
+      toggle.setAttribute('aria-pressed', String(this.showThumbnails));
       repopulate();
     });
+    toggle.classList.toggle('active', this.showThumbnails);
     directoryRow.append(directorySelect, toggle);
     body.appendChild(directoryRow);
 
