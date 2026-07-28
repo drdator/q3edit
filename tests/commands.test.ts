@@ -8,6 +8,7 @@ import {
 } from '../src/commands';
 import { createEditorCommandRegistry, type EditorCommandContext } from '../src/editor-commands';
 import { Editor } from '../src/editor';
+import { createBoxBrush } from '../src/brush';
 
 const keyEvent = (key: string, overrides: Partial<KeyboardShortcutEvent> = {}): KeyboardShortcutEvent => ({
   key,
@@ -116,10 +117,12 @@ describe('CommandRegistry', () => {
   it('exposes checked state for display categories, renderer modes, and lighting', () => {
     const noop = () => {};
     const setTool = vi.fn();
+    const openSurfaceInspector = vi.fn();
     const editor = new Editor();
     const registry = createEditorCommandRegistry({
       editor, handleExitVertexMode: noop, openRotateDialog: noop, openScaleDialog: noop,
       compileBSP: noop, rerunLastBuild: noop, canRerunLastBuild: () => false, quickPlay: noop, openQuickPlayOptions: noop, managePakFiles: noop, openPreferences: noop, openProjectSettings: noop, openDiagnostics: noop,
+      openSurfaceInspector,
       toggleMcpActivity: noop, isMcpActivityOpen: () => false, openMcpConnection: noop, openTerrainPanel: noop,
       toggleBuildResults: noop, isBuildResultsOpen: () => false,
       toggleSidebar: () => { editor.preferences.sidebar.visible = !editor.preferences.sidebar.visible; },
@@ -149,6 +152,15 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.sidebar').checked).toBe(true);
     registry.execute('view.sidebar');
     expect(registry.getState('view.sidebar').checked).toBe(false);
+
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128]);
+    editor.worldspawn.brushes.push(brush);
+    editor.selection = [{ type: 'face', entity: editor.worldspawn, brush, face: brush.faces[0] }];
+    expect(registry.getState('tools.surface-alignment').enabled).toBe(true);
+    expect(registry.getState('tools.uv-editor').enabled).toBe(true);
+    registry.execute('tools.surface-alignment');
+    registry.execute('tools.uv-editor');
+    expect(openSurfaceInspector.mock.calls).toEqual([['align'], ['uv']]);
   });
 
   it('rejects duplicate command IDs', () => {
