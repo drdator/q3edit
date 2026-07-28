@@ -1668,8 +1668,20 @@ body.sidepanel-resizing * {
 
 .kv-row {
   display: flex;
+  align-items: stretch;
   gap: 2px;
   margin-bottom: 4px;
+}
+
+.panel-body .kv-row > input,
+.panel-body .kv-row > select,
+.panel-body .kv-row > .btn {
+  margin: 0;
+}
+
+.panel-body .kv-row > .btn:not(.icon-btn) {
+  height: var(--control-height);
+  min-height: var(--control-height);
 }
 
 .kv-row input {
@@ -1730,6 +1742,7 @@ body.sidepanel-resizing * {
 .entity-property-controls > select {
   width: auto;
   height: 18px;
+  min-height: 18px;
   box-sizing: border-box;
 }
 
@@ -1765,6 +1778,7 @@ body.sidepanel-resizing * {
 .entity-value > .btn {
   margin: 0;
   height: 18px;
+  min-height: 18px;
   box-sizing: border-box;
 }
 
@@ -2032,6 +2046,14 @@ body.sidepanel-resizing * {
 
 .texture-tools .kv-row {
   align-items: stretch;
+}
+
+.panel-body .texture-tools .kv-row > input,
+.panel-body .texture-tools .kv-row > select,
+.panel-body .texture-tools .kv-row > .btn {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  margin: 0;
 }
 
 .texture-tools .btn,
@@ -4569,6 +4591,7 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
 
 .texture-tag-row {
   display: flex;
+  align-items: stretch;
   gap: 3px;
   margin-top: 3px;
 }
@@ -4576,6 +4599,13 @@ body.bottom-dock-resizing * { cursor: row-resize !important; }
 .texture-tag-row select {
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.panel-body .texture-tag-row select,
+.panel-body .texture-tag-row .btn {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  margin: 0;
 }
 
 .texture-tag-current {
