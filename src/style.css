@@ -5173,7 +5173,7 @@ html:not(.landing-active) input[type="number"]::-webkit-outer-spin-button {
   display: grid;
   width: 18px;
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  border-left: 1px solid var(--border-light);
+  border-left: 1px solid var(--border-dark);
 }
 
 .number-input-stepper-button {
@@ -5184,7 +5184,7 @@ html:not(.landing-active) input[type="number"]::-webkit-outer-spin-button {
   padding: 0;
   place-items: center;
   color: var(--text-dim);
-  background: var(--bg-light);
+  background: var(--control-bg);
   border: 0;
   font: inherit;
   line-height: 1;
@@ -5201,7 +5201,7 @@ html:not(.landing-active) input[type="number"]::-webkit-outer-spin-button {
 
 .number-input-stepper-button:hover:not(:disabled) {
   color: var(--text-bright);
-  background: var(--bg-lighter);
+  background: color-mix(in srgb, var(--control-bg) 78%, var(--text) 22%);
 }
 
 .number-input-stepper-button:active:not(:disabled) {
@@ -5211,7 +5211,7 @@ html:not(.landing-active) input[type="number"]::-webkit-outer-spin-button {
 
 .number-input-stepper-button:disabled {
   color: var(--disabled-text);
-  background: var(--disabled-bg);
+  background: var(--control-bg);
 }
 
 .kv-row > .number-input-stepper {
