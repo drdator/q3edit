@@ -13,8 +13,11 @@ import {
   type UvViewport,
 } from './uv-editor';
 
-export type SurfaceInspectorTab = 'align' | 'uv';
 type DragMode = 'translate' | 'rotate' | 'scale';
+
+export function surfaceDragMultiplier(fineControl: boolean): number {
+  return fineControl ? 0.1 : 1;
+}
 
 interface PreviewSurface {
   points: UvPoint[];
@@ -138,12 +141,13 @@ function setNumericInput(input: HTMLInputElement, value: number | null): void {
 }
 
 export class SurfaceInspector {
-  private activeTab: SurfaceInspectorTab = 'align';
-  private readonly tabs: Record<SurfaceInspectorTab, HTMLButtonElement>;
-  private readonly panes: Record<SurfaceInspectorTab, HTMLElement>;
   private readonly empty: HTMLElement;
   private readonly summary: HTMLElement;
-  private readonly classicFields: HTMLElement;
+  private readonly workspace: HTMLElement;
+  private readonly interactiveHint: HTMLElement;
+  private readonly previewLegend: HTMLElement;
+  private readonly faceSections: HTMLElement[];
+  private readonly projectionValuesSection: HTMLElement;
   private readonly offsetU: HTMLInputElement;
   private readonly offsetV: HTMLInputElement;
   private readonly scaleU: HTMLInputElement;
@@ -153,19 +157,11 @@ export class SurfaceInspector {
   private readonly mapUnits: HTMLInputElement;
   private readonly patchSection: HTMLElement;
   private readonly patchUnits: HTMLInputElement;
-  private readonly alignCanvas: HTMLCanvasElement;
-  private readonly alignStatus: HTMLElement;
-  private readonly uvUnavailable: HTMLElement;
-  private readonly uvWorkspace: HTMLElement;
   private readonly uvCanvas: HTMLCanvasElement;
   private readonly uvStatus: HTMLElement;
   private readonly clipTexture: HTMLInputElement;
   private drawFrame: number | null = null;
   private lastSelectionSignature = '';
-  private alignImage: HTMLImageElement | null = null;
-  private alignImageTexture = '';
-  private alignImageReady = false;
-  private alignPattern: CanvasPattern | null = null;
   private uvImage: HTMLImageElement | null = null;
   private uvImageTexture = '';
   private uvImageReady = false;
@@ -191,33 +187,36 @@ export class SurfaceInspector {
     body.innerHTML = '';
     body.classList.add('surface-inspector');
 
-    const tabList = document.createElement('div');
-    tabList.className = 'surface-inspector-tabs';
-    tabList.setAttribute('role', 'tablist');
-    this.tabs = {
-      align: this.createTab('align', 'Align'),
-      uv: this.createTab('uv', 'UV'),
-    };
-    tabList.append(this.tabs.align, this.tabs.uv);
-
     this.empty = document.createElement('div');
     this.empty.className = 'surface-inspector-empty';
 
     this.summary = document.createElement('div');
     this.summary.className = 'surface-inspector-summary';
 
-    this.panes = {
-      align: document.createElement('div'),
-      uv: document.createElement('div'),
-    };
-    this.panes.align.className = 'surface-inspector-pane';
-    this.panes.align.id = 'surface-inspector-align';
-    this.panes.align.setAttribute('role', 'tabpanel');
-    this.panes.uv.className = 'surface-inspector-pane';
-    this.panes.uv.id = 'surface-inspector-uv';
-    this.panes.uv.setAttribute('role', 'tabpanel');
-    this.tabs.align.setAttribute('aria-controls', this.panes.align.id);
-    this.tabs.uv.setAttribute('aria-controls', this.panes.uv.id);
+    const uv = section('UV');
+    this.workspace = uv.root;
+    this.workspace.classList.add('surface-inspector-workspace');
+    this.uvCanvas = document.createElement('canvas');
+    this.uvCanvas.className = 'surface-inspector-uv-canvas';
+    this.uvCanvas.tabIndex = 0;
+
+    this.interactiveHint = document.createElement('div');
+    this.interactiveHint.className = 'surface-inspector-uv-hint';
+    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span><span class="surface-inspector-fine-hint">Shift-drag: fine</span>';
+    const clip = document.createElement('label');
+    clip.className = 'uv-editor-option surface-inspector-clip';
+    this.clipTexture = document.createElement('input');
+    this.clipTexture.type = 'checkbox';
+    this.clipTexture.setAttribute('aria-label', 'Clip texture preview to face');
+    clip.append(this.clipTexture, document.createTextNode('Clip'));
+    this.interactiveHint.appendChild(clip);
+
+    this.previewLegend = document.createElement('div');
+    this.previewLegend.className = 'surface-inspector-preview-legend';
+    this.previewLegend.innerHTML = '<span><i class="source"></i>Source</span><span><i class="target"></i>Targets</span>';
+    this.uvStatus = document.createElement('div');
+    this.uvStatus.className = 'surface-inspector-canvas-status';
+    uv.content.append(this.uvCanvas, this.interactiveHint, this.previewLegend, this.uvStatus);
 
     const quick = section('Quick alignment');
     const quickActions = document.createElement('div');
@@ -231,21 +230,22 @@ export class SurfaceInspector {
     quick.content.appendChild(quickActions);
 
     const values = section('Projection values');
-    this.classicFields = document.createElement('div');
-    this.classicFields.className = 'surface-inspector-value-grid';
+    this.projectionValuesSection = values.root;
+    const classicFields = document.createElement('div');
+    classicFields.className = 'surface-inspector-value-grid';
     this.offsetU = numberInput(0);
     this.offsetV = numberInput(0);
     this.scaleU = numberInput(0.5);
     this.scaleV = numberInput(0.5);
     this.rotation = numberInput(0);
-    this.classicFields.append(
+    classicFields.append(
       labelled('Shift U', this.offsetU),
       labelled('Shift V', this.offsetV),
       labelled('Scale U', this.scaleU),
       labelled('Scale V', this.scaleV),
       labelled('Rotation', this.rotation),
     );
-    values.content.appendChild(this.classicFields);
+    values.content.appendChild(classicFields);
     this.bindProjectionField(this.offsetU, 'offsetX', 'Edit face offset');
     this.bindProjectionField(this.offsetV, 'offsetY', 'Edit face offset');
     this.bindProjectionField(this.scaleU, 'scaleX', 'Edit face scale');
@@ -312,63 +312,34 @@ export class SurfaceInspector {
     );
     patch.content.appendChild(patchActions);
 
-    const preview = section('Texture preview');
-    this.alignCanvas = document.createElement('canvas');
-    this.alignCanvas.className = 'surface-inspector-preview';
-    this.alignStatus = document.createElement('div');
-    this.alignStatus.className = 'surface-inspector-canvas-status';
-    preview.content.append(this.alignCanvas, this.alignStatus);
-
-    this.panes.align.append(
+    this.faceSections = [
       quick.root,
       values.root,
       transfer.root,
       projection.root,
       densitySection.root,
+    ];
+
+    body.append(
+      this.empty,
+      this.summary,
+      quick.root,
+      this.workspace,
+      values.root,
+      transfer.root,
+      projection.root,
+      densitySection.root,
       patch.root,
-      preview.root,
     );
-
-    this.uvUnavailable = document.createElement('div');
-    this.uvUnavailable.className = 'surface-inspector-empty';
-    this.uvWorkspace = document.createElement('div');
-    this.uvWorkspace.className = 'surface-inspector-uv-workspace';
-    this.uvCanvas = document.createElement('canvas');
-    this.uvCanvas.className = 'surface-inspector-uv-canvas';
-    this.uvCanvas.tabIndex = 0;
-    const hint = document.createElement('div');
-    hint.className = 'surface-inspector-uv-hint';
-    hint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span>';
-    const clip = document.createElement('label');
-    clip.className = 'uv-editor-option surface-inspector-clip';
-    this.clipTexture = document.createElement('input');
-    this.clipTexture.type = 'checkbox';
-    this.clipTexture.setAttribute('aria-label', 'Clip texture preview to face');
-    clip.append(this.clipTexture, document.createTextNode('Clip'));
-    hint.appendChild(clip);
-    this.uvStatus = document.createElement('div');
-    this.uvStatus.className = 'surface-inspector-canvas-status';
-    const uvActions = document.createElement('div');
-    uvActions.className = 'surface-inspector-actions';
-    uvActions.append(
-      button('Fit', () => this.run(() => this.editor.fitTexture()), true),
-      button('Width', () => this.run(() => this.editor.fitTexture('width'))),
-      button('Height', () => this.run(() => this.editor.fitTexture('height'))),
-      button('Reset', () => this.run(() => this.editor.resetTextureAlignment())),
-    );
-    this.uvWorkspace.append(this.uvCanvas, hint, this.uvStatus, uvActions);
-    this.panes.uv.append(this.uvUnavailable, this.uvWorkspace);
-
-    body.append(tabList, this.empty, this.summary, this.panes.align, this.panes.uv);
     this.bindUvCanvas();
     this.clipTexture.addEventListener('change', () => this.scheduleDraw());
     window.addEventListener('resize', () => this.scheduleDraw());
-    this.setTab('align');
+    this.update(true);
   }
 
-  open(tab: SurfaceInspectorTab): void {
-    this.setTab(tab);
-    if (tab === 'uv' && this.editor.selectedFaces.length === 1) {
+  open(): void {
+    this.update(true);
+    if (this.currentUvFace()) {
       requestAnimationFrame(() => this.uvCanvas.focus());
     }
   }
@@ -391,8 +362,8 @@ export class SurfaceInspector {
     this.empty.hidden = hasSurfaces;
     this.empty.textContent = 'Select one or more brush faces, brushes, or patches to edit their surface alignment.';
     this.summary.hidden = !hasSurfaces;
-    this.panes.align.hidden = !hasSurfaces || this.activeTab !== 'align';
-    this.panes.uv.hidden = !hasSurfaces || this.activeTab !== 'uv';
+    this.workspace.hidden = !hasSurfaces;
+    for (const faceSection of this.faceSections) faceSection.hidden = faces.length === 0;
 
     if (hasSurfaces) {
       const parts: string[] = [];
@@ -407,7 +378,7 @@ export class SurfaceInspector {
 
     const classic = faces.map(face => face.textureProjection.kind === 'classic' ? face.textureProjection : null);
     const allClassic = classic.length > 0 && classic.every(value => value !== null);
-    this.classicFields.hidden = !allClassic;
+    this.projectionValuesSection.hidden = !allClassic;
     if (allClassic) {
       const projections = classic.filter(value => value !== null);
       setNumericInput(this.offsetU, commonNumber(projections.map(value => value.offsetX)));
@@ -422,16 +393,19 @@ export class SurfaceInspector {
     }
     this.patchSection.hidden = patches.length === 0;
 
-    const uvAvailable = explicitFaces.length === 1;
-    this.tabs.uv.disabled = !uvAvailable;
-    this.tabs.uv.title = uvAvailable ? 'Edit the selected face interactively' : 'Select exactly one brush face';
-    this.uvUnavailable.hidden = uvAvailable;
-    this.uvWorkspace.hidden = !uvAvailable;
-    this.uvUnavailable.textContent = explicitFaces.length === 0
-      ? 'Select exactly one brush face to use the interactive UV handles.'
-      : 'The interactive UV editor supports one selected face at a time.';
+    const interactive = this.currentUvFace() !== null;
+    this.interactiveHint.hidden = !interactive;
+    this.previewLegend.hidden = interactive;
+    if (!interactive) {
+      this.previewLegend.innerHTML = faces.length + patches.length > 1
+        ? '<span><i class="source"></i>Source</span><span><i class="target"></i>Targets</span>'
+        : '<span><i class="source"></i>Surface preview</span>';
+    }
+    this.uvCanvas.title = interactive
+      ? 'Drag the handles to edit this face. Hold Shift for fine control.'
+      : 'Select exactly one brush face to use interactive handles.';
 
-    this.updateTextureImages(faces[0]?.texture ?? patches[0]?.texture ?? '', explicitFaces[0]?.texture ?? '');
+    this.updateTextureImage(faces[0]?.texture ?? patches[0]?.texture ?? '');
     const panelVisible = !this.body.closest('.panel')?.classList.contains('collapsed')
       && this.body.offsetParent !== null;
     if (hasSurfaces && panelVisible) {
@@ -441,27 +415,6 @@ export class SurfaceInspector {
       this.editor.redrawRequested = true;
     }
     this.scheduleDraw();
-  }
-
-  private createTab(tab: SurfaceInspectorTab, label: string): HTMLButtonElement {
-    const result = document.createElement('button');
-    result.type = 'button';
-    result.className = 'surface-inspector-tab';
-    result.textContent = label;
-    result.setAttribute('role', 'tab');
-    result.addEventListener('click', () => this.setTab(tab));
-    return result;
-  }
-
-  private setTab(tab: SurfaceInspectorTab): void {
-    this.activeTab = tab;
-    for (const name of ['align', 'uv'] as const) {
-      const active = name === tab;
-      this.tabs[name].classList.toggle('active', active);
-      this.tabs[name].setAttribute('aria-selected', String(active));
-      this.panes[name].hidden = !active;
-    }
-    this.update(true);
   }
 
   private run(action: () => void): void {
@@ -487,20 +440,11 @@ export class SurfaceInspector {
     });
   }
 
-  private updateTextureImages(alignTexture: string, uvTexture: string): void {
-    if (alignTexture !== this.alignImageTexture) {
-      this.alignImageTexture = alignTexture;
-      this.alignImageReady = false;
-      this.alignImage = this.loadTextureImage(alignTexture, () => {
-        this.alignImageReady = true;
-        this.alignPattern = null;
-        this.scheduleDraw();
-      });
-    }
-    if (uvTexture !== this.uvImageTexture) {
-      this.uvImageTexture = uvTexture;
+  private updateTextureImage(texture: string): void {
+    if (texture !== this.uvImageTexture) {
+      this.uvImageTexture = texture;
       this.uvImageReady = false;
-      this.uvImage = this.loadTextureImage(uvTexture, () => {
+      this.uvImage = this.loadTextureImage(texture, () => {
         this.uvImageReady = true;
         this.uvPattern = null;
         this.scheduleDraw();
@@ -526,51 +470,40 @@ export class SurfaceInspector {
     if (this.drawFrame !== null) return;
     this.drawFrame = window.requestAnimationFrame(() => {
       this.drawFrame = null;
-      if (this.activeTab === 'align') this.drawAlignmentPreview();
-      else this.drawUvEditor();
+      if (this.currentUvFace()) this.drawUvEditor();
+      else this.drawAlignmentPreview();
     });
   }
 
   private drawAlignmentPreview(): void {
-    if (this.panes.align.hidden || this.empty.hidden === false) return;
-    if (resizeCanvas(this.alignCanvas, 1, 1)) this.alignPattern = null;
-    const context = this.alignCanvas.getContext('2d');
+    if (this.workspace.hidden || this.empty.hidden === false) return;
+    if (resizeCanvas(this.uvCanvas, 1, 1)) {
+      this.uvPattern = null;
+      this.checkerPattern = null;
+    }
+    const context = this.uvCanvas.getContext('2d');
     if (!context) return;
     const texture = getTextureFaces(this.editor)[0]?.texture
       ?? this.editor.selection.find(item => item.type === 'patch')?.patch.texture
       ?? '';
-    const [textureWidth, textureHeight] = this.textureSize(texture, this.alignImage);
+    const [textureWidth, textureHeight] = this.textureSize(texture, this.uvImage);
     const surfaces = collectPreviewSurfaces(this.editor, textureWidth, textureHeight);
     const points = surfaces.flatMap(surface => surface.points);
-    const viewport = fitUvViewport(points, this.alignCanvas.width, this.alignCanvas.height, 30);
-    context.fillStyle = '#151515';
-    context.fillRect(0, 0, this.alignCanvas.width, this.alignCanvas.height);
-
-    if (this.alignImage && this.alignImageReady) {
-      this.alignPattern ??= context.createPattern(this.alignImage, 'repeat');
-      if (this.alignPattern) {
-        this.alignPattern.setTransform(new DOMMatrix([
-          viewport.scale / Math.max(1, this.alignImage.naturalWidth), 0,
-          0, viewport.scale / Math.max(1, this.alignImage.naturalHeight),
-          viewport.offsetX, viewport.offsetY,
-        ]));
-        context.fillStyle = this.alignPattern;
-        context.fillRect(0, 0, this.alignCanvas.width, this.alignCanvas.height);
-      }
-    }
+    this.uvViewport = fitUvViewport(points, this.uvCanvas.width, this.uvCanvas.height, 30);
+    this.drawUvBackdrop(context, null);
 
     for (const surface of [...surfaces].sort((left, right) => Number(left.source) - Number(right.source))) {
       context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
       context.fillStyle = surface.source ? 'rgba(232,160,48,.16)' : 'rgba(103,183,209,.10)';
       context.lineWidth = surface.source ? 3 : 2;
       if (surface.rows) {
-        for (const row of surface.rows) drawPolyline(context, row, viewport);
+        for (const row of surface.rows) drawPolyline(context, row, this.uvViewport);
         const columns = surface.rows[0]?.length ?? 0;
         for (let column = 0; column < columns; column++) {
-          drawPolyline(context, surface.rows.map(row => row[column]).filter(Boolean), viewport);
+          drawPolyline(context, surface.rows.map(row => row[column]).filter(Boolean), this.uvViewport);
         }
       } else {
-        const screen = surface.points.map(point => uvToScreen(point, viewport));
+        const screen = surface.points.map(point => uvToScreen(point, this.uvViewport));
         if (screen.length === 0) continue;
         context.beginPath();
         context.moveTo(screen[0][0], screen[0][1]);
@@ -581,13 +514,15 @@ export class SurfaceInspector {
       }
     }
     const report = this.editor.textureDensityReport();
-    this.alignStatus.textContent = report
+    this.uvStatus.textContent = report
       ? `${report.minimum.toFixed(3)}–${report.maximum.toFixed(3)} texels/unit · median ${report.median.toFixed(3)}`
       : `${surfaces.length} patch surface${surfaces.length === 1 ? '' : 's'}`;
   }
 
   private currentUvFace(): BrushFace | null {
-    return this.editor.selectedFaces.length === 1 ? this.editor.selectedFaces[0] : null;
+    if (this.editor.selectedFaces.length !== 1) return null;
+    if (this.editor.selection.some(item => item.type === 'patch')) return null;
+    return getTextureFaces(this.editor).length === 1 ? this.editor.selectedFaces[0] : null;
   }
 
   private drawUvBackdrop(
@@ -654,7 +589,7 @@ export class SurfaceInspector {
   }
 
   private drawUvEditor(): void {
-    if (this.panes.uv.hidden || this.uvWorkspace.hidden) return;
+    if (this.workspace.hidden) return;
     const face = this.currentUvFace();
     if (!face) return;
     if (resizeCanvas(this.uvCanvas, 1, 1)) {
@@ -757,6 +692,10 @@ export class SurfaceInspector {
     });
 
     this.uvCanvas.addEventListener('pointermove', event => {
+      if (!this.currentUvFace() && !this.dragMode) {
+        this.uvCanvas.style.cursor = 'default';
+        return;
+      }
       const point = eventPoint(event, this.uvCanvas, this.dragCanvasBounds ?? undefined);
       if (!this.dragMode) {
         if (distance(point, this.rotateHandle) <= 15) this.uvCanvas.style.cursor = 'crosshair';
@@ -769,25 +708,46 @@ export class SurfaceInspector {
         this.finishUvDrag(event);
         return;
       }
+      const multiplier = surfaceDragMultiplier(event.shiftKey);
       if (this.dragMode === 'translate') {
         const face = this.currentUvFace()!;
         const [textureWidth, textureHeight] = this.textureSize(face.texture, this.uvImage);
-        const dx = (point[0] - this.previousPoint[0]) / this.dragViewportScale * textureWidth;
-        const dy = (point[1] - this.previousPoint[1]) / this.dragViewportScale * textureHeight;
+        const screenDx = point[0] - this.previousPoint[0];
+        const screenDy = point[1] - this.previousPoint[1];
+        const dx = screenDx / this.dragViewportScale * textureWidth * multiplier;
+        const dy = screenDy / this.dragViewportScale * textureHeight * multiplier;
         this.editor.shiftTexture(dx, dy);
-        this.dragPointerPoint = [...point];
+        const visual = this.dragPointerPoint ?? this.previousPoint;
+        this.dragPointerPoint = [
+          visual[0] + screenDx * multiplier,
+          visual[1] + screenDy * multiplier,
+        ];
       } else if (this.dragMode === 'rotate') {
         const center = this.dragCenterScreen ?? this.uvCenterScreen;
         const angle = Math.atan2(point[1] - center[1], point[0] - center[0]);
-        this.editor.rotateTexture(shortestAngleDelta(this.previousAngle, angle) * 180 / Math.PI);
+        const angleDelta = shortestAngleDelta(this.previousAngle, angle) * multiplier;
+        this.editor.rotateTexture(angleDelta * 180 / Math.PI);
         this.previousAngle = angle;
-        this.dragPointerPoint = [...point];
+        const visual = this.dragPointerPoint ?? point;
+        const visualRadius = Math.max(1, distance(visual, center));
+        const visualAngle = Math.atan2(visual[1] - center[1], visual[0] - center[0]) + angleDelta;
+        this.dragPointerPoint = [
+          center[0] + Math.cos(visualAngle) * visualRadius,
+          center[1] + Math.sin(visualAngle) * visualRadius,
+        ];
       } else {
         const center = this.dragCenterScreen ?? this.uvCenterScreen;
         const radius = Math.max(1, distance(point, center));
-        this.editor.scaleTexture((radius - this.previousRadius) / Math.max(80, this.dragViewportScale));
+        const radiusDelta = radius - this.previousRadius;
+        this.editor.scaleTexture(radiusDelta / Math.max(80, this.dragViewportScale) * multiplier);
         this.previousRadius = radius;
-        this.dragPointerPoint = [...point];
+        const visual = this.dragPointerPoint ?? point;
+        const visualRadius = Math.max(1, distance(visual, center) + radiusDelta * multiplier);
+        const pointerAngle = Math.atan2(point[1] - center[1], point[0] - center[0]);
+        this.dragPointerPoint = [
+          center[0] + Math.cos(pointerAngle) * visualRadius,
+          center[1] + Math.sin(pointerAngle) * visualRadius,
+        ];
       }
       this.previousPoint = point;
       this.scheduleDraw();

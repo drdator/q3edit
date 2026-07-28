@@ -53,7 +53,7 @@ import { BuildPanel } from './build-panel';
 import { openReleasePackageDialog } from './release-package-dialog';
 import { MapOrganizationController, type NavigationState } from './map-organization';
 import { openMapOrganizationDialog } from './map-organization-dialog';
-import { SurfaceInspector, type SurfaceInspectorTab } from './surface-inspector';
+import { SurfaceInspector } from './surface-inspector';
 import { getCachedTextureTags, saveTextureTags } from './pak-storage';
 import { listTextureTags, setTextureTags, textureTagsFor, type TextureTagMap } from './texture-tags';
 import { textureSearchScore } from './texture-search';
@@ -214,7 +214,7 @@ export class UI {
       openOrganization: () => {
         if (this.organization) openMapOrganizationDialog(this.editor, this.organization);
       },
-      openSurfaceInspector: tab => this.openSurfaceInspector(tab),
+      openSurfaceInspector: () => this.openSurfaceInspector(),
       openDiagnostics: tab => this.openDiagnostics(tab),
       toggleMcpActivity: () => this.mcpActivity.toggle(),
       isMcpActivityOpen: () => this.mcpActivity.isOpen(),
@@ -491,7 +491,7 @@ export class UI {
     panel.classList.toggle('collapsed', collapsed);
   }
 
-  private openSurfaceInspector(tab: SurfaceInspectorTab): void {
+  private openSurfaceInspector(): void {
     const panel = document.getElementById('surface-panel');
     if (!panel) return;
     if (!this.editor.preferences.sidebar.visible) {
@@ -503,9 +503,9 @@ export class UI {
     this.editor.preferences.collapsedPanels[panel.id] = false;
     if (this.soloedPanelId !== panel.id) this.toggleSoloPanel(panel);
     this.editor.persistCurrentPreferences();
-    this.surfaceInspector.open(tab);
+    this.surfaceInspector.open();
     panel.scrollIntoView({ block: 'nearest' });
-    this.editor.statusMessage = tab === 'uv' ? 'Opened Surface Inspector UV tools' : 'Opened Surface Inspector alignment tools';
+    this.editor.statusMessage = 'Opened Surface Inspector';
   }
 
   private positionTerrainPanel(): void {

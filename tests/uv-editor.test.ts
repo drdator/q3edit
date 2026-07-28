@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeBrushGeometry, createBoxBrush } from '../src/brush';
 import { faceUvPolygon, fitUvViewport, screenToUv, shortestAngleDelta, uvToScreen } from '../src/uv-editor';
+import { surfaceDragMultiplier } from '../src/surface-inspector';
 
 describe('UV editor view model', () => {
   it('projects a classic brush face into texture space', () => {
@@ -42,5 +43,10 @@ describe('UV editor view model', () => {
     const degrees = (value: number) => value * Math.PI / 180;
     expect(shortestAngleDelta(degrees(179), degrees(-179)) * 180 / Math.PI).toBeCloseTo(2);
     expect(shortestAngleDelta(degrees(-179), degrees(179)) * 180 / Math.PI).toBeCloseTo(-2);
+  });
+
+  it('uses Shift to reduce interactive surface adjustments to one tenth', () => {
+    expect(surfaceDragMultiplier(false)).toBe(1);
+    expect(surfaceDragMultiplier(true)).toBe(0.1);
   });
 });

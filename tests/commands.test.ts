@@ -160,7 +160,7 @@ describe('CommandRegistry', () => {
     expect(registry.getState('tools.uv-editor').enabled).toBe(true);
     registry.execute('tools.surface-alignment');
     registry.execute('tools.uv-editor');
-    expect(openSurfaceInspector.mock.calls).toEqual([['align'], ['uv']]);
+    expect(openSurfaceInspector.mock.calls).toEqual([[], []]);
   });
 
   it('rejects duplicate command IDs', () => {

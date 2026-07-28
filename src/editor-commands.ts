@@ -29,7 +29,7 @@ export interface EditorCommandContext {
   openBuildHistory?: () => void;
   openReleasePackage?: () => void;
   openOrganization?: () => void;
-  openSurfaceInspector?: (tab: 'align' | 'uv') => void;
+  openSurfaceInspector?: () => void;
   openDiagnostics: (tab: 'map' | 'design-review' | 'entity-logic' | 'performance' | 'entities' | 'find' | 'brush-macros') => void;
   toggleMcpActivity: () => void;
   isMcpActivityOpen: () => boolean;
@@ -391,8 +391,8 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tools.entity-info', label: 'Entity Info…', defaultShortcut: 'Mod+L', menu: menu('Tools', 310, 'diagnostics'), execute: ctx => ctx.openDiagnostics('entities') },
     { id: 'tools.find-brush', label: 'Find Brush…', defaultShortcut: 'Mod+Shift+B', menu: menu('Tools', 320, 'diagnostics'), execute: ctx => ctx.openDiagnostics('find') },
     { id: 'tools.brush-macros', label: 'Brush Macros…', menu: menu('Tools', 330, 'diagnostics'), execute: ctx => ctx.openDiagnostics('brush-macros') },
-    { id: 'tools.surface-alignment', label: 'Surface Alignment', menu: menu('Tools', 340, 'surface'), enabled: ctx => (hasSelectedFaces(ctx) || hasSelectedPatches(ctx) || ctx.editor.textureDensityReport() !== null) && !!ctx.openSurfaceInspector, execute: ctx => ctx.openSurfaceInspector?.('align') },
-    { id: 'tools.uv-editor', label: 'UV Editor', menu: menu('Tools', 345, 'surface'), enabled: ctx => ctx.editor.selectedFaces.length === 1 && !!ctx.openSurfaceInspector, execute: ctx => ctx.openSurfaceInspector?.('uv') },
+    { id: 'tools.surface-alignment', label: 'Surface Inspector', menu: menu('Tools', 340, 'surface'), enabled: ctx => (hasSelectedFaces(ctx) || hasSelectedPatches(ctx) || ctx.editor.textureDensityReport() !== null) && !!ctx.openSurfaceInspector, execute: ctx => ctx.openSurfaceInspector?.() },
+    { id: 'tools.uv-editor', label: 'UV Editor', menu: menu('Tools', 345, 'surface'), enabled: ctx => ctx.editor.selectedFaces.length === 1 && !!ctx.openSurfaceInspector, execute: ctx => ctx.openSurfaceInspector?.() },
     { id: 'tools.shader-editor', label: 'Q3 Shader Editor…', menu: menu('Tools', 350, 'surface'), enabled: ({ editor }) => editor.textureManager !== null, execute: ({ editor }) => { void openShaderEditorDialog(editor); } },
     { id: 'tools.reload-assets', label: 'Reload Assets', menu: menu('Tools', 290, 'assets'), enabled: ctx => !!ctx.reloadAssets, execute: ctx => ctx.reloadAssets?.() },
 

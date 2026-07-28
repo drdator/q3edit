@@ -1413,51 +1413,6 @@ body.sidepanel-resizing * {
   display: none !important;
 }
 
-.surface-inspector-tabs {
-  display: flex;
-  flex: 0 0 auto;
-  border-bottom: 1px solid var(--border-dark);
-}
-
-.surface-inspector-tab {
-  position: relative;
-  min-width: 68px;
-  height: 27px;
-  padding: 0 12px;
-  color: var(--text-dim);
-  background: transparent;
-  border: 0;
-  border-right: 1px solid var(--border-dark);
-  font: inherit;
-  cursor: default;
-}
-
-.surface-inspector-tab:hover:not(:disabled),
-.surface-inspector-tab:focus-visible {
-  color: var(--text-bright);
-  background: var(--bg-light);
-  outline: none;
-}
-
-.surface-inspector-tab.active {
-  color: var(--accent);
-  background: var(--bg-darker);
-}
-
-.surface-inspector-tab.active::after {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  background: var(--accent);
-  content: '';
-}
-
-.surface-inspector-tab:disabled {
-  color: color-mix(in srgb, var(--text-dim) 48%, transparent);
-}
-
 .surface-inspector-empty {
   padding: 12px 8px;
   color: var(--text-dim);
@@ -1473,13 +1428,6 @@ body.sidepanel-resizing * {
   border: 1px solid var(--border-dark);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.surface-inspector-pane {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 0;
 }
 
 .surface-inspector-section {
@@ -1549,7 +1497,6 @@ body.sidepanel-resizing * {
   grid-column: 1 / -1;
 }
 
-.surface-inspector-preview,
 .surface-inspector-uv-canvas {
   display: block;
   width: 100%;
@@ -1558,17 +1505,8 @@ body.sidepanel-resizing * {
   outline: 1px solid var(--border-light);
 }
 
-.surface-inspector-preview {
-  height: 190px;
-}
-
-.surface-inspector-uv-workspace {
-  display: grid;
-  gap: 6px;
-}
-
 .surface-inspector-uv-canvas {
-  height: clamp(240px, 42vh, 420px);
+  height: clamp(220px, 36vh, 380px);
   touch-action: none;
 }
 
@@ -1588,6 +1526,37 @@ body.sidepanel-resizing * {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.surface-inspector-fine-hint {
+  color: var(--text);
+}
+
+.surface-inspector-preview-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+}
+
+.surface-inspector-preview-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.surface-inspector-preview-legend i {
+  width: 9px;
+  height: 9px;
+  background: currentColor;
+}
+
+.surface-inspector-preview-legend i.source {
+  color: var(--accent);
+}
+
+.surface-inspector-preview-legend i.target {
+  color: #67b7d1;
 }
 
 .surface-inspector-clip {
