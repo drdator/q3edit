@@ -353,9 +353,11 @@ export class SurfaceInspector {
     const faces = getTextureFaces(this.editor);
     const explicitFaces = this.editor.selectedFaces;
     const patches = this.editor.selection.filter(item => item.type === 'patch').map(item => item.patch);
+    const panelCollapsed = this.body.closest('.panel')?.classList.contains('collapsed') ?? false;
     const signature = [
       this.editor.documentRevision,
       surfaceSelectionSignature(this.editor),
+      panelCollapsed ? 'collapsed' : 'expanded',
       faces.length,
       explicitFaces.length,
       patches.length,
@@ -412,9 +414,7 @@ export class SurfaceInspector {
       : 'Select exactly one brush face to use interactive handles.';
 
     this.updateTextureImage(faces[0]?.texture ?? patches[0]?.texture ?? '');
-    const panelVisible = !this.body.closest('.panel')?.classList.contains('collapsed')
-      && this.body.offsetParent !== null;
-    if (hasSurfaces && panelVisible && this.editor.display.categories.textureAxes) {
+    if (hasSurfaces && this.editor.display.categories.textureAxes) {
       this.editor.updateTextureAxisOverlay();
     } else if (this.editor.textureAxisOverlayLines.length > 0) {
       this.editor.textureAxisOverlayLines = [];
