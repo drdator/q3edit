@@ -1500,7 +1500,7 @@ body.sidepanel-resizing * {
 .surface-inspector-uv-canvas {
   display: block;
   width: 100%;
-  background: #151515;
+  background: var(--bg-darker);
   border: 1px solid var(--border-dark);
   outline: 1px solid var(--border-light);
 }
@@ -1563,7 +1563,7 @@ body.sidepanel-resizing * {
 }
 
 .surface-inspector-preview-legend i.target {
-  color: #67b7d1;
+  color: var(--info);
 }
 
 .surface-inspector-uv-controls .uv-editor-option {

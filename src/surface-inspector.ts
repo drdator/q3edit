@@ -69,6 +69,15 @@ interface PreviewInteraction {
   viewport: UvViewport;
 }
 
+interface PreviewPalette {
+  background: string;
+  footer: string;
+  grid: string;
+  accent: string;
+  info: string;
+  success: string;
+}
+
 export function surfacePreviewCells(
   count: number,
   width: number,
@@ -172,6 +181,19 @@ function canvasDisplayScale(canvas: HTMLCanvasElement): number {
   return cssWidth > 0 ? canvas.width / cssWidth : 1;
 }
 
+function previewPalette(): PreviewPalette {
+  const styles = getComputedStyle(document.documentElement);
+  const color = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+  return {
+    background: color('--bg-darker', '#1a1a1a'),
+    footer: color('--bg-dark', '#191919'),
+    grid: color('--grid-minor', 'rgba(255,255,255,.08)'),
+    accent: color('--accent', '#e8a030'),
+    info: color('--info', '#67b7d1'),
+    success: color('--success', '#78c46b'),
+  };
+}
+
 export function patchClipPolygon(rows: UvPoint[][]): UvPoint[] {
   if (rows.length === 0 || (rows[0]?.length ?? 0) === 0) return [];
   const lastRow = rows.length - 1;
@@ -265,6 +287,7 @@ export class SurfaceInspector {
   private lastSelectionSignature = '';
   private readonly previewTextureImages = new Map<string, PreviewTextureImage>();
   private checkerPattern: CanvasPattern | null = null;
+  private checkerPatternKey = '';
   private uvViewport: UvViewport = { scale: 1, offsetX: 0, offsetY: 0, width: 1, height: 1 };
   private uvPolygon: UvPoint[] = [];
   private uvCenterScreen: [number, number] = [0, 0];
@@ -611,6 +634,7 @@ export class SurfaceInspector {
     }
     const context = this.uvCanvas.getContext('2d');
     if (!context) return;
+    const palette = previewPalette();
     if (separate) {
       this.drawSeparatedPreview(context, surfaces, columns, allSurfaces.length, totalTextureCount);
       return;
@@ -626,7 +650,7 @@ export class SurfaceInspector {
     const ordered = [...surfaces].sort((left, right) => Number(left.source) - Number(right.source));
     const textureCount = new Set(surfaces.map(surface => surface.texture.toLowerCase())).size;
 
-    context.fillStyle = '#151515';
+    context.fillStyle = palette.background;
     context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
     if (!this.clipTexture.checked && surfaces[0]) {
       this.drawTexturePattern(context, surfaces[0].texture, null);
@@ -652,7 +676,8 @@ export class SurfaceInspector {
     totalTextureCount?: number,
   ): void {
     const displayScale = canvasDisplayScale(this.uvCanvas);
-    context.fillStyle = '#151515';
+    const palette = previewPalette();
+    context.fillStyle = palette.background;
     context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
     const cells = surfacePreviewCells(surfaces.length, this.uvCanvas.width, this.uvCanvas.height, columns);
     surfaces.forEach((surface, index) => {
@@ -680,19 +705,19 @@ export class SurfaceInspector {
       const interaction = this.drawPreviewHandles(context, surface, viewport);
       if (interaction) this.previewInteractions.push(interaction);
 
-      context.strokeStyle = '#e8a030';
+      context.strokeStyle = palette.accent;
       context.lineWidth = 1;
       context.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.width - 1, cell.height - 1);
       const labelHeight = 18 * displayScale;
       const labelTop = cell.y + cell.height - labelHeight - displayScale;
-      context.fillStyle = 'rgba(15,15,15,.84)';
+      context.fillStyle = palette.footer;
       context.fillRect(
         cell.x + displayScale,
         labelTop,
         cell.width - displayScale * 2,
         labelHeight,
       );
-      context.fillStyle = '#67b7d1';
+      context.fillStyle = palette.info;
       context.font = `${9 * displayScale}px monospace`;
       context.textBaseline = 'middle';
       context.fillText(
@@ -711,6 +736,7 @@ export class SurfaceInspector {
     viewport: UvViewport,
   ): PreviewInteraction | null {
     if (!surface.face) return null;
+    const palette = previewPalette();
     const points = surface.points.map(point => uvToScreen(point, viewport));
     if (points.length === 0) return null;
     const center = uvToScreen(uvPolygonCenter(surface.points), viewport);
@@ -732,7 +758,8 @@ export class SurfaceInspector {
       ? this.dragPointerPoint
       : [rightX + 14, center[1]];
 
-    context.strokeStyle = 'rgba(232,160,48,.65)';
+    context.strokeStyle = palette.accent;
+    context.globalAlpha = 0.65;
     context.lineWidth = 1.5;
     if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
       context.beginPath();
@@ -746,22 +773,23 @@ export class SurfaceInspector {
       context.lineTo(scaleHandle[0], scaleHandle[1]);
       context.stroke();
     }
-    context.fillStyle = '#e8a030';
+    context.globalAlpha = 1;
+    context.fillStyle = palette.accent;
     context.beginPath();
     context.arc(interactionCenter[0], interactionCenter[1], 7, 0, Math.PI * 2);
     context.fill();
-    context.fillStyle = '#151515';
+    context.fillStyle = palette.background;
     context.beginPath();
     context.arc(interactionCenter[0], interactionCenter[1], 2, 0, Math.PI * 2);
     context.fill();
     if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
-      context.fillStyle = '#67b7d1';
+      context.fillStyle = palette.info;
       context.beginPath();
       context.arc(rotateHandle[0], rotateHandle[1], 7, 0, Math.PI * 2);
       context.fill();
     }
     if (!(active && (this.dragMode === 'rotate' || this.dragMode === 'translate'))) {
-      context.fillStyle = '#78c46b';
+      context.fillStyle = palette.success;
       context.fillRect(scaleHandle[0] - 6, scaleHandle[1] - 6, 12, 12);
     }
     return { face: surface.face, center, rotateHandle, scaleHandle, viewport };
@@ -774,8 +802,10 @@ export class SurfaceInspector {
     uniform = false,
   ): void {
     const source = surface.source && !uniform;
-    context.strokeStyle = source ? '#e8a030' : '#67b7d1';
-    context.fillStyle = source ? 'rgba(232,160,48,.16)' : 'rgba(103,183,209,.10)';
+    const palette = previewPalette();
+    const color = source ? palette.accent : palette.info;
+    context.strokeStyle = color;
+    context.fillStyle = color;
     context.lineWidth = source ? 3 : 2;
     if (surface.rows) {
       for (const row of surface.rows) drawPolyline(context, row, viewport);
@@ -791,7 +821,10 @@ export class SurfaceInspector {
     context.moveTo(screen[0][0], screen[0][1]);
     for (const point of screen.slice(1)) context.lineTo(point[0], point[1]);
     context.closePath();
+    context.save();
+    context.globalAlpha = source ? 0.16 : 0.1;
     context.fill();
+    context.restore();
     context.stroke();
   }
 
@@ -822,7 +855,7 @@ export class SurfaceInspector {
     texture: string,
     clipPoints: Array<[number, number]> | null,
   ): void {
-    context.fillStyle = '#151515';
+    context.fillStyle = previewPalette().background;
     context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
     this.drawTexturePattern(context, texture, clipPoints);
     this.drawUvGrid(context);
@@ -835,6 +868,7 @@ export class SurfaceInspector {
     viewport = this.uvViewport,
     bounds: PreviewCell = { x: 0, y: 0, width: this.uvCanvas.width, height: this.uvCanvas.height },
   ): void {
+    const palette = previewPalette();
     const entry = this.textureImage(texture);
     let pattern = entry?.pattern ?? null;
     let sourceWidth = 1;
@@ -845,17 +879,19 @@ export class SurfaceInspector {
       sourceWidth = Math.max(1, entry.image.naturalWidth);
       sourceHeight = Math.max(1, entry.image.naturalHeight);
     } else {
-      if (!this.checkerPattern) {
+      const checkerKey = `${palette.background}|${palette.footer}`;
+      if (!this.checkerPattern || this.checkerPatternKey !== checkerKey) {
         const checker = document.createElement('canvas');
         checker.width = checker.height = 2;
         const checkerContext = checker.getContext('2d');
         if (checkerContext) {
-          checkerContext.fillStyle = '#292929';
+          checkerContext.fillStyle = palette.background;
           checkerContext.fillRect(0, 0, 2, 2);
-          checkerContext.fillStyle = '#202020';
+          checkerContext.fillStyle = palette.footer;
           checkerContext.fillRect(1, 0, 1, 1);
           checkerContext.fillRect(0, 1, 1, 1);
           this.checkerPattern = context.createPattern(checker, 'repeat');
+          this.checkerPatternKey = checkerKey;
         }
       }
       pattern = this.checkerPattern;
@@ -888,13 +924,14 @@ export class SurfaceInspector {
     viewport = this.uvViewport,
     bounds: PreviewCell = { x: 0, y: 0, width: this.uvCanvas.width, height: this.uvCanvas.height },
   ): void {
+    const palette = previewPalette();
     const topLeft = screenToUv(bounds.x, bounds.y, viewport);
     const bottomRight = screenToUv(bounds.x + bounds.width, bounds.y + bounds.height, viewport);
     context.save();
     context.beginPath();
     context.rect(bounds.x, bounds.y, bounds.width, bounds.height);
     context.clip();
-    context.strokeStyle = 'rgba(255,255,255,.08)';
+    context.strokeStyle = palette.grid;
     context.lineWidth = 1;
     for (let u = Math.floor(Math.min(topLeft.u, bottomRight.u)) - 1; u <= Math.ceil(Math.max(topLeft.u, bottomRight.u)) + 1; u++) {
       const [x] = uvToScreen({ u, v: 0 }, viewport);
@@ -918,6 +955,7 @@ export class SurfaceInspector {
     }
     const context = this.uvCanvas.getContext('2d');
     if (!context) return;
+    const palette = previewPalette();
     const [textureWidth, textureHeight] = this.textureSize(face.texture);
     this.uvPolygon = faceUvPolygon(face, textureWidth, textureHeight);
     this.uvViewport = fitUvViewport(
@@ -952,13 +990,17 @@ export class SurfaceInspector {
     context.moveTo(points[0][0], points[0][1]);
     for (const point of points.slice(1)) context.lineTo(point[0], point[1]);
     context.closePath();
-    context.fillStyle = 'rgba(232,160,48,.10)';
+    context.fillStyle = palette.accent;
+    context.save();
+    context.globalAlpha = 0.1;
     context.fill();
-    context.strokeStyle = '#e8a030';
+    context.restore();
+    context.strokeStyle = palette.accent;
     context.lineWidth = 3;
     context.stroke();
 
-    context.strokeStyle = 'rgba(232,160,48,.65)';
+    context.strokeStyle = palette.accent;
+    context.globalAlpha = 0.65;
     context.lineWidth = 2;
     if (this.dragMode !== 'scale' && this.dragMode !== 'translate') {
       context.beginPath();
@@ -972,16 +1014,17 @@ export class SurfaceInspector {
       context.lineTo(this.scaleHandle[0], this.scaleHandle[1]);
       context.stroke();
     }
-    context.fillStyle = '#e8a030';
+    context.globalAlpha = 1;
+    context.fillStyle = palette.accent;
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 9, 0, Math.PI * 2); context.fill();
-    context.fillStyle = '#151515';
+    context.fillStyle = palette.background;
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 3, 0, Math.PI * 2); context.fill();
     if (this.dragMode !== 'scale' && this.dragMode !== 'translate') {
-      context.fillStyle = '#67b7d1';
+      context.fillStyle = palette.info;
       context.beginPath(); context.arc(this.rotateHandle[0], this.rotateHandle[1], 8, 0, Math.PI * 2); context.fill();
     }
     if (this.dragMode !== 'rotate' && this.dragMode !== 'translate') {
-      context.fillStyle = '#78c46b';
+      context.fillStyle = palette.success;
       context.fillRect(this.scaleHandle[0] - 7, this.scaleHandle[1] - 7, 14, 14);
     }
     this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${projectionSummary(face)}`;
