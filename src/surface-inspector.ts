@@ -31,9 +31,17 @@ export function surfaceSelectionSignature(editor: Editor): string {
 }
 
 interface PreviewSurface {
+  texture: string;
   points: UvPoint[];
+  clipPoints: UvPoint[];
   rows?: UvPoint[][];
   source: boolean;
+}
+
+interface PreviewTextureImage {
+  image: HTMLImageElement | null;
+  ready: boolean;
+  pattern: CanvasPattern | null;
 }
 
 function button(label: string, action: () => void, primary = false): HTMLButtonElement {
@@ -110,15 +118,39 @@ function resizeCanvas(canvas: HTMLCanvasElement, minimumWidth: number, minimumHe
   return true;
 }
 
-function collectPreviewSurfaces(editor: Editor, textureWidth: number, textureHeight: number): PreviewSurface[] {
-  const result: PreviewSurface[] = getTextureFaces(editor).map((face, index) => ({
-    points: faceUvPolygon(face, textureWidth, textureHeight),
-    source: index === 0,
-  }));
+export function patchClipPolygon(rows: UvPoint[][]): UvPoint[] {
+  if (rows.length === 0 || (rows[0]?.length ?? 0) === 0) return [];
+  const lastRow = rows.length - 1;
+  const lastColumn = rows[0].length - 1;
+  return [
+    ...rows[0],
+    ...rows.slice(1).map(row => row[lastColumn]),
+    ...rows[lastRow].slice(0, lastColumn).reverse(),
+    ...rows.slice(1, lastRow).reverse().map(row => row[0]),
+  ];
+}
+
+function collectPreviewSurfaces(editor: Editor): PreviewSurface[] {
+  const result: PreviewSurface[] = getTextureFaces(editor).map((face, index) => {
+    const loaded = editor.textureManager?.getIfLoaded(face.texture);
+    const points = faceUvPolygon(face, loaded?.width ?? 128, loaded?.height ?? 128);
+    return {
+      texture: face.texture,
+      points,
+      clipPoints: points,
+      source: index === 0,
+    };
+  });
   const patches = editor.selection.filter(item => item.type === 'patch').map(item => item.patch);
   for (const patch of patches) {
     const rows = patch.ctrl.map(row => row.map(point => ({ u: point.uv[0], v: point.uv[1] })));
-    result.push({ points: rows.flat(), rows, source: result.length === 0 });
+    result.push({
+      texture: patch.texture,
+      points: rows.flat(),
+      clipPoints: patchClipPolygon(rows),
+      rows,
+      source: result.length === 0,
+    });
   }
   return result;
 }
@@ -173,10 +205,7 @@ export class SurfaceInspector {
   private readonly clipTexture: HTMLInputElement;
   private drawFrame: number | null = null;
   private lastSelectionSignature = '';
-  private uvImage: HTMLImageElement | null = null;
-  private uvImageTexture = '';
-  private uvImageReady = false;
-  private uvPattern: CanvasPattern | null = null;
+  private readonly previewTextureImages = new Map<string, PreviewTextureImage>();
   private checkerPattern: CanvasPattern | null = null;
   private uvViewport: UvViewport = { scale: 1, offsetX: 0, offsetY: 0, width: 1, height: 1 };
   private uvPolygon: UvPoint[] = [];
@@ -214,21 +243,23 @@ export class SurfaceInspector {
     this.interactiveHint = document.createElement('div');
     this.interactiveHint.className = 'surface-inspector-uv-hint';
     this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span><span class="surface-inspector-fine-hint">Shift-drag: fine</span>';
+    const uvControls = document.createElement('div');
+    uvControls.className = 'surface-inspector-uv-controls';
     const clip = document.createElement('label');
     clip.className = 'uv-editor-option surface-inspector-clip';
     this.clipTexture = document.createElement('input');
     this.clipTexture.type = 'checkbox';
     this.clipTexture.checked = true;
-    this.clipTexture.setAttribute('aria-label', 'Clip texture preview to face');
+    this.clipTexture.setAttribute('aria-label', 'Clip texture previews to selected surfaces');
     clip.append(this.clipTexture, document.createTextNode('Clip'));
-    this.interactiveHint.appendChild(clip);
+    uvControls.append(this.interactiveHint, clip);
 
     this.previewLegend = document.createElement('div');
     this.previewLegend.className = 'surface-inspector-preview-legend';
     this.previewLegend.innerHTML = '<span><i class="source"></i>Source</span><span><i class="target"></i>Targets</span>';
     this.uvStatus = document.createElement('div');
     this.uvStatus.className = 'surface-inspector-canvas-status';
-    uv.content.append(this.uvCanvas, this.interactiveHint, this.previewLegend, this.uvStatus);
+    uv.content.append(this.uvCanvas, uvControls, this.previewLegend, this.uvStatus);
 
     const quick = section('Quick alignment');
     const quickActions = document.createElement('div');
@@ -373,14 +404,14 @@ export class SurfaceInspector {
     this.workspace.hidden = !hasSurfaces;
     for (const faceSection of this.faceSections) faceSection.hidden = faces.length === 0;
 
+    const textures = [...new Set([
+      ...faces.map(face => face.texture),
+      ...patches.map(patch => patch.texture),
+    ])];
     if (hasSurfaces) {
       const parts: string[] = [];
       if (faces.length > 0) parts.push(`${faces.length} face${faces.length === 1 ? '' : 's'}`);
       if (patches.length > 0) parts.push(`${patches.length} patch${patches.length === 1 ? '' : 'es'}`);
-      const textures = [...new Set([
-        ...faces.map(face => face.texture),
-        ...patches.map(patch => patch.texture),
-      ])];
       this.summary.textContent = `${parts.join(' · ')} · ${textures.length === 1 ? textures[0] : `${textures.length} textures`}`;
     }
 
@@ -413,7 +444,7 @@ export class SurfaceInspector {
       ? 'Drag the handles to edit this face. Hold Shift for fine control.'
       : 'Select exactly one brush face to use interactive handles.';
 
-    this.updateTextureImage(faces[0]?.texture ?? patches[0]?.texture ?? '');
+    this.updateTextureImages(textures);
     if (hasSurfaces && this.editor.display.categories.textureAxes) {
       this.editor.updateTextureAxisOverlay();
     } else if (this.editor.textureAxisOverlayLines.length > 0) {
@@ -446,30 +477,37 @@ export class SurfaceInspector {
     });
   }
 
-  private updateTextureImage(texture: string): void {
-    if (texture !== this.uvImageTexture) {
-      this.uvImageTexture = texture;
-      this.uvImageReady = false;
-      this.uvImage = this.loadTextureImage(texture, () => {
-        this.uvImageReady = true;
-        this.uvPattern = null;
+  private updateTextureImages(textures: string[]): void {
+    for (const texture of textures) {
+      const key = texture.toLowerCase();
+      const entry = this.previewTextureImages.get(key)
+        ?? { image: null, ready: false, pattern: null };
+      this.previewTextureImages.set(key, entry);
+      if (entry.image) continue;
+      const thumbnail = this.editor.textureManager?.getThumbnailUrl(texture);
+      if (!thumbnail) continue;
+      const image = new Image();
+      entry.image = image;
+      image.onload = () => {
+        entry.ready = true;
+        entry.pattern = null;
         this.scheduleDraw();
-      });
+      };
+      image.src = thumbnail;
     }
   }
 
-  private loadTextureImage(texture: string, loaded: () => void): HTMLImageElement | null {
-    const thumbnail = texture ? this.editor.textureManager?.getThumbnailUrl(texture) : null;
-    if (!thumbnail) return null;
-    const image = new Image();
-    image.onload = loaded;
-    image.src = thumbnail;
-    return image;
+  private textureImage(texture: string): PreviewTextureImage | null {
+    return this.previewTextureImages.get(texture.toLowerCase()) ?? null;
   }
 
-  private textureSize(texture: string, image: HTMLImageElement | null): [number, number] {
+  private textureSize(texture: string): [number, number] {
     const loaded = this.editor.textureManager?.getIfLoaded(texture);
-    return [loaded?.width ?? image?.naturalWidth ?? 128, loaded?.height ?? image?.naturalHeight ?? 128];
+    const image = this.textureImage(texture)?.image;
+    return [
+      loaded?.width ?? (image?.naturalWidth || 128),
+      loaded?.height ?? (image?.naturalHeight || 128),
+    ];
   }
 
   private scheduleDraw(): void {
@@ -484,21 +522,32 @@ export class SurfaceInspector {
   private drawAlignmentPreview(): void {
     if (this.workspace.hidden || this.empty.hidden === false) return;
     if (resizeCanvas(this.uvCanvas, 1, 1)) {
-      this.uvPattern = null;
+      for (const entry of this.previewTextureImages.values()) entry.pattern = null;
       this.checkerPattern = null;
     }
     const context = this.uvCanvas.getContext('2d');
     if (!context) return;
-    const texture = getTextureFaces(this.editor)[0]?.texture
-      ?? this.editor.selection.find(item => item.type === 'patch')?.patch.texture
-      ?? '';
-    const [textureWidth, textureHeight] = this.textureSize(texture, this.uvImage);
-    const surfaces = collectPreviewSurfaces(this.editor, textureWidth, textureHeight);
+    const surfaces = collectPreviewSurfaces(this.editor);
     const points = surfaces.flatMap(surface => surface.points);
     this.uvViewport = fitUvViewport(points, this.uvCanvas.width, this.uvCanvas.height, 30);
-    this.drawUvBackdrop(context, null);
+    const ordered = [...surfaces].sort((left, right) => Number(left.source) - Number(right.source));
+    const textureCount = new Set(surfaces.map(surface => surface.texture.toLowerCase())).size;
 
-    for (const surface of [...surfaces].sort((left, right) => Number(left.source) - Number(right.source))) {
+    context.fillStyle = '#151515';
+    context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
+    if (!this.clipTexture.checked && surfaces[0]) {
+      this.drawTexturePattern(context, surfaces[0].texture, null);
+    }
+    for (const surface of ordered) {
+      if (!this.clipTexture.checked && surface.texture.toLowerCase() === surfaces[0]?.texture.toLowerCase()) continue;
+      const clipPoints = surface.clipPoints.map(point => uvToScreen(point, this.uvViewport));
+      context.globalAlpha = textureCount > 1 ? 0.82 : 1;
+      this.drawTexturePattern(context, surface.texture, clipPoints);
+    }
+    context.globalAlpha = 1;
+    this.drawUvGrid(context);
+
+    for (const surface of ordered) {
       context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
       context.fillStyle = surface.source ? 'rgba(232,160,48,.16)' : 'rgba(103,183,209,.10)';
       context.lineWidth = surface.source ? 3 : 2;
@@ -520,9 +569,10 @@ export class SurfaceInspector {
       }
     }
     const report = this.editor.textureDensityReport();
+    const summary = `${surfaces.length} surface${surfaces.length === 1 ? '' : 's'} · ${textureCount} texture${textureCount === 1 ? '' : 's'}`;
     this.uvStatus.textContent = report
-      ? `${report.minimum.toFixed(3)}–${report.maximum.toFixed(3)} texels/unit · median ${report.median.toFixed(3)}`
-      : `${surfaces.length} patch surface${surfaces.length === 1 ? '' : 's'}`;
+      ? `${summary} · ${report.minimum.toFixed(3)}–${report.maximum.toFixed(3)} texels/unit · median ${report.median.toFixed(3)}`
+      : summary;
   }
 
   private currentUvFace(): BrushFace | null {
@@ -533,18 +583,29 @@ export class SurfaceInspector {
 
   private drawUvBackdrop(
     context: CanvasRenderingContext2D,
+    texture: string,
     clipPoints: Array<[number, number]> | null,
   ): void {
     context.fillStyle = '#151515';
     context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
-    let pattern: CanvasPattern | null;
-    let sourceWidth: number;
-    let sourceHeight: number;
-    if (this.uvImage && this.uvImageReady) {
-      this.uvPattern ??= context.createPattern(this.uvImage, 'repeat');
-      pattern = this.uvPattern;
-      sourceWidth = Math.max(1, this.uvImage.naturalWidth);
-      sourceHeight = Math.max(1, this.uvImage.naturalHeight);
+    this.drawTexturePattern(context, texture, clipPoints);
+    this.drawUvGrid(context);
+  }
+
+  private drawTexturePattern(
+    context: CanvasRenderingContext2D,
+    texture: string,
+    clipPoints: Array<[number, number]> | null,
+  ): void {
+    const entry = this.textureImage(texture);
+    let pattern = entry?.pattern ?? null;
+    let sourceWidth = 1;
+    let sourceHeight = 1;
+    if (entry?.image && entry.ready) {
+      pattern ??= context.createPattern(entry.image, 'repeat');
+      entry.pattern = pattern;
+      sourceWidth = Math.max(1, entry.image.naturalWidth);
+      sourceHeight = Math.max(1, entry.image.naturalHeight);
     } else {
       if (!this.checkerPattern) {
         const checker = document.createElement('canvas');
@@ -560,7 +621,6 @@ export class SurfaceInspector {
         }
       }
       pattern = this.checkerPattern;
-      sourceWidth = sourceHeight = 1;
     }
     if (pattern) {
       pattern.setTransform(new DOMMatrix([
@@ -580,6 +640,9 @@ export class SurfaceInspector {
       context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
       context.restore();
     }
+  }
+
+  private drawUvGrid(context: CanvasRenderingContext2D): void {
     const topLeft = screenToUv(0, 0, this.uvViewport);
     const bottomRight = screenToUv(this.uvCanvas.width, this.uvCanvas.height, this.uvViewport);
     context.strokeStyle = 'rgba(255,255,255,.08)';
@@ -599,12 +662,12 @@ export class SurfaceInspector {
     const face = this.currentUvFace();
     if (!face) return;
     if (resizeCanvas(this.uvCanvas, 1, 1)) {
-      this.uvPattern = null;
+      for (const entry of this.previewTextureImages.values()) entry.pattern = null;
       this.checkerPattern = null;
     }
     const context = this.uvCanvas.getContext('2d');
     if (!context) return;
-    const [textureWidth, textureHeight] = this.textureSize(face.texture, this.uvImage);
+    const [textureWidth, textureHeight] = this.textureSize(face.texture);
     this.uvPolygon = faceUvPolygon(face, textureWidth, textureHeight);
     this.uvViewport = fitUvViewport(this.uvPolygon, this.uvCanvas.width, this.uvCanvas.height, 58);
     const center = uvPolygonCenter(this.uvPolygon);
@@ -626,7 +689,7 @@ export class SurfaceInspector {
     this.scaleHandle = this.dragMode === 'scale' && this.dragPointerPoint
       ? this.dragPointerPoint
       : [rightX + 20, this.uvCenterScreen[1]];
-    this.drawUvBackdrop(context, this.clipTexture.checked ? points : null);
+    this.drawUvBackdrop(context, face.texture, this.clipTexture.checked ? points : null);
 
     context.beginPath();
     context.moveTo(points[0][0], points[0][1]);
@@ -717,7 +780,7 @@ export class SurfaceInspector {
       const multiplier = surfaceDragMultiplier(event.shiftKey);
       if (this.dragMode === 'translate') {
         const face = this.currentUvFace()!;
-        const [textureWidth, textureHeight] = this.textureSize(face.texture, this.uvImage);
+        const [textureWidth, textureHeight] = this.textureSize(face.texture);
         const screenDx = point[0] - this.previousPoint[0];
         const screenDy = point[1] - this.previousPoint[1];
         const dx = screenDx / this.dragViewportScale * textureWidth * multiplier;

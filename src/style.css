@@ -1514,8 +1514,15 @@ body.sidepanel-resizing * {
   outline-color: var(--accent);
 }
 
+.surface-inspector-uv-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .surface-inspector-uv-hint {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
   align-items: center;
   gap: 9px;

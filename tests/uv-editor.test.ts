@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computeBrushGeometry, createBoxBrush } from '../src/brush';
 import { Editor } from '../src/editor';
 import { faceUvPolygon, fitUvViewport, screenToUv, shortestAngleDelta, uvToScreen } from '../src/uv-editor';
-import { surfaceDragMultiplier, surfaceSelectionSignature } from '../src/surface-inspector';
+import { patchClipPolygon, surfaceDragMultiplier, surfaceSelectionSignature } from '../src/surface-inspector';
 
 describe('UV editor view model', () => {
   it('projects a classic brush face into texture space', () => {
@@ -62,5 +62,20 @@ describe('UV editor view model', () => {
     editor.selection = [{ type: 'face', entity: editor.worldspawn, brush: second, face: second.faces[4] }];
 
     expect(surfaceSelectionSignature(editor)).not.toBe(firstSignature);
+  });
+
+  it('builds a patch perimeter for clipped multi-surface previews', () => {
+    const rows = [
+      [{ u: 0, v: 0 }, { u: 1, v: 0 }, { u: 2, v: 0 }],
+      [{ u: 0, v: 1 }, { u: 1, v: 1 }, { u: 2, v: 1 }],
+      [{ u: 0, v: 2 }, { u: 1, v: 2 }, { u: 2, v: 2 }],
+    ];
+
+    expect(patchClipPolygon(rows)).toEqual([
+      { u: 0, v: 0 }, { u: 1, v: 0 }, { u: 2, v: 0 },
+      { u: 2, v: 1 }, { u: 2, v: 2 },
+      { u: 1, v: 2 }, { u: 0, v: 2 },
+      { u: 0, v: 1 },
+    ]);
   });
 });
