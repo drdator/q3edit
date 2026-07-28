@@ -7,6 +7,7 @@ import {
   surfaceDragMultiplier,
   surfacePreviewCells,
   surfacePreviewLimit,
+  surfaceScaleFactor,
   surfaceSelectionSignature,
 } from '../src/surface-inspector';
 
@@ -68,6 +69,12 @@ describe('UV editor view model', () => {
     expect(surfaceDragMultiplier(true, false)).toBe(0.1);
     expect(surfaceDragMultiplier(false, true)).toBe(10);
     expect(surfaceDragMultiplier(true, true)).toBe(1);
+  });
+
+  it('maps scale-handle radius directly to UV scale', () => {
+    expect(surfaceScaleFactor(100, 150)).toBeCloseTo(1.5);
+    expect(surfaceScaleFactor(100, 150, 0.1)).toBeCloseTo(1.5 ** 0.1);
+    expect(surfaceScaleFactor(100, 110, 10)).toBeCloseTo(1.1 ** 10);
   });
 
   it('distinguishes equal-looking surface selections', () => {

@@ -1,9 +1,9 @@
-import type { BrushFace } from './brush';
+import { cloneTextureProjection, type BrushFace, type BrushTextureProjection } from './brush';
 import type { Editor } from './editor';
 import {
   getTextureFaces,
   rotateTexture as rotateFaceTexture,
-  scaleTexture as scaleFaceTexture,
+  scaleTextureFromProjection,
   shiftTexture as shiftFaceTexture,
 } from './editor-textures';
 import { updateFaceProperties } from './editor-properties';
@@ -26,6 +26,11 @@ export function surfaceDragMultiplier(fineControl: boolean, coarseControl = fals
   if (fineControl && coarseControl) return 1;
   if (fineControl) return 0.1;
   return coarseControl ? 10 : 1;
+}
+
+export function surfaceScaleFactor(startRadius: number, currentRadius: number, sensitivity = 1): number {
+  const radiusRatio = Math.max(0.02, currentRadius / Math.max(1, startRadius));
+  return Math.max(0.02, Math.min(50, radiusRatio ** sensitivity));
 }
 
 export function surfaceSelectionSignature(editor: Editor): string {
@@ -303,6 +308,9 @@ export class SurfaceInspector {
   private previousAngle = 0;
   private previousRadius = 0;
   private dragViewportScale = 1;
+  private dragLockedViewport: UvViewport | null = null;
+  private dragStartProjection: BrushTextureProjection | null = null;
+  private dragScaleAnchor: UvPoint | null = null;
   private dragTransactionOpen = false;
   private dragFace: BrushFace | null = null;
 
@@ -698,13 +706,18 @@ export class SurfaceInspector {
         this.autoFitSurface.checked ? (surface.face ? 32 : 18) : (surface.face ? 48 : 24),
         this.autoFitSurface.checked ? 'surface' : 'texture',
       );
-      const viewport: UvViewport = {
+      const fittedViewport: UvViewport = {
         ...local,
         offsetX: local.offsetX + cell.x,
         offsetY: local.offsetY + cell.y,
         width: this.uvCanvas.width,
         height: this.uvCanvas.height,
       };
+      const viewport = this.dragMode === 'scale'
+        && this.dragFace === surface.face
+        && this.dragLockedViewport
+        ? this.dragLockedViewport
+        : fittedViewport;
       const clipPoints = this.clipTexture.checked
         ? surface.clipPoints.map(point => uvToScreen(point, viewport))
         : null;
@@ -968,13 +981,16 @@ export class SurfaceInspector {
     const palette = previewPalette();
     const [textureWidth, textureHeight] = this.textureSize(face.texture);
     this.uvPolygon = faceUvPolygon(face, textureWidth, textureHeight);
-    this.uvViewport = fitUvViewport(
+    const fittedViewport = fitUvViewport(
       this.uvPolygon,
       this.uvCanvas.width,
       this.uvCanvas.height,
       this.autoFitSurface.checked ? 32 : 58,
       this.autoFitSurface.checked ? 'surface' : 'texture',
     );
+    this.uvViewport = this.dragMode === 'scale' && this.dragLockedViewport
+      ? this.dragLockedViewport
+      : fittedViewport;
     const center = uvPolygonCenter(this.uvPolygon);
     this.uvCenterScreen = uvToScreen(center, this.uvViewport);
     const points = this.uvPolygon.map(point => uvToScreen(point, this.uvViewport));
@@ -1082,6 +1098,16 @@ export class SurfaceInspector {
       this.dragViewportScale = interaction.viewport.scale;
       this.previousAngle = Math.atan2(point[1] - this.dragCenterScreen[1], point[0] - this.dragCenterScreen[0]);
       this.previousRadius = Math.max(1, distance(point, this.dragCenterScreen));
+      if (this.dragMode === 'scale') {
+        const [textureWidth, textureHeight] = this.textureSize(interaction.face.texture);
+        this.dragLockedViewport = { ...interaction.viewport };
+        this.dragStartProjection = cloneTextureProjection(interaction.face.textureProjection);
+        this.dragScaleAnchor = uvPolygonCenter(faceUvPolygon(interaction.face, textureWidth, textureHeight));
+      } else {
+        this.dragLockedViewport = null;
+        this.dragStartProjection = null;
+        this.dragScaleAnchor = null;
+      }
       this.uvCanvas.setPointerCapture(event.pointerId);
       event.preventDefault();
     });
@@ -1143,11 +1169,17 @@ export class SurfaceInspector {
       } else {
         const center = this.dragCenterScreen ?? this.uvCenterScreen;
         const radius = Math.max(1, distance(point, center));
-        const radiusDelta = radius - this.previousRadius;
-        scaleFaceTexture(this.editor, -radiusDelta / Math.max(80, this.dragViewportScale) * multiplier, [face]);
-        this.previousRadius = radius;
-        const visual = this.dragPointerPoint ?? point;
-        const visualRadius = Math.max(1, distance(visual, center) + radiusDelta * multiplier);
+        const factor = surfaceScaleFactor(this.previousRadius, radius, multiplier);
+        if (this.dragStartProjection && this.dragScaleAnchor) {
+          scaleTextureFromProjection(
+            this.editor,
+            face,
+            this.dragStartProjection,
+            factor,
+            [this.dragScaleAnchor.u, this.dragScaleAnchor.v],
+          );
+        }
+        const visualRadius = this.previousRadius * factor;
         const pointerAngle = Math.atan2(point[1] - center[1], point[0] - center[0]);
         this.dragPointerPoint = [
           center[0] + Math.cos(pointerAngle) * visualRadius,
@@ -1168,6 +1200,9 @@ export class SurfaceInspector {
     this.dragCenterScreen = null;
     this.dragPointerPoint = null;
     this.dragPointerOffset = [0, 0];
+    this.dragLockedViewport = null;
+    this.dragStartProjection = null;
+    this.dragScaleAnchor = null;
     if (this.dragTransactionOpen) {
       this.editor.commitTransaction();
       this.dragTransactionOpen = false;

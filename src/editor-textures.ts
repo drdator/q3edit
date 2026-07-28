@@ -1,4 +1,11 @@
-import { classicTextureProjection, cloneTextureProjection, computeFaceUV, type BrushFace, textureAxisFromPlane } from './brush';
+import {
+  classicTextureProjection,
+  cloneTextureProjection,
+  computeFaceUV,
+  type BrushFace,
+  type BrushTextureProjection,
+  textureAxisFromPlane,
+} from './brush';
 import { vec3Cross, vec3Dot, vec3Length, vec3Scale, type Vec3 } from './math';
 import { setPatchTexture, terrainDefDisplayTexture, type Patch, type TerrainDefSurface } from './patch';
 import type { Editor } from './editor';
@@ -199,6 +206,44 @@ export function scaleTexture(editor: Editor, ds: number, faces = getTextureFaces
         uRow[1] *= uFactor;
         vRow[0] *= vFactor;
         vRow[1] *= vFactor;
+      }
+    }
+    editor.redrawRequested = true;
+  }, { coalesceKey: 'scale-texture' });
+}
+
+export function scaleTextureFromProjection(
+  editor: Editor,
+  face: BrushFace,
+  initialProjection: BrushTextureProjection,
+  factor: number,
+  anchorUv: [number, number],
+): void {
+  const safeFactor = Math.max(0.02, Math.min(50, factor));
+  editor.transact('Scale texture', () => {
+    const next = cloneTextureProjection(initialProjection);
+    face.textureProjection = next;
+    if (next.kind === 'classic' && initialProjection.kind === 'classic') {
+      const scaled = (value: number) => {
+        const sign = value < 0 ? -1 : 1;
+        return sign * Math.max(0.001, Math.abs(value) / safeFactor);
+      };
+      next.scaleX = scaled(initialProjection.scaleX);
+      next.scaleY = scaled(initialProjection.scaleY);
+      const center = face.polygon.reduce<Vec3>(
+        (sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]],
+        [0, 0, 0],
+      ).map(value => value / Math.max(1, face.polygon.length)) as Vec3;
+      const [width, height] = faceTextureDimensions(editor, face);
+      const currentUv = computeFaceUV(center, face, width, height);
+      next.offsetX += (anchorUv[0] - currentUv[0]) * width;
+      next.offsetY += (anchorUv[1] - currentUv[1]) * height;
+    } else if (next.kind === 'brush-primitive' && initialProjection.kind === 'brush-primitive') {
+      for (let axis = 0; axis < 2; axis++) {
+        next.matrix[axis][0] = initialProjection.matrix[axis][0] * safeFactor;
+        next.matrix[axis][1] = initialProjection.matrix[axis][1] * safeFactor;
+        next.matrix[axis][2] = anchorUv[axis]
+          + (initialProjection.matrix[axis][2] - anchorUv[axis]) * safeFactor;
       }
     }
     editor.redrawRequested = true;
