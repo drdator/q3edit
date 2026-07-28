@@ -165,6 +165,11 @@ function resizeCanvas(canvas: HTMLCanvasElement, minimumWidth: number, minimumHe
   return true;
 }
 
+function canvasDisplayScale(canvas: HTMLCanvasElement): number {
+  const cssWidth = canvas.getBoundingClientRect().width;
+  return cssWidth > 0 ? canvas.width / cssWidth : 1;
+}
+
 export function patchClipPolygon(rows: UvPoint[][]): UvPoint[] {
   if (rows.length === 0 || (rows[0]?.length ?? 0) === 0) return [];
   const lastRow = rows.length - 1;
@@ -644,6 +649,7 @@ export class SurfaceInspector {
     totalSurfaceCount = surfaces.length,
     totalTextureCount?: number,
   ): void {
+    const displayScale = canvasDisplayScale(this.uvCanvas);
     context.fillStyle = '#151515';
     context.fillRect(0, 0, this.uvCanvas.width, this.uvCanvas.height);
     const cells = surfacePreviewCells(surfaces.length, this.uvCanvas.width, this.uvCanvas.height, columns);
@@ -676,11 +682,21 @@ export class SurfaceInspector {
       context.lineWidth = 1;
       context.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.width - 1, cell.height - 1);
       context.fillStyle = 'rgba(15,15,15,.84)';
-      context.fillRect(cell.x + 1, cell.y + 1, cell.width - 2, 24);
+      context.fillRect(
+        cell.x + displayScale,
+        cell.y + displayScale,
+        cell.width - displayScale * 2,
+        24 * displayScale,
+      );
       context.fillStyle = surface.source ? '#e8a030' : '#67b7d1';
-      context.font = '13px monospace';
+      context.font = `${13 * displayScale}px monospace`;
       context.textBaseline = 'middle';
-      context.fillText(`Face ${index + 1} · ${surface.texture}`, cell.x + 6, cell.y + 13, Math.max(1, cell.width - 12));
+      context.fillText(
+        `Face ${index + 1} · ${surface.texture}`,
+        cell.x + 6 * displayScale,
+        cell.y + 13 * displayScale,
+        Math.max(1, cell.width - 12 * displayScale),
+      );
     });
     this.updatePreviewStatus(surfaces, totalSurfaceCount, totalTextureCount);
   }
