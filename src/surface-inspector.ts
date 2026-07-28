@@ -12,13 +12,29 @@ import {
   fitUvViewport,
   screenToUv,
   shortestAngleDelta,
-  uvPolygonCenter,
   uvToScreen,
   type UvPoint,
   type UvViewport,
 } from './uv-editor';
 
-type DragMode = 'translate' | 'rotate' | 'scale';
+const SCALE_DRAG_MODES = [
+  'scale-left',
+  'scale-right',
+  'scale-top',
+  'scale-bottom',
+  'scale-top-left',
+  'scale-top-right',
+  'scale-bottom-left',
+  'scale-bottom-right',
+] as const;
+
+type ScaleDragMode = typeof SCALE_DRAG_MODES[number];
+type DragMode = 'translate' | 'rotate' | ScaleDragMode;
+type ScaleHandleMap = Record<ScaleDragMode, [number, number]>;
+
+function isScaleDrag(mode: DragMode | null): mode is ScaleDragMode {
+  return mode !== null && (SCALE_DRAG_MODES as readonly string[]).includes(mode);
+}
 
 export const MAX_SURFACE_PREVIEWS = 12;
 
@@ -70,7 +86,7 @@ interface PreviewInteraction {
   face: BrushFace;
   center: [number, number];
   rotateHandle: [number, number];
-  scaleHandle: [number, number];
+  scaleHandles: ScaleHandleMap;
   viewport: UvViewport;
 }
 
@@ -81,6 +97,118 @@ interface PreviewPalette {
   accent: string;
   info: string;
   success: string;
+}
+
+function scaleHandlesForPoints(points: Array<[number, number]>): ScaleHandleMap {
+  const left = Math.min(...points.map(point => point[0]));
+  const right = Math.max(...points.map(point => point[0]));
+  const top = Math.min(...points.map(point => point[1]));
+  const bottom = Math.max(...points.map(point => point[1]));
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  return {
+    'scale-left': [left, centerY],
+    'scale-right': [right, centerY],
+    'scale-top': [centerX, top],
+    'scale-bottom': [centerX, bottom],
+    'scale-top-left': [left, top],
+    'scale-top-right': [right, top],
+    'scale-bottom-left': [left, bottom],
+    'scale-bottom-right': [right, bottom],
+  };
+}
+
+function scaleAnchorForMode(points: UvPoint[], mode: ScaleDragMode): UvPoint {
+  const minU = Math.min(...points.map(point => point.u));
+  const maxU = Math.max(...points.map(point => point.u));
+  const minV = Math.min(...points.map(point => point.v));
+  const maxV = Math.max(...points.map(point => point.v));
+  const centerU = (minU + maxU) / 2;
+  const centerV = (minV + maxV) / 2;
+  switch (mode) {
+    case 'scale-left': return { u: maxU, v: centerV };
+    case 'scale-right': return { u: minU, v: centerV };
+    case 'scale-top': return { u: centerU, v: maxV };
+    case 'scale-bottom': return { u: centerU, v: minV };
+    case 'scale-top-left': return { u: maxU, v: maxV };
+    case 'scale-top-right': return { u: minU, v: maxV };
+    case 'scale-bottom-left': return { u: maxU, v: minV };
+    case 'scale-bottom-right': return { u: minU, v: minV };
+  }
+}
+
+function scaleModeAffectsU(mode: ScaleDragMode): boolean {
+  return mode !== 'scale-top' && mode !== 'scale-bottom';
+}
+
+function scaleModeAffectsV(mode: ScaleDragMode): boolean {
+  return mode !== 'scale-left' && mode !== 'scale-right';
+}
+
+function scaleHandleAt(
+  point: [number, number],
+  handles: ScaleHandleMap,
+  threshold: number,
+): ScaleDragMode | null {
+  const hitOrder: readonly ScaleDragMode[] = [
+    'scale-top-left',
+    'scale-top-right',
+    'scale-bottom-left',
+    'scale-bottom-right',
+    'scale-left',
+    'scale-right',
+    'scale-top',
+    'scale-bottom',
+  ];
+  return hitOrder.find(mode => distance(point, handles[mode]) <= threshold) ?? null;
+}
+
+function scaleHandleCursor(mode: ScaleDragMode): string {
+  if (mode === 'scale-left' || mode === 'scale-right') return 'ew-resize';
+  if (mode === 'scale-top' || mode === 'scale-bottom') return 'ns-resize';
+  return mode === 'scale-top-left' || mode === 'scale-bottom-right'
+    ? 'nwse-resize'
+    : 'nesw-resize';
+}
+
+function drawScaleHandle(
+  context: CanvasRenderingContext2D,
+  point: [number, number],
+  mode: ScaleDragMode,
+  color: string,
+  size: number,
+): void {
+  context.fillStyle = color;
+  if (mode === 'scale-left' || mode === 'scale-right') {
+    context.fillRect(point[0] - size * 0.35, point[1] - size * 0.65, size * 0.7, size * 1.3);
+  } else if (mode === 'scale-top' || mode === 'scale-bottom') {
+    context.fillRect(point[0] - size * 0.65, point[1] - size * 0.35, size * 1.3, size * 0.7);
+  } else {
+    context.fillRect(point[0] - size / 2, point[1] - size / 2, size, size);
+  }
+}
+
+function drawScaleBox(
+  context: CanvasRenderingContext2D,
+  handles: ScaleHandleMap,
+  color: string,
+  size: number,
+  activeMode: ScaleDragMode | null,
+): void {
+  const left = handles['scale-left'][0];
+  const right = handles['scale-right'][0];
+  const top = handles['scale-top'][1];
+  const bottom = handles['scale-bottom'][1];
+  context.save();
+  context.strokeStyle = color;
+  context.globalAlpha = 0.55;
+  context.lineWidth = 1;
+  context.setLineDash([3, 3]);
+  context.strokeRect(left, top, right - left, bottom - top);
+  context.restore();
+  for (const mode of SCALE_DRAG_MODES) {
+    drawScaleHandle(context, handles[mode], mode, color, mode === activeMode ? size * 1.25 : size);
+  }
 }
 
 export function surfacePreviewCells(
@@ -298,15 +426,17 @@ export class SurfaceInspector {
   private uvPolygon: UvPoint[] = [];
   private uvCenterScreen: [number, number] = [0, 0];
   private rotateHandle: [number, number] = [0, 0];
-  private scaleHandle: [number, number] = [0, 0];
+  private scaleHandles: ScaleHandleMap = scaleHandlesForPoints([[0, 0]]);
   private dragMode: DragMode | null = null;
   private dragCanvasBounds: DOMRect | null = null;
   private dragCenterScreen: [number, number] | null = null;
   private dragPointerPoint: [number, number] | null = null;
   private dragPointerOffset: [number, number] = [0, 0];
+  private dragPointerStart: [number, number] = [0, 0];
+  private dragScaleStartHandle: [number, number] = [0, 0];
+  private dragScaleAnchorScreen: [number, number] = [0, 0];
   private previousPoint: [number, number] = [0, 0];
   private previousAngle = 0;
-  private previousRadius = 0;
   private dragViewportScale = 1;
   private dragLockedViewport: UvViewport | null = null;
   private dragStartProjection: BrushTextureProjection | null = null;
@@ -333,7 +463,7 @@ export class SurfaceInspector {
 
     this.interactiveHint = document.createElement('div');
     this.interactiveHint.className = 'surface-inspector-uv-hint';
-    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span><span class="surface-inspector-fine-hint">Shift: fine · Alt: coarse</span>';
+    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale edges / corners</span><span class="surface-inspector-fine-hint">Shift: fine · Alt: coarse</span>';
     const uvControls = document.createElement('div');
     uvControls.className = 'surface-inspector-uv-controls';
     const clip = document.createElement('label');
@@ -713,7 +843,7 @@ export class SurfaceInspector {
         width: this.uvCanvas.width,
         height: this.uvCanvas.height,
       };
-      const viewport = this.dragMode === 'scale'
+      const viewport = isScaleDrag(this.dragMode)
         && this.dragFace === surface.face
         && this.dragLockedViewport
         ? this.dragLockedViewport
@@ -761,10 +891,14 @@ export class SurfaceInspector {
     const palette = previewPalette();
     const points = surface.points.map(point => uvToScreen(point, viewport));
     if (points.length === 0) return null;
-    const center = uvToScreen(uvPolygonCenter(surface.points), viewport);
-    const topY = Math.min(...points.map(point => point[1]));
-    const rightX = Math.max(...points.map(point => point[0]));
+    const scaleHandles = scaleHandlesForPoints(points);
+    const center: [number, number] = [
+      scaleHandles['scale-top'][0],
+      scaleHandles['scale-left'][1],
+    ];
+    const topY = scaleHandles['scale-top'][1];
     const active = this.dragFace === surface.face && this.dragMode !== null;
+    const scaleDrag = active && isScaleDrag(this.dragMode) ? this.dragMode : null;
     const interactionCenter: [number, number] = active && this.dragMode === 'translate' && this.dragPointerPoint
       ? [
           this.dragPointerPoint[0] + this.dragPointerOffset[0],
@@ -776,23 +910,14 @@ export class SurfaceInspector {
     const rotateHandle: [number, number] = active && this.dragMode === 'rotate' && this.dragPointerPoint
       ? this.dragPointerPoint
       : [center[0], topY - 24];
-    const scaleHandle: [number, number] = active && this.dragMode === 'scale' && this.dragPointerPoint
-      ? this.dragPointerPoint
-      : [rightX + 14, center[1]];
 
     context.strokeStyle = palette.accent;
     context.globalAlpha = 0.65;
     context.lineWidth = 1.5;
-    if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
+    if (!(active && (isScaleDrag(this.dragMode) || this.dragMode === 'translate'))) {
       context.beginPath();
       context.moveTo(interactionCenter[0], interactionCenter[1]);
       context.lineTo(rotateHandle[0], rotateHandle[1]);
-      context.stroke();
-    }
-    if (!(active && (this.dragMode === 'rotate' || this.dragMode === 'translate'))) {
-      context.beginPath();
-      context.moveTo(interactionCenter[0], interactionCenter[1]);
-      context.lineTo(scaleHandle[0], scaleHandle[1]);
       context.stroke();
     }
     context.globalAlpha = 1;
@@ -804,17 +929,22 @@ export class SurfaceInspector {
     context.beginPath();
     context.arc(interactionCenter[0], interactionCenter[1], 2, 0, Math.PI * 2);
     context.fill();
-    if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
+    if (!(active && (isScaleDrag(this.dragMode) || this.dragMode === 'translate'))) {
       context.fillStyle = palette.info;
       context.beginPath();
       context.arc(rotateHandle[0], rotateHandle[1], 7, 0, Math.PI * 2);
       context.fill();
     }
     if (!(active && (this.dragMode === 'rotate' || this.dragMode === 'translate'))) {
-      context.fillStyle = palette.success;
-      context.fillRect(scaleHandle[0] - 6, scaleHandle[1] - 6, 12, 12);
+      drawScaleBox(context, scaleHandles, palette.success, 8, scaleDrag);
     }
-    return { face: surface.face, center, rotateHandle, scaleHandle, viewport };
+    return {
+      face: surface.face,
+      center,
+      rotateHandle,
+      scaleHandles,
+      viewport,
+    };
   }
 
   private drawPreviewSurfaceOutline(
@@ -988,28 +1118,27 @@ export class SurfaceInspector {
       this.autoFitSurface.checked ? 32 : 58,
       this.autoFitSurface.checked ? 'surface' : 'texture',
     );
-    this.uvViewport = this.dragMode === 'scale' && this.dragLockedViewport
+    this.uvViewport = isScaleDrag(this.dragMode) && this.dragLockedViewport
       ? this.dragLockedViewport
       : fittedViewport;
-    const center = uvPolygonCenter(this.uvPolygon);
-    this.uvCenterScreen = uvToScreen(center, this.uvViewport);
     const points = this.uvPolygon.map(point => uvToScreen(point, this.uvViewport));
-    const topY = Math.min(...points.map(point => point[1]));
-    const rightX = Math.max(...points.map(point => point[0]));
+    this.scaleHandles = scaleHandlesForPoints(points);
+    this.uvCenterScreen = [
+      this.scaleHandles['scale-top'][0],
+      this.scaleHandles['scale-left'][1],
+    ];
+    const topY = this.scaleHandles['scale-top'][1];
     const interactionCenter: [number, number] = this.dragMode === 'translate' && this.dragPointerPoint
       ? [
           this.dragPointerPoint[0] + this.dragPointerOffset[0],
           this.dragPointerPoint[1] + this.dragPointerOffset[1],
         ]
-      : (this.dragMode === 'rotate' || this.dragMode === 'scale') && this.dragCenterScreen
+      : (this.dragMode === 'rotate' || isScaleDrag(this.dragMode)) && this.dragCenterScreen
         ? this.dragCenterScreen
         : this.uvCenterScreen;
     this.rotateHandle = this.dragMode === 'rotate' && this.dragPointerPoint
       ? this.dragPointerPoint
       : [this.uvCenterScreen[0], topY - (this.autoFitSurface.checked ? 24 : 34)];
-    this.scaleHandle = this.dragMode === 'scale' && this.dragPointerPoint
-      ? this.dragPointerPoint
-      : [rightX + 20, this.uvCenterScreen[1]];
     this.drawUvBackdrop(context, face.texture, this.clipTexture.checked ? points : null);
 
     context.beginPath();
@@ -1028,16 +1157,10 @@ export class SurfaceInspector {
     context.strokeStyle = palette.accent;
     context.globalAlpha = 0.65;
     context.lineWidth = 2;
-    if (this.dragMode !== 'scale' && this.dragMode !== 'translate') {
+    if (!isScaleDrag(this.dragMode) && this.dragMode !== 'translate') {
       context.beginPath();
       context.moveTo(interactionCenter[0], interactionCenter[1]);
       context.lineTo(this.rotateHandle[0], this.rotateHandle[1]);
-      context.stroke();
-    }
-    if (this.dragMode !== 'rotate' && this.dragMode !== 'translate') {
-      context.beginPath();
-      context.moveTo(interactionCenter[0], interactionCenter[1]);
-      context.lineTo(this.scaleHandle[0], this.scaleHandle[1]);
       context.stroke();
     }
     context.globalAlpha = 1;
@@ -1045,13 +1168,18 @@ export class SurfaceInspector {
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 9, 0, Math.PI * 2); context.fill();
     context.fillStyle = palette.background;
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 3, 0, Math.PI * 2); context.fill();
-    if (this.dragMode !== 'scale' && this.dragMode !== 'translate') {
+    if (!isScaleDrag(this.dragMode) && this.dragMode !== 'translate') {
       context.fillStyle = palette.info;
       context.beginPath(); context.arc(this.rotateHandle[0], this.rotateHandle[1], 8, 0, Math.PI * 2); context.fill();
     }
     if (this.dragMode !== 'rotate' && this.dragMode !== 'translate') {
-      context.fillStyle = palette.success;
-      context.fillRect(this.scaleHandle[0] - 7, this.scaleHandle[1] - 7, 14, 14);
+      drawScaleBox(
+        context,
+        this.scaleHandles,
+        palette.success,
+        10,
+        isScaleDrag(this.dragMode) ? this.dragMode : null,
+      );
     }
     this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${projectionSummary(face)}`;
   }
@@ -1066,43 +1194,56 @@ export class SurfaceInspector {
             face: singleFace,
             center: this.uvCenterScreen,
             rotateHandle: this.rotateHandle,
-            scaleHandle: this.scaleHandle,
+            scaleHandles: this.scaleHandles,
             viewport: this.uvViewport,
           }
         : this.previewInteractions.find(candidate =>
             distance(point, candidate.rotateHandle) <= 16
-            || distance(point, candidate.scaleHandle) <= 16
+            || scaleHandleAt(point, candidate.scaleHandles, 13) !== null
             || distance(point, candidate.center) <= 18) ?? null;
       if (!interaction) {
         this.dragCanvasBounds = null;
         return;
       }
+      const scaleMode = scaleHandleAt(point, interaction.scaleHandles, 13);
       if (distance(point, interaction.rotateHandle) <= 16) this.dragMode = 'rotate';
-      else if (distance(point, interaction.scaleHandle) <= 16) this.dragMode = 'scale';
+      else if (scaleMode) this.dragMode = scaleMode;
       else if (distance(point, interaction.center) <= 18) this.dragMode = 'translate';
       else {
         this.dragCanvasBounds = null;
         return;
       }
       this.dragFace = interaction.face;
-      this.editor.beginTransaction(
-        this.dragMode === 'translate' ? 'Shift texture' : this.dragMode === 'rotate' ? 'Rotate texture' : 'Scale texture',
-      );
+      const dragLabel = this.dragMode === 'translate'
+        ? 'Shift texture'
+        : this.dragMode === 'rotate'
+          ? 'Rotate texture'
+          : scaleModeAffectsU(this.dragMode) && !scaleModeAffectsV(this.dragMode)
+            ? 'Scale texture U'
+            : scaleModeAffectsV(this.dragMode) && !scaleModeAffectsU(this.dragMode)
+              ? 'Scale texture V'
+              : 'Scale texture U/V';
+      this.editor.beginTransaction(dragLabel);
       this.dragTransactionOpen = true;
       this.previousPoint = point;
+      this.dragPointerStart = [...point];
       this.dragCenterScreen = [...interaction.center];
-      this.dragPointerPoint = [...point];
+      this.dragPointerPoint = isScaleDrag(this.dragMode)
+        ? [...interaction.scaleHandles[this.dragMode]]
+        : [...point];
       this.dragPointerOffset = this.dragMode === 'translate'
         ? [interaction.center[0] - point[0], interaction.center[1] - point[1]]
         : [0, 0];
       this.dragViewportScale = interaction.viewport.scale;
       this.previousAngle = Math.atan2(point[1] - this.dragCenterScreen[1], point[0] - this.dragCenterScreen[0]);
-      this.previousRadius = Math.max(1, distance(point, this.dragCenterScreen));
-      if (this.dragMode === 'scale') {
+      if (isScaleDrag(this.dragMode)) {
         const [textureWidth, textureHeight] = this.textureSize(interaction.face.texture);
+        const facePoints = faceUvPolygon(interaction.face, textureWidth, textureHeight);
         this.dragLockedViewport = { ...interaction.viewport };
         this.dragStartProjection = cloneTextureProjection(interaction.face.textureProjection);
-        this.dragScaleAnchor = uvPolygonCenter(faceUvPolygon(interaction.face, textureWidth, textureHeight));
+        this.dragScaleAnchor = scaleAnchorForMode(facePoints, this.dragMode);
+        this.dragScaleAnchorScreen = uvToScreen(this.dragScaleAnchor, interaction.viewport);
+        this.dragScaleStartHandle = [...interaction.scaleHandles[this.dragMode]];
       } else {
         this.dragLockedViewport = null;
         this.dragStartProjection = null;
@@ -1121,14 +1262,17 @@ export class SurfaceInspector {
               face: singleFace,
               center: this.uvCenterScreen,
               rotateHandle: this.rotateHandle,
-              scaleHandle: this.scaleHandle,
+              scaleHandles: this.scaleHandles,
               viewport: this.uvViewport,
             }]
           : this.previewInteractions;
+        const scaleHover = interactions
+          .map(candidate => scaleHandleAt(point, candidate.scaleHandles, 12))
+          .find((mode): mode is ScaleDragMode => mode !== null);
         if (interactions.some(candidate => distance(point, candidate.rotateHandle) <= 15)) {
           this.uvCanvas.style.cursor = 'crosshair';
-        } else if (interactions.some(candidate => distance(point, candidate.scaleHandle) <= 15)) {
-          this.uvCanvas.style.cursor = 'nwse-resize';
+        } else if (scaleHover) {
+          this.uvCanvas.style.cursor = scaleHandleCursor(scaleHover);
         } else if (interactions.some(candidate => distance(point, candidate.center) <= 18)) {
           this.uvCanvas.style.cursor = 'move';
         }
@@ -1166,25 +1310,35 @@ export class SurfaceInspector {
           center[0] + Math.cos(visualAngle) * visualRadius,
           center[1] + Math.sin(visualAngle) * visualRadius,
         ];
-      } else {
-        const center = this.dragCenterScreen ?? this.uvCenterScreen;
-        const radius = Math.max(1, distance(point, center));
-        const factor = surfaceScaleFactor(this.previousRadius, radius, multiplier);
+      } else if (isScaleDrag(this.dragMode)) {
+        const effectivePoint: [number, number] = [
+          this.dragScaleStartHandle[0] + point[0] - this.dragPointerStart[0],
+          this.dragScaleStartHandle[1] + point[1] - this.dragPointerStart[1],
+        ];
+        const factorU = scaleModeAffectsU(this.dragMode)
+          ? surfaceScaleFactor(
+              Math.abs(this.dragScaleStartHandle[0] - this.dragScaleAnchorScreen[0]),
+              Math.abs(effectivePoint[0] - this.dragScaleAnchorScreen[0]),
+              multiplier,
+            )
+          : 1;
+        const factorV = scaleModeAffectsV(this.dragMode)
+          ? surfaceScaleFactor(
+              Math.abs(this.dragScaleStartHandle[1] - this.dragScaleAnchorScreen[1]),
+              Math.abs(effectivePoint[1] - this.dragScaleAnchorScreen[1]),
+              multiplier,
+            )
+          : 1;
         if (this.dragStartProjection && this.dragScaleAnchor) {
           scaleTextureFromProjection(
             this.editor,
             face,
             this.dragStartProjection,
-            factor,
+            [factorU, factorV],
             [this.dragScaleAnchor.u, this.dragScaleAnchor.v],
           );
         }
-        const visualRadius = this.previousRadius * factor;
-        const pointerAngle = Math.atan2(point[1] - center[1], point[0] - center[0]);
-        this.dragPointerPoint = [
-          center[0] + Math.cos(pointerAngle) * visualRadius,
-          center[1] + Math.sin(pointerAngle) * visualRadius,
-        ];
+        this.dragPointerPoint = effectivePoint;
       }
       this.previousPoint = point;
       this.scheduleDraw();
@@ -1203,6 +1357,9 @@ export class SurfaceInspector {
     this.dragLockedViewport = null;
     this.dragStartProjection = null;
     this.dragScaleAnchor = null;
+    this.dragPointerStart = [0, 0];
+    this.dragScaleStartHandle = [0, 0];
+    this.dragScaleAnchorScreen = [0, 0];
     if (this.dragTransactionOpen) {
       this.editor.commitTransaction();
       this.dragTransactionOpen = false;

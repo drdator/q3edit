@@ -216,34 +216,36 @@ export function scaleTextureFromProjection(
   editor: Editor,
   face: BrushFace,
   initialProjection: BrushTextureProjection,
-  factor: number,
+  factor: number | readonly [number, number],
   anchorUv: [number, number],
 ): void {
-  const safeFactor = Math.max(0.02, Math.min(50, factor));
+  const clampFactor = (value: number) => Math.max(0.02, Math.min(50, value));
+  const [safeFactorU, safeFactorV] = typeof factor === 'number'
+    ? [clampFactor(factor), clampFactor(factor)]
+    : [clampFactor(factor[0]), clampFactor(factor[1])];
   editor.transact('Scale texture', () => {
     const next = cloneTextureProjection(initialProjection);
     face.textureProjection = next;
     if (next.kind === 'classic' && initialProjection.kind === 'classic') {
-      const scaled = (value: number) => {
+      const scaled = (value: number, scaleFactor: number) => {
         const sign = value < 0 ? -1 : 1;
-        return sign * Math.max(0.001, Math.abs(value) / safeFactor);
+        return sign * Math.max(0.001, Math.abs(value) / scaleFactor);
       };
-      next.scaleX = scaled(initialProjection.scaleX);
-      next.scaleY = scaled(initialProjection.scaleY);
-      const center = face.polygon.reduce<Vec3>(
-        (sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]],
-        [0, 0, 0],
-      ).map(value => value / Math.max(1, face.polygon.length)) as Vec3;
+      next.scaleX = scaled(initialProjection.scaleX, safeFactorU);
+      next.scaleY = scaled(initialProjection.scaleY, safeFactorV);
       const [width, height] = faceTextureDimensions(editor, face);
-      const currentUv = computeFaceUV(center, face, width, height);
-      next.offsetX += (anchorUv[0] - currentUv[0]) * width;
-      next.offsetY += (anchorUv[1] - currentUv[1]) * height;
+      const anchorPixelsX = anchorUv[0] * width;
+      const anchorPixelsY = anchorUv[1] * height;
+      next.offsetX = anchorPixelsX + (initialProjection.offsetX - anchorPixelsX) * safeFactorU;
+      next.offsetY = anchorPixelsY + (initialProjection.offsetY - anchorPixelsY) * safeFactorV;
     } else if (next.kind === 'brush-primitive' && initialProjection.kind === 'brush-primitive') {
+      const factors = [safeFactorU, safeFactorV] as const;
       for (let axis = 0; axis < 2; axis++) {
-        next.matrix[axis][0] = initialProjection.matrix[axis][0] * safeFactor;
-        next.matrix[axis][1] = initialProjection.matrix[axis][1] * safeFactor;
+        const scaleFactor = factors[axis];
+        next.matrix[axis][0] = initialProjection.matrix[axis][0] * scaleFactor;
+        next.matrix[axis][1] = initialProjection.matrix[axis][1] * scaleFactor;
         next.matrix[axis][2] = anchorUv[axis]
-          + (initialProjection.matrix[axis][2] - anchorUv[axis]) * safeFactor;
+          + (initialProjection.matrix[axis][2] - anchorUv[axis]) * scaleFactor;
       }
     }
     editor.redrawRequested = true;
