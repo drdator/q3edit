@@ -280,6 +280,7 @@ export class SurfaceInspector {
   private readonly uvCanvas: HTMLCanvasElement;
   private readonly uvStatus: HTMLElement;
   private readonly clipTexture: HTMLInputElement;
+  private readonly autoFitSurface: HTMLInputElement;
   private readonly overlaySurfaces: HTMLInputElement;
   private readonly overlayOption: HTMLLabelElement;
   private previewInteractions: PreviewInteraction[] = [];
@@ -334,6 +335,13 @@ export class SurfaceInspector {
     this.clipTexture.checked = true;
     this.clipTexture.setAttribute('aria-label', 'Clip texture previews to selected surfaces');
     clip.append(this.clipTexture, document.createTextNode('Clip'));
+    const autoFit = document.createElement('label');
+    autoFit.className = 'uv-editor-option surface-inspector-auto-fit';
+    this.autoFitSurface = document.createElement('input');
+    this.autoFitSurface.type = 'checkbox';
+    this.autoFitSurface.checked = true;
+    this.autoFitSurface.setAttribute('aria-label', 'Automatically fit selected surfaces in the UV preview');
+    autoFit.append(this.autoFitSurface, document.createTextNode('Auto-fit'));
     this.overlayOption = document.createElement('label');
     this.overlayOption.className = 'uv-editor-option surface-inspector-overlay';
     this.overlaySurfaces = document.createElement('input');
@@ -341,7 +349,7 @@ export class SurfaceInspector {
     this.overlaySurfaces.checked = false;
     this.overlaySurfaces.setAttribute('aria-label', 'Overlay selected surfaces in shared UV space');
     this.overlayOption.append(this.overlaySurfaces, document.createTextNode('Overlay'));
-    uvControls.append(this.interactiveHint, this.overlayOption, clip);
+    uvControls.append(this.interactiveHint, this.overlayOption, autoFit, clip);
 
     this.previewLegend = document.createElement('div');
     this.previewLegend.className = 'surface-inspector-preview-legend';
@@ -465,6 +473,7 @@ export class SurfaceInspector {
     );
     this.bindUvCanvas();
     this.clipTexture.addEventListener('change', () => this.scheduleDraw());
+    this.autoFitSurface.addEventListener('change', () => this.scheduleDraw());
     this.overlaySurfaces.addEventListener('change', () => this.update(true));
     window.addEventListener('resize', () => this.scheduleDraw());
     this.update(true);
@@ -644,8 +653,8 @@ export class SurfaceInspector {
       points,
       this.uvCanvas.width,
       this.uvCanvas.height,
-      this.clipTexture.checked ? 20 : 30,
-      this.clipTexture.checked ? 'surface' : 'texture',
+      this.autoFitSurface.checked ? 20 : 30,
+      this.autoFitSurface.checked ? 'surface' : 'texture',
     );
     const ordered = [...surfaces].sort((left, right) => Number(left.source) - Number(right.source));
     const textureCount = new Set(surfaces.map(surface => surface.texture.toLowerCase())).size;
@@ -686,8 +695,8 @@ export class SurfaceInspector {
         surface.points,
         cell.width,
         cell.height,
-        this.clipTexture.checked ? (surface.face ? 32 : 18) : (surface.face ? 48 : 24),
-        this.clipTexture.checked ? 'surface' : 'texture',
+        this.autoFitSurface.checked ? (surface.face ? 32 : 18) : (surface.face ? 48 : 24),
+        this.autoFitSurface.checked ? 'surface' : 'texture',
       );
       const viewport: UvViewport = {
         ...local,
@@ -835,10 +844,11 @@ export class SurfaceInspector {
   ): void {
     const report = this.editor.textureDensityReport();
     const mode = surfaces.length > 1 && !this.overlaySurfaces.checked ? 'separate' : 'overlaid';
+    const framing = this.autoFitSurface.checked ? 'auto-fit' : 'texture space';
     const count = totalSurfaceCount > surfaces.length
       ? `${surfaces.length} of ${totalSurfaceCount} surfaces shown`
       : `${surfaces.length} surface${surfaces.length === 1 ? '' : 's'}`;
-    const summary = `${count} · ${totalTextureCount} texture${totalTextureCount === 1 ? '' : 's'} · ${mode}`;
+    const summary = `${count} · ${totalTextureCount} texture${totalTextureCount === 1 ? '' : 's'} · ${mode} · ${framing}`;
     this.uvStatus.textContent = report
       ? `${summary} · ${report.minimum.toFixed(3)}–${report.maximum.toFixed(3)} texels/unit · median ${report.median.toFixed(3)}`
       : summary;
@@ -962,8 +972,8 @@ export class SurfaceInspector {
       this.uvPolygon,
       this.uvCanvas.width,
       this.uvCanvas.height,
-      this.clipTexture.checked ? 32 : 58,
-      this.clipTexture.checked ? 'surface' : 'texture',
+      this.autoFitSurface.checked ? 32 : 58,
+      this.autoFitSurface.checked ? 'surface' : 'texture',
     );
     const center = uvPolygonCenter(this.uvPolygon);
     this.uvCenterScreen = uvToScreen(center, this.uvViewport);
@@ -980,7 +990,7 @@ export class SurfaceInspector {
         : this.uvCenterScreen;
     this.rotateHandle = this.dragMode === 'rotate' && this.dragPointerPoint
       ? this.dragPointerPoint
-      : [this.uvCenterScreen[0], topY - (this.clipTexture.checked ? 24 : 34)];
+      : [this.uvCenterScreen[0], topY - (this.autoFitSurface.checked ? 24 : 34)];
     this.scaleHandle = this.dragMode === 'scale' && this.dragPointerPoint
       ? this.dragPointerPoint
       : [rightX + 20, this.uvCenterScreen[1]];
@@ -1027,7 +1037,7 @@ export class SurfaceInspector {
       context.fillStyle = palette.success;
       context.fillRect(this.scaleHandle[0] - 7, this.scaleHandle[1] - 7, 14, 14);
     }
-    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${projectionSummary(face)}`;
+    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${projectionSummary(face)}`;
   }
 
   private bindUvCanvas(): void {

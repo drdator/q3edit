@@ -1516,13 +1516,14 @@ body.sidepanel-resizing * {
 
 .surface-inspector-uv-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 
 .surface-inspector-uv-hint {
   display: flex;
-  flex: 1;
+  flex: 1 0 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 9px;
@@ -1581,11 +1582,12 @@ body.sidepanel-resizing * {
 }
 
 .surface-inspector-uv-controls .surface-inspector-overlay[hidden],
+.surface-inspector-uv-controls .surface-inspector-auto-fit[hidden],
 .surface-inspector-uv-controls .surface-inspector-clip[hidden] {
   display: none !important;
 }
 
-.surface-inspector-uv-controls .surface-inspector-overlay[hidden] + .surface-inspector-clip {
+.surface-inspector-uv-controls .surface-inspector-overlay[hidden] + .surface-inspector-auto-fit {
   margin-left: auto !important;
 }
 
