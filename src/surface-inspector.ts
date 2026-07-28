@@ -676,11 +676,11 @@ export class SurfaceInspector {
         : null;
       this.drawTexturePattern(context, surface.texture, clipPoints, viewport, cell);
       this.drawUvGrid(context, viewport, cell);
-      this.drawPreviewSurfaceOutline(context, surface, viewport);
+      this.drawPreviewSurfaceOutline(context, surface, viewport, true);
       const interaction = this.drawPreviewHandles(context, surface, viewport);
       if (interaction) this.previewInteractions.push(interaction);
 
-      context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
+      context.strokeStyle = '#67b7d1';
       context.lineWidth = 1;
       context.strokeRect(cell.x + 0.5, cell.y + 0.5, cell.width - 1, cell.height - 1);
       const labelHeight = 18 * displayScale;
@@ -692,7 +692,7 @@ export class SurfaceInspector {
         cell.width - displayScale * 2,
         labelHeight,
       );
-      context.fillStyle = surface.source ? '#e8a030' : '#67b7d1';
+      context.fillStyle = '#67b7d1';
       context.font = `${9 * displayScale}px monospace`;
       context.textBaseline = 'middle';
       context.fillText(
@@ -771,10 +771,12 @@ export class SurfaceInspector {
     context: CanvasRenderingContext2D,
     surface: PreviewSurface,
     viewport: UvViewport,
+    uniform = false,
   ): void {
-    context.strokeStyle = surface.source ? '#e8a030' : '#67b7d1';
-    context.fillStyle = surface.source ? 'rgba(232,160,48,.16)' : 'rgba(103,183,209,.10)';
-    context.lineWidth = surface.source ? 3 : 2;
+    const source = surface.source && !uniform;
+    context.strokeStyle = source ? '#e8a030' : '#67b7d1';
+    context.fillStyle = source ? 'rgba(232,160,48,.16)' : 'rgba(103,183,209,.10)';
+    context.lineWidth = source ? 3 : 2;
     if (surface.rows) {
       for (const row of surface.rows) drawPolyline(context, row, viewport);
       const columns = surface.rows[0]?.length ?? 0;
