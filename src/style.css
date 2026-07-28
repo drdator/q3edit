@@ -1476,8 +1476,8 @@ body.sidepanel-resizing * {
   margin: 0;
 }
 
-.surface-inspector-actions .surface-inspector-field input,
-.surface-inspector-actions .surface-inspector-field select {
+.panel-body .surface-inspector-actions .surface-inspector-field input,
+.panel-body .surface-inspector-actions .surface-inspector-field select {
   margin: 0;
 }
 
