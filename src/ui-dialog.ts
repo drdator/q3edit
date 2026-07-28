@@ -63,6 +63,7 @@ export function openEditorDialog(options: EditorDialogOptions): EditorDialogHand
     },
   };
 
+  let dismissButton: HTMLButtonElement | null = null;
   if (options.actions?.length) {
     const actions = document.createElement('div');
     actions.className = 'editor-dialog-actions';
@@ -71,7 +72,10 @@ export function openEditorDialog(options: EditorDialogOptions): EditorDialogHand
       button.type = action.type ?? 'button';
       button.className = `btn${action.primary ? ' primary' : ''}`;
       button.textContent = action.label;
-      if (action.dismiss) button.dataset.dialogDismiss = '';
+      if (action.dismiss) {
+        button.dataset.dialogDismiss = '';
+        dismissButton ??= button;
+      }
       button.addEventListener('click', event => {
         action.onClick?.(handle, event);
         if (action.dismiss && !event.defaultPrevented) handle.close();
@@ -80,6 +84,20 @@ export function openEditorDialog(options: EditorDialogOptions): EditorDialogHand
     }
     dialog.appendChild(actions);
   }
+
+  const dismiss = () => {
+    if (dismissButton && !dismissButton.disabled) dismissButton.click();
+    else handle.close();
+  };
+  overlay.addEventListener('mousedown', event => {
+    if (event.target === overlay) dismiss();
+  });
+  overlay.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dismiss();
+  });
 
   if (options.form && options.onSubmit) {
     dialog.addEventListener('submit', event => {
