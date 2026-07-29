@@ -388,7 +388,9 @@ export class Editor {
   compiledBspInspection: BspInspection | null = null;
   compiledBspOverlay: BspOverlayMode = 'none';
   designReviewOverlayLines: Vec3[] = [];
-  textureAxisOverlayLines: Vec3[] = [];
+  textureUAxisOverlayLines: Vec3[] = [];
+  textureVAxisOverlayLines: Vec3[] = [];
+  textureNormalOverlayLines: Vec3[] = [];
   entityRelationshipOverlayLines: Vec3[] = [];
   runtimeEntityMessages: string[] = [];
   pendingReviewMapText: string | null = null;
@@ -1388,7 +1390,13 @@ export class Editor {
   setTextureDensity(value: number): void { setEditorTextureDensity(this, value); }
   textureDensityReport(): ReturnType<typeof getEditorTextureDensityReport> { return getEditorTextureDensityReport(this); }
   fitTextureByMapUnits(units: number): void { fitEditorTextureByMapUnits(this, units); }
-  updateTextureAxisOverlay(): void { this.textureAxisOverlayLines = getEditorTextureAxisLines(this); this.redrawRequested = true; }
+  updateTextureAxisOverlay(): void {
+    const lines = getEditorTextureAxisLines(this);
+    this.textureUAxisOverlayLines = lines.u;
+    this.textureVAxisOverlayLines = lines.v;
+    this.textureNormalOverlayLines = lines.normal;
+    this.redrawRequested = true;
+  }
   alignPatchBoundaries(): boolean { return alignEditorPatchBoundaries(this); }
   copyPatchUV(): number { return copyEditorPatchUV(this); }
   naturalizePatchesByDistance(units: number): void { naturalizeEditorPatchesByDistance(this, units); }

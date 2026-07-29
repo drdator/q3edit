@@ -60,6 +60,9 @@ export interface Viewport3DGeometryContext {
   pointfileLineVBO: WebGLBuffer;
   pointfileMarkerVBO: WebGLBuffer;
   bspOverlayVBO: WebGLBuffer;
+  textureUAxisVBO: WebGLBuffer;
+  textureVAxisVBO: WebGLBuffer;
+  textureNormalVBO: WebGLBuffer;
   paintPreviewVBO: WebGLBuffer;
   lineVBO: WebGLBuffer;
   wireVBO: WebGLBuffer;
@@ -80,6 +83,9 @@ export interface Viewport3DGeometryBuild {
   pointfileLineCount: number;
   pointfileMarkerCount: number;
   bspOverlayCount: number;
+  textureUAxisCount: number;
+  textureVAxisCount: number;
+  textureNormalCount: number;
   paintPreviewCount: number;
   lineCount: number;
   wireCount: number;
@@ -449,12 +455,26 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     ctx.editor.camera3d.position,
     ),
     ...ctx.editor.designReviewOverlayLines,
-    ...ctx.editor.textureAxisOverlayLines,
     ...ctx.editor.entityRelationshipOverlayLines,
   ].flat();
   ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.bspOverlayVBO);
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(bspOverlayVerts), ctx.gl.DYNAMIC_DRAW);
   const bspOverlayCount = bspOverlayVerts.length / 3;
+
+  const textureUAxisVerts = ctx.editor.textureUAxisOverlayLines.flat();
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.textureUAxisVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(textureUAxisVerts), ctx.gl.DYNAMIC_DRAW);
+  const textureUAxisCount = textureUAxisVerts.length / 3;
+
+  const textureVAxisVerts = ctx.editor.textureVAxisOverlayLines.flat();
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.textureVAxisVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(textureVAxisVerts), ctx.gl.DYNAMIC_DRAW);
+  const textureVAxisCount = textureVAxisVerts.length / 3;
+
+  const textureNormalVerts = ctx.editor.textureNormalOverlayLines.flat();
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.textureNormalVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(textureNormalVerts), ctx.gl.DYNAMIC_DRAW);
+  const textureNormalCount = textureNormalVerts.length / 3;
 
   const paintPreviewLineVerts: number[] = [];
   if (textureTerrainMode) {
@@ -629,6 +649,9 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     pointfileLineCount,
     pointfileMarkerCount,
     bspOverlayCount,
+    textureUAxisCount,
+    textureVAxisCount,
+    textureNormalCount,
     paintPreviewCount,
     lineCount,
     wireCount,

@@ -85,6 +85,12 @@ export interface Viewport3DRenderContext {
   pointfileMarkerCount: number;
   bspOverlayVAO: WebGLVertexArrayObject;
   bspOverlayCount: number;
+  textureUAxisVAO: WebGLVertexArrayObject;
+  textureUAxisCount: number;
+  textureVAxisVAO: WebGLVertexArrayObject;
+  textureVAxisCount: number;
+  textureNormalVAO: WebGLVertexArrayObject;
+  textureNormalCount: number;
   paintPreviewVAO: WebGLVertexArrayObject;
   paintPreviewCount: number;
   lineVAO: WebGLVertexArrayObject;
@@ -311,6 +317,28 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.disable(ctx.gl.DEPTH_TEST);
     ctx.gl.bindVertexArray(ctx.bspOverlayVAO);
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.bspOverlayCount);
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
+  if (!isGameView && (ctx.textureUAxisCount > 0 || ctx.textureVAxisCount > 0 || ctx.textureNormalCount > 0)) {
+    ctx.gl.useProgram(ctx.lineProg);
+    ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    if (ctx.textureUAxisCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.44, 0.31);
+      ctx.gl.bindVertexArray(ctx.textureUAxisVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.textureUAxisCount);
+    }
+    if (ctx.textureVAxisCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 0.31, 0.75, 1.0);
+      ctx.gl.bindVertexArray(ctx.textureVAxisVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.textureVAxisCount);
+    }
+    if (ctx.textureNormalCount > 0) {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 1.0, 0.82, 0.28);
+      ctx.gl.bindVertexArray(ctx.textureNormalVAO);
+      ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.textureNormalCount);
+    }
     ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }
 

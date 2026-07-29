@@ -5,22 +5,144 @@ import {
   rotateTexture as rotateFaceTexture,
   scaleTextureFromProjection,
   shiftTexture as shiftFaceTexture,
+  textureAxisDirections,
 } from './editor-textures';
 import { updateFaceProperties } from './editor-properties';
+import { vec3Cross, vec3Dot, type Vec3 } from './math';
 import {
   faceUvPolygon,
   fitUvViewport,
   screenToUv,
   shortestAngleDelta,
-  uvPolygonCenter,
   uvToScreen,
+  uvViewportDeterminant,
   type UvPoint,
   type UvViewport,
 } from './uv-editor';
 
-type DragMode = 'translate' | 'rotate' | 'scale';
+const SCALE_DRAG_MODES = [
+  'scale-left',
+  'scale-right',
+  'scale-top',
+  'scale-bottom',
+  'scale-top-left',
+  'scale-top-right',
+  'scale-bottom-left',
+  'scale-bottom-right',
+] as const;
+
+type ScaleDragMode = typeof SCALE_DRAG_MODES[number];
+type DragMode = 'translate' | 'rotate' | ScaleDragMode;
+type ScaleHandleMap = Record<ScaleDragMode, [number, number]>;
+
+function isScaleDrag(mode: DragMode | null): mode is ScaleDragMode {
+  return mode !== null && (SCALE_DRAG_MODES as readonly string[]).includes(mode);
+}
 
 export const MAX_SURFACE_PREVIEWS = 12;
+export type SurfaceCameraSide = 'front/outside' | 'back/inside';
+
+export function surfaceCameraSide(face: BrushFace, cameraPosition: Vec3): SurfaceCameraSide {
+  if (face.polygon.length === 0) return 'front/outside';
+  const center = [0, 1, 2].map(axis =>
+    face.polygon.reduce((sum, point) => sum + point[axis], 0) / face.polygon.length,
+  ) as Vec3;
+  const cameraVector = center.map((value, axis) => cameraPosition[axis] - value) as Vec3;
+  return vec3Dot(cameraVector, face.plane.normal) >= 0 ? 'front/outside' : 'back/inside';
+}
+
+export interface SurfaceCameraUvBasis {
+  axisX: [number, number];
+  axisY: [number, number];
+}
+
+function normalizedUvBasis(
+  screenU: readonly [number, number],
+  screenV: readonly [number, number],
+): SurfaceCameraUvBasis {
+  const uLength = Math.hypot(screenU[0], screenU[1]);
+  const vLength = Math.hypot(screenV[0], screenV[1]);
+  const axisX: [number, number] = uLength > 1e-5
+    ? [screenU[0] / uLength, screenU[1] / uLength]
+    : [1, 0];
+  let axisY: [number, number] = vLength > 1e-5
+    ? [screenV[0] / vLength, screenV[1] / vLength]
+    : [-axisX[1], axisX[0]];
+  const determinant = axisX[0] * axisY[1] - axisX[1] * axisY[0];
+  if (Math.abs(determinant) < 0.15) {
+    const sign = determinant < 0 ? -1 : 1;
+    axisY = [-axisX[1] * sign, axisX[0] * sign];
+  }
+  return { axisX, axisY };
+}
+
+export function surfaceOutsideUvBasis(face: BrushFace): SurfaceCameraUvBasis {
+  const { u, v } = textureAxisDirections(face);
+  const normal = face.plane.normal;
+  const forward = normal.map(value => -value) as Vec3;
+  const projectedUp = (reference: Vec3): Vec3 => {
+    const alongNormal = vec3Dot(reference, normal);
+    return reference.map((value, axis) => value - normal[axis] * alongNormal) as Vec3;
+  };
+  let up = projectedUp([0, 0, 1]);
+  let upLength = Math.hypot(...up);
+  if (upLength < 0.2) {
+    up = projectedUp([0, 1, 0]);
+    upLength = Math.hypot(...up);
+  }
+  if (upLength < 1e-5) {
+    up = projectedUp([1, 0, 0]);
+    upLength = Math.hypot(...up);
+  }
+  up = up.map(value => value / Math.max(1e-9, upLength)) as Vec3;
+  const right = vec3Cross(forward, up);
+  return normalizedUvBasis(
+    [vec3Dot(u, right), -vec3Dot(u, up)],
+    [vec3Dot(v, right), -vec3Dot(v, up)],
+  );
+}
+
+export function surfaceCameraUvBasis(
+  face: BrushFace,
+  cameraPosition: Vec3,
+  yaw: number,
+  pitch: number,
+): SurfaceCameraUvBasis {
+  const { u, v } = textureAxisDirections(face);
+  const forward: Vec3 = [
+    Math.cos(yaw) * Math.cos(pitch),
+    Math.sin(yaw) * Math.cos(pitch),
+    Math.sin(pitch),
+  ];
+  const right: Vec3 = [
+    Math.cos(yaw - Math.PI / 2),
+    Math.sin(yaw - Math.PI / 2),
+    0,
+  ];
+  const up = vec3Cross(right, forward);
+  const center = face.polygon.length > 0
+    ? [0, 1, 2].map(axis =>
+        face.polygon.reduce((sum, point) => sum + point[axis], 0) / face.polygon.length,
+      ) as Vec3
+    : face.plane.normal.map(value => value * face.plane.dist) as Vec3;
+  const relative = center.map((value, axis) => value - cameraPosition[axis]) as Vec3;
+  const depth = vec3Dot(relative, forward);
+  const centerRight = vec3Dot(relative, right);
+  const centerUp = vec3Dot(relative, up);
+  const projectDirection = (direction: Vec3): [number, number] => {
+    if (Math.abs(depth) < 1e-5) {
+      return [vec3Dot(direction, right), -vec3Dot(direction, up)];
+    }
+    const directionDepth = vec3Dot(direction, forward);
+    return [
+      (vec3Dot(direction, right) * depth - centerRight * directionDepth) / (depth * depth),
+      -(vec3Dot(direction, up) * depth - centerUp * directionDepth) / (depth * depth),
+    ];
+  };
+  const screenU = projectDirection(u);
+  const screenV = projectDirection(v);
+  return normalizedUvBasis(screenU, screenV);
+}
 
 export function surfaceDragMultiplier(fineControl: boolean, coarseControl = false): number {
   if (fineControl && coarseControl) return 1;
@@ -28,9 +150,25 @@ export function surfaceDragMultiplier(fineControl: boolean, coarseControl = fals
   return coarseControl ? 10 : 1;
 }
 
-export function surfaceScaleFactor(startRadius: number, currentRadius: number, sensitivity = 1): number {
-  const radiusRatio = Math.max(0.02, currentRadius / Math.max(1, startRadius));
-  return Math.max(0.02, Math.min(50, radiusRatio ** sensitivity));
+export function surfaceScaleFactor(startSpan: number, currentSpan: number): number {
+  const safeStartSpan = Math.abs(startSpan) >= 1
+    ? startSpan
+    : (startSpan < 0 ? -1 : 1);
+  const rawRatio = currentSpan / safeStartSpan;
+  if (rawRatio <= 0) return 0.02;
+  return Math.max(0.02, Math.min(50, rawRatio));
+}
+
+export function surfaceScaledDragPoint(
+  startHandle: [number, number],
+  pointerStart: [number, number],
+  pointerPoint: [number, number],
+  multiplier: number,
+): [number, number] {
+  return [
+    startHandle[0] + (pointerPoint[0] - pointerStart[0]) * multiplier,
+    startHandle[1] + (pointerPoint[1] - pointerStart[1]) * multiplier,
+  ];
 }
 
 export function surfaceSelectionSignature(editor: Editor): string {
@@ -70,7 +208,7 @@ interface PreviewInteraction {
   face: BrushFace;
   center: [number, number];
   rotateHandle: [number, number];
-  scaleHandle: [number, number];
+  scaleHandles: ScaleHandleMap;
   viewport: UvViewport;
 }
 
@@ -81,6 +219,222 @@ interface PreviewPalette {
   accent: string;
   info: string;
   success: string;
+}
+
+const TEXTURE_U_AXIS_COLOR = '#ff7050';
+const TEXTURE_V_AXIS_COLOR = '#50bfff';
+
+function scaleHandlesForPoints(points: Array<[number, number]>): ScaleHandleMap {
+  const left = Math.min(...points.map(point => point[0]));
+  const right = Math.max(...points.map(point => point[0]));
+  const top = Math.min(...points.map(point => point[1]));
+  const bottom = Math.max(...points.map(point => point[1]));
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  return {
+    'scale-left': [left, centerY],
+    'scale-right': [right, centerY],
+    'scale-top': [centerX, top],
+    'scale-bottom': [centerX, bottom],
+    'scale-top-left': [left, top],
+    'scale-top-right': [right, top],
+    'scale-bottom-left': [left, bottom],
+    'scale-bottom-right': [right, bottom],
+  };
+}
+
+function scaleHandlesForUvBounds(points: UvPoint[], viewport: UvViewport): ScaleHandleMap {
+  const minU = Math.min(...points.map(point => point.u));
+  const maxU = Math.max(...points.map(point => point.u));
+  const minV = Math.min(...points.map(point => point.v));
+  const maxV = Math.max(...points.map(point => point.v));
+  const centerU = (minU + maxU) / 2;
+  const centerV = (minV + maxV) / 2;
+  return {
+    'scale-left': uvToScreen({ u: minU, v: centerV }, viewport),
+    'scale-right': uvToScreen({ u: maxU, v: centerV }, viewport),
+    'scale-top': uvToScreen({ u: centerU, v: minV }, viewport),
+    'scale-bottom': uvToScreen({ u: centerU, v: maxV }, viewport),
+    'scale-top-left': uvToScreen({ u: minU, v: minV }, viewport),
+    'scale-top-right': uvToScreen({ u: maxU, v: minV }, viewport),
+    'scale-bottom-left': uvToScreen({ u: minU, v: maxV }, viewport),
+    'scale-bottom-right': uvToScreen({ u: maxU, v: maxV }, viewport),
+  };
+}
+
+function scaleAnchorForMode(points: UvPoint[], mode: ScaleDragMode): UvPoint {
+  const minU = Math.min(...points.map(point => point.u));
+  const maxU = Math.max(...points.map(point => point.u));
+  const minV = Math.min(...points.map(point => point.v));
+  const maxV = Math.max(...points.map(point => point.v));
+  const centerU = (minU + maxU) / 2;
+  const centerV = (minV + maxV) / 2;
+  switch (mode) {
+    case 'scale-left': return { u: maxU, v: centerV };
+    case 'scale-right': return { u: minU, v: centerV };
+    case 'scale-top': return { u: centerU, v: maxV };
+    case 'scale-bottom': return { u: centerU, v: minV };
+    case 'scale-top-left': return { u: maxU, v: maxV };
+    case 'scale-top-right': return { u: minU, v: maxV };
+    case 'scale-bottom-left': return { u: maxU, v: minV };
+    case 'scale-bottom-right': return { u: minU, v: minV };
+  }
+}
+
+function scaleModeAffectsU(mode: ScaleDragMode): boolean {
+  return mode !== 'scale-top' && mode !== 'scale-bottom';
+}
+
+function scaleModeAffectsV(mode: ScaleDragMode): boolean {
+  return mode !== 'scale-left' && mode !== 'scale-right';
+}
+
+function scaleHandleAt(
+  point: [number, number],
+  handles: ScaleHandleMap,
+  threshold: number,
+): ScaleDragMode | null {
+  const hitOrder: readonly ScaleDragMode[] = [
+    'scale-top-left',
+    'scale-top-right',
+    'scale-bottom-left',
+    'scale-bottom-right',
+    'scale-left',
+    'scale-right',
+    'scale-top',
+    'scale-bottom',
+  ];
+  return hitOrder.find(mode => distance(point, handles[mode]) <= threshold) ?? null;
+}
+
+export function surfaceResizeCursor(
+  center: readonly [number, number],
+  handle: readonly [number, number],
+): string {
+  const dx = handle[0] - center[0];
+  const dy = handle[1] - center[1];
+  if (Math.abs(dx) + Math.abs(dy) < 1e-6) return 'default';
+  const angle = ((Math.atan2(dy, dx) * 180 / Math.PI) % 180 + 180) % 180;
+  if (angle < 22.5 || angle >= 157.5) return 'ew-resize';
+  if (angle < 67.5) return 'nwse-resize';
+  if (angle < 112.5) return 'ns-resize';
+  return 'nesw-resize';
+}
+
+function drawScaleHandle(
+  context: CanvasRenderingContext2D,
+  point: [number, number],
+  mode: ScaleDragMode,
+  color: string,
+  size: number,
+): void {
+  context.fillStyle = color;
+  if (mode === 'scale-left' || mode === 'scale-right') {
+    context.fillRect(point[0] - size * 0.35, point[1] - size * 0.65, size * 0.7, size * 1.3);
+  } else if (mode === 'scale-top' || mode === 'scale-bottom') {
+    context.fillRect(point[0] - size * 0.65, point[1] - size * 0.35, size * 1.3, size * 0.7);
+  } else {
+    context.fillRect(point[0] - size / 2, point[1] - size / 2, size, size);
+  }
+}
+
+function drawScaleBox(
+  context: CanvasRenderingContext2D,
+  handles: ScaleHandleMap,
+  color: string,
+  size: number,
+  activeMode: ScaleDragMode | null,
+): void {
+  const corners = [
+    handles['scale-top-left'],
+    handles['scale-top-right'],
+    handles['scale-bottom-right'],
+    handles['scale-bottom-left'],
+  ];
+  context.save();
+  context.strokeStyle = color;
+  context.globalAlpha = 0.55;
+  context.lineWidth = 1;
+  context.setLineDash([3, 3]);
+  context.beginPath();
+  context.moveTo(corners[0][0], corners[0][1]);
+  for (const corner of corners.slice(1)) context.lineTo(corner[0], corner[1]);
+  context.closePath();
+  context.stroke();
+  context.restore();
+  for (const mode of SCALE_DRAG_MODES) {
+    drawScaleHandle(context, handles[mode], mode, color, mode === activeMode ? size * 1.25 : size);
+  }
+}
+
+function drawUvAxisCompass(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  bounds: PreviewCell = { x: 0, y: 0, width: canvas.width, height: canvas.height },
+  basis: SurfaceCameraUvBasis = { axisX: [1, 0], axisY: [0, 1] },
+): void {
+  const scale = canvasDisplayScale(canvas);
+  const boxSize = 48 * scale;
+  const boxX = bounds.x + 7 * scale;
+  const boxY = bounds.y + 7 * scale;
+  const originX = boxX + 24 * scale;
+  const originY = boxY + 14 * scale;
+  const axisLength = 16 * scale;
+  const head = 4 * scale;
+  const drawArrow = (
+    endX: number,
+    endY: number,
+    color: string,
+    label: string,
+    axis: [number, number],
+  ) => {
+    context.strokeStyle = color;
+    context.fillStyle = color;
+    context.lineWidth = 2 * scale;
+    context.beginPath();
+    context.moveTo(originX, originY);
+    context.lineTo(endX, endY);
+    const perpendicular: [number, number] = [-axis[1], axis[0]];
+    context.moveTo(endX, endY);
+    context.lineTo(
+      endX - axis[0] * head + perpendicular[0] * head,
+      endY - axis[1] * head + perpendicular[1] * head,
+    );
+    context.moveTo(endX, endY);
+    context.lineTo(
+      endX - axis[0] * head - perpendicular[0] * head,
+      endY - axis[1] * head - perpendicular[1] * head,
+    );
+    context.stroke();
+    context.font = `bold ${10 * scale}px monospace`;
+    context.textBaseline = 'middle';
+    context.fillText(
+      label,
+      endX + axis[0] * 7 * scale - 3 * scale,
+      endY + axis[1] * 7 * scale,
+    );
+  };
+
+  context.save();
+  context.fillStyle = previewPalette().footer;
+  context.globalAlpha = 0.86;
+  context.fillRect(boxX, boxY, boxSize, boxSize);
+  context.globalAlpha = 1;
+  drawArrow(
+    originX + basis.axisX[0] * axisLength,
+    originY + basis.axisX[1] * axisLength,
+    TEXTURE_U_AXIS_COLOR,
+    'U',
+    basis.axisX,
+  );
+  drawArrow(
+    originX + basis.axisY[0] * axisLength,
+    originY + basis.axisY[1] * axisLength,
+    TEXTURE_V_AXIS_COLOR,
+    'V',
+    basis.axisY,
+  );
+  context.restore();
 }
 
 export function surfacePreviewCells(
@@ -286,6 +640,8 @@ export class SurfaceInspector {
   private readonly uvStatus: HTMLElement;
   private readonly clipTexture: HTMLInputElement;
   private readonly autoFitSurface: HTMLInputElement;
+  private readonly matchCameraOrientation: HTMLInputElement;
+  private readonly matchCameraOption: HTMLLabelElement;
   private readonly overlaySurfaces: HTMLInputElement;
   private readonly overlayOption: HTMLLabelElement;
   private previewInteractions: PreviewInteraction[] = [];
@@ -298,16 +654,18 @@ export class SurfaceInspector {
   private uvPolygon: UvPoint[] = [];
   private uvCenterScreen: [number, number] = [0, 0];
   private rotateHandle: [number, number] = [0, 0];
-  private scaleHandle: [number, number] = [0, 0];
+  private scaleHandles: ScaleHandleMap = scaleHandlesForPoints([[0, 0]]);
   private dragMode: DragMode | null = null;
   private dragCanvasBounds: DOMRect | null = null;
   private dragCenterScreen: [number, number] | null = null;
   private dragPointerPoint: [number, number] | null = null;
   private dragPointerOffset: [number, number] = [0, 0];
+  private dragPointerStart: [number, number] = [0, 0];
+  private dragScaleStartHandle: [number, number] = [0, 0];
+  private dragScaleStartUv: UvPoint = { u: 0, v: 0 };
   private previousPoint: [number, number] = [0, 0];
   private previousAngle = 0;
-  private previousRadius = 0;
-  private dragViewportScale = 1;
+  private dragViewportOrientation: UvViewport | null = null;
   private dragLockedViewport: UvViewport | null = null;
   private dragStartProjection: BrushTextureProjection | null = null;
   private dragScaleAnchor: UvPoint | null = null;
@@ -333,7 +691,7 @@ export class SurfaceInspector {
 
     this.interactiveHint = document.createElement('div');
     this.interactiveHint.className = 'surface-inspector-uv-hint';
-    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale</span><span class="surface-inspector-fine-hint">Shift: fine · Alt: coarse</span>';
+    this.interactiveHint.innerHTML = '<span><i class="uv-handle-swatch translate"></i>Shift</span><span><i class="uv-handle-swatch rotate"></i>Rotate</span><span><i class="uv-handle-swatch scale"></i>Scale edges / corners</span><span><i class="uv-handle-swatch normal"></i>N points outside</span><span class="surface-inspector-fine-hint">Shift: fine · Alt: coarse</span>';
     const uvControls = document.createElement('div');
     uvControls.className = 'surface-inspector-uv-controls';
     const clip = document.createElement('label');
@@ -350,6 +708,16 @@ export class SurfaceInspector {
     this.autoFitSurface.checked = true;
     this.autoFitSurface.setAttribute('aria-label', 'Automatically fit selected surfaces in the UV preview');
     autoFit.append(this.autoFitSurface, document.createTextNode('Auto-fit'));
+    this.matchCameraOption = document.createElement('label');
+    this.matchCameraOption.className = 'uv-editor-option surface-inspector-match-camera';
+    this.matchCameraOrientation = document.createElement('input');
+    this.matchCameraOrientation.type = 'checkbox';
+    this.matchCameraOrientation.checked = false;
+    this.matchCameraOrientation.setAttribute(
+      'aria-label',
+      'Match the current 3D camera instead of viewing the surface from outside',
+    );
+    this.matchCameraOption.append(this.matchCameraOrientation, document.createTextNode('Match 3D view'));
     this.overlayOption = document.createElement('label');
     this.overlayOption.className = 'uv-editor-option surface-inspector-overlay';
     this.overlaySurfaces = document.createElement('input');
@@ -357,7 +725,7 @@ export class SurfaceInspector {
     this.overlaySurfaces.checked = false;
     this.overlaySurfaces.setAttribute('aria-label', 'Overlay selected surfaces in shared UV space');
     this.overlayOption.append(this.overlaySurfaces, document.createTextNode('Overlay'));
-    uvControls.append(this.interactiveHint, this.overlayOption, autoFit, clip);
+    uvControls.append(this.interactiveHint, this.overlayOption, autoFit, clip, this.matchCameraOption);
 
     this.previewLegend = document.createElement('div');
     this.previewLegend.className = 'surface-inspector-preview-legend';
@@ -482,6 +850,10 @@ export class SurfaceInspector {
     this.bindUvCanvas();
     this.clipTexture.addEventListener('change', () => this.scheduleDraw());
     this.autoFitSurface.addEventListener('change', () => this.scheduleDraw());
+    this.matchCameraOrientation.addEventListener('change', () => {
+      this.lastSelectionSignature = '';
+      this.scheduleDraw();
+    });
     this.overlaySurfaces.addEventListener('change', () => this.update(true));
     window.addEventListener('resize', () => this.scheduleDraw());
     this.update(true);
@@ -519,7 +891,18 @@ export class SurfaceInspector {
       const parts: string[] = [];
       if (faces.length > 0) parts.push(`${faces.length} face${faces.length === 1 ? '' : 's'}`);
       if (patches.length > 0) parts.push(`${patches.length} patch${patches.length === 1 ? '' : 'es'}`);
-      this.summary.textContent = `${parts.join(' · ')} · ${textures.length === 1 ? textures[0] : `${textures.length} textures`}`;
+      const singleCameraSide = faces.length === 1
+        ? surfaceCameraSide(faces[0], this.editor.camera3d.position)
+        : null;
+      const cameraSide = singleCameraSide
+        ? singleCameraSide === 'front/outside'
+          ? ' · OUTSIDE'
+          : ' · INSIDE/BACK'
+        : '';
+      this.summary.textContent = `${parts.join(' · ')}${cameraSide} · ${textures.length === 1 ? textures[0] : `${textures.length} textures`}`;
+      this.summary.title = singleCameraSide
+        ? `${singleCameraSide === 'back/inside' ? 'Camera is behind the face, so its on-screen texture appears mirrored.' : 'Camera is in front of the face.'} The yellow N arrow points outside the brush.`
+        : '';
     }
 
     const classic = faces.map(face => face.textureProjection.kind === 'classic' ? face.textureProjection : null);
@@ -545,6 +928,7 @@ export class SurfaceInspector {
       && faces.length + patches.length > 1;
     this.interactiveHint.hidden = !(interactive || separateInteractive);
     this.overlayOption.hidden = interactive || faces.length + patches.length < 2;
+    this.matchCameraOption.hidden = !interactive;
     this.previewLegend.hidden = interactive || separateInteractive;
     if (!interactive && !separateInteractive) {
       this.previewLegend.innerHTML = faces.length + patches.length > 1
@@ -560,8 +944,12 @@ export class SurfaceInspector {
     this.updateTextureImages(textures);
     if (hasSurfaces && this.editor.display.categories.textureAxes) {
       this.editor.updateTextureAxisOverlay();
-    } else if (this.editor.textureAxisOverlayLines.length > 0) {
-      this.editor.textureAxisOverlayLines = [];
+    } else if (this.editor.textureUAxisOverlayLines.length > 0
+      || this.editor.textureVAxisOverlayLines.length > 0
+      || this.editor.textureNormalOverlayLines.length > 0) {
+      this.editor.textureUAxisOverlayLines = [];
+      this.editor.textureVAxisOverlayLines = [];
+      this.editor.textureNormalOverlayLines = [];
       this.editor.redrawRequested = true;
     }
     this.scheduleDraw();
@@ -682,6 +1070,7 @@ export class SurfaceInspector {
     this.drawUvGrid(context);
 
     for (const surface of ordered) this.drawPreviewSurfaceOutline(context, surface, this.uvViewport);
+    drawUvAxisCompass(context, this.uvCanvas);
     this.updatePreviewStatus(surfaces, allSurfaces.length, totalTextureCount);
   }
 
@@ -713,7 +1102,7 @@ export class SurfaceInspector {
         width: this.uvCanvas.width,
         height: this.uvCanvas.height,
       };
-      const viewport = this.dragMode === 'scale'
+      const viewport = isScaleDrag(this.dragMode)
         && this.dragFace === surface.face
         && this.dragLockedViewport
         ? this.dragLockedViewport
@@ -748,6 +1137,7 @@ export class SurfaceInspector {
         labelTop + 10 * displayScale,
         Math.max(1, cell.width - 12 * displayScale),
       );
+      drawUvAxisCompass(context, this.uvCanvas, cell);
     });
     this.updatePreviewStatus(surfaces, totalSurfaceCount, totalTextureCount);
   }
@@ -761,10 +1151,14 @@ export class SurfaceInspector {
     const palette = previewPalette();
     const points = surface.points.map(point => uvToScreen(point, viewport));
     if (points.length === 0) return null;
-    const center = uvToScreen(uvPolygonCenter(surface.points), viewport);
-    const topY = Math.min(...points.map(point => point[1]));
-    const rightX = Math.max(...points.map(point => point[0]));
+    const scaleHandles = scaleHandlesForPoints(points);
+    const center: [number, number] = [
+      scaleHandles['scale-top'][0],
+      scaleHandles['scale-left'][1],
+    ];
+    const topY = scaleHandles['scale-top'][1];
     const active = this.dragFace === surface.face && this.dragMode !== null;
+    const scaleDrag = active && isScaleDrag(this.dragMode) ? this.dragMode : null;
     const interactionCenter: [number, number] = active && this.dragMode === 'translate' && this.dragPointerPoint
       ? [
           this.dragPointerPoint[0] + this.dragPointerOffset[0],
@@ -776,23 +1170,14 @@ export class SurfaceInspector {
     const rotateHandle: [number, number] = active && this.dragMode === 'rotate' && this.dragPointerPoint
       ? this.dragPointerPoint
       : [center[0], topY - 24];
-    const scaleHandle: [number, number] = active && this.dragMode === 'scale' && this.dragPointerPoint
-      ? this.dragPointerPoint
-      : [rightX + 14, center[1]];
 
     context.strokeStyle = palette.accent;
     context.globalAlpha = 0.65;
     context.lineWidth = 1.5;
-    if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
+    if (!(active && (isScaleDrag(this.dragMode) || this.dragMode === 'translate'))) {
       context.beginPath();
       context.moveTo(interactionCenter[0], interactionCenter[1]);
       context.lineTo(rotateHandle[0], rotateHandle[1]);
-      context.stroke();
-    }
-    if (!(active && (this.dragMode === 'rotate' || this.dragMode === 'translate'))) {
-      context.beginPath();
-      context.moveTo(interactionCenter[0], interactionCenter[1]);
-      context.lineTo(scaleHandle[0], scaleHandle[1]);
       context.stroke();
     }
     context.globalAlpha = 1;
@@ -804,17 +1189,22 @@ export class SurfaceInspector {
     context.beginPath();
     context.arc(interactionCenter[0], interactionCenter[1], 2, 0, Math.PI * 2);
     context.fill();
-    if (!(active && (this.dragMode === 'scale' || this.dragMode === 'translate'))) {
+    if (!(active && (isScaleDrag(this.dragMode) || this.dragMode === 'translate'))) {
       context.fillStyle = palette.info;
       context.beginPath();
       context.arc(rotateHandle[0], rotateHandle[1], 7, 0, Math.PI * 2);
       context.fill();
     }
     if (!(active && (this.dragMode === 'rotate' || this.dragMode === 'translate'))) {
-      context.fillStyle = palette.success;
-      context.fillRect(scaleHandle[0] - 6, scaleHandle[1] - 6, 12, 12);
+      drawScaleBox(context, scaleHandles, palette.success, 8, scaleDrag);
     }
-    return { face: surface.face, center, rotateHandle, scaleHandle, viewport };
+    return {
+      face: surface.face,
+      center,
+      rotateHandle,
+      scaleHandles,
+      viewport,
+    };
   }
 
   private drawPreviewSurfaceOutline(
@@ -920,10 +1310,22 @@ export class SurfaceInspector {
       pattern = this.checkerPattern;
     }
     if (pattern) {
+      const axisX = viewport.axisX ?? [1, 0];
+      const axisY = viewport.axisY ?? [0, 1];
+      const center = viewport.orientationCenter ?? [viewport.width / 2, viewport.height / 2];
+      const translatedX = center[0]
+        + axisX[0] * (viewport.offsetX - center[0])
+        + axisY[0] * (viewport.offsetY - center[1]);
+      const translatedY = center[1]
+        + axisX[1] * (viewport.offsetX - center[0])
+        + axisY[1] * (viewport.offsetY - center[1]);
       pattern.setTransform(new DOMMatrix([
-        viewport.scale / sourceWidth, 0,
-        0, viewport.scale / sourceHeight,
-        viewport.offsetX, viewport.offsetY,
+        axisX[0] * viewport.scale / sourceWidth,
+        axisX[1] * viewport.scale / sourceWidth,
+        axisY[0] * viewport.scale / sourceHeight,
+        axisY[1] * viewport.scale / sourceHeight,
+        translatedX,
+        translatedY,
       ]));
       context.save();
       context.beginPath();
@@ -981,35 +1383,68 @@ export class SurfaceInspector {
     const palette = previewPalette();
     const [textureWidth, textureHeight] = this.textureSize(face.texture);
     this.uvPolygon = faceUvPolygon(face, textureWidth, textureHeight);
-    const fittedViewport = fitUvViewport(
+    const cameraBasis = this.matchCameraOrientation.checked
+      ? surfaceCameraUvBasis(
+          face,
+          this.editor.camera3d.position,
+          this.editor.camera3d.yaw,
+          this.editor.camera3d.pitch,
+        )
+      : surfaceOutsideUvBasis(face);
+    const fittedViewport: UvViewport = fitUvViewport(
       this.uvPolygon,
       this.uvCanvas.width,
       this.uvCanvas.height,
       this.autoFitSurface.checked ? 32 : 58,
       this.autoFitSurface.checked ? 'surface' : 'texture',
     );
-    this.uvViewport = this.dragMode === 'scale' && this.dragLockedViewport
+    if (this.autoFitSurface.checked && this.uvPolygon.length > 0) {
+      const minU = Math.min(...this.uvPolygon.map(point => point.u));
+      const maxU = Math.max(...this.uvPolygon.map(point => point.u));
+      const minV = Math.min(...this.uvPolygon.map(point => point.v));
+      const maxV = Math.max(...this.uvPolygon.map(point => point.v));
+      const rangeU = Math.max(1e-9, maxU - minU);
+      const rangeV = Math.max(1e-9, maxV - minV);
+      const orientedWidth = Math.abs(cameraBasis.axisX[0]) * rangeU
+        + Math.abs(cameraBasis.axisY[0]) * rangeV;
+      const orientedHeight = Math.abs(cameraBasis.axisX[1]) * rangeU
+        + Math.abs(cameraBasis.axisY[1]) * rangeV;
+      const padding = 32;
+      fittedViewport.scale = Math.min(
+        Math.max(1, this.uvCanvas.width - padding * 2) / Math.max(1e-9, orientedWidth),
+        Math.max(1, this.uvCanvas.height - padding * 2) / Math.max(1e-9, orientedHeight),
+      );
+      fittedViewport.offsetX = this.uvCanvas.width / 2 - ((minU + maxU) / 2) * fittedViewport.scale;
+      fittedViewport.offsetY = this.uvCanvas.height / 2 - ((minV + maxV) / 2) * fittedViewport.scale;
+    }
+    fittedViewport.axisX = cameraBasis.axisX;
+    fittedViewport.axisY = cameraBasis.axisY;
+    fittedViewport.orientationCenter = [this.uvCanvas.width / 2, this.uvCanvas.height / 2];
+    this.uvViewport = isScaleDrag(this.dragMode) && this.dragLockedViewport
       ? this.dragLockedViewport
       : fittedViewport;
-    const center = uvPolygonCenter(this.uvPolygon);
-    this.uvCenterScreen = uvToScreen(center, this.uvViewport);
     const points = this.uvPolygon.map(point => uvToScreen(point, this.uvViewport));
-    const topY = Math.min(...points.map(point => point[1]));
-    const rightX = Math.max(...points.map(point => point[0]));
+    this.scaleHandles = scaleHandlesForUvBounds(this.uvPolygon, this.uvViewport);
+    this.uvCenterScreen = [
+      (this.scaleHandles['scale-left'][0] + this.scaleHandles['scale-right'][0]) / 2,
+      (this.scaleHandles['scale-left'][1] + this.scaleHandles['scale-right'][1]) / 2,
+    ];
+    const topHandle = this.scaleHandles['scale-top'];
+    const viewportAxisY = this.uvViewport.axisY ?? [0, 1];
     const interactionCenter: [number, number] = this.dragMode === 'translate' && this.dragPointerPoint
       ? [
           this.dragPointerPoint[0] + this.dragPointerOffset[0],
           this.dragPointerPoint[1] + this.dragPointerOffset[1],
         ]
-      : (this.dragMode === 'rotate' || this.dragMode === 'scale') && this.dragCenterScreen
+      : this.dragMode === 'rotate' && this.dragCenterScreen
         ? this.dragCenterScreen
         : this.uvCenterScreen;
     this.rotateHandle = this.dragMode === 'rotate' && this.dragPointerPoint
       ? this.dragPointerPoint
-      : [this.uvCenterScreen[0], topY - (this.autoFitSurface.checked ? 24 : 34)];
-    this.scaleHandle = this.dragMode === 'scale' && this.dragPointerPoint
-      ? this.dragPointerPoint
-      : [rightX + 20, this.uvCenterScreen[1]];
+      : [
+          topHandle[0] - viewportAxisY[0] * (this.autoFitSurface.checked ? 24 : 34),
+          topHandle[1] - viewportAxisY[1] * (this.autoFitSurface.checked ? 24 : 34),
+        ];
     this.drawUvBackdrop(context, face.texture, this.clipTexture.checked ? points : null);
 
     context.beginPath();
@@ -1028,16 +1463,10 @@ export class SurfaceInspector {
     context.strokeStyle = palette.accent;
     context.globalAlpha = 0.65;
     context.lineWidth = 2;
-    if (this.dragMode !== 'scale' && this.dragMode !== 'translate') {
+    if (!isScaleDrag(this.dragMode) && this.dragMode !== 'translate') {
       context.beginPath();
       context.moveTo(interactionCenter[0], interactionCenter[1]);
       context.lineTo(this.rotateHandle[0], this.rotateHandle[1]);
-      context.stroke();
-    }
-    if (this.dragMode !== 'rotate' && this.dragMode !== 'translate') {
-      context.beginPath();
-      context.moveTo(interactionCenter[0], interactionCenter[1]);
-      context.lineTo(this.scaleHandle[0], this.scaleHandle[1]);
       context.stroke();
     }
     context.globalAlpha = 1;
@@ -1045,15 +1474,32 @@ export class SurfaceInspector {
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 9, 0, Math.PI * 2); context.fill();
     context.fillStyle = palette.background;
     context.beginPath(); context.arc(interactionCenter[0], interactionCenter[1], 3, 0, Math.PI * 2); context.fill();
-    if (this.dragMode !== 'scale' && this.dragMode !== 'translate') {
+    if (!isScaleDrag(this.dragMode) && this.dragMode !== 'translate') {
       context.fillStyle = palette.info;
       context.beginPath(); context.arc(this.rotateHandle[0], this.rotateHandle[1], 8, 0, Math.PI * 2); context.fill();
     }
     if (this.dragMode !== 'rotate' && this.dragMode !== 'translate') {
-      context.fillStyle = palette.success;
-      context.fillRect(this.scaleHandle[0] - 7, this.scaleHandle[1] - 7, 14, 14);
+      drawScaleBox(
+        context,
+        this.scaleHandles,
+        palette.success,
+        10,
+        isScaleDrag(this.dragMode) ? this.dragMode : null,
+      );
     }
-    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${projectionSummary(face)}`;
+    drawUvAxisCompass(context, this.uvCanvas, undefined, {
+      axisX: this.uvViewport.axisX ?? [1, 0],
+      axisY: this.uvViewport.axisY ?? [0, 1],
+    });
+    const cameraSide = surfaceCameraSide(face, this.editor.camera3d.position);
+    const sideHint = cameraSide === 'front/outside'
+      ? 'camera on front/outside'
+      : 'camera on back/inside · screen view is mirrored';
+    const orientationHint = this.matchCameraOrientation.checked
+      ? 'matched to 3D axes'
+      : 'viewed from outside';
+    const cameraHint = this.matchCameraOrientation.checked ? ` · ${sideHint}` : '';
+    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${orientationHint}${cameraHint} · ${projectionSummary(face)}`;
   }
 
   private bindUvCanvas(): void {
@@ -1066,43 +1512,60 @@ export class SurfaceInspector {
             face: singleFace,
             center: this.uvCenterScreen,
             rotateHandle: this.rotateHandle,
-            scaleHandle: this.scaleHandle,
+            scaleHandles: this.scaleHandles,
             viewport: this.uvViewport,
           }
         : this.previewInteractions.find(candidate =>
             distance(point, candidate.rotateHandle) <= 16
-            || distance(point, candidate.scaleHandle) <= 16
+            || scaleHandleAt(point, candidate.scaleHandles, 13) !== null
             || distance(point, candidate.center) <= 18) ?? null;
       if (!interaction) {
         this.dragCanvasBounds = null;
         return;
       }
+      const scaleMode = scaleHandleAt(point, interaction.scaleHandles, 13);
       if (distance(point, interaction.rotateHandle) <= 16) this.dragMode = 'rotate';
-      else if (distance(point, interaction.scaleHandle) <= 16) this.dragMode = 'scale';
+      else if (scaleMode) this.dragMode = scaleMode;
       else if (distance(point, interaction.center) <= 18) this.dragMode = 'translate';
       else {
         this.dragCanvasBounds = null;
         return;
       }
       this.dragFace = interaction.face;
-      this.editor.beginTransaction(
-        this.dragMode === 'translate' ? 'Shift texture' : this.dragMode === 'rotate' ? 'Rotate texture' : 'Scale texture',
-      );
+      const dragLabel = this.dragMode === 'translate'
+        ? 'Shift texture'
+        : this.dragMode === 'rotate'
+          ? 'Rotate texture'
+          : scaleModeAffectsU(this.dragMode) && !scaleModeAffectsV(this.dragMode)
+            ? 'Scale texture U'
+            : scaleModeAffectsV(this.dragMode) && !scaleModeAffectsU(this.dragMode)
+              ? 'Scale texture V'
+              : 'Scale texture U/V';
+      this.editor.beginTransaction(dragLabel);
       this.dragTransactionOpen = true;
       this.previousPoint = point;
+      this.dragPointerStart = [...point];
       this.dragCenterScreen = [...interaction.center];
-      this.dragPointerPoint = [...point];
+      this.dragPointerPoint = isScaleDrag(this.dragMode)
+        ? [...interaction.scaleHandles[this.dragMode]]
+        : [...point];
       this.dragPointerOffset = this.dragMode === 'translate'
         ? [interaction.center[0] - point[0], interaction.center[1] - point[1]]
         : [0, 0];
-      this.dragViewportScale = interaction.viewport.scale;
+      this.dragViewportOrientation = interaction.viewport;
       this.previousAngle = Math.atan2(point[1] - this.dragCenterScreen[1], point[0] - this.dragCenterScreen[0]);
-      this.previousRadius = Math.max(1, distance(point, this.dragCenterScreen));
-      if (this.dragMode === 'scale') {
+      if (isScaleDrag(this.dragMode)) {
         const [textureWidth, textureHeight] = this.textureSize(interaction.face.texture);
+        const facePoints = faceUvPolygon(interaction.face, textureWidth, textureHeight);
         this.dragLockedViewport = { ...interaction.viewport };
         this.dragStartProjection = cloneTextureProjection(interaction.face.textureProjection);
-        this.dragScaleAnchor = uvPolygonCenter(faceUvPolygon(interaction.face, textureWidth, textureHeight));
+        this.dragScaleAnchor = scaleAnchorForMode(facePoints, this.dragMode);
+        this.dragScaleStartHandle = [...interaction.scaleHandles[this.dragMode]];
+        this.dragScaleStartUv = screenToUv(
+          this.dragScaleStartHandle[0],
+          this.dragScaleStartHandle[1],
+          interaction.viewport,
+        );
       } else {
         this.dragLockedViewport = null;
         this.dragStartProjection = null;
@@ -1121,14 +1584,23 @@ export class SurfaceInspector {
               face: singleFace,
               center: this.uvCenterScreen,
               rotateHandle: this.rotateHandle,
-              scaleHandle: this.scaleHandle,
+              scaleHandles: this.scaleHandles,
               viewport: this.uvViewport,
             }]
           : this.previewInteractions;
+        const scaleHover = interactions
+          .map(candidate => {
+            const mode = scaleHandleAt(point, candidate.scaleHandles, 12);
+            return mode ? { candidate, mode } : null;
+          })
+          .find((entry): entry is { candidate: PreviewInteraction; mode: ScaleDragMode } => entry !== null);
         if (interactions.some(candidate => distance(point, candidate.rotateHandle) <= 15)) {
           this.uvCanvas.style.cursor = 'crosshair';
-        } else if (interactions.some(candidate => distance(point, candidate.scaleHandle) <= 15)) {
-          this.uvCanvas.style.cursor = 'nwse-resize';
+        } else if (scaleHover) {
+          this.uvCanvas.style.cursor = surfaceResizeCursor(
+            scaleHover.candidate.center,
+            scaleHover.candidate.scaleHandles[scaleHover.mode],
+          );
         } else if (interactions.some(candidate => distance(point, candidate.center) <= 18)) {
           this.uvCanvas.style.cursor = 'move';
         }
@@ -1145,8 +1617,11 @@ export class SurfaceInspector {
         const [textureWidth, textureHeight] = this.textureSize(face.texture);
         const screenDx = point[0] - this.previousPoint[0];
         const screenDy = point[1] - this.previousPoint[1];
-        const dx = screenDx / this.dragViewportScale * textureWidth * multiplier;
-        const dy = screenDy / this.dragViewportScale * textureHeight * multiplier;
+        const orientation = this.dragViewportOrientation ?? this.uvViewport;
+        const startUv = screenToUv(0, 0, orientation);
+        const endUv = screenToUv(screenDx, screenDy, orientation);
+        const dx = (endUv.u - startUv.u) * textureWidth * multiplier;
+        const dy = (endUv.v - startUv.v) * textureHeight * multiplier;
         shiftFaceTexture(this.editor, dx, dy, [face]);
         const visual = this.dragPointerPoint ?? this.previousPoint;
         this.dragPointerPoint = [
@@ -1157,7 +1632,12 @@ export class SurfaceInspector {
         const center = this.dragCenterScreen ?? this.uvCenterScreen;
         const angle = Math.atan2(point[1] - center[1], point[0] - center[0]);
         const angleDelta = shortestAngleDelta(this.previousAngle, angle) * multiplier;
-        rotateFaceTexture(this.editor, angleDelta * 180 / Math.PI, [face]);
+        rotateFaceTexture(
+          this.editor,
+          angleDelta * Math.sign(uvViewportDeterminant(this.dragViewportOrientation ?? this.uvViewport))
+            * 180 / Math.PI,
+          [face],
+        );
         this.previousAngle = angle;
         const visual = this.dragPointerPoint ?? point;
         const visualRadius = Math.max(1, distance(visual, center));
@@ -1166,25 +1646,40 @@ export class SurfaceInspector {
           center[0] + Math.cos(visualAngle) * visualRadius,
           center[1] + Math.sin(visualAngle) * visualRadius,
         ];
-      } else {
-        const center = this.dragCenterScreen ?? this.uvCenterScreen;
-        const radius = Math.max(1, distance(point, center));
-        const factor = surfaceScaleFactor(this.previousRadius, radius, multiplier);
+      } else if (isScaleDrag(this.dragMode)) {
+        const effectivePoint = surfaceScaledDragPoint(
+          this.dragScaleStartHandle,
+          this.dragPointerStart,
+          point,
+          multiplier,
+        );
+        const effectiveUv = screenToUv(
+          effectivePoint[0],
+          effectivePoint[1],
+          this.dragLockedViewport ?? this.uvViewport,
+        );
+        const factorU = scaleModeAffectsU(this.dragMode)
+          ? surfaceScaleFactor(
+              this.dragScaleStartUv.u - this.dragScaleAnchor!.u,
+              effectiveUv.u - this.dragScaleAnchor!.u,
+            )
+          : 1;
+        const factorV = scaleModeAffectsV(this.dragMode)
+          ? surfaceScaleFactor(
+              this.dragScaleStartUv.v - this.dragScaleAnchor!.v,
+              effectiveUv.v - this.dragScaleAnchor!.v,
+            )
+          : 1;
         if (this.dragStartProjection && this.dragScaleAnchor) {
           scaleTextureFromProjection(
             this.editor,
             face,
             this.dragStartProjection,
-            factor,
+            [factorU, factorV],
             [this.dragScaleAnchor.u, this.dragScaleAnchor.v],
           );
         }
-        const visualRadius = this.previousRadius * factor;
-        const pointerAngle = Math.atan2(point[1] - center[1], point[0] - center[0]);
-        this.dragPointerPoint = [
-          center[0] + Math.cos(pointerAngle) * visualRadius,
-          center[1] + Math.sin(pointerAngle) * visualRadius,
-        ];
+        this.dragPointerPoint = effectivePoint;
       }
       this.previousPoint = point;
       this.scheduleDraw();
@@ -1203,6 +1698,10 @@ export class SurfaceInspector {
     this.dragLockedViewport = null;
     this.dragStartProjection = null;
     this.dragScaleAnchor = null;
+    this.dragPointerStart = [0, 0];
+    this.dragScaleStartHandle = [0, 0];
+    this.dragScaleStartUv = { u: 0, v: 0 };
+    this.dragViewportOrientation = null;
     if (this.dragTransactionOpen) {
       this.editor.commitTransaction();
       this.dragTransactionOpen = false;

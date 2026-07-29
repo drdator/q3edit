@@ -16,6 +16,7 @@ import {
   scaleTexture,
   scaleTextureFromProjection,
   shiftTexture,
+  textureAxisLines,
 } from '../src/editor-textures';
 import {
   mirrorBrushLocked,
@@ -113,6 +114,73 @@ describe('brushDef texture editing', () => {
     expectUvClose(computeFaceUV(center, face, 128, 128), anchor);
   });
 
+  test('scales classic UV axes independently around a fixed anchor', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_floor/concrete');
+    editor.worldspawn.brushes.push(brush);
+    const face = brush.faces[4];
+    const center = face.polygon.reduce<Vec3>(
+      (sum, point) => vec3Add(sum, point),
+      [0, 0, 0],
+    ).map(value => value / face.polygon.length) as Vec3;
+    const anchor = computeFaceUV(center, face, 128, 128);
+    const initial = cloneTextureProjection(face.textureProjection);
+    const before = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const beforeWidth = Math.max(...before.map(uv => uv[0])) - Math.min(...before.map(uv => uv[0]));
+    const beforeHeight = Math.max(...before.map(uv => uv[1])) - Math.min(...before.map(uv => uv[1]));
+
+    scaleTextureFromProjection(editor, face, initial, [1.5, 0.75], anchor);
+
+    const after = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const afterWidth = Math.max(...after.map(uv => uv[0])) - Math.min(...after.map(uv => uv[0]));
+    const afterHeight = Math.max(...after.map(uv => uv[1])) - Math.min(...after.map(uv => uv[1]));
+    expect(afterWidth).toBeCloseTo(beforeWidth * 1.5);
+    expect(afterHeight).toBeCloseTo(beforeHeight * 0.75);
+    expectUvClose(computeFaceUV(center, face, 128, 128), anchor);
+  });
+
+  test('keeps the opposite classic UV edge fixed during axis scaling', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_floor/concrete');
+    editor.worldspawn.brushes.push(brush);
+    const face = brush.faces[4];
+    const before = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const minU = Math.min(...before.map(uv => uv[0]));
+    const maxU = Math.max(...before.map(uv => uv[0]));
+    const minV = Math.min(...before.map(uv => uv[1]));
+    const maxV = Math.max(...before.map(uv => uv[1]));
+    const initial = cloneTextureProjection(face.textureProjection);
+
+    scaleTextureFromProjection(editor, face, initial, [1.5, 1], [minU, (minV + maxV) / 2]);
+
+    const after = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    expect(Math.min(...after.map(uv => uv[0]))).toBeCloseTo(minU);
+    expect(Math.max(...after.map(uv => uv[0])) - minU).toBeCloseTo((maxU - minU) * 1.5);
+    expect(Math.min(...after.map(uv => uv[1]))).toBeCloseTo(minV);
+    expect(Math.max(...after.map(uv => uv[1]))).toBeCloseTo(maxV);
+  });
+
+  test('builds distinct directional U and V overlay arrows', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_floor/concrete');
+    editor.worldspawn.brushes.push(brush);
+    const face = brush.faces[4];
+    editor.selection = [{ type: 'face', entity: editor.worldspawn, brush, face }];
+
+    const positive = textureAxisLines(editor);
+    expect(positive.u).toHaveLength(6);
+    expect(positive.v).toHaveLength(6);
+    expect(positive.normal).toHaveLength(6);
+    expect(positive.u[1][0]).toBeGreaterThan(positive.u[0][0]);
+    expect(positive.v[1][1]).toBeLessThan(positive.v[0][1]);
+    expect(positive.normal[1][2]).toBeGreaterThan(positive.normal[0][2]);
+
+    if (face.textureProjection.kind !== 'classic') throw new Error('Expected classic projection');
+    face.textureProjection.scaleX = -face.textureProjection.scaleX;
+    const mirrored = textureAxisLines(editor);
+    expect(mirrored.u[1][0]).toBeLessThan(mirrored.u[0][0]);
+  });
+
   test('directly scales brush primitive UV matrices around a fixed anchor', () => {
     const { editor, brush } = editorWithSelectedFace();
     const face = brush.faces[0];
@@ -131,6 +199,48 @@ describe('brushDef texture editing', () => {
     const afterHeight = Math.max(...after.map(uv => uv[1])) - Math.min(...after.map(uv => uv[1]));
     expect(afterHeight).toBeCloseTo(beforeHeight * 0.6);
     expectUvClose(computeFaceUV(center, face, 128, 128), anchor);
+  });
+
+  test('scales brush primitive UV axes independently around a fixed anchor', () => {
+    const { editor, brush } = editorWithSelectedFace();
+    const face = brush.faces[0];
+    const center = face.polygon.reduce<Vec3>(
+      (sum, point) => vec3Add(sum, point),
+      [0, 0, 0],
+    ).map(value => value / face.polygon.length) as Vec3;
+    const anchor = computeFaceUV(center, face, 128, 128);
+    const initial = cloneTextureProjection(face.textureProjection);
+    const before = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const beforeWidth = Math.max(...before.map(uv => uv[0])) - Math.min(...before.map(uv => uv[0]));
+    const beforeHeight = Math.max(...before.map(uv => uv[1])) - Math.min(...before.map(uv => uv[1]));
+
+    scaleTextureFromProjection(editor, face, initial, [0.5, 1.25], anchor);
+
+    const after = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const afterWidth = Math.max(...after.map(uv => uv[0])) - Math.min(...after.map(uv => uv[0]));
+    const afterHeight = Math.max(...after.map(uv => uv[1])) - Math.min(...after.map(uv => uv[1]));
+    expect(afterWidth).toBeCloseTo(beforeWidth * 0.5);
+    expect(afterHeight).toBeCloseTo(beforeHeight * 1.25);
+    expectUvClose(computeFaceUV(center, face, 128, 128), anchor);
+  });
+
+  test('keeps the opposite brush primitive UV edge fixed during axis scaling', () => {
+    const { editor, brush } = editorWithSelectedFace();
+    const face = brush.faces[0];
+    const before = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    const minU = Math.min(...before.map(uv => uv[0]));
+    const maxU = Math.max(...before.map(uv => uv[0]));
+    const minV = Math.min(...before.map(uv => uv[1]));
+    const maxV = Math.max(...before.map(uv => uv[1]));
+    const initial = cloneTextureProjection(face.textureProjection);
+
+    scaleTextureFromProjection(editor, face, initial, [1, 0.6], [(minU + maxU) / 2, maxV]);
+
+    const after = face.polygon.map(point => computeFaceUV(point, face, 128, 128));
+    expect(Math.min(...after.map(uv => uv[0]))).toBeCloseTo(minU);
+    expect(Math.max(...after.map(uv => uv[0]))).toBeCloseTo(maxU);
+    expect(Math.max(...after.map(uv => uv[1]))).toBeCloseTo(maxV);
+    expect(maxV - Math.min(...after.map(uv => uv[1]))).toBeCloseTo((maxV - minV) * 0.6);
   });
 
   test('scales and rotates primitive matrices', () => {

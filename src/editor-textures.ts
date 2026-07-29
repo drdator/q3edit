@@ -216,34 +216,36 @@ export function scaleTextureFromProjection(
   editor: Editor,
   face: BrushFace,
   initialProjection: BrushTextureProjection,
-  factor: number,
+  factor: number | readonly [number, number],
   anchorUv: [number, number],
 ): void {
-  const safeFactor = Math.max(0.02, Math.min(50, factor));
+  const clampFactor = (value: number) => Math.max(0.02, Math.min(50, value));
+  const [safeFactorU, safeFactorV] = typeof factor === 'number'
+    ? [clampFactor(factor), clampFactor(factor)]
+    : [clampFactor(factor[0]), clampFactor(factor[1])];
   editor.transact('Scale texture', () => {
     const next = cloneTextureProjection(initialProjection);
     face.textureProjection = next;
     if (next.kind === 'classic' && initialProjection.kind === 'classic') {
-      const scaled = (value: number) => {
+      const scaled = (value: number, scaleFactor: number) => {
         const sign = value < 0 ? -1 : 1;
-        return sign * Math.max(0.001, Math.abs(value) / safeFactor);
+        return sign * Math.max(0.001, Math.abs(value) / scaleFactor);
       };
-      next.scaleX = scaled(initialProjection.scaleX);
-      next.scaleY = scaled(initialProjection.scaleY);
-      const center = face.polygon.reduce<Vec3>(
-        (sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]],
-        [0, 0, 0],
-      ).map(value => value / Math.max(1, face.polygon.length)) as Vec3;
+      next.scaleX = scaled(initialProjection.scaleX, safeFactorU);
+      next.scaleY = scaled(initialProjection.scaleY, safeFactorV);
       const [width, height] = faceTextureDimensions(editor, face);
-      const currentUv = computeFaceUV(center, face, width, height);
-      next.offsetX += (anchorUv[0] - currentUv[0]) * width;
-      next.offsetY += (anchorUv[1] - currentUv[1]) * height;
+      const anchorPixelsX = anchorUv[0] * width;
+      const anchorPixelsY = anchorUv[1] * height;
+      next.offsetX = anchorPixelsX + (initialProjection.offsetX - anchorPixelsX) * safeFactorU;
+      next.offsetY = anchorPixelsY + (initialProjection.offsetY - anchorPixelsY) * safeFactorV;
     } else if (next.kind === 'brush-primitive' && initialProjection.kind === 'brush-primitive') {
+      const factors = [safeFactorU, safeFactorV] as const;
       for (let axis = 0; axis < 2; axis++) {
-        next.matrix[axis][0] = initialProjection.matrix[axis][0] * safeFactor;
-        next.matrix[axis][1] = initialProjection.matrix[axis][1] * safeFactor;
+        const scaleFactor = factors[axis];
+        next.matrix[axis][0] = initialProjection.matrix[axis][0] * scaleFactor;
+        next.matrix[axis][1] = initialProjection.matrix[axis][1] * scaleFactor;
         next.matrix[axis][2] = anchorUv[axis]
-          + (initialProjection.matrix[axis][2] - anchorUv[axis]) * safeFactor;
+          + (initialProjection.matrix[axis][2] - anchorUv[axis]) * scaleFactor;
       }
     }
     editor.redrawRequested = true;
@@ -735,36 +737,78 @@ export function fitTextureByMapUnits(editor: Editor, unitsPerRepeat: number): vo
   });
 }
 
-export function textureAxisLines(editor: Editor): Vec3[] {
-  const lines: Vec3[] = [];
+export interface TextureAxisOverlayLines {
+  u: Vec3[];
+  v: Vec3[];
+  normal: Vec3[];
+}
+
+export interface TextureAxisDirections {
+  u: Vec3;
+  v: Vec3;
+  uRepeatLength: number;
+  vRepeatLength: number;
+}
+
+export function textureAxisDirections(
+  face: BrushFace,
+  textureWidth = 1,
+  textureHeight = 1,
+): TextureAxisDirections {
+  const [s, t] = textureAxisFromPlane(face.plane.normal);
+  let u: Vec3;
+  let v: Vec3;
+  let uRepeatLength: number;
+  let vRepeatLength: number;
+  if (face.textureProjection.kind === 'classic') {
+    const radians = face.textureProjection.rotation * Math.PI / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const scaleU = face.textureProjection.scaleX || 0.5;
+    const scaleV = face.textureProjection.scaleY || 0.5;
+    u = s.map((value, axis) => (cosine * value - sine * t[axis]) / scaleU) as Vec3;
+    v = s.map((value, axis) => (sine * value + cosine * t[axis]) / scaleV) as Vec3;
+    uRepeatLength = textureWidth * Math.abs(scaleU);
+    vRepeatLength = textureHeight * Math.abs(scaleV);
+  } else {
+    const [uRow, vRow] = face.textureProjection.matrix;
+    u = s.map((value, axis) => value * uRow[0] + t[axis] * uRow[1]) as Vec3;
+    v = s.map((value, axis) => value * vRow[0] + t[axis] * vRow[1]) as Vec3;
+    uRepeatLength = 1 / Math.max(1e-9, vec3Length(u));
+    vRepeatLength = 1 / Math.max(1e-9, vec3Length(v));
+  }
+  u = vec3Scale(u, 1 / Math.max(1e-9, vec3Length(u)));
+  v = vec3Scale(v, 1 / Math.max(1e-9, vec3Length(v)));
+  return { u, v, uRepeatLength, vRepeatLength };
+}
+
+function appendTextureAxisArrow(
+  lines: Vec3[],
+  center: Vec3,
+  direction: Vec3,
+  perpendicular: Vec3,
+  repeatLength: number,
+): void {
+  const length = Math.min(128, Math.max(32, repeatLength));
+  const end = center.map((value, axis) => value + direction[axis] * length) as Vec3;
+  const headLength = Math.min(14, length * 0.24);
+  const headWidth = Math.min(7, headLength * 0.5);
+  const headCenter = end.map((value, axis) => value - direction[axis] * headLength) as Vec3;
+  const headA = headCenter.map((value, axis) => value + perpendicular[axis] * headWidth) as Vec3;
+  const headB = headCenter.map((value, axis) => value - perpendicular[axis] * headWidth) as Vec3;
+  lines.push(center, end, end, headA, end, headB);
+}
+
+export function textureAxisLines(editor: Editor): TextureAxisOverlayLines {
+  const lines: TextureAxisOverlayLines = { u: [], v: [], normal: [] };
   for (const face of getTextureFaces(editor)) {
     if (face.polygon.length < 3) continue;
     const center = [0, 1, 2].map(axis => face.polygon.reduce((sum, point) => sum + point[axis], 0) / face.polygon.length) as Vec3;
-    const [s, t] = textureAxisFromPlane(face.plane.normal);
     const [width, height] = faceTextureDimensions(editor, face);
-    let u: Vec3;
-    let v: Vec3;
-    let uLength: number;
-    let vLength: number;
-    if (face.textureProjection.kind === 'classic') {
-      const radians = face.textureProjection.rotation * Math.PI / 180;
-      const cosine = Math.cos(radians);
-      const sine = Math.sin(radians);
-      u = s.map((value, axis) => cosine * value - sine * t[axis]) as Vec3;
-      v = s.map((value, axis) => sine * value + cosine * t[axis]) as Vec3;
-      uLength = width * Math.abs(face.textureProjection.scaleX || 0.5);
-      vLength = height * Math.abs(face.textureProjection.scaleY || 0.5);
-    } else {
-      const [uRow, vRow] = face.textureProjection.matrix;
-      u = s.map((value, axis) => value * uRow[0] + t[axis] * uRow[1]) as Vec3;
-      v = s.map((value, axis) => value * vRow[0] + t[axis] * vRow[1]) as Vec3;
-      uLength = 1 / Math.max(1e-9, vec3Length(u));
-      vLength = 1 / Math.max(1e-9, vec3Length(v));
-    }
-    u = vec3Scale(u, 1 / Math.max(1e-9, vec3Length(u)));
-    v = vec3Scale(v, 1 / Math.max(1e-9, vec3Length(v)));
-    lines.push(center, center.map((value, axis) => value + u[axis] * Math.min(512, uLength)) as Vec3);
-    lines.push(center, center.map((value, axis) => value + v[axis] * Math.min(512, vLength)) as Vec3);
+    const { u, v, uRepeatLength, vRepeatLength } = textureAxisDirections(face, width, height);
+    appendTextureAxisArrow(lines.u, center, u, v, uRepeatLength);
+    appendTextureAxisArrow(lines.v, center, v, u, vRepeatLength);
+    appendTextureAxisArrow(lines.normal, center, face.plane.normal, u, 48);
   }
   return lines;
 }
