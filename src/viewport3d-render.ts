@@ -14,6 +14,7 @@ import {
 } from './viewport3d-projection';
 
 export interface DrawGroup {
+  kind: 'geometry' | 'entity-marker';
   textureName: string;
   start: number;
   count: number;
@@ -22,6 +23,12 @@ export interface DrawGroup {
   blendMode: BlendMode;
   invisible: boolean;
   solidOverride: boolean;
+}
+
+export interface EntityMarkerWireDraw {
+  start: number;
+  count: number;
+  color: [number, number, number];
 }
 
 export interface LightRadiusDraw {
@@ -103,6 +110,7 @@ export interface Viewport3DRenderContext {
   lineCount: number;
   wireVAO: WebGLVertexArrayObject;
   wireCount: number;
+  entityMarkerWireDraws: EntityMarkerWireDraw[];
   faceSelVAO: WebGLVertexArrayObject;
   faceSelCount: number;
   vtxHandleVAO: WebGLVertexArrayObject;
@@ -186,17 +194,24 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.bindVertexArray(ctx.solidVAO);
 
     const drawGroup = (group: DrawGroup) => {
+      const preserveEntityMarker = editorFill && group.kind === 'entity-marker';
       const tm = ctx.editor.textureManager;
       if (tm) {
-        const textureName = ctx.editor.display.rendererMode === 'textured' ? group.textureName : '__white';
+        const textureName = ctx.editor.display.rendererMode === 'textured' || preserveEntityMarker
+          ? group.textureName
+          : '__white';
         const texInfo = tm.get(textureName);
         tm.bind(texInfo, ctx.editor.display.textureFiltering);
       }
+      ctx.gl.uniform1i(ctx.solidDiagnosticModeLoc, preserveEntityMarker ? 0 : diagnosticMode);
       const hideSelection = ctx.fullscreen && ctx.fullscreenMode !== 'edit';
       ctx.gl.uniform1f(ctx.solidSelLoc, !hideSelection && group.selected ? 1.0 : 0.0);
       ctx.gl.uniform1f(ctx.solidFaceSelLoc, !hideSelection && group.faceSelected ? 1.0 : 0.0);
       const isDimInvis = group.invisible && ctx.editor.invisibleMode === 'dim';
-      ctx.gl.uniform1f(ctx.solidAlphaOverrideLoc, isDimInvis ? 0.3 : editorFill ? 0.22 : 0.0);
+      ctx.gl.uniform1f(
+        ctx.solidAlphaOverrideLoc,
+        isDimInvis ? 0.3 : editorFill && !preserveEntityMarker ? 0.22 : 0.0,
+      );
       ctx.gl.uniform1f(ctx.solidSolidOverrideLoc, group.solidOverride ? 1.0 : 0.0);
       ctx.gl.drawArrays(ctx.gl.TRIANGLES, group.start, group.count);
     };
@@ -266,6 +281,12 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       ctx.gl.disable(ctx.gl.DEPTH_TEST);
     }
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.wireCount);
+    if (ctx.editor.display.rendererMode === 'editor-fill') {
+      for (const draw of ctx.entityMarkerWireDraws) {
+        ctx.gl.uniform3f(ctx.lineColorLoc, draw.color[0], draw.color[1], draw.color[2]);
+        ctx.gl.drawArrays(ctx.gl.LINES, draw.start, draw.count);
+      }
+    }
     if (!ctx.xray && ctx.editor.display.rendererMode === 'editor-fill') {
       ctx.gl.enable(ctx.gl.DEPTH_TEST);
     }

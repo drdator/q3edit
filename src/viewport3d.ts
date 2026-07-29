@@ -18,7 +18,12 @@ import {
   pickEntityAt3D,
   pickPatchAt3D,
 } from './viewport3d-picking';
-import { DrawGroup, LightRadiusDraw, renderViewport3D } from './viewport3d-render';
+import {
+  DrawGroup,
+  EntityMarkerWireDraw,
+  LightRadiusDraw,
+  renderViewport3D,
+} from './viewport3d-render';
 import { buildViewport3DGeometry } from './viewport3d-geometry';
 import {
   getViewport3DForward,
@@ -138,6 +143,7 @@ export class Viewport3D {
   private wireVAO!: WebGLVertexArrayObject;
   private wireVBO!: WebGLBuffer;
   private wireCount = 0;
+  private entityMarkerWireDraws: EntityMarkerWireDraw[] = [];
 
   private faceSelVAO!: WebGLVertexArrayObject;
   private faceSelVBO!: WebGLBuffer;
@@ -588,6 +594,7 @@ export class Viewport3D {
     this.paintPreviewCount = result.paintPreviewCount;
     this.lineCount = result.lineCount;
     this.wireCount = result.wireCount;
+    this.entityMarkerWireDraws = result.entityMarkerWireDraws;
     this.faceSelCount = result.faceSelCount;
     this.vtxHandleCount = result.vtxHandleCount;
     this.vtxHandleSelCount = result.vtxHandleSelCount;
@@ -681,6 +688,7 @@ export class Viewport3D {
       lineCount: this.lineCount,
       wireVAO: this.wireVAO,
       wireCount: this.wireCount,
+      entityMarkerWireDraws: this.entityMarkerWireDraws,
       faceSelVAO: this.faceSelVAO,
       faceSelCount: this.faceSelCount,
       vtxHandleVAO: this.vtxHandleVAO,

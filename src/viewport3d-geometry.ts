@@ -3,7 +3,7 @@ import { Editor } from './editor';
 import { BrushFace, computeFaceUV } from './brush';
 import { entityColor, parseLightColor } from './entity';
 import { terrainDefCellTexture, type Patch } from './patch';
-import { DrawGroup, LightRadiusDraw } from './viewport3d-render';
+import { DrawGroup, EntityMarkerWireDraw, LightRadiusDraw } from './viewport3d-render';
 import { buildModelGeometry } from './model-geometry';
 import { bspOverlayLines } from './bsp-inspection';
 import { lightVolumeSegments, resolveLightVolume } from './light-volume';
@@ -89,6 +89,7 @@ export interface Viewport3DGeometryBuild {
   paintPreviewCount: number;
   lineCount: number;
   wireCount: number;
+  entityMarkerWireDraws: EntityMarkerWireDraw[];
   faceSelCount: number;
   vtxHandleCount: number;
   vtxHandleSelCount: number;
@@ -258,6 +259,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   }
 
   const entityVertsByColor = new Map<string, number[]>();
+  const entityWireVertsByColor = new Map<string, number[]>();
   const modelWireVerts: number[] = [];
   for (const entity of ctx.editor.nonWorldspawnEntities()) {
     if (!ctx.editor.isEntityVisibleIn3D(entity)) continue;
@@ -285,6 +287,11 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
       verts = [];
       entityVertsByColor.set(color, verts);
     }
+    let wireVerts = entityWireVertsByColor.get(color);
+    if (!wireVerts) {
+      wireVerts = [];
+      entityWireVertsByColor.set(color, wireVerts);
+    }
 
     const s = 8;
     const top: Vec3 = [origin[0], origin[1], origin[2] + s];
@@ -305,7 +312,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
       [bottom, front, left, [-0.33, 0.33, -0.57]],
     ];
     for (const [v0, v1, v2, n] of tris) {
-      modelWireVerts.push(...v0, ...v1, ...v1, ...v2, ...v2, ...v0);
+      wireVerts.push(...v0, ...v1, ...v1, ...v2, ...v2, ...v0);
       for (const v of [v0, v1, v2]) {
         verts.push(v[0], v[1], v[2], n[0], n[1], n[2], 0, 0);
       }
@@ -331,7 +338,17 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
         blendMode = 'blend';
       }
       const solidOverride = invisible && ctx.editor.invisibleMode === 'hide' && (selected || faceSelected);
-      drawGroups.push({ textureName: texName, start, count, selected, faceSelected, blendMode, invisible, solidOverride });
+      drawGroups.push({
+        kind: 'geometry',
+        textureName: texName,
+        start,
+        count,
+        selected,
+        faceSelected,
+        blendMode,
+        invisible,
+        solidOverride,
+      });
     }
   }
 
@@ -340,6 +357,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     const start = allVerts.length / 8;
     for (const v of verts) allVerts.push(v);
     drawGroups.push({
+      kind: 'entity-marker',
       textureName: `__entity_${color}`,
       start,
       count: verts.length / 8,
@@ -488,6 +506,19 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
 
   const selLineVerts: number[] = [];
   const wireVerts: number[] = [...modelWireVerts];
+  const entityMarkerWireDraws: EntityMarkerWireDraw[] = [];
+  for (const [color, verts] of entityWireVertsByColor) {
+    const start = wireVerts.length / 3;
+    wireVerts.push(...verts);
+    const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color);
+    entityMarkerWireDraws.push({
+      start,
+      count: verts.length / 3,
+      color: match
+        ? [Number.parseInt(match[1], 16) / 255, Number.parseInt(match[2], 16) / 255, Number.parseInt(match[3], 16) / 255]
+        : [0.53, 0.53, 0.53],
+    });
+  }
   const faceSelLineVerts: number[] = [];
 
   for (const { entity, brush } of brushCandidates) {
@@ -655,6 +686,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     paintPreviewCount,
     lineCount,
     wireCount,
+    entityMarkerWireDraws,
     faceSelCount,
     vtxHandleCount,
     vtxHandleSelCount,
