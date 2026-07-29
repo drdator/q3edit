@@ -9,6 +9,7 @@ import {
   surfacePreviewLimit,
   surfaceCameraSide,
   surfaceCameraUvBasis,
+  surfaceOutsideUvBasis,
   surfaceResizeCursor,
   surfaceScaledDragPoint,
   surfaceScaleFactor,
@@ -41,6 +42,23 @@ describe('UV editor view model', () => {
     expect(surfaceCameraUvBasis(north!, [64, 256, 64], -Math.PI / 2, 0).axisY[1]).toBeCloseTo(1);
     expect(surfaceCameraUvBasis(north!, [64, 0, 64], Math.PI / 2, 0).axisX[0]).toBeCloseTo(1);
     expect(surfaceCameraUvBasis(north!, [64, 0, 64], Math.PI / 2, 0).axisY[1]).toBeCloseTo(1);
+  });
+
+  it('uses a stable outside-facing orientation for walls, floors, and ceilings', () => {
+    const brush = createBoxBrush([0, 0, 0], [128, 128, 128], 'base_wall/concrete');
+    const north = brush.faces.find(face => face.plane.normal[1] > 0.9)!;
+    const south = brush.faces.find(face => face.plane.normal[1] < -0.9)!;
+    const floor = brush.faces.find(face => face.plane.normal[2] > 0.9)!;
+    const ceiling = brush.faces.find(face => face.plane.normal[2] < -0.9)!;
+
+    expect(surfaceOutsideUvBasis(north).axisX[0]).toBeCloseTo(-1);
+    expect(surfaceOutsideUvBasis(north).axisY[1]).toBeCloseTo(1);
+    expect(surfaceOutsideUvBasis(south).axisX[0]).toBeCloseTo(1);
+    expect(surfaceOutsideUvBasis(south).axisY[1]).toBeCloseTo(1);
+    expect(surfaceOutsideUvBasis(floor).axisX[0]).toBeCloseTo(1);
+    expect(surfaceOutsideUvBasis(floor).axisY[1]).toBeCloseTo(1);
+    expect(surfaceOutsideUvBasis(ceiling).axisX[0]).toBeCloseTo(-1);
+    expect(surfaceOutsideUvBasis(ceiling).axisY[1]).toBeCloseTo(1);
   });
 
   it('round-trips UV coordinates through a mirrored viewport', () => {

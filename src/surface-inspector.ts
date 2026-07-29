@@ -56,6 +56,52 @@ export interface SurfaceCameraUvBasis {
   axisY: [number, number];
 }
 
+function normalizedUvBasis(
+  screenU: readonly [number, number],
+  screenV: readonly [number, number],
+): SurfaceCameraUvBasis {
+  const uLength = Math.hypot(screenU[0], screenU[1]);
+  const vLength = Math.hypot(screenV[0], screenV[1]);
+  const axisX: [number, number] = uLength > 1e-5
+    ? [screenU[0] / uLength, screenU[1] / uLength]
+    : [1, 0];
+  let axisY: [number, number] = vLength > 1e-5
+    ? [screenV[0] / vLength, screenV[1] / vLength]
+    : [-axisX[1], axisX[0]];
+  const determinant = axisX[0] * axisY[1] - axisX[1] * axisY[0];
+  if (Math.abs(determinant) < 0.15) {
+    const sign = determinant < 0 ? -1 : 1;
+    axisY = [-axisX[1] * sign, axisX[0] * sign];
+  }
+  return { axisX, axisY };
+}
+
+export function surfaceOutsideUvBasis(face: BrushFace): SurfaceCameraUvBasis {
+  const { u, v } = textureAxisDirections(face);
+  const normal = face.plane.normal;
+  const forward = normal.map(value => -value) as Vec3;
+  const projectedUp = (reference: Vec3): Vec3 => {
+    const alongNormal = vec3Dot(reference, normal);
+    return reference.map((value, axis) => value - normal[axis] * alongNormal) as Vec3;
+  };
+  let up = projectedUp([0, 0, 1]);
+  let upLength = Math.hypot(...up);
+  if (upLength < 0.2) {
+    up = projectedUp([0, 1, 0]);
+    upLength = Math.hypot(...up);
+  }
+  if (upLength < 1e-5) {
+    up = projectedUp([1, 0, 0]);
+    upLength = Math.hypot(...up);
+  }
+  up = up.map(value => value / Math.max(1e-9, upLength)) as Vec3;
+  const right = vec3Cross(forward, up);
+  return normalizedUvBasis(
+    [vec3Dot(u, right), -vec3Dot(u, up)],
+    [vec3Dot(v, right), -vec3Dot(v, up)],
+  );
+}
+
 export function surfaceCameraUvBasis(
   face: BrushFace,
   cameraPosition: Vec3,
@@ -95,20 +141,7 @@ export function surfaceCameraUvBasis(
   };
   const screenU = projectDirection(u);
   const screenV = projectDirection(v);
-  const uLength = Math.hypot(screenU[0], screenU[1]);
-  const vLength = Math.hypot(screenV[0], screenV[1]);
-  const axisX: [number, number] = uLength > 1e-5
-    ? [screenU[0] / uLength, screenU[1] / uLength]
-    : [1, 0];
-  let axisY: [number, number] = vLength > 1e-5
-    ? [screenV[0] / vLength, screenV[1] / vLength]
-    : [-axisX[1], axisX[0]];
-  const determinant = axisX[0] * axisY[1] - axisX[1] * axisY[0];
-  if (Math.abs(determinant) < 0.15) {
-    const sign = determinant < 0 ? -1 : 1;
-    axisY = [-axisX[1] * sign, axisX[0] * sign];
-  }
-  return { axisX, axisY };
+  return normalizedUvBasis(screenU, screenV);
 }
 
 export function surfaceDragMultiplier(fineControl: boolean, coarseControl = false): number {
@@ -679,8 +712,11 @@ export class SurfaceInspector {
     this.matchCameraOption.className = 'uv-editor-option surface-inspector-match-camera';
     this.matchCameraOrientation = document.createElement('input');
     this.matchCameraOrientation.type = 'checkbox';
-    this.matchCameraOrientation.checked = true;
-    this.matchCameraOrientation.setAttribute('aria-label', 'Orient the UV preview to match the current 3D camera');
+    this.matchCameraOrientation.checked = false;
+    this.matchCameraOrientation.setAttribute(
+      'aria-label',
+      'Match the current 3D camera instead of viewing the surface from outside',
+    );
     this.matchCameraOption.append(this.matchCameraOrientation, document.createTextNode('Match 3D view'));
     this.overlayOption = document.createElement('label');
     this.overlayOption.className = 'uv-editor-option surface-inspector-overlay';
@@ -1354,7 +1390,7 @@ export class SurfaceInspector {
           this.editor.camera3d.yaw,
           this.editor.camera3d.pitch,
         )
-      : { axisX: [1, 0] as [number, number], axisY: [0, 1] as [number, number] };
+      : surfaceOutsideUvBasis(face);
     const fittedViewport: UvViewport = fitUvViewport(
       this.uvPolygon,
       this.uvCanvas.width,
@@ -1461,8 +1497,9 @@ export class SurfaceInspector {
       : 'camera on back/inside · screen view is mirrored';
     const orientationHint = this.matchCameraOrientation.checked
       ? 'matched to 3D axes'
-      : 'canonical UV orientation';
-    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${orientationHint} · ${sideHint} · ${projectionSummary(face)}`;
+      : 'viewed from outside';
+    const cameraHint = this.matchCameraOrientation.checked ? ` · ${sideHint}` : '';
+    this.uvStatus.textContent = `${face.texture} · ${textureWidth}×${textureHeight} · ${this.autoFitSurface.checked ? 'auto-fit' : 'texture space'} · ${orientationHint}${cameraHint} · ${projectionSummary(face)}`;
   }
 
   private bindUvCanvas(): void {
