@@ -18,6 +18,7 @@ import {
 } from './display-policy';
 import { DEFAULT_GLOBAL_PREFERENCES, loadGlobalPreferences, saveGlobalPreferences, type GlobalPreferences } from './preferences';
 import { DEFAULT_PROJECT_CONFIGURATION, loadProjectConfiguration, resolveProjectPreferences, type ProjectConfiguration } from './project-config';
+import type { IsometricDirection, Viewport3DProjection } from './viewport3d-projection';
 import { BrushVertex } from './vertex';
 import {
   addBrushToSelection as addBrushSelectionItem,
@@ -539,10 +540,19 @@ export class Editor {
     this.redrawRequested = true;
   }
 
+  toggleTextured2D(): void {
+    this.display.textured2D = !this.display.textured2D;
+    saveDisplayPreferences(this.display);
+    this.persistCurrentPreferences();
+    this.redrawRequested = true;
+    this.statusMessage = `Textured 2D views ${this.display.textured2D ? 'enabled' : 'disabled'}`;
+  }
+
   // 3D camera state (written by Viewport3D, read by Viewport2D)
   camera3d: { position: Vec3; yaw: number; pitch: number } = {
     position: [80, 80, 120], yaw: Math.PI * 0.25, pitch: -0.2,
   };
+  cameraProjection3d: Viewport3DProjection = 'perspective';
   cameraPlayback: CameraPlaybackState | null = null;
 
   // Fullscreen 3D walkthrough mode (set by Viewport3D)
@@ -560,6 +570,10 @@ export class Editor {
   private centerOnSelectionCallbacks: (() => void)[] = [];
   private locatePointCallbacks: ((point: Vec3, lookAt: Vec3 | null) => void)[] = [];
   private cameraPlaybackSeekCallbacks: ((pose: CameraPose) => void)[] = [];
+  private cameraProjection3dCallbacks: ((
+    projection: Viewport3DProjection,
+    isometricDirection?: IsometricDirection,
+  ) => void)[] = [];
 
   get worldspawn(): Entity {
     const worldspawn = this.entities[0];
@@ -1313,6 +1327,24 @@ export class Editor {
 
   onCameraPlaybackSeek(callback: (pose: CameraPose) => void): void {
     this.cameraPlaybackSeekCallbacks.push(callback);
+  }
+
+  setCameraProjection3D(
+    projection: Viewport3DProjection,
+    isometricDirection?: IsometricDirection,
+  ): void {
+    this.cameraProjection3d = projection;
+    for (const callback of this.cameraProjection3dCallbacks) callback(projection, isometricDirection);
+    this.statusMessage = isometricDirection
+      ? `3D view: isometric ${isometricDirection}`
+      : `3D view: ${projection}`;
+    this.redrawRequested = true;
+  }
+
+  onCameraProjection3DChange(
+    callback: (projection: Viewport3DProjection, isometricDirection?: IsometricDirection) => void,
+  ): void {
+    this.cameraProjection3dCallbacks.push(callback);
   }
 
   loadPointfileText(text: string, statusPrefix?: string): boolean {

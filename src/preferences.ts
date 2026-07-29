@@ -147,11 +147,17 @@ function displayPreferences(value: unknown, fallback = DEFAULT_DISPLAY_PREFERENC
   for (const category of DISPLAY_CATEGORIES) {
     if (typeof categoriesSource[category] === 'boolean') categories[category] = categoriesSource[category] as boolean;
   }
-  const rendererMode = ['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'].includes(String(source.rendererMode))
+  const rendererMode = ['wireframe', 'editor-fill', 'flat', 'textured', 'lightmap', 'overdraw'].includes(String(source.rendererMode))
     ? source.rendererMode as RendererMode : fallback.rendererMode;
   const textureFiltering = ['nearest', 'linear', 'trilinear'].includes(String(source.textureFiltering))
     ? source.textureFiltering as TextureFiltering : fallback.textureFiltering;
-  return { categories, rendererMode, textureFiltering, dynamicLights: source.dynamicLights === true };
+  return {
+    categories,
+    rendererMode,
+    textureFiltering,
+    dynamicLights: source.dynamicLights === true,
+    textured2D: source.textured2D === true,
+  };
 }
 
 export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {

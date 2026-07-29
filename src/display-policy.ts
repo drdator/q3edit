@@ -10,7 +10,7 @@ export type DisplayCategory =
   | 'triggers' | 'translucent' | 'decals' | 'pointEntities'
   | 'structural' | 'areaportals' | 'visportals' | 'clusterportals'
   | 'botclips' | 'funcGroups' | 'lightgrid' | 'lightRadii' | 'textureAxes';
-export type RendererMode = 'wireframe' | 'flat' | 'textured' | 'lightmap' | 'overdraw';
+export type RendererMode = 'wireframe' | 'editor-fill' | 'flat' | 'textured' | 'lightmap' | 'overdraw';
 export type TextureFiltering = 'nearest' | 'linear' | 'trilinear';
 
 export interface DisplayPreferences {
@@ -18,6 +18,7 @@ export interface DisplayPreferences {
   rendererMode: RendererMode;
   textureFiltering: TextureFiltering;
   dynamicLights: boolean;
+  textured2D: boolean;
 }
 
 export const DISPLAY_CATEGORIES: readonly DisplayCategory[] = [
@@ -36,6 +37,7 @@ export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   rendererMode: 'textured',
   textureFiltering: 'trilinear',
   dynamicLights: false,
+  textured2D: false,
 };
 
 const STORAGE_KEY = 'q3edit.display.v1';
@@ -59,11 +61,17 @@ export function loadDisplayPreferences(storage: Pick<Storage, 'getItem'> | null 
     for (const category of DISPLAY_CATEGORIES) {
       if (typeof parsed.categories?.[category] === 'boolean') categories[category] = parsed.categories[category];
     }
-    const rendererMode = ['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'].includes(parsed.rendererMode ?? '')
+    const rendererMode = ['wireframe', 'editor-fill', 'flat', 'textured', 'lightmap', 'overdraw'].includes(parsed.rendererMode ?? '')
       ? parsed.rendererMode as RendererMode : DEFAULT_DISPLAY_PREFERENCES.rendererMode;
     const textureFiltering = ['nearest', 'linear', 'trilinear'].includes(parsed.textureFiltering ?? '')
       ? parsed.textureFiltering as TextureFiltering : DEFAULT_DISPLAY_PREFERENCES.textureFiltering;
-    return { categories, rendererMode, textureFiltering, dynamicLights: parsed.dynamicLights === true };
+    return {
+      categories,
+      rendererMode,
+      textureFiltering,
+      dynamicLights: parsed.dynamicLights === true,
+      textured2D: parsed.textured2D === true,
+    };
   } catch {
     return structuredClone(DEFAULT_DISPLAY_PREFERENCES);
   }

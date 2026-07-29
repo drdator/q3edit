@@ -1,6 +1,7 @@
-import { Vec3, vec3Add, vec3Copy, vec3Dot, vec3Length, vec3Scale, vec3Sub } from './math';
+import { Vec3, vec3Add, vec3Copy, vec3Cross, vec3Dot, vec3Length, vec3Scale, vec3Sub } from './math';
 import { Editor } from './editor';
 import { CROUCH_VIEWHEIGHT, PHYSICS_STEP, TraceFn, TraceResult, VIEWHEIGHT, WalkState, pmove } from './q3-movement';
+import type { Viewport3DProjection } from './viewport3d-projection';
 
 export interface Viewport3DNavigationContext {
   editor: Editor;
@@ -9,6 +10,7 @@ export interface Viewport3DNavigationContext {
   looking: boolean;
   keys: Set<string>;
   moveSpeed: number;
+  projection: Viewport3DProjection;
   position: Vec3;
   yaw: number;
   pitch: number;
@@ -242,12 +244,22 @@ export function updateViewport3DCamera(ctx: Viewport3DNavigationContext, dt: num
     const right = getViewport3DRight(ctx.yaw);
     const boostSpeed = !ctx.fullscreen && (ctx.keys.has('control') || ctx.keys.has('meta')) ? speed * 3 / sprint : speed;
 
-    if (ctx.keys.has('w')) position = vec3Add(position, vec3Scale(forward, boostSpeed));
-    if (ctx.keys.has('s')) position = vec3Add(position, vec3Scale(forward, -boostSpeed));
-    if (ctx.keys.has('d')) position = vec3Add(position, vec3Scale(right, boostSpeed));
-    if (ctx.keys.has('a')) position = vec3Add(position, vec3Scale(right, -boostSpeed));
-    if (ctx.keys.has('q') || ctx.keys.has(' ')) position[2] += boostSpeed;
-    if (ctx.keys.has('e') || ctx.keys.has('c') || (!ctx.fullscreen && ctx.keys.has('shift'))) position[2] -= boostSpeed;
+    if (ctx.projection === 'orthographic' && !ctx.fullscreen) {
+      const up = vec3Cross(right, forward);
+      if (ctx.keys.has('w')) position = vec3Add(position, vec3Scale(up, boostSpeed));
+      if (ctx.keys.has('s')) position = vec3Add(position, vec3Scale(up, -boostSpeed));
+      if (ctx.keys.has('d')) position = vec3Add(position, vec3Scale(right, boostSpeed));
+      if (ctx.keys.has('a')) position = vec3Add(position, vec3Scale(right, -boostSpeed));
+      if (ctx.keys.has('q') || ctx.keys.has(' ')) position = vec3Add(position, vec3Scale(forward, boostSpeed));
+      if (ctx.keys.has('e') || ctx.keys.has('c')) position = vec3Add(position, vec3Scale(forward, -boostSpeed));
+    } else {
+      if (ctx.keys.has('w')) position = vec3Add(position, vec3Scale(forward, boostSpeed));
+      if (ctx.keys.has('s')) position = vec3Add(position, vec3Scale(forward, -boostSpeed));
+      if (ctx.keys.has('d')) position = vec3Add(position, vec3Scale(right, boostSpeed));
+      if (ctx.keys.has('a')) position = vec3Add(position, vec3Scale(right, -boostSpeed));
+      if (ctx.keys.has('q') || ctx.keys.has(' ')) position[2] += boostSpeed;
+      if (ctx.keys.has('e') || ctx.keys.has('c') || (!ctx.fullscreen && ctx.keys.has('shift'))) position[2] -= boostSpeed;
+    }
   }
 
   return {

@@ -185,10 +185,16 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
   }
 
   const display = section('Display & renderer');
-  const renderer = select(['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'], preferences.display.rendererMode);
+  const renderer = select(['wireframe', 'editor-fill', 'flat', 'textured', 'lightmap', 'overdraw'], preferences.display.rendererMode);
   const filtering = select(['nearest', 'linear', 'trilinear'], preferences.display.textureFiltering);
   const lights = checkbox(preferences.display.dynamicLights);
-  display.append(labeled('Renderer', renderer), labeled('Texture filtering', filtering), labeled('Dynamic lights', lights));
+  const textured2D = checkbox(preferences.display.textured2D);
+  display.append(
+    labeled('Renderer', renderer),
+    labeled('Texture filtering', filtering),
+    labeled('Textured 2D views', textured2D),
+    labeled('Dynamic lights', lights),
+  );
   const categoryControls = new Map<DisplayCategory, HTMLInputElement>();
   const categoryGrid = document.createElement('div'); categoryGrid.className = 'preferences-checkbox-grid';
   for (const category of DISPLAY_CATEGORIES) {
@@ -274,7 +280,8 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
         viewportLayout: layout.value,
         theme: { preset: theme.value as ThemePreset, colors: Object.fromEntries([...colorControls].map(([name, control]) => [name, control.value])) },
         display: {
-          rendererMode: renderer.value, textureFiltering: filtering.value, dynamicLights: lights.checked,
+          rendererMode: renderer.value, textureFiltering: filtering.value,
+          textured2D: textured2D.checked, dynamicLights: lights.checked,
           categories: Object.fromEntries([...categoryControls].map(([name, control]) => [name, control.checked])),
         },
       });

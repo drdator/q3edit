@@ -30,7 +30,7 @@ uniform float uFaceSelected;
 uniform float uUseAlpha;
 uniform float uAlphaOverride; // 0.0 = no override, >0 = forced alpha
 uniform float uSolidOverride; // 1.0 = replace texture with solid color
-uniform int uDiagnosticMode; // 0 normal, 1 lighting-only, 2 overdraw
+uniform int uDiagnosticMode; // 0 normal, 1 lighting-only, 2 overdraw, 3 editor fill
 uniform float uDynamicLightingEnabled;
 uniform int uDynamicLightCount;
 uniform vec3 uDynamicLightPos[${DYNAMIC_LIGHT_LIMIT}];
@@ -52,6 +52,7 @@ void main() {
     color += texColor.rgb * uDynamicLightColor[i] * attenuation * attenuation;
   }
 
+  if (uDiagnosticMode == 3) color = vec3(0.235, 0.314, 0.392);
   // Orange tint for selected brushes
   color = mix(color, vec3(1.0, 0.6, 0.2), uSelected * 0.25);
   // Cyan tint for selected face

@@ -10,6 +10,7 @@ import { openGeometryExportDialog } from './geometry-export-dialog';
 import type { ViewportLayout } from './preferences';
 import { openShaderEditorDialog } from './shader-editor-dialog';
 import { openPatchDeformDialog } from './patch-deform-dialog';
+import type { IsometricDirection, Viewport3DProjection } from './viewport3d-projection';
 
 export interface EditorCommandContext {
   editor: Editor;
@@ -139,10 +140,14 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
       execute: ({ editor }) => editor.resetDisplayFilters(),
     },
   );
-  const rendererModes: RendererMode[] = ['wireframe', 'flat', 'textured', 'lightmap', 'overdraw'];
+  const rendererModes: RendererMode[] = ['wireframe', 'editor-fill', 'flat', 'textured', 'lightmap', 'overdraw'];
   const rendererCommands: CommandDefinition<EditorCommandContext>[] = rendererModes.map((mode, index) => ({
     id: `view.renderer.${mode}`,
-    label: mode === 'flat' ? 'Flat Shaded' : mode === 'lightmap' ? 'Lighting Only' : mode === 'overdraw' ? 'Overdraw' : mode[0].toUpperCase() + mode.slice(1),
+    label: mode === 'editor-fill' ? 'Editor Fill'
+      : mode === 'flat' ? 'Flat Shaded'
+        : mode === 'lightmap' ? 'Lighting Only'
+          : mode === 'overdraw' ? 'Overdraw'
+            : mode[0].toUpperCase() + mode.slice(1),
     menu: menu('View', 200 + index, 'renderer', 'Renderer Mode'),
     checked: ({ editor }) => editor.display.rendererMode === mode,
     execute: ({ editor }) => editor.setRendererMode(mode),
@@ -172,6 +177,29 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
       editor.compiledBspOverlay = mode;
       editor.redrawRequested = true;
     },
+  }));
+  const projectionModes: Array<[Viewport3DProjection, string]> = [
+    ['perspective', 'Perspective'],
+    ['orthographic', 'Orthographic'],
+  ];
+  const projectionCommands: CommandDefinition<EditorCommandContext>[] = projectionModes.map(([projection, label], index) => ({
+    id: `view.camera-projection.${projection}`,
+    label,
+    menu: menu('View', 76 + index, 'camera-projection', '3D Projection'),
+    checked: ({ editor }) => editor.cameraProjection3d === projection,
+    execute: ({ editor }) => editor.setCameraProjection3D(projection),
+  }));
+  const isometricDirections: Array<[IsometricDirection, string]> = [
+    ['northeast', 'Northeast'],
+    ['northwest', 'Northwest'],
+    ['southeast', 'Southeast'],
+    ['southwest', 'Southwest'],
+  ];
+  const isometricCommands: CommandDefinition<EditorCommandContext>[] = isometricDirections.map(([direction, label], index) => ({
+    id: `view.camera-isometric.${direction}`,
+    label,
+    menu: menu('View', 80 + index, 'camera-isometric', 'Isometric View'),
+    execute: ({ editor }) => editor.setCameraProjection3D('orthographic', direction),
   }));
   const commands: CommandDefinition<EditorCommandContext>[] = [
     { id: 'file.new', label: 'New', defaultShortcut: 'Mod+N', menu: menu('File', 0, 'document'), execute: ({ editor }) => { editor.newMap(); editor.createDefaultMap(); } },
@@ -270,6 +298,9 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'view.paste-to-camera', label: 'Paste at Camera', menu: menu('View', 73, 'camera', 'Camera'), execute: ({ editor }) => editor.pasteClipboardAtCamera() },
     { id: 'view.camera-floor-up', label: 'Camera Up One Floor', menu: menu('View', 74, 'camera', 'Camera'), execute: ({ editor }) => editor.moveCameraFloor(1) },
     { id: 'view.camera-floor-down', label: 'Camera Down One Floor', menu: menu('View', 75, 'camera', 'Camera'), execute: ({ editor }) => editor.moveCameraFloor(-1) },
+    ...projectionCommands,
+    ...isometricCommands,
+    { id: 'view.textured-2d', label: 'Textured 2D Views', menu: menu('View', 219, 'renderer'), checked: ({ editor }) => editor.display.textured2D, execute: ({ editor }) => editor.toggleTextured2D() },
     { id: 'view.dynamic-lights', label: 'Dynamic Light Preview', menu: menu('View', 220, 'renderer'), checked: ({ editor }) => editor.display.dynamicLights, execute: ({ editor }) => editor.toggleDynamicLights() },
     ...displayCommands,
     ...rendererCommands,

@@ -1,14 +1,23 @@
 import { Editor } from './editor';
-import { Brush } from './brush';
+import { Brush, computeFaceUV } from './brush';
 import { Entity, entityColor, entityOrigin, lightColorCSS } from './entity';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
-import { Patch } from './patch';
+import {
+  Patch,
+  terrainDefCellTexture,
+  terrainDefCellTriangleIndices,
+} from './patch';
 import { collectBrushEdges } from './vertex';
 import { leafAtPoint } from './bsp-inspection';
 import { CONTENTS_DETAIL } from './map-flags';
 import { editorThemeColors, themeRgba } from './theme-colors';
 import { lightVolumeSegments, resolveLightVolume } from './light-volume';
 import { planeFromPoints } from './math';
+import {
+  affineTransformFromTriangles,
+  viewport2DTextureImage,
+  type Point2D,
+} from './viewport2d-textures';
 
 interface GeoSnapLine {
   axis: 'h' | 'v';
@@ -48,8 +57,7 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
   ctx.ctx.fillStyle = editorThemeColors().viewport;
   ctx.ctx.fillRect(0, 0, w, h);
 
-  drawGrid(ctx, w, h);
-  drawCompiledBspOverlay(ctx);
+  if (ctx.editor.display.textured2D) drawTexturedSurfaces(ctx);
 
   for (const { entity, brush } of ctx.editor.allBrushes()) {
     if (!ctx.editor.isBrushVisible(brush, entity)) continue;
@@ -60,6 +68,9 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
     if (!ctx.editor.isPatchVisible(patch, entity)) continue;
     drawPatch(ctx, patch, ctx.editor.isPatchSelected(patch, entity));
   }
+
+  drawGrid(ctx, w, h);
+  drawCompiledBspOverlay(ctx);
 
   if (ctx.editor.display.categories.paths) drawPathLines(ctx);
   if (ctx.editor.display.categories.paths && ctx.editor.display.categories.curves) drawPathCurves(ctx);
@@ -114,6 +125,143 @@ export function renderViewport2D(ctx: Viewport2DRenderContext): void {
   drawCamera(ctx);
 
   ctx.ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+interface TexturedSurface {
+  texture: string;
+  points: Point2D[];
+  uvs: Point2D[];
+  depth: number;
+  brushFace?: {
+    face: Brush['faces'][number];
+    polygon: Brush['faces'][number]['polygon'];
+  };
+}
+
+function screenPolygon(ctx: Viewport2DRenderContext, points: readonly [number, number, number][]): Point2D[] {
+  return points.map(point => ctx.worldToScreen(point[ctx.axisH], point[ctx.axisV]));
+}
+
+function addPatchTriangle(
+  ctx: Viewport2DRenderContext,
+  surfaces: TexturedSurface[],
+  patch: Patch,
+  texture: string,
+  indices: readonly [number, number, number],
+): void {
+  const vertices = indices.map(index => patch.tessVerts[index]);
+  if (vertices.some(vertex => !vertex)) return;
+  const points = screenPolygon(ctx, vertices.map(vertex => vertex.position));
+  const area = (points[1][0] - points[0][0]) * (points[2][1] - points[0][1])
+    - (points[2][0] - points[0][0]) * (points[1][1] - points[0][1]);
+  if (Math.abs(area) < 0.01) return;
+  surfaces.push({
+    texture,
+    points,
+    uvs: vertices.map(vertex => vertex.uv),
+    depth: vertices.reduce((sum, vertex) => sum + vertex.position[ctx.axisDepth], 0) / 3,
+  });
+}
+
+function texturedSurfaces(ctx: Viewport2DRenderContext): TexturedSurface[] {
+  const surfaces: TexturedSurface[] = [];
+  for (const { entity, brush } of ctx.editor.allBrushes()) {
+    if (!ctx.editor.isBrushVisible(brush, entity)) continue;
+    for (const face of brush.faces) {
+      if (face.polygon.length < 3 || face.plane.normal[ctx.axisDepth] <= 1e-5) continue;
+      surfaces.push({
+        texture: face.texture,
+        points: screenPolygon(ctx, face.polygon),
+        uvs: [],
+        depth: face.polygon.reduce((sum, point) => sum + point[ctx.axisDepth], 0) / face.polygon.length,
+        brushFace: { face, polygon: face.polygon },
+      });
+    }
+  }
+
+  for (const { entity, patch } of ctx.editor.allPatches()) {
+    if (!ctx.editor.isPatchVisible(patch, entity)) continue;
+    if (patch.terrainDef && patch.tessVerts.length === patch.width * patch.height) {
+      for (let row = 0; row < patch.height - 1; row++) {
+        for (let col = 0; col < patch.width - 1; col++) {
+          const indices = terrainDefCellTriangleIndices(patch, row, col);
+          const texture = terrainDefCellTexture(patch, row, col);
+          addPatchTriangle(ctx, surfaces, patch, texture, [indices[0], indices[1], indices[2]]);
+          addPatchTriangle(ctx, surfaces, patch, texture, [indices[3], indices[4], indices[5]]);
+        }
+      }
+    } else {
+      for (let index = 0; index + 2 < patch.tessIndices.length; index += 3) {
+        addPatchTriangle(ctx, surfaces, patch, patch.texture, [
+          patch.tessIndices[index],
+          patch.tessIndices[index + 1],
+          patch.tessIndices[index + 2],
+        ]);
+      }
+    }
+  }
+  return surfaces.sort((left, right) => left.depth - right.depth);
+}
+
+function surfaceTransform(
+  surface: TexturedSurface,
+  image: HTMLImageElement,
+): ReturnType<typeof affineTransformFromTriangles> {
+  let uvs = surface.uvs;
+  if (surface.brushFace) {
+    const { face, polygon } = surface.brushFace;
+    uvs = polygon.map(point => computeFaceUV(
+      point,
+      face,
+      Math.max(1, image.naturalWidth),
+      Math.max(1, image.naturalHeight),
+    ));
+  }
+  const source = uvs.map(([u, v]) => [
+    u * Math.max(1, image.naturalWidth),
+    v * Math.max(1, image.naturalHeight),
+  ] as Point2D);
+  for (let second = 1; second < source.length - 1; second++) {
+    for (let third = second + 1; third < source.length; third++) {
+      const transform = affineTransformFromTriangles(
+        [source[0], source[second], source[third]],
+        [surface.points[0], surface.points[second], surface.points[third]],
+      );
+      if (transform) return transform;
+    }
+  }
+  return null;
+}
+
+function drawTexturedSurfaces(ctx: Viewport2DRenderContext): void {
+  ctx.ctx.save();
+  ctx.ctx.imageSmoothingEnabled = ctx.editor.display.textureFiltering !== 'nearest';
+  ctx.ctx.imageSmoothingQuality = 'high';
+  const patterns = new Map<HTMLImageElement, CanvasPattern>();
+  for (const surface of texturedSurfaces(ctx)) {
+    const image = viewport2DTextureImage(ctx.editor, surface.texture);
+    if (!image) continue;
+    const transform = surfaceTransform(surface, image);
+    if (!transform) continue;
+    const pattern = patterns.get(image) ?? ctx.ctx.createPattern(image, 'repeat');
+    if (!pattern) continue;
+    patterns.set(image, pattern);
+    pattern.setTransform(new DOMMatrix([
+      transform.a,
+      transform.b,
+      transform.c,
+      transform.d,
+      transform.e,
+      transform.f,
+    ]));
+    ctx.ctx.beginPath();
+    ctx.ctx.moveTo(surface.points[0][0], surface.points[0][1]);
+    for (const point of surface.points.slice(1)) ctx.ctx.lineTo(point[0], point[1]);
+    ctx.ctx.closePath();
+    ctx.ctx.fillStyle = pattern;
+    ctx.ctx.fill();
+  }
+  ctx.ctx.restore();
 }
 
 function drawCompiledBspOverlay(ctx: Viewport2DRenderContext): void {
@@ -242,7 +390,11 @@ function drawGrid(ctx: Viewport2DRenderContext, w: number, h: number): void {
 function drawBrush(ctx: Viewport2DRenderContext, brush: Brush, selected: boolean): void {
   const theme = editorThemeColors();
   const detail = brush.faces.some(face => (face.contentFlags & CONTENTS_DETAIL) !== 0);
-  ctx.ctx.fillStyle = selected ? themeRgba(theme.selectionRgb, 0.15) : detail ? 'rgba(170, 100, 210, 0.14)' : 'rgba(60, 80, 100, 0.2)';
+  ctx.ctx.fillStyle = selected
+    ? themeRgba(theme.selectionRgb, ctx.editor.display.textured2D ? 0.1 : 0.15)
+    : detail
+      ? `rgba(170, 100, 210, ${ctx.editor.display.textured2D ? 0.05 : 0.14})`
+      : `rgba(60, 80, 100, ${ctx.editor.display.textured2D ? 0.04 : 0.2})`;
   ctx.ctx.lineWidth = selected ? 1.5 : 1;
 
   for (const face of brush.faces) {
@@ -278,7 +430,8 @@ function drawPatch(ctx: Viewport2DRenderContext, patch: Patch, selected: boolean
     : selected ? 1.5 : 1;
   ctx.ctx.fillStyle = textureTerrainMode
     ? selected ? themeRgba(theme.selectionRgb, 0.015) : 'rgba(60, 80, 100, 0.04)'
-    : selected ? themeRgba(theme.selectionRgb, 0.08) : 'rgba(60, 80, 100, 0.1)';
+    : selected ? themeRgba(theme.selectionRgb, 0.08)
+      : `rgba(60, 80, 100, ${ctx.editor.display.textured2D ? 0.025 : 0.1})`;
 
   const [x0, y0] = ctx.worldToScreen(patch.mins[ctx.axisH], patch.maxs[ctx.axisV]);
   const [x1, y1] = ctx.worldToScreen(patch.maxs[ctx.axisH], patch.mins[ctx.axisV]);
