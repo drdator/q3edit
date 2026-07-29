@@ -1,5 +1,5 @@
 import {
-  Vec3, vec3Add, vec3Scale,
+  Vec3, vec3Add, vec3Cross, vec3Dot, vec3Scale, vec3Sub,
   Mat4, mat4Identity,
 } from './math';
 import { Editor } from './editor';
@@ -21,11 +21,19 @@ import {
 import { DrawGroup, LightRadiusDraw, renderViewport3D } from './viewport3d-render';
 import { buildViewport3DGeometry } from './viewport3d-geometry';
 import {
-  centerViewport3DOnSelection,
   getViewport3DForward,
   getViewport3DRight,
   updateViewport3DCamera,
 } from './viewport3d-navigation';
+import {
+  clampOrthographicScale,
+  DEFAULT_ORTHOGRAPHIC_SCALE,
+  isometricCameraAngles,
+  orthographicScaleForPerspectiveDistance,
+  perspectiveDistanceForOrthographicScale,
+  type IsometricDirection,
+  type Viewport3DProjection,
+} from './viewport3d-projection';
 import { handleViewport3DDoublePick, handleViewport3DPick } from './viewport3d-selection';
 import {
   createViewport3DFullscreenUI,
@@ -34,6 +42,13 @@ import {
   setViewport3DFullscreenMode,
   Viewport3DFullscreenMode,
 } from './viewport3d-fullscreen';
+
+const ISOMETRIC_DIRECTION_LABELS: Record<IsometricDirection, string> = {
+  northeast: 'NE',
+  northwest: 'NW',
+  southeast: 'SE',
+  southwest: 'SW',
+};
 
 export class Viewport3D {
   canvas: HTMLCanvasElement;
@@ -46,6 +61,12 @@ export class Viewport3D {
   pitch = -0.2;
   fov = Math.PI / 3;
   moveSpeed = 200;
+  projection: Viewport3DProjection = 'perspective';
+  orthographicScale = DEFAULT_ORTHOGRAPHIC_SCALE;
+  private projectionFocus: Vec3 = [0, 0, 0];
+  private projectionDistance = DEFAULT_ORTHOGRAPHIC_SCALE;
+  private isometricDirection: IsometricDirection | null = null;
+  private projectionLabel: HTMLElement;
 
   // GL resources
   private solidProg!: WebGLProgram;
@@ -174,6 +195,11 @@ export class Viewport3D {
     this.canvas = canvas;
     this.gl = canvas.getContext('webgl2', { antialias: true, alpha: false })!;
     this.editor = editor;
+    this.projectionLabel = this.canvas.parentElement!.querySelector('.vp-label') as HTMLElement;
+    this.projectionFocus = vec3Add(
+      this.position,
+      vec3Scale(this.getForward(), this.projectionDistance),
+    );
     this.initGL();
     this.gizmo = new Gizmo(this.gl, editor);
     this.buildGrid();
@@ -195,12 +221,17 @@ export class Viewport3D {
       this.editor.redrawRequested = true;
     });
     this.editor.onCameraPlaybackSeek(pose => {
+      if (this.projection !== 'perspective') this.editor.setCameraProjection3D('perspective');
       this.position = [...pose.position];
       this.yaw = pose.yaw;
       this.pitch = pose.pitch;
       this.fov = pose.fov * Math.PI / 180;
       this.editor.redrawRequested = true;
     });
+    this.editor.onCameraProjection3DChange((projection, direction) => {
+      this.applyProjection(projection, direction);
+    });
+    this.updateProjectionLabel();
   }
 
   private createFullscreenUI(): void {
@@ -210,7 +241,86 @@ export class Viewport3D {
     this.hudModeEl = ui.hudModeEl;
   }
 
+  private updateProjectionLabel(): void {
+    const direction = this.isometricDirection
+      ? ` · ISO ${ISOMETRIC_DIRECTION_LABELS[this.isometricDirection]}`
+      : '';
+    this.projectionLabel.textContent = this.projection === 'perspective'
+      ? '3D Camera'
+      : `3D Orthographic${direction}`;
+    this.canvas.parentElement!.dataset.projection = this.projection;
+  }
+
+  private syncEditorCamera(): void {
+    this.editor.camera3d = {
+      position: [...this.position],
+      yaw: this.yaw,
+      pitch: this.pitch,
+    };
+    this.editor.cameraPlayback = null;
+  }
+
+  private initializeOrthographicFocus(): void {
+    const forward = this.getForward();
+    const selectionCenter = this.editor.selectionCenter();
+    const selectionDepth = selectionCenter
+      ? vec3Dot(vec3Sub(selectionCenter, this.position), forward)
+      : -1;
+    this.projectionDistance = selectionDepth > 16 ? selectionDepth : DEFAULT_ORTHOGRAPHIC_SCALE;
+    this.projectionFocus = selectionDepth > 16 && selectionCenter
+      ? [...selectionCenter]
+      : vec3Add(this.position, vec3Scale(forward, this.projectionDistance));
+    this.orthographicScale = orthographicScaleForPerspectiveDistance(
+      this.projectionDistance,
+      this.fov,
+    );
+  }
+
+  private applyProjection(
+    projection: Viewport3DProjection,
+    direction?: IsometricDirection,
+  ): void {
+    const previousProjection = this.projection;
+    if (projection === 'orthographic' && previousProjection === 'perspective') {
+      this.initializeOrthographicFocus();
+    }
+
+    this.projection = projection;
+    if (projection === 'orthographic' && direction) {
+      const angles = isometricCameraAngles(direction);
+      this.yaw = angles.yaw;
+      this.pitch = angles.pitch;
+      const forward = this.getForward();
+      this.position = vec3Sub(
+        this.projectionFocus,
+        vec3Scale(forward, this.projectionDistance),
+      );
+      this.isometricDirection = direction;
+    } else if (projection === 'orthographic') {
+      this.isometricDirection = null;
+    } else {
+      if (previousProjection === 'orthographic') {
+        this.projectionDistance = perspectiveDistanceForOrthographicScale(
+          this.orthographicScale,
+          this.fov,
+        );
+        this.position = vec3Sub(
+          this.projectionFocus,
+          vec3Scale(this.getForward(), this.projectionDistance),
+        );
+      }
+      this.isometricDirection = null;
+    }
+
+    this.syncEditorCamera();
+    this.updateProjectionLabel();
+    this.editor.redrawRequested = true;
+  }
+
   enterFullscreen(): void {
+    if (this.projection !== 'perspective') {
+      this.editor.setCameraProjection3D('perspective');
+    }
     const enterState = enterViewport3DFullscreen({
       position: this.position,
       yaw: this.yaw,
@@ -264,19 +374,20 @@ export class Viewport3D {
   }
 
   centerOnSelection(): void {
-    const position = centerViewport3DOnSelection(this.editor, this.yaw, this.pitch);
-    if (position) {
-      this.position = position;
-      this.editor.redrawRequested = true;
-    }
+    const bounds = this.editor.selectionBounds();
+    if (bounds) this.frameBounds(bounds);
   }
 
   setCamera(position: Vec3, yaw: number, pitch: number): void {
     this.position = [...position];
     this.yaw = yaw;
     this.pitch = Math.max(-Math.PI * 0.499, Math.min(Math.PI * 0.499, pitch));
-    this.editor.camera3d = { position: [...this.position], yaw: this.yaw, pitch: this.pitch };
-    this.editor.cameraPlayback = null;
+    this.projectionFocus = vec3Add(
+      this.position,
+      vec3Scale(this.getForward(), this.projectionDistance),
+    );
+    this.isometricDirection = null;
+    this.syncEditorCamera();
     this.editor.redrawRequested = true;
   }
 
@@ -292,14 +403,22 @@ export class Viewport3D {
       bounds.maxs[2] - bounds.mins[2],
     );
     const forward = this.getForward();
-    const distance = Math.max(size * 1.5, 128);
-    this.position = [
-      center[0] - forward[0] * distance,
-      center[1] - forward[1] * distance,
-      center[2] - forward[2] * distance,
-    ];
-    this.editor.camera3d = { position: [...this.position], yaw: this.yaw, pitch: this.pitch };
-    this.editor.cameraPlayback = null;
+    if (this.projection === 'orthographic') {
+      this.projectionFocus = center;
+      this.orthographicScale = clampOrthographicScale(Math.max(size * 0.65, 32));
+      this.projectionDistance = perspectiveDistanceForOrthographicScale(
+        this.orthographicScale,
+        this.fov,
+      );
+    } else {
+      this.projectionDistance = Math.max(size * 1.5, 128);
+      this.projectionFocus = center;
+    }
+    this.position = vec3Sub(
+      this.projectionFocus,
+      vec3Scale(forward, this.projectionDistance),
+    );
+    this.syncEditorCamera();
     this.editor.redrawRequested = true;
   }
 
@@ -481,6 +600,9 @@ export class Viewport3D {
 
     const cameraPose = this.editor.advanceCameraPlayback(dt);
     if (cameraPose) {
+      if (this.projection !== 'perspective') {
+        this.editor.setCameraProjection3D('perspective');
+      }
       this.position = [...cameraPose.position];
       this.yaw = cameraPose.yaw;
       this.pitch = cameraPose.pitch;
@@ -498,7 +620,7 @@ export class Viewport3D {
     if (this.editor.redrawRequested) {
       this.buildGeometry();
     }
-    this.gizmo.build(this.position);
+    this.gizmo.build(this.position, this.projection, this.orthographicScale);
     this.lastPV = renderViewport3D({
       gl: this.gl,
       canvas: this.canvas,
@@ -507,6 +629,8 @@ export class Viewport3D {
       fullscreenMode: this.fullscreenMode,
       position: this.position,
       fov: this.fov,
+      projection: this.projection,
+      orthographicScale: this.orthographicScale,
       getForward: () => this.getForward(),
       solidProg: this.solidProg,
       solidPVLoc: this.solidPVLoc,
@@ -586,6 +710,7 @@ export class Viewport3D {
   }
 
   private updateCamera(dt: number): void {
+    const previousPosition: Vec3 = [...this.position];
     const result = updateViewport3DCamera({
       editor: this.editor,
       fullscreen: this.fullscreen,
@@ -593,6 +718,7 @@ export class Viewport3D {
       looking: this.looking,
       keys: this.keys,
       moveSpeed: this.moveSpeed,
+      projection: this.projection,
       position: this.position,
       yaw: this.yaw,
       pitch: this.pitch,
@@ -606,6 +732,12 @@ export class Viewport3D {
     }, dt);
     if (!result.dirty) return;
     this.position = result.position;
+    if (this.projection === 'orthographic') {
+      this.projectionFocus = vec3Add(
+        this.projectionFocus,
+        vec3Sub(this.position, previousPosition),
+      );
+    }
     this.physicsAccum = result.physicsAccum;
     this.walkStepSmooth = result.walkStepSmooth;
     this.walkViewH = result.walkViewH;
@@ -622,6 +754,9 @@ export class Viewport3D {
       canvas: this.canvas,
       editor: this.editor,
       position: this.position,
+      projection: this.projection,
+      orthographicScale: this.orthographicScale,
+      fov: this.fov,
       getForward: () => this.getForward(),
     }, screenX, screenY);
   }
@@ -710,6 +845,9 @@ export class Viewport3D {
       canvas: this.canvas,
       editor: this.editor,
       position: this.position,
+      projection: this.projection,
+      orthographicScale: this.orthographicScale,
+      fov: this.fov,
       getForward: () => this.getForward(),
     }, screenX, screenY);
   }
@@ -719,6 +857,9 @@ export class Viewport3D {
       canvas: this.canvas,
       editor: this.editor,
       position: this.position,
+      projection: this.projection,
+      orthographicScale: this.orthographicScale,
+      fov: this.fov,
       getForward: () => this.getForward(),
     }, screenX, screenY);
   }
@@ -728,6 +869,9 @@ export class Viewport3D {
       canvas: this.canvas,
       editor: this.editor,
       position: this.position,
+      projection: this.projection,
+      orthographicScale: this.orthographicScale,
+      fov: this.fov,
       getForward: () => this.getForward(),
     }, screenX, screenY);
   }
@@ -767,9 +911,26 @@ export class Viewport3D {
       // Left click: check gizmo first
       if (e.button === 0 && this.editor.selection.length > 0) {
         const rect = this.canvas.getBoundingClientRect();
-        const axis = this.gizmo.pickAxis(e.clientX, e.clientY, this.lastPV, rect, this.position);
+        const axis = this.gizmo.pickAxis(
+          e.clientX,
+          e.clientY,
+          this.lastPV,
+          rect,
+          this.position,
+          this.projection,
+          this.orthographicScale,
+        );
         if (axis >= 0) {
-          this.gizmo.startDrag(axis, e.clientX, e.clientY, this.lastPV, rect, this.position);
+          this.gizmo.startDrag(
+            axis,
+            e.clientX,
+            e.clientY,
+            this.lastPV,
+            rect,
+            this.position,
+            this.projection,
+            this.orthographicScale,
+          );
           e.preventDefault();
           return;
         }
@@ -817,6 +978,14 @@ export class Viewport3D {
       this.pitch = Math.max(-Math.PI * 0.49, Math.min(Math.PI * 0.49,
         this.pitch - dy * sensitivity
       ));
+      if (this.projection === 'orthographic') {
+        this.position = vec3Sub(
+          this.projectionFocus,
+          vec3Scale(this.getForward(), this.projectionDistance),
+        );
+        this.isometricDirection = null;
+        this.updateProjectionLabel();
+      }
       this.editor.redrawRequested = true;
     });
 
@@ -866,7 +1035,22 @@ export class Viewport3D {
 
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
+      if (this.projection === 'orthographic' && !this.fullscreen) {
+        const worldPerPixel = 2 * this.orthographicScale
+          / Math.max(1, this.canvas.getBoundingClientRect().height);
+        const right = this.getRight();
+        const up = vec3Cross(right, this.getForward());
+        let pan: Vec3 = vec3Scale(right, e.deltaX * worldPerPixel);
+        if (e.shiftKey) {
+          pan = vec3Add(pan, vec3Scale(up, e.deltaY * worldPerPixel));
+        } else {
+          this.orthographicScale = clampOrthographicScale(
+            this.orthographicScale * Math.exp(e.deltaY * 0.0015),
+          );
+        }
+        this.position = vec3Add(this.position, pan);
+        this.projectionFocus = vec3Add(this.projectionFocus, pan);
+      } else if (e.ctrlKey || e.metaKey) {
         const forward = this.getForward();
         this.position = vec3Add(this.position, vec3Scale(forward, -e.deltaY * 0.5));
       } else if (e.shiftKey) {

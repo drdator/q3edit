@@ -1,4 +1,4 @@
-import { Mat4, mat4LookAt, mat4Multiply, mat4Perspective, vec3Add } from './math';
+import { Mat4, mat4LookAt, mat4Multiply, vec3Add } from './math';
 import { Editor } from './editor';
 import { BlendMode } from './textures';
 import { entityOrigin, parseLightColor } from './entity';
@@ -8,6 +8,10 @@ import {
   selectDynamicLightInfluences,
 } from './dynamic-lighting';
 import { editorThemeColors } from './theme-colors';
+import {
+  viewport3DProjectionMatrix,
+  type Viewport3DProjection,
+} from './viewport3d-projection';
 
 export interface DrawGroup {
   textureName: string;
@@ -47,6 +51,8 @@ export interface Viewport3DRenderContext {
   fullscreenMode: 'walk' | 'fly' | 'edit';
   position: [number, number, number];
   fov: number;
+  projection: Viewport3DProjection;
+  orthographicScale: number;
   getForward: () => [number, number, number];
   solidProg: WebGLProgram;
   solidPVLoc: WebGLUniformLocation;
@@ -123,7 +129,12 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   if (ctx.xray) ctx.gl.disable(ctx.gl.DEPTH_TEST);
 
   const aspect = ctx.canvas.width / ctx.canvas.height || 1;
-  const proj = mat4Perspective(ctx.fov, aspect, 1, 16384);
+  const proj = viewport3DProjectionMatrix(
+    ctx.projection,
+    aspect,
+    ctx.fov,
+    ctx.orthographicScale,
+  );
   const forward = ctx.getForward();
   const target = vec3Add(ctx.position, forward);
   const view = mat4LookAt(ctx.position, target, [0, 0, 1]);
@@ -143,7 +154,9 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.uniformMatrix4fv(ctx.solidPVLoc, false, pv);
     ctx.gl.uniform1i(ctx.solidTexLoc, 0);
     const diagnosticMode = ctx.editor.display.rendererMode === 'lightmap' ? 1
-      : ctx.editor.display.rendererMode === 'overdraw' ? 2 : 0;
+      : ctx.editor.display.rendererMode === 'overdraw' ? 2
+        : ctx.editor.display.rendererMode === 'editor-fill' ? 3 : 0;
+    const editorFill = diagnosticMode === 3;
     ctx.gl.uniform1i(ctx.solidDiagnosticModeLoc, diagnosticMode);
     const dynamicLightingEnabled = ctx.editor.display.dynamicLights || diagnosticMode === 1;
     const lightCandidates = dynamicLightingEnabled
@@ -183,7 +196,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       ctx.gl.uniform1f(ctx.solidSelLoc, !hideSelection && group.selected ? 1.0 : 0.0);
       ctx.gl.uniform1f(ctx.solidFaceSelLoc, !hideSelection && group.faceSelected ? 1.0 : 0.0);
       const isDimInvis = group.invisible && ctx.editor.invisibleMode === 'dim';
-      ctx.gl.uniform1f(ctx.solidAlphaOverrideLoc, isDimInvis ? 0.3 : 0.0);
+      ctx.gl.uniform1f(ctx.solidAlphaOverrideLoc, isDimInvis ? 0.3 : editorFill ? 0.22 : 0.0);
       ctx.gl.uniform1f(ctx.solidSolidOverrideLoc, group.solidOverride ? 1.0 : 0.0);
       ctx.gl.drawArrays(ctx.gl.TRIANGLES, group.start, group.count);
     };
@@ -195,6 +208,16 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       ctx.gl.uniform1f(ctx.solidUseAlphaLoc, 0.0);
       for (const group of ctx.drawGroups) drawGroup(group);
       ctx.gl.disable(ctx.gl.BLEND);
+      ctx.gl.enable(ctx.gl.DEPTH_TEST);
+    } else if (editorFill) {
+      ctx.gl.disable(ctx.gl.DEPTH_TEST);
+      ctx.gl.depthMask(false);
+      ctx.gl.enable(ctx.gl.BLEND);
+      ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
+      ctx.gl.uniform1f(ctx.solidUseAlphaLoc, 0.0);
+      for (const group of ctx.drawGroups) drawGroup(group);
+      ctx.gl.disable(ctx.gl.BLEND);
+      ctx.gl.depthMask(true);
       ctx.gl.enable(ctx.gl.DEPTH_TEST);
     } else {
     ctx.gl.uniform1f(ctx.solidUseAlphaLoc, 0.0);
@@ -229,14 +252,23 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     }
   }
 
-  if ((!isGameView || ctx.editor.display.rendererMode === 'wireframe') && ctx.wireCount > 0) {
+  if ((!isGameView || ctx.editor.display.rendererMode === 'wireframe' ||
+      ctx.editor.display.rendererMode === 'editor-fill') && ctx.wireCount > 0) {
     ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
     if (ctx.xray) ctx.gl.uniform3f(ctx.lineColorLoc, 0.25, 0.8, 1.0);
+    else if (ctx.editor.display.rendererMode === 'editor-fill') {
+      ctx.gl.uniform3f(ctx.lineColorLoc, 0x44 / 255, 0x88 / 255, 0xbb / 255);
+    }
     else ctx.gl.uniform3f(ctx.lineColorLoc, 0.0, 0.0, 0.0);
     ctx.gl.bindVertexArray(ctx.wireVAO);
-    if (ctx.xray) ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    if (ctx.xray || ctx.editor.display.rendererMode === 'editor-fill') {
+      ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    }
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.wireCount);
+    if (!ctx.xray && ctx.editor.display.rendererMode === 'editor-fill') {
+      ctx.gl.enable(ctx.gl.DEPTH_TEST);
+    }
   }
 
   if (!isGameView && ctx.clipBoxCount > 0) {

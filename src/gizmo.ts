@@ -5,11 +5,26 @@ import { PatchControlPoint } from './patch';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { createLineBuffer } from './gl-utils';
 import { scaleGeometryFromOriginals } from './editor-transforms';
+import {
+  DEFAULT_ORTHOGRAPHIC_SCALE,
+  type Viewport3DProjection,
+} from './viewport3d-projection';
 
 export interface GizmoSegment {
   start: number;
   count: number;
   color: Vec3;
+}
+
+function gizmoLength(
+  center: Vec3,
+  cameraPos: Vec3,
+  projection: Viewport3DProjection,
+  orthographicScale: number,
+): number {
+  return projection === 'orthographic'
+    ? orthographicScale * 0.21
+    : vec3Length(vec3Sub(center, cameraPos)) * 0.12;
 }
 
 export class Gizmo {
@@ -46,7 +61,11 @@ export class Gizmo {
     this.vbo = buf.vbo;
   }
 
-  build(cameraPos: Vec3): void {
+  build(
+    cameraPos: Vec3,
+    projection: Viewport3DProjection = 'perspective',
+    orthographicScale = DEFAULT_ORTHOGRAPHIC_SCALE,
+  ): void {
     const gl = this.gl;
     const center = this.editor.vertexMode
       ? this.editor.vertexSelectionCenter()
@@ -67,8 +86,7 @@ export class Gizmo {
     }
 
     // Gizmo length scales with distance from camera for consistent screen size
-    const dist = vec3Length(vec3Sub(center, cameraPos));
-    const len = dist * 0.12;
+    const len = gizmoLength(center, cameraPos, projection, orthographicScale);
     const tipSize = len * 0.15;
 
     const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
@@ -114,10 +132,17 @@ export class Gizmo {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
   }
 
-  pickAxis(screenX: number, screenY: number, pv: Mat4, canvasRect: DOMRect, cameraPos: Vec3): number {
+  pickAxis(
+    screenX: number,
+    screenY: number,
+    pv: Mat4,
+    canvasRect: DOMRect,
+    cameraPos: Vec3,
+    projection: Viewport3DProjection = 'perspective',
+    orthographicScale = DEFAULT_ORTHOGRAPHIC_SCALE,
+  ): number {
     const center = this.center;
-    const dist = vec3Length(vec3Sub(center, cameraPos));
-    const len = dist * 0.12;
+    const len = gizmoLength(center, cameraPos, projection, orthographicScale);
     const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
     const threshold = 10; // pixels
 
@@ -141,7 +166,16 @@ export class Gizmo {
     return bestAxis;
   }
 
-  startDrag(axis: number, clientX: number, clientY: number, pv: Mat4, canvasRect: DOMRect, cameraPos: Vec3): void {
+  startDrag(
+    axis: number,
+    clientX: number,
+    clientY: number,
+    pv: Mat4,
+    canvasRect: DOMRect,
+    cameraPos: Vec3,
+    projection: Viewport3DProjection = 'perspective',
+    orthographicScale = DEFAULT_ORTHOGRAPHIC_SCALE,
+  ): void {
     this.dragging = true;
     this.axis = axis;
     this.dragLast = [clientX, clientY];
@@ -158,7 +192,9 @@ export class Gizmo {
       this.screenDirLen = Math.sqrt(this.screenDir[0] ** 2 + this.screenDir[1] ** 2);
     }
     const dist = vec3Length(vec3Sub(this.center, cameraPos));
-    this.worldPerPixel = (2 * dist * Math.tan(Math.PI / 6)) / canvasRect.height;
+    this.worldPerPixel = projection === 'orthographic'
+      ? 2 * orthographicScale / canvasRect.height
+      : (2 * dist * Math.tan(Math.PI / 6)) / canvasRect.height;
 
     // Store original state for scale mode
     if (this.editor.gizmoMode === 'scale') {

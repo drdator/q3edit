@@ -10,11 +10,18 @@ import { Editor } from './editor';
 import { Brush, BrushFace } from './brush';
 import { Entity } from './entity';
 import { Patch } from './patch';
+import {
+  clampOrthographicScale,
+  type Viewport3DProjection,
+} from './viewport3d-projection';
 
 export interface Viewport3DPickingContext {
   canvas: HTMLCanvasElement;
   editor: Editor;
   position: Vec3;
+  projection: Viewport3DProjection;
+  orthographicScale: number;
+  fov: number;
   getForward: () => Vec3;
 }
 
@@ -24,18 +31,26 @@ export function getRay3D(ctx: Viewport3DPickingContext, screenX: number, screenY
   const y = 1 - (screenY - rect.top) / rect.height * 2;
 
   const aspect = rect.width / rect.height || 1;
-  const fovY = Math.PI / 3;
-  const tanHalf = Math.tan(fovY / 2);
 
   const forward = ctx.getForward();
   const right = vec3Normalize(vec3Cross(forward, [0, 0, 1]));
   const up = vec3Cross(right, forward);
 
-  const dir = vec3Normalize(vec3Add(
+  if (ctx.projection === 'orthographic') {
+    const halfHeight = clampOrthographicScale(ctx.orthographicScale);
+    const rayOrigin = vec3Add(
+      vec3Add(ctx.position, vec3Scale(right, x * halfHeight * aspect)),
+      vec3Scale(up, y * halfHeight),
+    );
+    return { rayOrigin, rayDir: forward };
+  }
+
+  const tanHalf = Math.tan(ctx.fov / 2);
+  const rayDir = vec3Normalize(vec3Add(
     vec3Add(forward, vec3Scale(right, x * tanHalf * aspect)),
     vec3Scale(up, y * tanHalf),
   ));
-  return { rayOrigin: ctx.position, rayDir: dir };
+  return { rayOrigin: ctx.position, rayDir };
 }
 
 export function pickBrushAt3D(

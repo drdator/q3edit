@@ -113,9 +113,10 @@ describe('display policy', () => {
     };
     const preferences = structuredClone(DEFAULT_DISPLAY_PREFERENCES);
     preferences.categories.entities = false;
-    preferences.rendererMode = 'flat';
+    preferences.rendererMode = 'editor-fill';
     preferences.textureFiltering = 'nearest';
     preferences.dynamicLights = true;
+    preferences.textured2D = true;
     saveDisplayPreferences(preferences, storage);
     expect(loadDisplayPreferences(storage)).toEqual(preferences);
   });
@@ -134,6 +135,7 @@ describe('display policy', () => {
     expect(preferences.categories.dimensions).toBe(true);
     expect(preferences.categories.lightRadii).toBe(false);
     expect(preferences.categories.textureAxes).toBe(true);
+    expect(preferences.textured2D).toBe(false);
   });
 
   it('keeps hidden-category selections selected but non-interactive', () => {
