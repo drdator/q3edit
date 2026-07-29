@@ -32,10 +32,11 @@ describe('editor theme render colors', () => {
       selection: '#ff00aa',
       viewportRgb: [170 / 255, 187 / 255, 204 / 255],
       gridMajorRgb: [
-        10 / 255 * 0.5 + 170 / 255 * 0.5,
-        20 / 255 * 0.5 + 187 / 255 * 0.5,
-        30 / 255 * 0.5 + 204 / 255 * 0.5,
+        10 / 255,
+        20 / 255,
+        30 / 255,
       ],
+      gridMajorAlpha: 0.5,
       selectionRgb: [1, 0, 170 / 255],
     });
   });

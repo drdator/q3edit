@@ -78,6 +78,7 @@ export interface Viewport3DRenderContext {
   lineProg: WebGLProgram;
   linePVLoc: WebGLUniformLocation;
   lineColorLoc: WebGLUniformLocation;
+  lineAlphaLoc: WebGLUniformLocation;
   solidVAO: WebGLVertexArrayObject;
   drawGroups: DrawGroup[];
   clipBoxVAO: WebGLVertexArrayObject;
@@ -149,12 +150,18 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   const pv = mat4Multiply(proj, view);
 
   const isGameView = ctx.fullscreen && ctx.fullscreenMode !== 'edit';
+  ctx.gl.useProgram(ctx.lineProg);
+  ctx.gl.uniform1f(ctx.lineAlphaLoc, 1.0);
   if (!isGameView && ctx.editor.display.showGrid3D) {
-    ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
     ctx.gl.uniform3f(ctx.lineColorLoc, theme.gridMajorRgb[0], theme.gridMajorRgb[1], theme.gridMajorRgb[2]);
+    ctx.gl.uniform1f(ctx.lineAlphaLoc, theme.gridMajorAlpha);
+    ctx.gl.enable(ctx.gl.BLEND);
+    ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
     ctx.gl.bindVertexArray(ctx.gridVAO);
     ctx.gl.drawArrays(ctx.gl.LINES, 0, ctx.gridCount);
+    ctx.gl.disable(ctx.gl.BLEND);
+    ctx.gl.uniform1f(ctx.lineAlphaLoc, 1.0);
   }
 
   if (ctx.drawGroups.length > 0 && ctx.editor.display.rendererMode !== 'wireframe') {

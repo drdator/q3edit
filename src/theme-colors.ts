@@ -6,6 +6,7 @@ export interface EditorThemeRenderColors {
   selection: string;
   viewportRgb: [number, number, number];
   gridMajorRgb: [number, number, number];
+  gridMajorAlpha: number;
   selectionRgb: [number, number, number];
 }
 
@@ -16,7 +17,8 @@ const FALLBACK_COLORS: EditorThemeRenderColors = {
   gridOrigin: 'rgba(0, 100, 180, 0.5)',
   selection: '#ff6600',
   viewportRgb: [30 / 255, 30 / 255, 30 / 255],
-  gridMajorRgb: [62 / 255, 62 / 255, 62 / 255],
+  gridMajorRgb: [70 / 255, 70 / 255, 70 / 255],
+  gridMajorAlpha: 0.8,
   selectionRgb: [1, 102 / 255, 0],
 };
 
@@ -49,16 +51,6 @@ function cssRgb(value: string, fallback: [number, number, number]): [number, num
   return cssRgba(value, fallback).rgb;
 }
 
-function cssRgbOver(
-  value: string,
-  background: [number, number, number],
-  fallback: [number, number, number],
-): [number, number, number] {
-  const parsed = cssRgba(value, fallback);
-  return parsed.rgb.map((component, index) =>
-    component * parsed.alpha + background[index] * (1 - parsed.alpha)) as [number, number, number];
-}
-
 export function refreshEditorThemeColors(root: Element = document.documentElement): void {
   const styles = getComputedStyle(root);
   const value = (name: string, fallback: string): string =>
@@ -69,6 +61,7 @@ export function refreshEditorThemeColors(root: Element = document.documentElemen
   const gridOrigin = value('--grid-origin', FALLBACK_COLORS.gridOrigin);
   const selection = value('--selection', FALLBACK_COLORS.selection);
   const viewportRgb = cssRgb(viewport, FALLBACK_COLORS.viewportRgb);
+  const parsedGridMajor = cssRgba(gridMajor, FALLBACK_COLORS.gridMajorRgb);
   current = {
     viewport,
     gridMajor,
@@ -76,7 +69,8 @@ export function refreshEditorThemeColors(root: Element = document.documentElemen
     gridOrigin,
     selection,
     viewportRgb,
-    gridMajorRgb: cssRgbOver(gridMajor, viewportRgb, FALLBACK_COLORS.gridMajorRgb),
+    gridMajorRgb: parsedGridMajor.rgb,
+    gridMajorAlpha: parsedGridMajor.alpha,
     selectionRgb: cssRgb(selection, FALLBACK_COLORS.selectionRgb),
   };
 }
