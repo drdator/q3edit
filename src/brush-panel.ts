@@ -82,6 +82,24 @@ export class BrushPanel {
     this.list = document.createElement('div');
     this.list.className = 'brush-list';
     this.list.id = 'brush-list';
+    this.list.setAttribute('role', 'tree');
+    this.list.setAttribute('aria-label', 'Map objects');
+    this.list.tabIndex = 0;
+    this.list.addEventListener('wheel', event => {
+      if (!this.list) return;
+      const maximum = Math.max(0, this.list.scrollHeight - this.list.clientHeight);
+      if (maximum === 0) return;
+      const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? this.list.clientHeight
+          : 1;
+      const next = Math.max(0, Math.min(maximum, this.list.scrollTop + event.deltaY * scale));
+      if (next === this.list.scrollTop) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.list.scrollTop = next;
+    }, { passive: false });
     body.appendChild(this.list);
 
     body.addEventListener('mousedown', event => {
@@ -231,6 +249,13 @@ export class BrushPanel {
           : item.kind === 'patch' && item.grouped
             ? 'brush-item brush-tree-grandchild'
             : 'brush-item brush-tree-child';
+      element.setAttribute('role', 'treeitem');
+      element.setAttribute('aria-level', String(
+        item.kind === 'entity' ? 1 : item.kind === 'patch' && item.grouped ? 3 : 2,
+      ));
+      if (item.kind === 'entity' || item.kind === 'terrainGroup') {
+        element.setAttribute('aria-expanded', String(!item.collapsed));
+      }
       const row = document.createElement('div');
       row.className = 'brush-tree-row';
       if (item.kind === 'entity') this.buildEntityRow(row, item);

@@ -1404,7 +1404,8 @@ body.sidepanel-resizing * {
 
 .brush-panel-controls {
   display: flex;
-  align-items: center;
+  flex: 0 0 auto;
+  align-items: stretch;
   gap: 4px;
   margin-bottom: 4px;
 }
@@ -1412,10 +1413,18 @@ body.sidepanel-resizing * {
 .brush-panel-controls select {
   min-width: 0;
   flex: 1;
+  margin-bottom: 0;
 }
 
 .brush-panel-controls .btn {
   flex: 0 0 auto;
+}
+
+#brush-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .surface-inspector {
@@ -1941,11 +1950,26 @@ body.sidepanel-resizing * {
 
 .brush-list {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 1px;
+  min-height: 0;
+  padding: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-dark);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  outline: none;
+}
+
+.brush-list:focus-visible {
+  border-color: var(--accent);
 }
 
 .brush-item {
+  flex: 0 0 auto;
   padding: 2px 4px;
   cursor: default;
   font-family: monospace;
