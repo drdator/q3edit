@@ -92,6 +92,7 @@ export class Viewport3D {
   private lineProg!: WebGLProgram;
   private linePVLoc!: WebGLUniformLocation;
   private lineColorLoc!: WebGLUniformLocation;
+  private lineAlphaLoc!: WebGLUniformLocation;
 
   private solidVAO!: WebGLVertexArrayObject;
   private solidVBO!: WebGLBuffer;
@@ -493,6 +494,7 @@ export class Viewport3D {
     this.lineProg = createProgram(gl, LINE_VERT_SRC, LINE_FRAG_SRC);
     this.linePVLoc = gl.getUniformLocation(this.lineProg, 'uPV')!;
     this.lineColorLoc = gl.getUniformLocation(this.lineProg, 'uColor')!;
+    this.lineAlphaLoc = gl.getUniformLocation(this.lineProg, 'uAlpha')!;
 
     const solid = createSolidBuffer(gl);
     this.solidVAO = solid.vao; this.solidVBO = solid.vbo;
@@ -654,6 +656,7 @@ export class Viewport3D {
       lineProg: this.lineProg,
       linePVLoc: this.linePVLoc,
       lineColorLoc: this.lineColorLoc,
+      lineAlphaLoc: this.lineAlphaLoc,
       solidVAO: this.solidVAO,
       drawGroups: this.drawGroups,
       clipBoxVAO: this.clipBoxVAO,
