@@ -548,6 +548,14 @@ export class Editor {
     this.statusMessage = `Textured 2D views ${this.display.textured2D ? 'enabled' : 'disabled'}`;
   }
 
+  toggleGrid3D(): void {
+    this.display.showGrid3D = !this.display.showGrid3D;
+    saveDisplayPreferences(this.display);
+    this.persistCurrentPreferences();
+    this.redrawRequested = true;
+    this.statusMessage = `3D grid ${this.display.showGrid3D ? 'enabled' : 'disabled'}`;
+  }
+
   // 3D camera state (written by Viewport3D, read by Viewport2D)
   camera3d: { position: Vec3; yaw: number; pitch: number } = {
     position: [80, 80, 120], yaw: Math.PI * 0.25, pitch: -0.2,

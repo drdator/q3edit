@@ -189,9 +189,11 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
   const filtering = select(['nearest', 'linear', 'trilinear'], preferences.display.textureFiltering);
   const lights = checkbox(preferences.display.dynamicLights);
   const textured2D = checkbox(preferences.display.textured2D);
+  const showGrid3D = checkbox(preferences.display.showGrid3D);
   display.append(
     labeled('Renderer', renderer),
     labeled('Texture filtering', filtering),
+    labeled('3D grid', showGrid3D),
     labeled('Textured 2D views', textured2D),
     labeled('Dynamic lights', lights),
   );
@@ -281,7 +283,7 @@ export function openPreferencesDialog(options: PreferencesDialogOptions): void {
         theme: { preset: theme.value as ThemePreset, colors: Object.fromEntries([...colorControls].map(([name, control]) => [name, control.value])) },
         display: {
           rendererMode: renderer.value, textureFiltering: filtering.value,
-          textured2D: textured2D.checked, dynamicLights: lights.checked,
+          textured2D: textured2D.checked, dynamicLights: lights.checked, showGrid3D: showGrid3D.checked,
           categories: Object.fromEntries([...categoryControls].map(([name, control]) => [name, control.checked])),
         },
       });

@@ -300,6 +300,7 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'view.camera-floor-down', label: 'Camera Down One Floor', menu: menu('View', 75, 'camera', 'Camera'), execute: ({ editor }) => editor.moveCameraFloor(-1) },
     ...projectionCommands,
     ...isometricCommands,
+    { id: 'view.grid-3d', label: '3D Grid', menu: menu('View', 218, 'renderer'), checked: ({ editor }) => editor.display.showGrid3D, execute: ({ editor }) => editor.toggleGrid3D() },
     { id: 'view.textured-2d', label: 'Textured 2D Views', menu: menu('View', 219, 'renderer'), checked: ({ editor }) => editor.display.textured2D, execute: ({ editor }) => editor.toggleTextured2D() },
     { id: 'view.dynamic-lights', label: 'Dynamic Light Preview', menu: menu('View', 220, 'renderer'), checked: ({ editor }) => editor.display.dynamicLights, execute: ({ editor }) => editor.toggleDynamicLights() },
     ...displayCommands,

@@ -143,6 +143,9 @@ describe('CommandRegistry', () => {
     expect(registry.getState('view.textured-2d').checked).toBe(false);
     registry.execute('view.textured-2d');
     expect(registry.getState('view.textured-2d').checked).toBe(true);
+    expect(registry.getState('view.grid-3d').checked).toBe(true);
+    registry.execute('view.grid-3d');
+    expect(registry.getState('view.grid-3d').checked).toBe(false);
     registry.execute('view.layout.single-xy');
     expect(registry.getState('view.layout.single-xy').checked).toBe(true);
     expect(registry.getState('view.camera-projection.perspective').checked).toBe(true);

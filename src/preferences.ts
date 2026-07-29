@@ -157,6 +157,7 @@ function displayPreferences(value: unknown, fallback = DEFAULT_DISPLAY_PREFERENC
     textureFiltering,
     dynamicLights: source.dynamicLights === true,
     textured2D: source.textured2D === true,
+    showGrid3D: typeof source.showGrid3D === 'boolean' ? source.showGrid3D : fallback.showGrid3D,
   };
 }
 
