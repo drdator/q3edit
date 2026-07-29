@@ -24,6 +24,7 @@ describe('global preferences', () => {
     preferences.sidebar = { visible: false, width: 420 };
     preferences.mcpActivity = { visible: true, height: 360 };
     preferences.display.rendererMode = 'editor-fill';
+    preferences.display.showGrid3D = false;
     preferences.quickPlay = {
       quality: 'full',
       generateAas: false,
@@ -42,6 +43,7 @@ describe('global preferences', () => {
     expect(loaded.preferences.sidebar).toEqual({ visible: false, width: 420 });
     expect(loaded.preferences.mcpActivity).toEqual({ visible: true, height: 360 });
     expect(loaded.preferences.display.rendererMode).toBe('editor-fill');
+    expect(loaded.preferences.display.showGrid3D).toBe(false);
     expect(loaded.preferences.quickPlay).toEqual({
       quality: 'full',
       generateAas: false,
@@ -149,6 +151,7 @@ describe('global preferences', () => {
     expect(loaded.preferences.display.rendererMode).toBe('wireframe');
     expect(loaded.preferences.display.categories.lights).toBe(false);
     expect(loaded.preferences.display.textured2D).toBe(false);
+    expect(loaded.preferences.display.showGrid3D).toBe(true);
   });
 
   it('recovers from corrupt storage without throwing', () => {

@@ -47,6 +47,7 @@ import {
   setViewport3DFullscreenMode,
   Viewport3DFullscreenMode,
 } from './viewport3d-fullscreen';
+import { buildViewport3DGridVertices } from './viewport3d-grid';
 
 const ISOMETRIC_DIRECTION_LABELS: Record<IsometricDirection, string> = {
   northeast: 'NE',
@@ -159,6 +160,7 @@ export class Viewport3D {
   private gridVAO!: WebGLVertexArrayObject;
   private gridVBO!: WebGLBuffer;
   private gridCount = 0;
+  private gridBuiltForSize = Number.NaN;
 
   private lightRadiusVAO!: WebGLVertexArrayObject;
   private lightRadiusVBO!: WebGLBuffer;
@@ -539,18 +541,11 @@ export class Viewport3D {
 
   private buildGrid(): void {
     const gl = this.gl;
-    const verts: number[] = [];
-    const size = 2048;
-    const step = 64;
-    for (let x = -size; x <= size; x += step) {
-      verts.push(x, -size, 0, x, size, 0);
-    }
-    for (let y = -size; y <= size; y += step) {
-      verts.push(-size, y, 0, size, y, 0);
-    }
+    const verts = buildViewport3DGridVertices(this.editor.gridSize);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.gridVBO);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
     this.gridCount = verts.length / 3;
+    this.gridBuiltForSize = this.editor.gridSize;
   }
 
   private buildGeometry(): void {
@@ -624,6 +619,9 @@ export class Viewport3D {
     cam.position = this.position;
     cam.yaw = this.yaw;
     cam.pitch = this.pitch;
+    if (this.gridBuiltForSize !== this.editor.gridSize) {
+      this.buildGrid();
+    }
     if (this.editor.redrawRequested) {
       this.buildGeometry();
     }

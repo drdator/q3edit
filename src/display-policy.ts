@@ -19,6 +19,7 @@ export interface DisplayPreferences {
   textureFiltering: TextureFiltering;
   dynamicLights: boolean;
   textured2D: boolean;
+  showGrid3D: boolean;
 }
 
 export const DISPLAY_CATEGORIES: readonly DisplayCategory[] = [
@@ -38,6 +39,7 @@ export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   textureFiltering: 'trilinear',
   dynamicLights: false,
   textured2D: false,
+  showGrid3D: true,
 };
 
 const STORAGE_KEY = 'q3edit.display.v1';
@@ -71,6 +73,9 @@ export function loadDisplayPreferences(storage: Pick<Storage, 'getItem'> | null 
       textureFiltering,
       dynamicLights: parsed.dynamicLights === true,
       textured2D: parsed.textured2D === true,
+      showGrid3D: typeof parsed.showGrid3D === 'boolean'
+        ? parsed.showGrid3D
+        : DEFAULT_DISPLAY_PREFERENCES.showGrid3D,
     };
   } catch {
     return structuredClone(DEFAULT_DISPLAY_PREFERENCES);

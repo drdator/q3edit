@@ -149,7 +149,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
   const pv = mat4Multiply(proj, view);
 
   const isGameView = ctx.fullscreen && ctx.fullscreenMode !== 'edit';
-  if (!isGameView) {
+  if (!isGameView && ctx.editor.display.showGrid3D) {
     ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
     ctx.gl.uniform3f(ctx.lineColorLoc, theme.gridMajorRgb[0], theme.gridMajorRgb[1], theme.gridMajorRgb[2]);

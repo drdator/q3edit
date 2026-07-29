@@ -117,6 +117,7 @@ describe('display policy', () => {
     preferences.textureFiltering = 'nearest';
     preferences.dynamicLights = true;
     preferences.textured2D = true;
+    preferences.showGrid3D = false;
     saveDisplayPreferences(preferences, storage);
     expect(loadDisplayPreferences(storage)).toEqual(preferences);
   });
@@ -136,6 +137,7 @@ describe('display policy', () => {
     expect(preferences.categories.lightRadii).toBe(false);
     expect(preferences.categories.textureAxes).toBe(true);
     expect(preferences.textured2D).toBe(false);
+    expect(preferences.showGrid3D).toBe(true);
   });
 
   it('keeps hidden-category selections selected but non-interactive', () => {
