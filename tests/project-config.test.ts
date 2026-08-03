@@ -5,6 +5,7 @@ import {
   PROJECT_CONFIG_STORAGE_KEY,
   importProjectConfiguration,
   loadProjectConfiguration,
+  normalizeGameDirectory,
   resolveProjectPreferences,
   saveProjectConfiguration,
 } from '../src/project-config';
@@ -47,5 +48,12 @@ describe('project configuration', () => {
 
   it('rejects imports from unsupported future versions', () => {
     expect(() => importProjectConfiguration('{"version":2}')).toThrow('newer than this editor supports');
+  });
+
+  it('accepts safe standalone game directories and rejects filesystem paths', () => {
+    expect(normalizeGameDirectory('tinygame')).toBe('tinygame');
+    expect(normalizeGameDirectory('my-game_2')).toBe('my-game_2');
+    expect(normalizeGameDirectory('../baseq3')).toBe('baseq3');
+    expect(normalizeGameDirectory('mods/tinygame')).toBe('baseq3');
   });
 });

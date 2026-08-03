@@ -48,6 +48,11 @@ const strings = (value: unknown): string[] => Array.isArray(value)
   : [];
 const text = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback;
 
+export function normalizeGameDirectory(value: unknown, fallback = 'baseq3'): string {
+  const candidate = text(value).trim();
+  return /^[a-zA-Z0-9_-]+$/.test(candidate) ? candidate : fallback;
+}
+
 export function normalizeProjectConfiguration(value: unknown): ProjectConfiguration {
   const result = structuredClone(DEFAULT_PROJECT_CONFIGURATION);
   if (!isRecord(value)) return result;
@@ -59,7 +64,9 @@ export function normalizeProjectConfiguration(value: unknown): ProjectConfigurat
   const overrides = isRecord(value.overrides) ? value.overrides : {};
   result.name = text(value.name, result.name).slice(0, 120);
   result.game = {
-    basePath: text(game.basePath), gameDirectory: text(game.gameDirectory, result.game.gameDirectory), executable: text(game.executable),
+    basePath: text(game.basePath),
+    gameDirectory: normalizeGameDirectory(game.gameDirectory, result.game.gameDirectory),
+    executable: text(game.executable),
   };
   result.assets = {
     archives: strings(assets.archives), searchPaths: strings(assets.searchPaths),
