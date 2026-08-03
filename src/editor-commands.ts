@@ -1,5 +1,5 @@
 import { CommandRegistry, type CommandDefinition, type CommandMenuPlacement } from './commands';
-import { getSelectedPatchItems } from './editor-selection';
+import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import type { Editor, Tool } from './editor';
 import type { Vec3 } from './math';
 import { DISPLAY_CATEGORIES, type DisplayCategory, type RendererMode, type TextureFiltering } from './display-policy';
@@ -72,6 +72,8 @@ const menu = (name: string, order: number, group: string, submenu?: string): Com
 });
 
 const hasSelection = ({ editor }: EditorCommandContext) => editor.selection.length > 0;
+const hasSelectedBrushes = ({ editor }: EditorCommandContext) => getSelectedBrushItems(editor).length > 0;
+const hasTwoSelectedBrushes = ({ editor }: EditorCommandContext) => getSelectedBrushItems(editor).length >= 2;
 const hasSelectedFaces = ({ editor }: EditorCommandContext) => editor.selectedFaces.length > 0;
 const hasSelectedPatches = ({ editor }: EditorCommandContext) => getSelectedPatchItems(editor).length > 0;
 
@@ -370,12 +372,13 @@ function createEditorCommands(): CommandDefinition<EditorCommandContext>[] {
     { id: 'tool.clip', label: 'Clip', defaultShortcut: '4', menu: menu('Tools', 30, 'tools'), checked: ({ editor }) => editor.activeTool === 'clip', execute: ctx => ctx.setTool('clip') },
     { id: 'tool.rotate', label: 'Rotate', defaultShortcut: '5', menu: menu('Tools', 40, 'tools'), checked: ({ editor }) => editor.activeTool === 'rotate', execute: ctx => ctx.setTool('rotate') },
     { id: 'brush.create-exact', label: 'Create Exact Primitive…', menu: menu('Tools', 50, 'create'), execute: ({ editor }) => openExactPrimitiveDialog(editor) },
-    { id: 'csg.subtract', label: 'CSG Subtract', defaultShortcut: 'Mod+Shift+S', menu: menu('CSG', 0, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgSubtract() },
-    { id: 'csg.hollow', label: 'Make Hollow', defaultShortcut: 'Mod+Shift+H', menu: menu('CSG', 10, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgHollow() },
-    { id: 'csg.room', label: 'Make Room', menu: menu('CSG', 20, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgRoom() },
-    { id: 'csg.auto-caulk', label: 'Auto Caulk Selected', menu: menu('CSG', 30, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.autoCaulkSelected() },
-    { id: 'csg.merge', label: 'Merge Brushes', defaultShortcut: 'Mod+Shift+M', menu: menu('CSG', 40, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgMerge() },
-    { id: 'csg.intersect', label: 'Intersect Brushes', menu: menu('CSG', 50, 'csg'), enabled: hasSelection, execute: ({ editor }) => editor.csgIntersect() },
+    { id: 'csg.subtract', label: 'Carve', description: 'Use the selected brushes to carve intersecting unselected brushes', defaultShortcut: 'Mod+Shift+S', menu: menu('CSG', 0, 'boolean'), enabled: hasSelectedBrushes, execute: ({ editor }) => editor.csgSubtract() },
+    { id: 'csg.difference', label: 'Subtract from First', description: 'Subtract every later-selected brush from the first selected brush', menu: menu('CSG', 10, 'boolean'), enabled: hasTwoSelectedBrushes, execute: ({ editor }) => editor.csgDifference() },
+    { id: 'csg.intersect', label: 'Intersect', description: 'Replace the selected brushes with their common volume', menu: menu('CSG', 20, 'boolean'), enabled: hasTwoSelectedBrushes, execute: ({ editor }) => editor.csgIntersect() },
+    { id: 'csg.merge', label: 'Merge', description: 'Merge the selected brushes into one convex brush', defaultShortcut: 'Mod+Shift+M', menu: menu('CSG', 30, 'boolean'), enabled: hasTwoSelectedBrushes, execute: ({ editor }) => editor.csgMerge() },
+    { id: 'csg.hollow', label: 'Hollow', description: 'Turn each selected brush into a hollow shell', defaultShortcut: 'Mod+Shift+H', menu: menu('CSG', 40, 'shell'), enabled: hasSelectedBrushes, execute: ({ editor }) => editor.csgHollow() },
+    { id: 'csg.room', label: 'Room', description: 'Turn each selected brush into an inward-facing room', menu: menu('CSG', 50, 'shell'), enabled: hasSelectedBrushes, execute: ({ editor }) => editor.csgRoom() },
+    { id: 'csg.auto-caulk', label: 'Auto-Caulk', description: 'Caulk fully covered faces on the selected brushes', menu: menu('CSG', 60, 'materials'), enabled: hasSelectedBrushes, execute: ({ editor }) => editor.autoCaulkSelected() },
     ...[1, 2, 4, 8, 16, 32, 64].map((size, index): CommandDefinition<EditorCommandContext> => ({ id: `grid.set-${size}`, label: `Grid ${size}`, menu: menu('Grid', index * 10, 'sizes'), checked: ({ editor }) => editor.gridSize === size, execute: ctx => ctx.setGrid(size) })),
     { id: 'grid.smaller', label: 'Smaller Grid', defaultShortcut: 'BracketLeft', menu: menu('Grid', 80, 'adjust'), execute: ctx => ctx.decreaseGrid() },
     { id: 'grid.larger', label: 'Larger Grid', defaultShortcut: 'BracketRight', menu: menu('Grid', 90, 'adjust'), execute: ctx => ctx.increaseGrid() },
