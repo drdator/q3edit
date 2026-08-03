@@ -189,6 +189,33 @@ export function subtractBrush(target: Brush, carver: Brush): Brush[] | null {
 }
 
 /**
+ * Subtract one or more carvers from a target brush.
+ *
+ * Returns the convex fragments making up the difference, an empty array when
+ * the target is completely removed, or null when none of the carvers overlap.
+ */
+export function differenceBrushes(target: Brush, carvers: readonly Brush[]): Brush[] | null {
+  let pieces: Brush[] = [target];
+  let changed = false;
+
+  for (const carver of carvers) {
+    const next: Brush[] = [];
+    for (const piece of pieces) {
+      const fragments = subtractBrush(piece, carver);
+      if (fragments === null) next.push(piece);
+      else {
+        changed = true;
+        next.push(...fragments);
+      }
+    }
+    pieces = next;
+    if (pieces.length === 0) break;
+  }
+
+  return changed ? pieces : null;
+}
+
+/**
  * Create a hollow shell from a brush by insetting each face inward.
  * Each face produces one shell piece: the original brush clipped by an
  * inward-offset copy of that face plane.

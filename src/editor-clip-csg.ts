@@ -1,12 +1,12 @@
 import { clipBrush, type Brush } from './brush';
 import {
+  differenceBrushes,
   faceFullyCoveredByOpposingFace,
   hollowBrush,
   intersectBrushes,
   mergeBrushes,
   roomBrushes,
   roomThicknessFits,
-  subtractBrush,
 } from './csg';
 import { vec3Cross, vec3Length, vec3Sub, type Vec3 } from './math';
 import { getSelectedBrushItems } from './editor-selection';
@@ -117,19 +117,7 @@ export function csgSubtract(editor: Editor): void {
       for (const brush of entity.brushes) {
         if (carverSet.has(brush)) continue;
 
-        let pieces: Brush[] = [brush];
-        for (const carverBrush of carverSet) {
-          const next: Brush[] = [];
-          for (const piece of pieces) {
-            const fragments = subtractBrush(piece, carverBrush);
-            if (fragments !== null) {
-              next.push(...fragments);
-            } else {
-              next.push(piece);
-            }
-          }
-          pieces = next;
-        }
+        const pieces = differenceBrushes(brush, [...carverSet]) ?? [brush];
         newBrushes.push(...pieces);
         if (pieces.length > 1 || (pieces.length === 1 && pieces[0] !== brush)) {
           totalFragments += pieces.length;
@@ -147,6 +135,42 @@ export function csgSubtract(editor: Editor): void {
     editor.statusMessage = totalFragments > 0
       ? `CSG Subtract: ${totalFragments} fragments created`
       : 'CSG Subtract: no intersections found';
+  });
+}
+
+/** Replace the first selected brush with its difference from the rest. */
+export function csgDifference(editor: Editor): void {
+  const brushItems = getSelectedBrushItems(editor);
+  if (brushItems.length < 2) {
+    editor.statusMessage = 'CSG Difference: select the target first, then 1+ cutter brushes';
+    return;
+  }
+
+  const target = brushItems[0];
+  const carvers = brushItems.slice(1);
+  const fragments = differenceBrushes(target.brush, carvers.map(item => item.brush));
+  if (fragments === null) {
+    editor.statusMessage = 'CSG Difference: the selected cutters do not intersect the first brush';
+    return;
+  }
+
+  editor.transact('CSG difference', () => {
+    const carverBrushes = new Set(carvers.map(item => item.brush));
+    for (const entity of editor.entities) {
+      const replacements: Brush[] = [];
+      for (const brush of entity.brushes) {
+        if (brush === target.brush) replacements.push(...fragments);
+        else if (!carverBrushes.has(brush)) replacements.push(brush);
+      }
+      entity.brushes = replacements;
+    }
+
+    editor.reconcileHiddenState();
+    editor.selection = fragments.map(brush => ({ type: 'brush', entity: target.entity, brush }));
+    editor.redrawRequested = true;
+    editor.statusMessage = fragments.length > 0
+      ? `CSG Difference: first brush minus ${carvers.length} cutter${carvers.length === 1 ? '' : 's'} produced ${fragments.length} fragment${fragments.length === 1 ? '' : 's'}`
+      : `CSG Difference: ${carvers.length === 1 ? 'cutter removed' : 'cutters removed'} the first brush completely`;
   });
 }
 

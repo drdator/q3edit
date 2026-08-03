@@ -250,6 +250,7 @@ import {
 import {
   addClipPoint as addEditorClipPoint,
   cancelClip as cancelEditorClip,
+  csgDifference as differenceEditorBrushes,
   csgHollow as hollowEditorBrushes,
   csgRoom as roomEditorBrushes,
   autoCaulkSelected as autoCaulkEditorBrushes,
@@ -878,6 +879,10 @@ export class Editor {
 
   csgSubtract(): void {
     subtractEditorBrushes(this);
+  }
+
+  csgDifference(): void {
+    differenceEditorBrushes(this);
   }
 
   csgHollow(): void {
