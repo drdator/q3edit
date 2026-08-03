@@ -67,6 +67,7 @@ export interface AssetLoadingHandle {
 
 interface GamePreviewLaunch {
   mapName: string;
+  gameDirectory: string;
   bsp: Uint8Array;
   aas: Uint8Array | null;
   botCount: number;
@@ -2319,7 +2320,9 @@ export class UI {
     const packageCopy = packagePk3 ? new Uint8Array(packagePk3) : null;
     const retainedPackage = packagePk3 ? new Uint8Array(packagePk3) : null;
     this.gamePreviewLaunch = {
-      mapName: safeMapName, bsp: retainedBsp, aas: retainedAas,
+      mapName: safeMapName,
+      gameDirectory: this.editor.projectConfiguration.game.gameDirectory,
+      bsp: retainedBsp, aas: retainedAas,
       botCount, botSkill, noclip, commands: structuredClone(commands),
       packagePk3: retainedPackage,
     };
@@ -2371,7 +2374,6 @@ export class UI {
     frame.title = `ioquake3 preview of ${safeMapName}`;
     frame.src = '/ioquake3/player.html';
     frame.allow = 'autoplay; fullscreen';
-    frame.setAttribute('allowfullscreen', '');
 
     const actions = document.createElement('div');
     actions.className = 'editor-dialog-actions game-preview-actions';
@@ -2401,6 +2403,7 @@ export class UI {
         const launchMessage = {
           type: 'q3edit-player:launch',
           mapName: safeMapName,
+          gameDirectory: this.gamePreviewLaunch?.gameDirectory ?? 'baseq3',
           bsp: bspCopy.buffer,
           aas: aasCopy?.buffer ?? null,
           botCount,
