@@ -23,6 +23,7 @@ describe('global preferences', () => {
     preferences.collapsedPanels['entity-panel'] = true;
     preferences.sidebar = { visible: false, width: 420 };
     preferences.mcpActivity = { visible: true, height: 360 };
+    preferences.textureBrowser.showThumbnails = true;
     preferences.display.rendererMode = 'editor-fill';
     preferences.display.showGrid3D = false;
     preferences.quickPlay = {
@@ -42,6 +43,7 @@ describe('global preferences', () => {
     expect(loaded.preferences.collapsedPanels).toEqual({ 'entity-panel': true });
     expect(loaded.preferences.sidebar).toEqual({ visible: false, width: 420 });
     expect(loaded.preferences.mcpActivity).toEqual({ visible: true, height: 360 });
+    expect(loaded.preferences.textureBrowser).toEqual({ showThumbnails: true });
     expect(loaded.preferences.display.rendererMode).toBe('editor-fill');
     expect(loaded.preferences.display.showGrid3D).toBe(false);
     expect(loaded.preferences.quickPlay).toEqual({
@@ -98,6 +100,18 @@ describe('global preferences', () => {
     expect(loadGlobalPreferences(storage).preferences.mcpActivity).toEqual({
       visible: false,
       height: 800,
+    });
+  });
+
+  it('normalizes persisted texture browser view mode', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 2,
+      textureBrowser: { showThumbnails: 'yes' },
+    }));
+
+    expect(loadGlobalPreferences(storage).preferences.textureBrowser).toEqual({
+      showThumbnails: false,
     });
   });
 

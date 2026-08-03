@@ -758,7 +758,7 @@ export class UI {
           render();
         };
         const defaultToggleText = document.createElement('span');
-        defaultToggleText.textContent = model.openArenaEnabled ? 'Enabled' : 'Disabled';
+        defaultToggleText.textContent = 'Enable';
         defaultToggle.append(defaultCheckbox, defaultToggleText);
         defaultRow.append(defaultOrder, defaultInfo, defaultToggle);
         list.appendChild(defaultRow);
