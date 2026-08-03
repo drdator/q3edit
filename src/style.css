@@ -1432,7 +1432,7 @@ body.sidepanel-resizing * {
   flex: 0 0 auto;
 }
 
-#brush-body {
+.brush-panel-body {
   display: flex;
   flex-direction: column;
   min-height: 0;
