@@ -2077,6 +2077,12 @@ body.sidepanel-resizing * {
   gap: 1px;
 }
 
+.texture-list-empty {
+  padding: 8px 4px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
 .texture-tools {
   display: flex;
   flex-direction: column;

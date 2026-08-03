@@ -5,30 +5,10 @@ import { textureSearchScore } from './texture-search';
 import { listTextureTags, setTextureTags, textureTagsFor, type TextureTagMap } from './texture-tags';
 import { openTextureTagsDialog } from './texture-tags-dialog';
 import { panelSubhead } from './ui-controls';
-
-const COMMON_TEXTURES = [
-  'common/caulk',
-  'common/clip',
-  'common/trigger',
-  'common/nodraw',
-  'base_wall/basewall03',
-  'base_wall/basewall04',
-  'base_wall/concrete',
-  'base_floor/concrete',
-  'base_floor/diamond2c',
-  'base_floor/pjgrate1',
-  'base_trim/pewter_shiney',
-  'base_trim/dirty_pewter',
-  'gothic_wall/iron01_e',
-  'gothic_wall/skull4',
-  'gothic_floor/blocks17floor',
-  'gothic_trim/baseboard09',
-  'skies/earthsky01',
-];
+import { defaultTextureBrowserEntries } from './texture-browser';
 
 export class TexturePanel {
   private textureManager: TextureManager | null = null;
-  private showThumbnails = false;
   private directory = '';
   private search = '';
   private tagFilter = '';
@@ -44,6 +24,10 @@ export class TexturePanel {
     private readonly editor: Editor,
     private readonly managePakFiles: () => Promise<void> | void,
   ) {}
+
+  private get showThumbnails(): boolean {
+    return this.editor.preferences.textureBrowser.showThumbnails;
+  }
 
   mount(): void {
     this.rebuild();
@@ -241,9 +225,9 @@ export class TexturePanel {
     }
 
     const list = document.createElement('div');
-    list.className = 'texture-list';
+    list.className = 'texture-list texture-list-empty';
     list.id = 'texture-list';
-    this.populateTextureList(list, COMMON_TEXTURES, null);
+    list.textContent = 'Texture assets are loading…';
     body.appendChild(list);
   }
 
@@ -258,14 +242,17 @@ export class TexturePanel {
       value: '',
       textContent: '-- select folder --',
     }));
-    for (const directory of textureManager.listTextureDirectories()) {
+    const directories = textureManager.listTextureDirectories();
+    for (const directory of directories) {
       directorySelect.appendChild(Object.assign(document.createElement('option'), {
         value: directory,
         textContent: directory,
       }));
     }
-    if (Array.from(directorySelect.options).some(option => option.value === this.directory)) {
+    if (directories.includes(this.directory)) {
       directorySelect.value = this.directory;
+    } else {
+      this.directory = '';
     }
 
     const toggle = document.createElement('button');
@@ -275,7 +262,8 @@ export class TexturePanel {
     toggle.setAttribute('aria-pressed', String(this.showThumbnails));
     toggle.innerHTML = '<i class="ph ph-image" aria-hidden="true"></i>';
     toggle.addEventListener('click', () => {
-      this.showThumbnails = !this.showThumbnails;
+      this.editor.preferences.textureBrowser.showThumbnails = !this.showThumbnails;
+      this.editor.persistCurrentPreferences();
       toggle.classList.toggle('active', this.showThumbnails);
       toggle.setAttribute('aria-pressed', String(this.showThumbnails));
       repopulate();
@@ -359,7 +347,7 @@ export class TexturePanel {
         ? textureManager.listTexturesInDir(this.directory)
         : this.tagFilter
           ? allTextures
-          : COMMON_TEXTURES;
+          : defaultTextureBrowserEntries(allTextures);
       this.populateTextureList(list, baseTextures.filter(filterByTag), this.directory || null);
     };
 
@@ -383,6 +371,13 @@ export class TexturePanel {
   private populateTextureList(list: HTMLElement, textures: string[], selectedDirectory: string | null): void {
     list.replaceChildren();
     list.classList.toggle('texture-grid', this.showThumbnails && Boolean(this.textureManager));
+    list.classList.toggle('texture-list-empty', textures.length === 0);
+
+    if (textures.length === 0) {
+      list.classList.remove('texture-grid');
+      list.textContent = 'No textures found.';
+      return;
+    }
 
     for (const texture of textures) {
       const item = document.createElement('div');

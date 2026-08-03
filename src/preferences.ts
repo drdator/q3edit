@@ -68,6 +68,7 @@ export interface GlobalPreferences {
   collapsedPanels: Record<string, boolean>;
   sidebar: { visible: boolean; width: number };
   mcpActivity: { visible: boolean; height: number };
+  textureBrowser: { showThumbnails: boolean };
   quickPlay: QuickPlayPreferences;
   buildProfiles: BuildProfilePreferences;
   theme: { preset: ThemePreset; colors: ThemeColors };
@@ -101,6 +102,7 @@ export const DEFAULT_GLOBAL_PREFERENCES: GlobalPreferences = {
   collapsedPanels: {},
   sidebar: { visible: true, width: DEFAULT_SIDEBAR_WIDTH },
   mcpActivity: { visible: false, height: DEFAULT_MCP_ACTIVITY_PANEL_HEIGHT },
+  textureBrowser: { showThumbnails: false },
   quickPlay: {
     quality: 'normal',
     generateAas: true,
@@ -168,6 +170,7 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
   const theme = isRecord(value.theme) ? value.theme : {};
   const sidebar = isRecord(value.sidebar) ? value.sidebar : {};
   const mcpActivity = isRecord(value.mcpActivity) ? value.mcpActivity : {};
+  const textureBrowser = isRecord(value.textureBrowser) ? value.textureBrowser : {};
   const quickPlay = isRecord(value.quickPlay) ? value.quickPlay : {};
   const buildProfiles = isRecord(value.buildProfiles) ? value.buildProfiles : {};
   const colors = isRecord(theme.colors) ? theme.colors : {};
@@ -233,6 +236,10 @@ export function normalizeGlobalPreferences(value: unknown): GlobalPreferences {
     mcpActivity: {
       visible: typeof mcpActivity.visible === 'boolean' ? mcpActivity.visible : defaults.mcpActivity.visible,
       height: clampMcpActivityPanelHeight(Number(mcpActivity.height)),
+    },
+    textureBrowser: {
+      showThumbnails: typeof textureBrowser.showThumbnails === 'boolean'
+        ? textureBrowser.showThumbnails : defaults.textureBrowser.showThumbnails,
     },
     quickPlay: {
       quality: quickPlayQualities.includes(quickPlay.quality as QuickPlayQuality)
