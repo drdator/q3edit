@@ -27,6 +27,7 @@ export interface ReleasePackageDialogOptions {
 }
 
 interface StoredRelease {
+  target: ReleaseTarget;
   metadata: ArenaMetadata;
   readme: string;
   license: string;
@@ -34,10 +35,13 @@ interface StoredRelease {
   includeSource: boolean;
 }
 
+export type ReleaseTarget = 'map' | 'game';
+
 let releaseDialogRequest = 0;
 
 function defaults(mapName: string): StoredRelease {
   return {
+    target: 'map',
     metadata: {
       title: mapName, gameTypes: ['ffa'], botSupport: true,
       recommendedPlayers: '', author: '', description: '',
@@ -47,6 +51,12 @@ function defaults(mapName: string): StoredRelease {
     attribution: '',
     includeSource: false,
   };
+}
+
+export function gameReleaseBuildIssue(target: ReleaseTarget, build: BuildRecord | null): string | null {
+  if (target !== 'game' || !build) return null;
+  if (!build.aas) return 'Maker game levels require a successful AAS bot-navigation stage. Recompile with Generate AAS enabled.';
+  return null;
 }
 
 function readStored(editor: Editor, mapName: string): StoredRelease {
@@ -253,6 +263,17 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
 
   const filesSection = document.createElement('section');
   filesSection.innerHTML = '<h3>Release files</h3>';
+  const targetInput = document.createElement('select');
+  for (const [value, label] of [
+    ['map', 'Quake 3 map package'],
+    ['game', 'Maker game level (BSP + AAS + source)'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    targetInput.appendChild(option);
+  }
+  targetInput.value = stored.target;
   const readmeInput = textarea(stored.readme);
   const licenseInput = textarea(stored.license);
   const attributionInput = textarea(stored.attribution);
@@ -262,6 +283,7 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   const fileGrid = document.createElement('div');
   fileGrid.className = 'release-fields';
   fileGrid.append(
+    field('Export target', targetInput),
     field('README', readmeInput),
     field('License', licenseInput),
     field('Attribution', attributionInput),
@@ -298,7 +320,22 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   );
   body.append(metadataSection, levelshotSection, filesSection, auditSection, packageSection);
 
+  const applyTargetDefaults = () => {
+    const gameTarget = targetInput.value === 'game';
+    if (gameTarget) {
+      includeSource.checked = true;
+      botInput.checked = true;
+    }
+    includeSource.disabled = gameTarget;
+    const issue = gameReleaseBuildIssue(targetInput.value as ReleaseTarget, build);
+    packageStatus.textContent = issue ?? (build ? 'Ready to validate and build.' : 'A compiled BSP is required.');
+    packageStatus.className = issue ? 'error' : '';
+  };
+  targetInput.onchange = applyTargetDefaults;
+  applyTargetDefaults();
+
   const collectStored = (): StoredRelease => ({
+    target: targetInput.value as ReleaseTarget,
     metadata: {
       title: titleInput.value.trim(),
       gameTypes: gameTypesInput.value.split(/[\s,]+/).filter(Boolean),
@@ -323,6 +360,8 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
     if (!build?.bsp) return null;
     saveMetadata();
     try {
+      const gameBuildIssue = gameReleaseBuildIssue(targetInput.value as ReleaseTarget, build);
+      if (gameBuildIssue) throw new Error(gameBuildIssue);
       const activeTextureManager = editor.textureManager ?? textureManager;
       const packageResult = buildReleasePackage({
         mapName,

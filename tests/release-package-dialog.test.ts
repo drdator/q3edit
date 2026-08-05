@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSourceFingerprint, type BuildRecord } from '../src/build-history';
-import { selectReleaseBuild } from '../src/release-package-dialog';
+import { gameReleaseBuildIssue, selectReleaseBuild } from '../src/release-package-dialog';
 
 function build(documentRevision: number, source?: string, region = false): BuildRecord {
   return {
@@ -35,5 +35,12 @@ describe('release package build selection', () => {
     expect(selectReleaseBuild([build(2, source)], 3, buildSourceFingerprint(source))?.documentRevision).toBe(2);
     expect(selectReleaseBuild([build(2, source)], 3, buildSourceFingerprint(`${source}// changed`))).toBeNull();
     expect(selectReleaseBuild([build(3, source, true)], 3, buildSourceFingerprint(source))).toBeNull();
+  });
+
+  it('requires AAS for Maker game-level exports', () => {
+    const withoutAas = build(2);
+    expect(gameReleaseBuildIssue('map', withoutAas)).toBeNull();
+    expect(gameReleaseBuildIssue('game', withoutAas)).toMatch(/require.*AAS/i);
+    expect(gameReleaseBuildIssue('game', { ...withoutAas, aas: new Uint8Array([1]) })).toBeNull();
   });
 });
