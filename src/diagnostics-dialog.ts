@@ -12,7 +12,6 @@ import type { Editor } from './editor';
 import { createDesignReviewWorkspace } from './design-review-workspace';
 import { createEntityRelationshipWorkspace } from './entity-relationship-workspace';
 import { createPerformanceWorkspace } from './performance-workspace';
-import { saveProjectConfiguration } from './project-config';
 
 export type DiagnosticsTab = 'map' | 'design-review' | 'entity-logic' | 'performance' | 'entities' | 'find' | 'brush-macros';
 
@@ -135,8 +134,9 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
         for (const diagnostic of diagnostics.slice(0, 500)) {
           list.appendChild(diagnosticRow(editor, diagnostic, selectedFixes, updateFixStatus, () => {
             if (!editor.projectConfiguration.diagnostics.mutedCodes.includes(diagnostic.code)) {
-              editor.projectConfiguration.diagnostics.mutedCodes.push(diagnostic.code);
-              saveProjectConfiguration(editor.projectConfiguration);
+              const project = structuredClone(editor.projectConfiguration);
+              project.diagnostics.mutedCodes.push(diagnostic.code);
+              editor.updateProjectConfiguration(project, { label: `Mute ${diagnostic.code} diagnostics`, notify: false });
             }
             render();
           }));
@@ -154,9 +154,9 @@ export function openDiagnosticsDialog(editor: Editor, initialTab: DiagnosticsTab
           const row = document.createElement('div');
           row.className = 'diagnostic-muted-row';
           row.append(code, button('Unmute', () => {
-            editor.projectConfiguration.diagnostics.mutedCodes =
-              editor.projectConfiguration.diagnostics.mutedCodes.filter(item => item !== code);
-            saveProjectConfiguration(editor.projectConfiguration);
+            const project = structuredClone(editor.projectConfiguration);
+            project.diagnostics.mutedCodes = project.diagnostics.mutedCodes.filter(item => item !== code);
+            editor.updateProjectConfiguration(project, { label: `Unmute ${code} diagnostics`, notify: false });
             render();
           }));
           muted.append(row);

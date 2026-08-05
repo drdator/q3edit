@@ -24,9 +24,17 @@ import { clonePatch, mirrorPatch, PatchControlPoint, rotatePatch, scalePatchCont
 import { entityBounds } from './editor-queries';
 import type { Editor, SelectionItem } from './editor';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
-import { mirrorBrushLocked, rotateBrushLocked, scaleBrushLocked, translateBrushLocked } from './texture-lock';
+import {
+  captureBrushPrimitiveVertexTextureState,
+  mirrorBrushLocked,
+  restoreBrushPrimitiveVertexTextureState,
+  rotateBrushLocked,
+  scaleBrushLocked,
+  translateBrushLocked,
+} from './texture-lock';
 import { getEntityClassRegistry } from './entity-definitions';
 import { cloneTransformDescriptor } from './transform-descriptor';
+import { collectBrushVertices, moveVertices } from './vertex';
 
 export interface BrushScaleOriginal {
   brush: Brush;
@@ -340,6 +348,30 @@ export function moveSelection(editor: Editor, delta: Vec3): void {
     }
     editor.redrawRequested = true;
   }, { coalesceKey: 'move-selection', assumeChanged: true });
+}
+
+export function moveSelectedFaces(editor: Editor, delta: Vec3): void {
+  const selectedFaces = editor.selection.filter(item => item.type === 'face');
+  if (selectedFaces.length === 0 || (delta[0] === 0 && delta[1] === 0 && delta[2] === 0)) return;
+  editor.transact('Move brush faces', () => {
+    const facesByBrush = new Map<Brush, Set<Brush['faces'][number]>>();
+    for (const item of selectedFaces) {
+      const faces = facesByBrush.get(item.brush) ?? new Set<Brush['faces'][number]>();
+      faces.add(item.face);
+      facesByBrush.set(item.brush, faces);
+    }
+    for (const [brush, faces] of facesByBrush) {
+      const faceIndices = new Set([...faces].map(face => brush.faces.indexOf(face)).filter(index => index >= 0));
+      const vertices = collectBrushVertices(brush);
+      const selectedIndices = vertices
+        .map((vertex, index) => vertex.faceIndices.some(faceIndex => faceIndices.has(faceIndex)) ? index : -1)
+        .filter(index => index >= 0);
+      const textureState = editor.textureLock ? captureBrushPrimitiveVertexTextureState(brush) : null;
+      moveVertices(brush, vertices, selectedIndices, delta);
+      if (textureState) restoreBrushPrimitiveVertexTextureState(textureState);
+    }
+    editor.redrawRequested = true;
+  }, { coalesceKey: 'move-brush-faces' });
 }
 
 export function rotateSelection(editor: Editor, angleDeg: number): void {

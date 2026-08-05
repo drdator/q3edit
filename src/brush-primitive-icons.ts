@@ -18,7 +18,7 @@ export function brushPrimitiveToolbarIconMarkup(primitive: BrushPrimitive): stri
 }
 
 export function brushPrimitiveToolbarTitle(primitive: BrushPrimitive): string {
-  return `Create ${primitive} brush (2)`;
+  return `Create ${primitive} brush (2) · Click again for brush options`;
 }
 
 export function applyBrushPrimitiveToolbarIcon(button: HTMLElement | null, primitive: BrushPrimitive): void {

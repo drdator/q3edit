@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { createEntity } from '../src/entity';
 import { DEFAULT_GLOBAL_PREFERENCES } from '../src/preferences';
 import {
   DEFAULT_PROJECT_CONFIGURATION,
+  MAP_PROJECT_CONFIG_KEY,
   PROJECT_CONFIG_STORAGE_KEY,
   importProjectConfiguration,
   loadProjectConfiguration,
   normalizeGameDirectory,
+  readMapProjectConfiguration,
   resolveProjectPreferences,
   saveProjectConfiguration,
+  writeMapProjectConfiguration,
 } from '../src/project-config';
 
 class MemoryStorage {
@@ -55,5 +59,26 @@ describe('project configuration', () => {
     expect(normalizeGameDirectory('my-game_2')).toBe('my-game_2');
     expect(normalizeGameDirectory('../baseq3')).toBe('baseq3');
     expect(normalizeGameDirectory('mods/tinygame')).toBe('baseq3');
+  });
+
+  it('round-trips project configuration through worldspawn metadata', () => {
+    const worldspawn = createEntity('worldspawn');
+    const project = structuredClone(DEFAULT_PROJECT_CONFIGURATION);
+    project.name = 'Embedded arena project';
+    project.compile.bspArgs = ['-meta', '-samplesize', '8'];
+    project.assets.archives = ['pak0.pk3', 'arena.pk3'];
+
+    expect(writeMapProjectConfiguration([worldspawn], project)).toBe(true);
+    expect(worldspawn.properties[MAP_PROJECT_CONFIG_KEY]).toBeTruthy();
+    expect(readMapProjectConfiguration([worldspawn])).toEqual(project);
+    expect(writeMapProjectConfiguration([worldspawn], project)).toBe(false);
+  });
+
+  it('ignores malformed or unsupported embedded project configuration', () => {
+    const worldspawn = createEntity('worldspawn');
+    worldspawn.properties[MAP_PROJECT_CONFIG_KEY] = 'not json';
+    expect(readMapProjectConfiguration([worldspawn])).toBeNull();
+    worldspawn.properties[MAP_PROJECT_CONFIG_KEY] = '{"version":2}';
+    expect(readMapProjectConfiguration([worldspawn])).toBeNull();
   });
 });

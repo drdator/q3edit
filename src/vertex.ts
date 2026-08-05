@@ -1,4 +1,4 @@
-import { Vec3, vec3Add, vec3Copy, vec3Sub, vec3Dot, vec3DistSq, vec3Cross, vec3Length,
+import { Vec3, vec3Add, vec3Copy, vec3Sub, vec3Dot, vec3DistSq, vec3Cross, vec3Length, vec3Scale,
          vec3Min, vec3Max, planeFromPoints } from './math';
 import { Brush, BrushFace, rebuildBrush, updateFacePointsFromPolygon } from './brush';
 
@@ -384,4 +384,63 @@ export function pickVertex3D(
     }
   }
   return bestIdx;
+}
+
+export interface BrushEdgePick3D {
+  vertexIndices: [number, number];
+  distSq: number;
+  rayT: number;
+}
+
+/** Pick the closest brush edge to a 3D ray using the same distance-scaled tolerance as vertex picking. */
+export function pickEdge3D(
+  brush: Brush,
+  vertices: BrushVertex[],
+  rayOrigin: Vec3,
+  rayDir: Vec3,
+  threshold: number,
+): BrushEdgePick3D | null {
+  const rayLength = vec3Length(rayDir);
+  if (rayLength < 1e-8) return null;
+  const direction = vec3Scale(rayDir, 1 / rayLength);
+  let best: BrushEdgePick3D | null = null;
+
+  for (const edge of collectBrushEdges(brush, vertices)) {
+    const a = vertices[edge.vertexIndices[0]]?.position;
+    const b = vertices[edge.vertexIndices[1]]?.position;
+    if (!a || !b) continue;
+    const segment = vec3Sub(b, a);
+    const segmentLengthSq = vec3Dot(segment, segment);
+    if (segmentLengthSq < 1e-8) continue;
+
+    const fromOrigin = vec3Sub(a, rayOrigin);
+    const segmentAlongRay = vec3Dot(segment, direction);
+    const originAlongRay = vec3Dot(fromOrigin, direction);
+    const segmentPerpendicular = vec3Sub(segment, vec3Scale(direction, segmentAlongRay));
+    const originPerpendicular = vec3Sub(fromOrigin, vec3Scale(direction, originAlongRay));
+    const perpendicularLengthSq = vec3Dot(segmentPerpendicular, segmentPerpendicular);
+    let segmentT = perpendicularLengthSq > 1e-8
+      ? -vec3Dot(originPerpendicular, segmentPerpendicular) / perpendicularLengthSq
+      : 0;
+    segmentT = Math.max(0, Math.min(1, segmentT));
+
+    let point = vec3Add(a, vec3Scale(segment, segmentT));
+    let rayT = vec3Dot(vec3Sub(point, rayOrigin), direction);
+    if (rayT < 0) {
+      segmentT = Math.max(0, Math.min(1, -vec3Dot(fromOrigin, segment) / segmentLengthSq));
+      point = vec3Add(a, vec3Scale(segment, segmentT));
+      rayT = 0;
+    }
+
+    const rayPoint = vec3Add(rayOrigin, vec3Scale(direction, rayT));
+    const distSq = vec3DistSq(point, rayPoint);
+    const scaledThreshold = threshold * Math.max(rayT, 1) * 0.01;
+    if (distSq > scaledThreshold * scaledThreshold) continue;
+    if (!best || rayT < best.rayT - 1e-5 ||
+        (Math.abs(rayT - best.rayT) <= 1e-5 && distSq < best.distSq)) {
+      best = { vertexIndices: edge.vertexIndices, distSq, rayT };
+    }
+  }
+
+  return best;
 }

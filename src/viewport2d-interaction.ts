@@ -38,6 +38,8 @@ export interface Viewport2DInteractionState {
   panCenterStart: [number, number];
   hasDragged: boolean;
   moveSnapshotTaken: boolean;
+  moveAxisLock: 'h' | 'v' | null;
+  moveAppliedDelta: [number, number];
   resizing: boolean;
   resizeEdges: ResizeEdges;
   resizeBrushes: {
@@ -83,6 +85,7 @@ export interface Viewport2DInteractionContext {
   centerX: number;
   centerY: number;
   zoom: number;
+  getDepthCenter: () => number;
   interaction: Viewport2DInteractionState;
   screenToWorld: (sx: number, sy: number) => [number, number];
 }
@@ -98,6 +101,8 @@ export function createViewport2DInteractionState(): Viewport2DInteractionState {
     panCenterStart: [0, 0],
     hasDragged: false,
     moveSnapshotTaken: false,
+    moveAxisLock: null,
+    moveAppliedDelta: [0, 0],
     resizing: false,
     resizeEdges: { minH: false, maxH: false, minV: false, maxV: false },
     resizeBrushes: [],
@@ -262,7 +267,8 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
 
   if (ctx.editor.activeTool === 'create') {
     const snapped = snapPlanarPoint(ctx, wx, wy, e.ctrlKey, false);
-    snapped[ctx.axisDepth] = 0;
+    const grid = ctx.editor.effectiveGrid(e.ctrlKey);
+    snapped[ctx.axisDepth] = Math.round(ctx.getDepthCenter() / grid) * grid;
     ctx.editor.creating = true;
     ctx.editor.createStart = vec3Copy(snapped);
     ctx.editor.createEnd = vec3Copy(snapped);
@@ -580,7 +586,8 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
       ctx.editor.clearSelection();
     }
 
-    if (additive || !alreadySelected) {
+    const preserveSelectedForDirectionLock = e.shiftKey && !e.ctrlKey && !e.metaKey && alreadySelected;
+    if ((additive || !alreadySelected) && !preserveSelectedForDirectionLock) {
       if (picked.type === 'brush') {
         if (directGroupEditing) ctx.editor.selectBrushDirect(picked.entity, picked.brush, additive);
         else ctx.editor.selectBrush(picked.entity, picked.brush, additive);
@@ -595,6 +602,8 @@ export function handleViewport2DMouseDown(ctx: Viewport2DInteractionContext, e: 
     state.dragging = true;
     state.hasDragged = false;
     state.moveSnapshotTaken = false;
+    state.moveAxisLock = null;
+    state.moveAppliedDelta = [0, 0];
     state.dragStart = [mx, my];
     state.dragWorldStart = [wx, wy];
     state.geoSnapTargets = ctx.editor.snapToGeometry ? ctx.editor.collectSnapTargets() : null;
@@ -1031,8 +1040,17 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
 
   if (ctx.editor.selection.length === 0) return;
 
-  const dx = wx - state.dragWorldStart[0];
-  const dy = wy - state.dragWorldStart[1];
+  const totalDx = wx - state.dragWorldStart[0];
+  const totalDy = wy - state.dragWorldStart[1];
+  if (!e.shiftKey) {
+    state.moveAxisLock = null;
+  } else if (totalDx !== 0 || totalDy !== 0) {
+    state.moveAxisLock = Math.abs(totalDx) >= Math.abs(totalDy) ? 'h' : 'v';
+  }
+  const allowH = state.moveAxisLock !== 'v';
+  const allowV = state.moveAxisLock !== 'h';
+  const dx = (allowH ? totalDx : 0) - state.moveAppliedDelta[0];
+  const dy = (allowV ? totalDy : 0) - state.moveAppliedDelta[1];
   const grid = ctx.editor.effectiveGrid(e.ctrlKey);
   const H = ctx.axisH;
   const V = ctx.axisV;
@@ -1050,15 +1068,19 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
     const rawMaxV = bounds.maxs[V] + dy;
     const geoH = state.geoSnapTargets ? state.geoSnapTargets[H] : null;
     const geoV = state.geoSnapTargets ? state.geoSnapTargets[V] : null;
-    const rH = snapAxisDelta(dx, [rawMinH, rawMaxH, (rawMinH + rawMaxH) / 2], grid, abs, geoH, threshold);
-    const rV = snapAxisDelta(dy, [rawMinV, rawMaxV, (rawMinV + rawMaxV) / 2], grid, abs, geoV, threshold);
-    snappedDx = rH.delta;
-    snappedDy = rV.delta;
-    if (rH.snapLine !== null) state.geoSnapLines.push({ axis: 'h', value: rH.snapLine });
-    if (rV.snapLine !== null) state.geoSnapLines.push({ axis: 'v', value: rV.snapLine });
+    const rH = allowH
+      ? snapAxisDelta(dx, [rawMinH, rawMaxH, (rawMinH + rawMaxH) / 2], grid, abs, geoH, threshold)
+      : null;
+    const rV = allowV
+      ? snapAxisDelta(dy, [rawMinV, rawMaxV, (rawMinV + rawMaxV) / 2], grid, abs, geoV, threshold)
+      : null;
+    snappedDx = rH?.delta ?? dx;
+    snappedDy = rV?.delta ?? dy;
+    if (rH?.snapLine != null) state.geoSnapLines.push({ axis: 'h', value: rH.snapLine });
+    if (rV?.snapLine != null) state.geoSnapLines.push({ axis: 'v', value: rV.snapLine });
   } else {
-    snappedDx = Math.round(dx / grid) * grid;
-    snappedDy = Math.round(dy / grid) * grid;
+    snappedDx = allowH ? Math.round(dx / grid) * grid : dx;
+    snappedDy = allowV ? Math.round(dy / grid) * grid : dy;
   }
 
   if (snappedDx === 0 && snappedDy === 0) return;
@@ -1075,9 +1097,9 @@ export function handleViewport2DMouseMove(ctx: Viewport2DInteractionContext, e: 
   delta[ctx.axisH] = snappedDx;
   delta[ctx.axisV] = snappedDy;
   ctx.editor.moveSelection(delta);
-  state.dragWorldStart = [
-    state.dragWorldStart[0] + snappedDx,
-    state.dragWorldStart[1] + snappedDy,
+  state.moveAppliedDelta = [
+    state.moveAppliedDelta[0] + snappedDx,
+    state.moveAppliedDelta[1] + snappedDy,
   ];
 }
 
@@ -1241,8 +1263,9 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     mins[ctx.axisV] = Math.min(ctx.editor.createStart[ctx.axisV], ctx.editor.createEnd[ctx.axisV]);
     maxs[ctx.axisH] = Math.max(ctx.editor.createStart[ctx.axisH], ctx.editor.createEnd[ctx.axisH]);
     maxs[ctx.axisV] = Math.max(ctx.editor.createStart[ctx.axisV], ctx.editor.createEnd[ctx.axisV]);
-    mins[ctx.axisDepth] = 0;
-    maxs[ctx.axisDepth] = ctx.editor.createDepth;
+    const depthCenter = ctx.editor.createStart[ctx.axisDepth];
+    mins[ctx.axisDepth] = depthCenter - ctx.editor.createDepth / 2;
+    maxs[ctx.axisDepth] = depthCenter + ctx.editor.createDepth / 2;
 
     const grid = ctx.editor.effectiveGrid(e.ctrlKey);
     if (maxs[ctx.axisH] - mins[ctx.axisH] >= grid &&
@@ -1257,6 +1280,8 @@ export function handleViewport2DMouseUp(ctx: Viewport2DInteractionContext, e: Mo
     ctx.editor.commitTransaction();
     state.moveSnapshotTaken = false;
   }
+  state.moveAxisLock = null;
+  state.moveAppliedDelta = [0, 0];
   state.dragging = false;
 }
 

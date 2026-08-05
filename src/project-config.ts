@@ -1,8 +1,10 @@
 import type { DisplayPreferences } from './display-policy';
+import type { Entity } from './entity';
 import type { GlobalPreferences, GridSnapMode } from './preferences';
 
 export const PROJECT_CONFIG_VERSION = 1;
 export const PROJECT_CONFIG_STORAGE_KEY = 'q3edit.project.current.v1';
+export const MAP_PROJECT_CONFIG_KEY = '_q3edit_project_config';
 
 export interface ProjectConfiguration {
   version: typeof PROJECT_CONFIG_VERSION;
@@ -107,6 +109,26 @@ export function importProjectConfiguration(json: string): ProjectConfiguration {
   if (!isRecord(parsed)) throw new Error('Project file must contain a JSON object');
   if (Number(parsed.version) > PROJECT_CONFIG_VERSION) throw new Error(`Project version ${String(parsed.version)} is newer than this editor supports`);
   return normalizeProjectConfiguration(parsed);
+}
+
+export function serializeMapProjectConfiguration(project: ProjectConfiguration): string {
+  return JSON.stringify(normalizeProjectConfiguration(project));
+}
+
+export function readMapProjectConfiguration(entities: Entity[]): ProjectConfiguration | null {
+  const raw = entities.find(entity => entity.classname === 'worldspawn')?.properties[MAP_PROJECT_CONFIG_KEY];
+  if (!raw) return null;
+  try { return importProjectConfiguration(raw); }
+  catch { return null; }
+}
+
+export function writeMapProjectConfiguration(entities: Entity[], project: ProjectConfiguration): boolean {
+  const worldspawn = entities.find(entity => entity.classname === 'worldspawn');
+  if (!worldspawn) return false;
+  const serialized = serializeMapProjectConfiguration(project);
+  if (worldspawn.properties[MAP_PROJECT_CONFIG_KEY] === serialized) return false;
+  worldspawn.properties[MAP_PROJECT_CONFIG_KEY] = serialized;
+  return true;
 }
 
 export function resolveProjectPreferences(global: GlobalPreferences, project: ProjectConfiguration): ResolvedProjectPreferences {

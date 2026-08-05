@@ -1329,7 +1329,6 @@ export class UI {
     this.closeMenus();
     openProjectSettingsDialog({
       editor: this.editor,
-      onApplied: project => { void this.onProjectConfigurationChanged?.(project); },
     });
   }
 

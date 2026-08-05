@@ -4,7 +4,7 @@ import { Brush, BrushFace } from './brush';
 import { Entity } from './entity';
 import { hasDirectGeometrySelection, isBrushDirectlySelected, isPatchDirectlySelected } from './editor-selection';
 import { Patch } from './patch';
-import { pickVertex3D } from './vertex';
+import { pickEdge3D, pickVertex3D } from './vertex';
 
 export interface Viewport3DSelectionContext {
   editor: Editor;
@@ -53,6 +53,40 @@ function isGroupedGeometrySelection(ctx: Viewport3DSelectionContext, entity: Ent
   return entity !== ctx.editor.worldspawn && ctx.editor.hasEntityGeometry(entity);
 }
 
+function selectVertexPair(
+  editor: Editor,
+  dataIndex: number,
+  vertexIndices: [number, number],
+  additive: boolean,
+): void {
+  if (!additive) editor.clearVertexSelection();
+  for (const vertexIndex of vertexIndices) {
+    if (!editor.isVertexSelected(dataIndex, vertexIndex)) editor.selectVertex(dataIndex, vertexIndex, true);
+  }
+}
+
+function pickVertexModeFace(
+  editor: Editor,
+  rayOrigin: Vec3,
+  rayDir: Vec3,
+): { dataIndex: number; faceIndex: number } | null {
+  let best: { dataIndex: number; faceIndex: number } | null = null;
+  let bestDistance = Infinity;
+  for (let dataIndex = 0; dataIndex < editor.vertexData.length; dataIndex++) {
+    const brush = editor.vertexData[dataIndex].brush;
+    for (let faceIndex = 0; faceIndex < brush.faces.length; faceIndex++) {
+      const polygon = brush.faces[faceIndex].polygon;
+      for (let index = 1; index < polygon.length - 1; index++) {
+        const distance = rayTriangleIntersect(rayOrigin, rayDir, polygon[0], polygon[index], polygon[index + 1]);
+        if (distance === null || distance >= bestDistance) continue;
+        bestDistance = distance;
+        best = { dataIndex, faceIndex };
+      }
+    }
+  }
+  return best;
+}
+
 export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEvent): void {
   const [sx, sy] = ctx.dragStart;
   if (ctx.editor.activeTool === 'clip') {
@@ -83,6 +117,12 @@ export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEv
   if (ctx.editor.vertexMode) {
     const { rayOrigin, rayDir } = ctx.getRay(sx, sy);
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+    if (e.altKey) {
+      const hitFace = pickVertexModeFace(ctx.editor, rayOrigin, rayDir);
+      if (hitFace) ctx.editor.selectFaceVertices(hitFace.dataIndex, hitFace.faceIndex);
+      else if (!additive) ctx.editor.clearVertexSelection();
+      return;
+    }
     let hitDi = -1;
     let hitVi = -1;
     for (let di = 0; di < ctx.editor.vertexData.length; di++) {
@@ -93,8 +133,23 @@ export function handleViewport3DPick(ctx: Viewport3DSelectionContext, e: MouseEv
         break;
       }
     }
+    let hitEdgeDi = -1;
+    let hitEdge: [number, number] | null = null;
+    let hitEdgeRayT = Infinity;
+    if (hitDi < 0) {
+      for (let di = 0; di < ctx.editor.vertexData.length; di++) {
+        const data = ctx.editor.vertexData[di];
+        const edge = pickEdge3D(data.brush, data.vertices, rayOrigin, rayDir, 8);
+        if (!edge || edge.rayT >= hitEdgeRayT) continue;
+        hitEdgeDi = di;
+        hitEdge = edge.vertexIndices;
+        hitEdgeRayT = edge.rayT;
+      }
+    }
     if (hitDi >= 0) {
       ctx.editor.selectVertex(hitDi, hitVi, additive);
+    } else if (hitEdgeDi >= 0 && hitEdge) {
+      selectVertexPair(ctx.editor, hitEdgeDi, hitEdge, additive);
     } else if (!additive) {
       ctx.editor.clearVertexSelection();
     }
@@ -197,7 +252,9 @@ export function handleViewport3DDoublePick(ctx: Viewport3DSelectionContext, e: M
   if (ctx.editor.vertexMode) {
     const { rayOrigin, rayDir } = ctx.getRay(sx, sy);
     for (let di = 0; di < ctx.editor.vertexData.length; di++) {
-      if (pickVertex3D(ctx.editor.vertexData[di].vertices, rayOrigin, rayDir, 8) >= 0) {
+      const data = ctx.editor.vertexData[di];
+      if (pickVertex3D(data.vertices, rayOrigin, rayDir, 8) >= 0 ||
+          pickEdge3D(data.brush, data.vertices, rayOrigin, rayDir, 8)) {
         return;
       }
     }

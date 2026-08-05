@@ -15,7 +15,6 @@ import {
   exportProjectConfiguration,
   importProjectConfiguration,
   normalizeProjectConfiguration,
-  saveProjectConfiguration,
   type ProjectConfiguration,
 } from './project-config';
 import { refreshEditorThemeColors } from './theme-colors';
@@ -322,7 +321,7 @@ export function openProjectSettingsDialog(options: ProjectSettingsDialogOptions)
   status.className = 'preferences-status';
   status.setAttribute('role', 'status');
 
-  const projectSection = section('Project', 'Settings in this dialog apply only to the current project.');
+  const projectSection = section('Project', 'Settings in this dialog are stored with the current .map file. Browser storage remains the fallback for older maps.');
   const projectName = input(project.name);
   const basePath = input(project.game.basePath);
   const gameDir = input(project.game.gameDirectory);
@@ -362,7 +361,7 @@ export function openProjectSettingsDialog(options: ProjectSettingsDialogOptions)
     try {
       const json = await chooseJson(); if (!json) return;
       project = importProjectConfiguration(json);
-      saveProjectConfiguration(project); editor.applyPreferences(editor.preferences, project);
+      editor.updateProjectConfiguration(project, { label: 'Import project settings' });
       options.onApplied?.(project);
       overlay.remove(); openProjectSettingsDialog(options);
     } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
@@ -379,8 +378,7 @@ export function openProjectSettingsDialog(options: ProjectSettingsDialogOptions)
         entityDefinitions: { sources: lines(definitionSources.value) },
         overrides: { ...project.overrides, gridSize: projectGrid.value ? Number(projectGrid.value) : undefined, gridSnapMode: projectSnap.value || undefined },
       });
-      saveProjectConfiguration(project);
-      editor.applyPreferences(editor.preferences, project);
+      editor.updateProjectConfiguration(project);
       options.onApplied?.(project);
       editor.statusMessage = 'Project settings saved';
       overlay.remove();

@@ -74,7 +74,9 @@ import {
   serializeMap as serializeEditorMap,
   serializeCompileMap as serializeEditorCompileMap,
   undo as undoDocument,
+  updateProjectConfiguration as updateEditorProjectConfiguration,
   type OriginalMapSource,
+  type UpdateProjectConfigurationOptions,
 } from './editor-document';
 import {
   copySelection as copyEditorSelection,
@@ -403,6 +405,7 @@ export class Editor {
   private documentChangeListeners = new Set<(change: EditorDocumentChange) => void>();
   private documentStateChangeListeners = new Set<() => void>();
   private documentSessionListeners = new Set<(startedAt: number) => void>();
+  private projectConfigurationListeners = new Set<(project: ProjectConfiguration) => void>();
   // Drag state for brush creation
   creating = false;
   createStart: Vec3 = [0, 0, 0];
@@ -1017,6 +1020,16 @@ export class Editor {
     return () => this.documentSessionListeners.delete(listener);
   }
 
+  subscribeProjectConfigurationChanges(listener: (project: ProjectConfiguration) => void): () => void {
+    this.projectConfigurationListeners.add(listener);
+    return () => this.projectConfigurationListeners.delete(listener);
+  }
+
+  notifyProjectConfigurationChanged(): void {
+    const project = structuredClone(this.projectConfiguration);
+    for (const listener of this.projectConfigurationListeners) listener(project);
+  }
+
   notifyDocumentChanged(label: string, previousRevision: number | null = null): void {
     const change = { label, previousRevision, revision: this.documentRevision };
     if (!label.startsWith('MCP:')) {
@@ -1111,6 +1124,13 @@ export class Editor {
 
   loadMap(text: string): void {
     loadEditorMap(this, text);
+  }
+
+  updateProjectConfiguration(
+    project: ProjectConfiguration,
+    options: UpdateProjectConfigurationOptions = {},
+  ): void {
+    updateEditorProjectConfiguration(this, project, options);
   }
 
   restoreRecoveredMap(

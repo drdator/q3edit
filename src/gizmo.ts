@@ -4,7 +4,8 @@ import { cloneTextureProjection, type BrushTextureProjection } from './brush';
 import { PatchControlPoint } from './patch';
 import { getSelectedBrushItems, getSelectedPatchItems } from './editor-selection';
 import { createLineBuffer } from './gl-utils';
-import { scaleGeometryFromOriginals } from './editor-transforms';
+import { moveSelectedFaces, scaleGeometryFromOriginals } from './editor-transforms';
+import { appendBoxTriangles, appendConeTriangles, appendTubeTriangles } from './geometry-primitives';
 import {
   DEFAULT_ORTHOGRAPHIC_SCALE,
   type Viewport3DProjection,
@@ -25,6 +26,28 @@ function gizmoLength(
   return projection === 'orthographic'
     ? orthographicScale * 0.21
     : vec3Length(vec3Sub(center, cameraPos)) * 0.12;
+}
+
+export function buildGizmoAxisTriangles(center: Vec3, axis: number, length: number, scaleMode: boolean): number[] {
+  const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const direction = axes[axis];
+  if (!direction || length <= 0) return [];
+  const vertices: number[] = [];
+  const tip = vec3Add(center, vec3Scale(direction, length));
+  const tipSize = length * 0.15;
+  const shaftRadius = length * 0.028;
+
+  if (scaleMode) {
+    const halfSize = tipSize * 0.5;
+    const shaftEnd = vec3Add(tip, vec3Scale(direction, -halfSize));
+    appendTubeTriangles(vertices, center, shaftEnd, shaftRadius);
+    appendBoxTriangles(vertices, tip, halfSize);
+  } else {
+    const coneBase = vec3Add(tip, vec3Scale(direction, -tipSize * 1.8));
+    appendTubeTriangles(vertices, center, coneBase, shaftRadius);
+    appendConeTriangles(vertices, coneBase, tip, tipSize * 0.65);
+  }
+  return vertices;
 }
 
 export class Gizmo {
@@ -87,42 +110,13 @@ export class Gizmo {
 
     // Gizmo length scales with distance from camera for consistent screen size
     const len = gizmoLength(center, cameraPos, projection, orthographicScale);
-    const tipSize = len * 0.15;
-
-    const axes: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
     const colors: Vec3[] = [[1, 0.2, 0.2], [0.2, 1, 0.2], [0.4, 0.4, 1]];
     const isScale = this.editor.gizmoMode === 'scale';
     const verts: number[] = [];
 
     for (let a = 0; a < 3; a++) {
-      const dir = axes[a];
-      const tip: Vec3 = vec3Add(center, vec3Scale(dir, len));
       const start = verts.length / 3;
-
-      // Main axis line
-      verts.push(center[0], center[1], center[2]);
-      verts.push(tip[0], tip[1], tip[2]);
-
-      if (isScale) {
-        // Small cube at tip (3 line pairs for a box outline)
-        const s = tipSize;
-        for (let i = 0; i < 3; i++) {
-          const d: Vec3 = [0, 0, 0];
-          d[i] = s;
-          verts.push(tip[0] - d[0], tip[1] - d[1], tip[2] - d[2]);
-          verts.push(tip[0] + d[0], tip[1] + d[1], tip[2] + d[2]);
-        }
-      } else {
-        // Arrowhead: two short lines from tip angled back
-        const perp1 = axes[(a + 1) % 3];
-        const perp2 = axes[(a + 2) % 3];
-        const back = vec3Add(tip, vec3Scale(dir, -tipSize * 2));
-        for (const p of [perp1, vec3Scale(perp1, -1) as Vec3, perp2, vec3Scale(perp2, -1) as Vec3]) {
-          const wing = vec3Add(back, vec3Scale(p, tipSize));
-          verts.push(tip[0], tip[1], tip[2]);
-          verts.push(wing[0], wing[1], wing[2]);
-        }
-      }
+      verts.push(...buildGizmoAxisTriangles(center, a, len, isScale));
 
       const count = verts.length / 3 - start;
       this.segments.push({ start, count, color: colors[a] });
@@ -243,9 +237,11 @@ export class Gizmo {
         ? 'Move brush vertices'
         : this.editor.patchEditMode
           ? 'Move patch control points'
+          : this.editor.selectedFaces.length > 0
+            ? 'Move brush faces'
           : this.editor.gizmoMode === 'scale' ? 'Scale selection' : 'Move selection';
       this.editor.beginTransaction(label);
-      if (e.altKey && this.editor.gizmoMode === 'move') {
+      if (e.altKey && this.editor.gizmoMode === 'move' && this.editor.selectedFaces.length === 0) {
         this.editor.duplicateSelectionInPlace();
       }
       this.snapshotTaken = true;
@@ -316,7 +312,8 @@ export class Gizmo {
       const snapped = snapAxisDelta(worldDelta, refs, grid, abs, geo, threshold).delta;
       if (snapped !== 0) {
         const delta: Vec3 = vec3Scale(axis, snapped);
-        this.editor.moveSelection(delta);
+        if (this.editor.selectedFaces.length > 0) moveSelectedFaces(this.editor, delta);
+        else this.editor.moveSelection(delta);
         this.center = vec3Add(this.center, delta);
         this.dragLast = [e.clientX, e.clientY];
       }
