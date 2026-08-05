@@ -55,7 +55,7 @@ function defaults(mapName: string): StoredRelease {
 
 export function gameReleaseBuildIssue(target: ReleaseTarget, build: BuildRecord | null): string | null {
   if (target !== 'game' || !build) return null;
-  if (!build.aas) return 'Maker game levels require a successful AAS bot-navigation stage. Recompile with Generate AAS enabled.';
+  if (!build.aas) return 'Game-level exports require a successful AAS bot-navigation stage. Recompile with Generate AAS enabled.';
   return null;
 }
 
@@ -266,7 +266,7 @@ export async function openReleasePackageDialog(options: ReleasePackageDialogOpti
   const targetInput = document.createElement('select');
   for (const [value, label] of [
     ['map', 'Quake 3 map package'],
-    ['game', 'Maker game level (BSP + AAS + source)'],
+    ['game', 'Game-level bundle (BSP + AAS + source)'],
   ] as const) {
     const option = document.createElement('option');
     option.value = value;
