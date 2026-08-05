@@ -287,6 +287,7 @@
           }
           const archives = [...stored.archives];
           if (launch.packagePk3) archives.push({ name: `${launch.mapName}.pk3`, data: launch.packagePk3 });
+          if (launch.previewPk3) archives.push({ name: 'zzzz-q3edit-preview.pk3', data: launch.previewPk3 });
           return { archives, gameDir: configuredGameDir };
         }
 
@@ -302,13 +303,18 @@
             ? stored.archives.filter((archive) => /^pak[0-9]+\.pk3$/i.test(safeFileName(archive.name)))
             : stored.archives;
           if (launch.packagePk3) archives.push({ name: `${launch.mapName}.pk3`, data: launch.packagePk3 });
+          if (launch.previewPk3) archives.push({ name: 'zzzz-q3edit-preview.pk3', data: launch.previewPk3 });
           return { archives, gameDir: 'baseq3' };
         }
 
         if (stored.openArenaEnabled) {
           const archives = await loadOpenArenaArchives();
-          if (launch.packagePk3) archives.push({ name: `${launch.mapName}.pk3`, data: launch.packagePk3 });
-          else archives.push(...stored.archives);
+          if (launch.packagePk3) {
+            archives.push({ name: `${launch.mapName}.pk3`, data: launch.packagePk3 });
+          } else {
+            archives.push(...stored.archives);
+            if (launch.previewPk3) archives.push({ name: 'zzzz-q3edit-preview.pk3', data: launch.previewPk3 });
+          }
           return { archives, gameDir: 'baseoa' };
         }
 
@@ -329,12 +335,12 @@
           setStatus(`Installing ${name} (${index + 1} of ${archives.length})…`);
           module.FS.writeFile(`${root}/${name}`, new Uint8Array(archive.data));
         }
-        // Package preview must resolve the BSP and AAS from the produced PK3.
-        // Writing loose copies here would hide missing package entries.
-        if (!launch.packagePk3) {
-          module.FS.writeFile(`${root}/maps/${launch.mapName}.bsp`, new Uint8Array(launch.bsp));
+        // Package and direct Quick Play previews resolve the BSP from their
+        // generated PK3, keeping lookup priority consistent across games.
+        if (!launch.packagePk3 && !launch.previewPk3) {
+          module.FS.writeFile(`${root}/maps/${launch.runtimeMapName}.bsp`, new Uint8Array(launch.bsp));
           if (launch.aas) {
-            module.FS.writeFile(`${root}/maps/${launch.mapName}.aas`, new Uint8Array(launch.aas));
+            module.FS.writeFile(`${root}/maps/${launch.runtimeMapName}.aas`, new Uint8Array(launch.aas));
           }
         }
       }
@@ -387,7 +393,7 @@
                 '+set', 'bot_minplayers', String(launch.botCount + 1),
               ] : []),
               '+set', 'com_basegame', assets.gameDir,
-              '+devmap', launch.mapName,
+              '+devmap', launch.runtimeMapName,
               ...((launch.botCount > 0 || launch.noclip || (launch.commands || []).length > 0) ? ['+wait', '30'] : []),
               ...botArguments,
               ...(launch.noclip ? ['+noclip'] : []),
@@ -451,6 +457,7 @@
         if (event.data?.type !== 'q3edit-player:launch' || started) return;
         started = true;
         const mapName = String(event.data.mapName || 'compile').replace(/[^a-zA-Z0-9_-]/g, '') || 'compile';
+        const runtimeMapName = String(event.data.runtimeMapName || mapName).replace(/[^a-zA-Z0-9_-]/g, '') || mapName;
         const bsp = event.data.bsp;
         if (!(bsp instanceof ArrayBuffer)) {
           fail(new Error('The compiled BSP data was not provided'));
@@ -466,10 +473,11 @@
           Array.isArray(command.args) && command.args.every(argument => typeof argument === 'string')
         ) : [];
         const packagePk3 = event.data.packagePk3 instanceof ArrayBuffer ? event.data.packagePk3 : null;
+        const previewPk3 = event.data.previewPk3 instanceof ArrayBuffer ? event.data.previewPk3 : null;
         // Reading the stored project is also a compatibility fallback for an
         // editor tab that was already open when the player shell was updated.
         const gameDirectory = safeGameDirectory(event.data.gameDirectory ?? loadProjectGameDirectory());
-        void start({ mapName, gameDirectory, bsp, aas, packagePk3, botCount, botSkill, noclip: event.data.noclip === true, commands });
+        void start({ mapName, runtimeMapName, gameDirectory, bsp, aas, packagePk3, previewPk3, botCount, botSkill, noclip: event.data.noclip === true, commands });
       });
 
       window.addEventListener('error', (event) => fail(event.error ?? event.message));
