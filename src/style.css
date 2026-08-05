@@ -290,12 +290,19 @@ body.landing-active #app {
   color: #17130b;
   background: var(--landing-accent);
   border: 1px solid var(--landing-accent);
+  box-shadow: 3px 3px 0 #8f5500;
 }
 
 .landing-button-primary:hover {
   background: #f1b44f;
   border-color: #f1b44f;
-  transform: translateY(-2px);
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #8f5500;
+}
+
+.landing-button-primary:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #8f5500;
 }
 
 .landing-button-secondary {
