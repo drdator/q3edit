@@ -312,7 +312,13 @@ body.landing-active #app {
 }
 
 .landing-button .ph {
+  display: inline-block;
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
   font-size: 15px;
+  line-height: 15px;
+  text-align: center;
 }
 
 .landing-requirement {
