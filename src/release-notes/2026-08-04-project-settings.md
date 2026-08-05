@@ -1,6 +1,6 @@
 ---
 id: 2026-08-04-project-settings
-title: "August 4, 2026: Portable Project Settings"
+title: August 4, 2026 - Portable Project Settings
 date: 2026-08-04
 order: 1
 ---
