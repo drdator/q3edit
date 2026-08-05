@@ -1,6 +1,6 @@
 ---
 id: 2026-07-29-uv-editing
-title: "July 29, 2026: UV Editing Update"
+title: July 29, 2026 - UV Editing Update
 date: 2026-07-29
 order: 1
 ---

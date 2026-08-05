@@ -1,6 +1,6 @@
 ---
 id: 2026-08-05-game-export-preview
-title: "August 5, 2026: Game Export and Preview"
+title: August 5, 2026 - Game Export and Preview
 date: 2026-08-05
 order: 2
 ---

@@ -1,6 +1,6 @@
 ---
 id: 2026-08-05-editor-workflow
-title: "August 5, 2026: Editor Workflow Improvements"
+title: August 5, 2026 - Editor Workflow Improvements
 date: 2026-08-05
 order: 1
 ---
