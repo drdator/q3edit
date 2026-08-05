@@ -1,16 +1,16 @@
 ---
 id: 2026-08-05-game-export-preview
-title: August 5, 2026 — Game Export and Preview
+title: "August 5, 2026: Game Export and Preview"
 date: 2026-08-05
 order: 2
 ---
 
-Packaging and testing maps now fit more naturally into both Maker projects and the editor's Quick Play workflow.
+Packaging and testing maps now fit more naturally into both game-level exports and the editor's Quick Play workflow.
 
-## Maker export target
+## Game-level export target
 
-- Release Package can export a game-level bundle for Maker projects.
-- The export includes the compiled level and the supporting files needed by the game project.
+- Release Package can export a game-level bundle.
+- The export includes the compiled level and its supporting files.
 
 ## Reliable Quick Play updates
 

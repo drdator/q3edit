@@ -1,6 +1,6 @@
 ---
 id: 2026-07-27-editor-tools
-title: July 27, 2026 — Editor Tools Update
+title: "July 27, 2026: Editor Tools Update"
 date: 2026-07-27
 order: 1
 ---

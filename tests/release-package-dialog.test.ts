@@ -37,7 +37,7 @@ describe('release package build selection', () => {
     expect(selectReleaseBuild([build(3, source, true)], 3, buildSourceFingerprint(source))).toBeNull();
   });
 
-  it('requires AAS for Maker game-level exports', () => {
+  it('requires AAS for game-level exports', () => {
     const withoutAas = build(2);
     expect(gameReleaseBuildIssue('map', withoutAas)).toBeNull();
     expect(gameReleaseBuildIssue('game', withoutAas)).toMatch(/require.*AAS/i);

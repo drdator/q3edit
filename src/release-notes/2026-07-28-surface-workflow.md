@@ -1,6 +1,6 @@
 ---
 id: 2026-07-28-surface-workflow
-title: July 28, 2026 — Surface Workflow Update
+title: "July 28, 2026: Surface Workflow Update"
 date: 2026-07-28
 order: 1
 ---
