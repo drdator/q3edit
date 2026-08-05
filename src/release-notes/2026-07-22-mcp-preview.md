@@ -1,6 +1,6 @@
 ---
 id: 2026-07-22-mcp-preview
-title: July 22, 2026 — MCP Preview
+title: "July 22, 2026: MCP Preview"
 date: 2026-07-22
 order: 1
 ---
