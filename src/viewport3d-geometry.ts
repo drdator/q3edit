@@ -7,6 +7,7 @@ import { DrawGroup, EntityMarkerWireDraw, LightRadiusDraw } from './viewport3d-r
 import { buildModelGeometry } from './model-geometry';
 import { bspOverlayLines } from './bsp-inspection';
 import { lightVolumeSegments, resolveLightVolume } from './light-volume';
+import { collectBrushEdges } from './vertex';
 
 const faceVertexCache = new WeakMap<BrushFace, { signature: string; vertices: number[] }>();
 const patchVertexCache = new WeakMap<Patch, { tessVerts: Patch['tessVerts']; tessIndices: Patch['tessIndices']; vertices: number[] }>();
@@ -67,6 +68,7 @@ export interface Viewport3DGeometryContext {
   lineVBO: WebGLBuffer;
   wireVBO: WebGLBuffer;
   faceSelVBO: WebGLBuffer;
+  vtxEdgeSelVBO: WebGLBuffer;
   vtxHandleVBO: WebGLBuffer;
   vtxHandleSelVBO: WebGLBuffer;
   lightRadiusVBO: WebGLBuffer;
@@ -91,9 +93,29 @@ export interface Viewport3DGeometryBuild {
   wireCount: number;
   entityMarkerWireDraws: EntityMarkerWireDraw[];
   faceSelCount: number;
+  vtxEdgeSelCount: number;
   vtxHandleCount: number;
   vtxHandleSelCount: number;
   lightRadiusDraws: LightRadiusDraw[];
+}
+
+export function selectedVertexEdgeQuadVertices(editor: Editor): number[] {
+  if (!editor.vertexMode) return [];
+  const vertices: number[] = [];
+  for (let dataIndex = 0; dataIndex < editor.vertexData.length; dataIndex++) {
+    const data = editor.vertexData[dataIndex];
+    for (const edge of collectBrushEdges(data.brush, data.vertices)) {
+      const [aIndex, bIndex] = edge.vertexIndices;
+      if (!editor.isVertexSelected(dataIndex, aIndex) || !editor.isVertexSelected(dataIndex, bIndex)) continue;
+      const a = data.vertices[aIndex]?.position;
+      const b = data.vertices[bIndex]?.position;
+      if (!a || !b) continue;
+      for (const [along, side] of [[0, -1], [1, -1], [1, 1], [0, -1], [1, 1], [0, 1]]) {
+        vertices.push(...a, ...b, along, side);
+      }
+    }
+  }
+  return vertices;
 }
 
 export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewport3DGeometryBuild {
@@ -617,6 +639,11 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
   ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(faceSelLineVerts), ctx.gl.DYNAMIC_DRAW);
   const faceSelCount = faceSelLineVerts.length / 3;
 
+  const vtxEdgeSelVerts = selectedVertexEdgeQuadVertices(ctx.editor);
+  ctx.gl.bindBuffer(ctx.gl.ARRAY_BUFFER, ctx.vtxEdgeSelVBO);
+  ctx.gl.bufferData(ctx.gl.ARRAY_BUFFER, new Float32Array(vtxEdgeSelVerts), ctx.gl.DYNAMIC_DRAW);
+  const vtxEdgeSelCount = vtxEdgeSelVerts.length / 8;
+
   const vtxVerts: number[] = [];
   const vtxSelVerts: number[] = [];
   if (ctx.editor.vertexMode) {
@@ -688,6 +715,7 @@ export function buildViewport3DGeometry(ctx: Viewport3DGeometryContext): Viewpor
     wireCount,
     entityMarkerWireDraws,
     faceSelCount,
+    vtxEdgeSelCount,
     vtxHandleCount,
     vtxHandleSelCount,
     lightRadiusDraws,

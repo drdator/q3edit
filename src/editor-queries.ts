@@ -162,6 +162,14 @@ export function selectionBounds(editor: Editor): { mins: Vec3; maxs: Vec3 } | nu
       continue;
     }
 
+    if (item.type === 'face') {
+      for (const point of item.face.polygon) {
+        mins = vec3Min(mins, point);
+        maxs = vec3Max(maxs, point);
+      }
+      continue;
+    }
+
     mins = vec3Min(mins, item.brush.mins);
     maxs = vec3Max(maxs, item.brush.maxs);
   }

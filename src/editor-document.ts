@@ -1,6 +1,14 @@
 import { createBoxBrush } from './brush';
 import { createEntity, createWorldspawn } from './entity';
 import { parseMapWithDiagnostics, serializeMap as serializeEntities } from './mapfile';
+import {
+  normalizeProjectConfiguration,
+  loadProjectConfiguration,
+  readMapProjectConfiguration,
+  saveProjectConfiguration,
+  writeMapProjectConfiguration,
+  type ProjectConfiguration,
+} from './project-config';
 import type { Editor } from './editor';
 import {
   commitTransaction,
@@ -30,6 +38,7 @@ export interface DocumentHistoryAuxiliary {
   unsupportedMapConstructs: Editor['unsupportedMapConstructs'];
   savedDocumentRevision: number;
   documentSessionStartedAt: number;
+  projectConfiguration: ProjectConfiguration;
 }
 
 export function captureDocumentHistoryAuxiliary(editor: Editor): DocumentHistoryAuxiliary {
@@ -40,6 +49,7 @@ export function captureDocumentHistoryAuxiliary(editor: Editor): DocumentHistory
     unsupportedMapConstructs: structuredClone(editor.unsupportedMapConstructs),
     savedDocumentRevision: editor.savedDocumentRevision,
     documentSessionStartedAt: editor.documentSessionStartedAt,
+    projectConfiguration: structuredClone(editor.projectConfiguration),
   };
 }
 
@@ -52,6 +62,10 @@ function restoreDocumentHistoryAuxiliary(editor: Editor, value: unknown): void {
   editor.unsupportedMapConstructs = structuredClone(auxiliary.unsupportedMapConstructs);
   editor.savedDocumentRevision = auxiliary.savedDocumentRevision;
   editor.documentSessionStartedAt = auxiliary.documentSessionStartedAt;
+  if (auxiliary.projectConfiguration) {
+    editor.applyPreferences(editor.preferences, auxiliary.projectConfiguration);
+    editor.notifyProjectConfigurationChanged();
+  }
 }
 
 const pendingMapLoads = new WeakMap<Editor, number>();
@@ -159,6 +173,8 @@ function applyParsedMap(editor: Editor, text: string, result: ParsedMapResult, f
     editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
   }, { auxiliary, assumeChanged: true });
   if (fileName) editor.fileName = fileName;
+  const project = readMapProjectConfiguration(editor.entities) ?? loadProjectConfiguration();
+  editor.applyPreferences(editor.preferences, project);
   editor.mapDiagnostics = result.diagnostics;
   editor.unsupportedMapConstructs = result.unsupportedConstructs;
   editor.selection = [];
@@ -174,6 +190,7 @@ function applyParsedMap(editor: Editor, text: string, result: ParsedMapResult, f
     hasComments: /(^|\n)\s*\/\//.test(text),
   };
   editor.beginDocumentSession();
+  editor.notifyProjectConfigurationChanged();
   editor.activityHistory.record({
     source: 'file',
     status: result.diagnostics.some(diagnostic => diagnostic.severity === 'error') ? 'error' : 'success',
@@ -237,6 +254,8 @@ export function restoreRecoveredMap(
   invalidatePendingMapLoad(editor);
   const result = parseMapWithDiagnostics(text);
   editor.entities = result.document.entities.length > 0 ? result.document.entities : [createWorldspawn()];
+  const project = readMapProjectConfiguration(editor.entities) ?? loadProjectConfiguration();
+  editor.applyPreferences(editor.preferences, project);
   editor.mapDiagnostics = result.diagnostics;
   editor.unsupportedMapConstructs = result.unsupportedConstructs;
   editor.originalMapSource = originalMapSource ? structuredClone(originalMapSource) : null;
@@ -246,6 +265,7 @@ export function restoreRecoveredMap(
   editor.clearPointfile(false);
   resetEditorStateAfterDocumentReplacement(editor);
   editor.restoreDocumentState(documentRevision, savedDocumentRevision, documentSessionStartedAt);
+  editor.notifyProjectConfigurationChanged();
   editor.statusMessage = editor.hasUnsavedChanges
     ? `Recovered unsaved changes to ${fileName}`
     : `Restored ${fileName}`;
@@ -256,6 +276,7 @@ export function newMap(editor: Editor): void {
   const auxiliary = captureDocumentHistoryAuxiliary(editor);
   editor.transact('New map', () => {
     editor.entities = [createWorldspawn()];
+    writeMapProjectConfiguration(editor.entities, editor.projectConfiguration);
   }, { auxiliary, assumeChanged: true });
   editor.mapDiagnostics = [];
   editor.unsupportedMapConstructs = [];
@@ -351,6 +372,7 @@ export function createDefaultMap(editor: Editor): void {
   // Startup/default-map initialization is deliberately non-undoable. The New
   // command establishes its undo entry before invoking this initializer.
   editor.entities = [createWorldspawn()];
+  writeMapProjectConfiguration(editor.entities, editor.projectConfiguration);
   editor.mapDiagnostics = [];
   editor.unsupportedMapConstructs = [];
   editor.originalMapSource = null;
@@ -380,4 +402,24 @@ export function createDefaultMap(editor: Editor): void {
 
   editor.redrawRequested = true;
   editor.statusMessage = 'Default map created';
+}
+
+export interface UpdateProjectConfigurationOptions {
+  label?: string;
+  notify?: boolean;
+}
+
+export function updateProjectConfiguration(
+  editor: Editor,
+  project: ProjectConfiguration,
+  options: UpdateProjectConfigurationOptions = {},
+): void {
+  const normalized = normalizeProjectConfiguration(project);
+  const auxiliary = captureDocumentHistoryAuxiliary(editor);
+  editor.transact(options.label ?? 'Update project settings', () => {
+    writeMapProjectConfiguration(editor.entities, normalized);
+  }, { auxiliary });
+  editor.applyPreferences(editor.preferences, normalized);
+  saveProjectConfiguration(normalized);
+  if (options.notify !== false) editor.notifyProjectConfigurationChanged();
 }

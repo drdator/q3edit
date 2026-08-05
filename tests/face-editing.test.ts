@@ -9,6 +9,7 @@ import {
   weldSelectedVertices,
 } from '../src/editor-vertex';
 import { createEntity } from '../src/entity';
+import { moveSelectedFaces } from '../src/editor-transforms';
 import {
   collectBrushEdges,
   collectBrushVertices,
@@ -45,6 +46,21 @@ describe('face and edge editing', () => {
     moveSelectedVertices(editor, [16, 0, 0]);
 
     expect(brush.maxs[0]).toBeCloseTo(80);
+    expect(validateBrush(brush).valid).toBe(true);
+  });
+
+  test('moves only the selected face through the gizmo transform path', () => {
+    const editor = new Editor();
+    const brush = createBoxBrush([0, 0, 0], [64, 64, 64], 'base_wall/concrete');
+    editor.worldspawn.brushes.push(brush);
+    const face = brush.faces.find(candidate => candidate.plane.normal[0] > 0.9)!;
+    editor.selectFace(editor.worldspawn, brush, face);
+
+    moveSelectedFaces(editor, [16, 0, 0]);
+
+    expect(brush.maxs[0]).toBeCloseTo(80);
+    expect(brush.mins[0]).toBeCloseTo(0);
+    expect(editor.selectionCenter()?.[0]).toBeCloseTo(80);
     expect(validateBrush(brush).valid).toBe(true);
   });
 

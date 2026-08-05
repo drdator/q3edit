@@ -5,6 +5,43 @@ import type { Editor, SelectionItem } from './editor';
 import { entityBounds as getEntityBounds, nonWorldspawnEntities } from './editor-queries';
 import { isObjectInLockedGroup } from './named-groups';
 
+function canonicalTextureName(texture: string): string {
+  return texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '');
+}
+
+function commonBrushTexture(brush: Brush): string | null {
+  const first = canonicalTextureName(brush.faces[0]?.texture ?? '');
+  if (!first) return null;
+  const normalized = first.toLowerCase();
+  return brush.faces.every(face => canonicalTextureName(face.texture).toLowerCase() === normalized)
+    ? first
+    : null;
+}
+
+function selectionTexture(editor: Editor): string | null {
+  let common: string | null = null;
+  for (const item of editor.selection) {
+    const texture = item.type === 'face'
+      ? canonicalTextureName(item.face.texture)
+      : item.type === 'patch'
+        ? canonicalTextureName(item.patch.texture)
+        : item.type === 'brush'
+          ? commonBrushTexture(item.brush)
+          : null;
+    if (!texture) return null;
+    if (common === null) common = texture;
+    else if (common.toLowerCase() !== texture.toLowerCase()) return null;
+  }
+  return common;
+}
+
+function adoptSelectionTexture(editor: Editor): void {
+  const texture = selectionTexture(editor);
+  if (!texture) return;
+  editor.currentTexture = texture;
+  editor.onLocateTexture?.(texture);
+}
+
 function selectsWholeEntity(editor: Editor, entity: Entity): boolean {
   return entity !== editor.worldspawn && (entity.brushes.length > 0 || entity.patches.length > 0);
 }
@@ -59,6 +96,7 @@ export function selectBrushDirect(editor: Editor, entity: Entity, brush: Brush, 
     return;
   }
   editor.selection.push({ type: 'brush', entity, brush });
+  adoptSelectionTexture(editor);
   editor.redrawRequested = true;
 }
 
@@ -127,6 +165,7 @@ export function selectPatch(editor: Editor, entity: Entity, patch: Patch, additi
         if (selected.has(groupedPatch)) continue;
         editor.selection.push({ type: 'patch', entity, patch: groupedPatch });
       }
+      adoptSelectionTexture(editor);
     }
     editor.redrawRequested = true;
     return;
@@ -145,6 +184,7 @@ export function selectPatchDirect(editor: Editor, entity: Entity, patch: Patch, 
     return;
   }
   editor.selection.push({ type: 'patch', entity, patch });
+  adoptSelectionTexture(editor);
   editor.redrawRequested = true;
 }
 
@@ -203,6 +243,7 @@ export function selectFace(
   } else {
     editor.selection = [{ type: 'face', entity, brush, face }];
   }
+  adoptSelectionTexture(editor);
   editor.redrawRequested = true;
 }
 
@@ -222,7 +263,7 @@ export function getSelectedFace(editor: Editor): BrushFace | null {
 }
 
 function normalizedTextureName(texture: string): string {
-  return texture.trim().replace(/\\/g, '/').replace(/^textures\//i, '').toLowerCase();
+  return canonicalTextureName(texture).toLowerCase();
 }
 
 export function selectFacesByTexture(editor: Editor, texture = editor.currentTexture): void {

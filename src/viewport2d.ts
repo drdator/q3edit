@@ -23,6 +23,7 @@ export class Viewport2D {
   centerX = 256;
   centerY = 128;
   zoom = 1;
+  getDepthCenter = (): number => 0;
 
   interaction = createViewport2DInteractionState();
 

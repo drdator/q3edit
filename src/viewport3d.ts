@@ -7,8 +7,8 @@ import { Brush, BrushFace } from './brush';
 import { Entity } from './entity';
 import { Patch } from './patch';
 import {
-  VERT_SRC, FRAG_SRC, LINE_VERT_SRC, LINE_FRAG_SRC,
-  createProgram, createLineBuffer, createSolidBuffer,
+  VERT_SRC, FRAG_SRC, LINE_VERT_SRC, LINE_FRAG_SRC, SCREEN_LINE_VERT_SRC,
+  createProgram, createLineBuffer, createScreenLineBuffer, createSolidBuffer,
 } from './gl-utils';
 import { Gizmo } from './gizmo';
 import { WalkState, VIEWHEIGHT } from './q3-movement';
@@ -93,6 +93,11 @@ export class Viewport3D {
   private linePVLoc!: WebGLUniformLocation;
   private lineColorLoc!: WebGLUniformLocation;
   private lineAlphaLoc!: WebGLUniformLocation;
+  private edgeProg!: WebGLProgram;
+  private edgePVLoc!: WebGLUniformLocation;
+  private edgeHalfViewportLoc!: WebGLUniformLocation;
+  private edgeColorLoc!: WebGLUniformLocation;
+  private edgeAlphaLoc!: WebGLUniformLocation;
 
   private solidVAO!: WebGLVertexArrayObject;
   private solidVBO!: WebGLBuffer;
@@ -151,6 +156,9 @@ export class Viewport3D {
   private faceSelVBO!: WebGLBuffer;
   private faceSelCount = 0;
 
+  private vtxEdgeSelVAO!: WebGLVertexArrayObject;
+  private vtxEdgeSelVBO!: WebGLBuffer;
+  private vtxEdgeSelCount = 0;
   private vtxHandleVAO!: WebGLVertexArrayObject;
   private vtxHandleVBO!: WebGLBuffer;
   private vtxHandleCount = 0;
@@ -496,6 +504,12 @@ export class Viewport3D {
     this.lineColorLoc = gl.getUniformLocation(this.lineProg, 'uColor')!;
     this.lineAlphaLoc = gl.getUniformLocation(this.lineProg, 'uAlpha')!;
 
+    this.edgeProg = createProgram(gl, SCREEN_LINE_VERT_SRC, LINE_FRAG_SRC);
+    this.edgePVLoc = gl.getUniformLocation(this.edgeProg, 'uPV')!;
+    this.edgeHalfViewportLoc = gl.getUniformLocation(this.edgeProg, 'uHalfViewport')!;
+    this.edgeColorLoc = gl.getUniformLocation(this.edgeProg, 'uColor')!;
+    this.edgeAlphaLoc = gl.getUniformLocation(this.edgeProg, 'uAlpha')!;
+
     const solid = createSolidBuffer(gl);
     this.solidVAO = solid.vao; this.solidVBO = solid.vbo;
 
@@ -531,6 +545,8 @@ export class Viewport3D {
     this.wireVAO = wire.vao; this.wireVBO = wire.vbo;
     const faceSel = createLineBuffer(gl);
     this.faceSelVAO = faceSel.vao; this.faceSelVBO = faceSel.vbo;
+    const vtxEdgeSel = createScreenLineBuffer(gl);
+    this.vtxEdgeSelVAO = vtxEdgeSel.vao; this.vtxEdgeSelVBO = vtxEdgeSel.vbo;
     const vtxH = createLineBuffer(gl);
     this.vtxHandleVAO = vtxH.vao; this.vtxHandleVBO = vtxH.vbo;
     const vtxHS = createLineBuffer(gl);
@@ -571,6 +587,7 @@ export class Viewport3D {
       lineVBO: this.lineVBO,
       wireVBO: this.wireVBO,
       faceSelVBO: this.faceSelVBO,
+      vtxEdgeSelVBO: this.vtxEdgeSelVBO,
       vtxHandleVBO: this.vtxHandleVBO,
       vtxHandleSelVBO: this.vtxHandleSelVBO,
       lightRadiusVBO: this.lightRadiusVBO,
@@ -593,6 +610,7 @@ export class Viewport3D {
     this.wireCount = result.wireCount;
     this.entityMarkerWireDraws = result.entityMarkerWireDraws;
     this.faceSelCount = result.faceSelCount;
+    this.vtxEdgeSelCount = result.vtxEdgeSelCount;
     this.vtxHandleCount = result.vtxHandleCount;
     this.vtxHandleSelCount = result.vtxHandleSelCount;
     this.lightRadiusDraws = result.lightRadiusDraws;
@@ -657,6 +675,11 @@ export class Viewport3D {
       linePVLoc: this.linePVLoc,
       lineColorLoc: this.lineColorLoc,
       lineAlphaLoc: this.lineAlphaLoc,
+      edgeProg: this.edgeProg,
+      edgePVLoc: this.edgePVLoc,
+      edgeHalfViewportLoc: this.edgeHalfViewportLoc,
+      edgeColorLoc: this.edgeColorLoc,
+      edgeAlphaLoc: this.edgeAlphaLoc,
       solidVAO: this.solidVAO,
       drawGroups: this.drawGroups,
       clipBoxVAO: this.clipBoxVAO,
@@ -692,6 +715,8 @@ export class Viewport3D {
       entityMarkerWireDraws: this.entityMarkerWireDraws,
       faceSelVAO: this.faceSelVAO,
       faceSelCount: this.faceSelCount,
+      vtxEdgeSelVAO: this.vtxEdgeSelVAO,
+      vtxEdgeSelCount: this.vtxEdgeSelCount,
       vtxHandleVAO: this.vtxHandleVAO,
       vtxHandleCount: this.vtxHandleCount,
       vtxHandleSelVAO: this.vtxHandleSelVAO,

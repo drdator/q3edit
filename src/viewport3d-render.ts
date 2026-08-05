@@ -79,6 +79,11 @@ export interface Viewport3DRenderContext {
   linePVLoc: WebGLUniformLocation;
   lineColorLoc: WebGLUniformLocation;
   lineAlphaLoc: WebGLUniformLocation;
+  edgeProg: WebGLProgram;
+  edgePVLoc: WebGLUniformLocation;
+  edgeHalfViewportLoc: WebGLUniformLocation;
+  edgeColorLoc: WebGLUniformLocation;
+  edgeAlphaLoc: WebGLUniformLocation;
   solidVAO: WebGLVertexArrayObject;
   drawGroups: DrawGroup[];
   clipBoxVAO: WebGLVertexArrayObject;
@@ -114,6 +119,8 @@ export interface Viewport3DRenderContext {
   entityMarkerWireDraws: EntityMarkerWireDraw[];
   faceSelVAO: WebGLVertexArrayObject;
   faceSelCount: number;
+  vtxEdgeSelVAO: WebGLVertexArrayObject;
+  vtxEdgeSelCount: number;
   vtxHandleVAO: WebGLVertexArrayObject;
   vtxHandleCount: number;
   vtxHandleSelVAO: WebGLVertexArrayObject;
@@ -446,6 +453,18 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
     ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }
 
+  if (showSelection && ctx.vtxEdgeSelCount > 0) {
+    ctx.gl.useProgram(ctx.edgeProg);
+    ctx.gl.uniformMatrix4fv(ctx.edgePVLoc, false, pv);
+    ctx.gl.uniform2f(ctx.edgeHalfViewportLoc, ctx.canvas.width / (2 * dpr), ctx.canvas.height / (2 * dpr));
+    ctx.gl.uniform3f(ctx.edgeColorLoc, 1.0, 0xe0 / 255, 0x66 / 255);
+    ctx.gl.uniform1f(ctx.edgeAlphaLoc, 1.0);
+    ctx.gl.disable(ctx.gl.DEPTH_TEST);
+    ctx.gl.bindVertexArray(ctx.vtxEdgeSelVAO);
+    ctx.gl.drawArrays(ctx.gl.TRIANGLES, 0, ctx.vtxEdgeSelCount);
+    ctx.gl.enable(ctx.gl.DEPTH_TEST);
+  }
+
   if (showSelection && (ctx.vtxHandleCount > 0 || ctx.vtxHandleSelCount > 0)) {
     ctx.gl.useProgram(ctx.lineProg);
     ctx.gl.uniformMatrix4fv(ctx.linePVLoc, false, pv);
@@ -473,7 +492,7 @@ export function renderViewport3D(ctx: Viewport3DRenderContext): Mat4 {
       const c = seg.color;
       const bright = ctx.gizmo.dragging && ctx.gizmo.axis === i ? 1.5 : 1.0;
       ctx.gl.uniform3f(ctx.lineColorLoc, c[0] * bright, c[1] * bright, c[2] * bright);
-      ctx.gl.drawArrays(ctx.gl.LINES, seg.start, seg.count);
+      ctx.gl.drawArrays(ctx.gl.TRIANGLES, seg.start, seg.count);
     }
     ctx.gl.enable(ctx.gl.DEPTH_TEST);
   }

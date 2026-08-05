@@ -1081,6 +1081,20 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
+.tool-btn.has-options::before {
+  content: '';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
 /* Tooltip on hover */
 .tool-btn[title]:hover::after {
   content: attr(title);

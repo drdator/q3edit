@@ -77,6 +77,28 @@ void main() {
 }
 `;
 
+export const SCREEN_LINE_VERT_SRC = `#version 300 es
+precision mediump float;
+layout(location=0) in vec3 aStart;
+layout(location=1) in vec3 aEnd;
+layout(location=2) in vec2 aCorner;
+uniform mat4 uPV;
+uniform vec2 uHalfViewport;
+void main() {
+  vec4 clipStart = uPV * vec4(aStart, 1.0);
+  vec4 clipEnd = uPV * vec4(aEnd, 1.0);
+  vec2 ndcStart = clipStart.xy / clipStart.w;
+  vec2 ndcEnd = clipEnd.xy / clipEnd.w;
+  vec2 screenDirection = (ndcEnd - ndcStart) * uHalfViewport;
+  vec2 normal = length(screenDirection) > 0.0001
+    ? normalize(vec2(-screenDirection.y, screenDirection.x))
+    : vec2(0.0, 1.0);
+  vec4 clipPosition = mix(clipStart, clipEnd, aCorner.x);
+  clipPosition.xy += normal * aCorner.y / uHalfViewport * clipPosition.w;
+  gl_Position = clipPosition;
+}
+`;
+
 export const LINE_FRAG_SRC = `#version 300 es
 precision mediump float;
 uniform vec3 uColor;
@@ -125,6 +147,22 @@ export function createLineBuffer(gl: WebGL2RenderingContext): GLBuffer {
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+  gl.bindVertexArray(null);
+  return { vao, vbo };
+}
+
+/** Create a VAO+VBO for fixed-width screen-space lines: start(3) + end(3) + corner(2). */
+export function createScreenLineBuffer(gl: WebGL2RenderingContext): GLBuffer {
+  const vao = gl.createVertexArray()!;
+  const vbo = gl.createBuffer()!;
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12);
+  gl.enableVertexAttribArray(2);
+  gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 32, 24);
   gl.bindVertexArray(null);
   return { vao, vbo };
 }

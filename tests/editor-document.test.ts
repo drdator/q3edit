@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { Editor } from '../src/editor';
 import { loadMapAsync } from '../src/editor-document';
 import { parseMapWithDiagnostics } from '../src/mapfile';
+import { MAP_PROJECT_CONFIG_KEY } from '../src/project-config';
 
 describe('editor map loading', () => {
   test('keeps parser diagnostics available and reports them in the status', () => {
@@ -116,5 +117,47 @@ brushDef3
     expect(editor.fileName).toBe('second.map');
     expect(editor.worldspawn.properties.message).toBe('second');
     vi.unstubAllGlobals();
+  });
+
+  test('embeds project settings, restores them on open, and excludes them from compile maps', () => {
+    const editor = new Editor();
+    const project = structuredClone(editor.projectConfiguration);
+    project.name = 'Map-local project';
+    project.game.gameDirectory = 'arena';
+    project.assets.archives = ['pak0.pk3', 'arena.pk3'];
+    project.compile.bspArgs = ['-meta'];
+    project.overrides.gridSize = 32;
+
+    editor.updateProjectConfiguration(project, { notify: false });
+    const mapText = editor.serializeMap();
+    expect(mapText).toContain(`"${MAP_PROJECT_CONFIG_KEY}"`);
+    expect(editor.serializeCompileMap()).not.toContain(MAP_PROJECT_CONFIG_KEY);
+    expect(editor.hasUnsavedChanges).toBe(true);
+
+    const reopened = new Editor();
+    reopened.loadMap(mapText);
+    expect(reopened.projectConfiguration).toEqual(project);
+    expect(reopened.gridSize).toBe(32);
+    expect(reopened.hasUnsavedChanges).toBe(false);
+  });
+
+  test('restores project settings and embedded metadata through undo and redo', () => {
+    const editor = new Editor();
+    const original = structuredClone(editor.projectConfiguration);
+    const changed = structuredClone(original);
+    changed.name = 'Undoable project';
+    changed.compile.lightArgs = ['-fast'];
+
+    editor.updateProjectConfiguration(changed, { notify: false });
+    expect(editor.projectConfiguration).toEqual(changed);
+    expect(editor.worldspawn.properties[MAP_PROJECT_CONFIG_KEY]).toBeTruthy();
+
+    editor.undo();
+    expect(editor.projectConfiguration).toEqual(original);
+    expect(editor.worldspawn.properties[MAP_PROJECT_CONFIG_KEY]).toBeUndefined();
+
+    editor.redo();
+    expect(editor.projectConfiguration).toEqual(changed);
+    expect(editor.worldspawn.properties[MAP_PROJECT_CONFIG_KEY]).toBeTruthy();
   });
 });

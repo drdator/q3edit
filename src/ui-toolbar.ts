@@ -10,6 +10,11 @@ export interface ToolbarContext {
   commands: CommandRegistry<EditorCommandContext>;
 }
 
+export function modeToolPanelClickAction(active: boolean, panelOpen: boolean): 'activate' | 'open' | 'close' {
+  if (!active) return 'activate';
+  return panelOpen ? 'close' : 'open';
+}
+
 export function buildToolbar(ctx: ToolbarContext): void {
   const bar = document.getElementById('toolbar')!;
   const toolList = document.createElement('div');
@@ -142,6 +147,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
   const closeCreateToolPanel = () => {
     createToolPanel.classList.remove('open');
     createToolButton?.classList.remove('active-panel');
+    createToolButton?.setAttribute('aria-expanded', 'false');
   };
 
   const openCreateToolPanel = () => {
@@ -151,6 +157,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     setCreateToolButtonIcon();
     createToolPanel.classList.add('open');
     createToolButton.classList.add('active-panel');
+    createToolButton.setAttribute('aria-expanded', 'true');
     positionCreateToolPanel();
   };
 
@@ -167,10 +174,13 @@ export function buildToolbar(ctx: ToolbarContext): void {
   const closeEntityToolPanel = () => {
     entityToolPanel.classList.remove('open');
     entityToolButton?.classList.remove('active-panel');
+    entityToolButton?.setAttribute('aria-expanded', 'false');
   };
   const updateEntityToolButtonTitle = (classname = ctx.editor.currentEntityClass) => {
     const shortcut = ctx.commands.getState('tool.entity').shortcut;
-    if (entityToolButton) entityToolButton.title = `Place Entity: ${classname}${shortcut ? ` (${formatShortcut(shortcut)})` : ''}`;
+    if (entityToolButton) {
+      entityToolButton.title = `Place Entity: ${classname}${shortcut ? ` (${formatShortcut(shortcut)})` : ''} · Click again for entity options`;
+    }
   };
   const entityPicker = createEntityClassPicker(ctx.editor, {
     idPrefix: 'toolbar-entity-class',
@@ -195,6 +205,7 @@ export function buildToolbar(ctx: ToolbarContext): void {
     entityPicker.refresh();
     entityToolPanel.classList.add('open');
     entityToolButton.classList.add('active-panel');
+    entityToolButton.setAttribute('aria-expanded', 'true');
     positionEntityToolPanel();
     entityPicker.focus();
   };
@@ -250,26 +261,31 @@ export function buildToolbar(ctx: ToolbarContext): void {
       dataset: { tool: tool.id },
       onClick: () => {
         if (tool.id === 'create') {
-          if (ctx.editor.activeTool !== 'create') {
+          const action = modeToolPanelClickAction(
+            ctx.editor.activeTool === 'create',
+            createToolPanel.classList.contains('open'),
+          );
+          if (action === 'activate') {
+            closeCreateToolPanel();
             void ctx.commands.execute(tool.commandId);
-            openCreateToolPanel();
             return;
           }
-          if (createToolPanel.classList.contains('open')) {
-            closeCreateToolPanel();
-          } else {
-            openCreateToolPanel();
-          }
+          if (action === 'close') closeCreateToolPanel();
+          else openCreateToolPanel();
           return;
         }
 
         if (tool.id === 'entity') {
-          if (ctx.editor.activeTool !== 'entity') {
+          const action = modeToolPanelClickAction(
+            ctx.editor.activeTool === 'entity',
+            entityToolPanel.classList.contains('open'),
+          );
+          if (action === 'activate') {
+            closeEntityToolPanel();
             void ctx.commands.execute(tool.commandId);
-            openEntityToolPanel();
             return;
           }
-          if (entityToolPanel.classList.contains('open')) closeEntityToolPanel();
+          if (action === 'close') closeEntityToolPanel();
           else openEntityToolPanel();
           return;
         }
@@ -281,9 +297,17 @@ export function buildToolbar(ctx: ToolbarContext): void {
     });
     if (tool.id === 'create') {
       createToolButton = btn;
+      createToolButton.classList.add('has-options');
+      createToolButton.setAttribute('aria-haspopup', 'true');
+      createToolButton.setAttribute('aria-controls', createToolPanel.id);
+      createToolButton.setAttribute('aria-expanded', 'false');
       setCreateToolButtonIcon();
     } else if (tool.id === 'entity') {
       entityToolButton = btn;
+      entityToolButton.classList.add('has-options');
+      entityToolButton.setAttribute('aria-haspopup', 'true');
+      entityToolButton.setAttribute('aria-controls', entityToolPanel.id);
+      entityToolButton.setAttribute('aria-expanded', 'false');
       entityPicker.refresh();
       refreshCommandState.push(updateEntityToolButtonTitle);
     }

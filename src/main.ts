@@ -17,7 +17,7 @@ import {
   replaceStoredAssetConfiguration,
 } from './pak-storage';
 import { TextureManager } from './textures';
-import { saveProjectConfiguration, type ProjectConfiguration } from './project-config';
+import type { ProjectConfiguration } from './project-config';
 import { configuredBridgeUrl } from './live-bridge/configuration';
 import { openUnreadReleaseNotesDialog } from './release-notes-dialog';
 import { DocumentRecoveryService } from './document-recovery';
@@ -96,6 +96,9 @@ async function init() {
   const vpXY = new Viewport2D(xyCanvas, editor, 'xy');
   const vpXZ = new Viewport2D(xzCanvas, editor, 'xz');
   const vpYZ = new Viewport2D(yzCanvas, editor, 'yz');
+  vpXY.getDepthCenter = () => (vpXZ.centerY + vpYZ.centerY) / 2;
+  vpXZ.getDepthCenter = () => (vpXY.centerY + vpYZ.centerX) / 2;
+  vpYZ.getDepthCenter = () => (vpXY.centerX + vpXZ.centerX) / 2;
   const vp3D = new Viewport3D(tdCanvas, editor);
 
   // Create UI
@@ -326,7 +329,7 @@ async function init() {
     }
   };
 
-  ui.onProjectConfigurationChanged = async (project: ProjectConfiguration) => {
+  const applyProjectConfigurationAssets = async (project: ProjectConfiguration) => {
     openArenaEnabled = project.assets.configured ? project.assets.openArenaEnabled : await loadOpenArenaEnabled();
     const rebuilt = await rebuildWithStoredPaks();
     if (!rebuilt) return;
@@ -334,6 +337,8 @@ async function init() {
     ui.setTextureAssetStatus(description, rebuilt.names);
     editor.statusMessage = `Using ${description}`;
   };
+  ui.onProjectConfigurationChanged = applyProjectConfigurationAssets;
+  editor.subscribeProjectConfigurationChanges(project => { void applyProjectConfigurationAssets(project); });
 
   ui.onManagePakFiles = async () => {
     let assetLoading: ReturnType<UI['showAssetLoading']> | null = null;
@@ -379,13 +384,14 @@ async function init() {
       reportProgress('Saving asset configuration…');
       await replaceStoredAssetConfiguration(ordered, result.openArenaEnabled);
       openArenaEnabled = result.openArenaEnabled;
-      editor.projectConfiguration.assets = {
-        ...editor.projectConfiguration.assets,
+      const project = structuredClone(editor.projectConfiguration);
+      project.assets = {
+        ...project.assets,
         archives: ordered.map(pak => pak.name),
         openArenaEnabled,
         configured: true,
       };
-      saveProjectConfiguration(editor.projectConfiguration);
+      editor.updateProjectConfiguration(project, { label: 'Update project assets', notify: false });
       assetLoading.update('Updating textures in the 3D view…', 1, 1);
       const installedTextureManager = installTextureManager(assets);
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
