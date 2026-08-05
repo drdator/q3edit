@@ -58,6 +58,7 @@ import { MapOrganizationController, type NavigationState } from './map-organizat
 import { openMapOrganizationDialog } from './map-organization-dialog';
 import { SurfaceInspector } from './surface-inspector';
 import { validateProjectShaderFiles } from './q3-shader-source';
+import { createQuickPlayPk3, quickPlayRuntimeMapName } from './game-preview';
 
 export interface AssetLoadingHandle {
   ready: Promise<void>;
@@ -2311,6 +2312,12 @@ export class UI {
     this.editor.runtimeEntityMessages = [];
 
     const safeMapName = mapName.replace(/[^a-zA-Z0-9_-]/g, '') || 'compile';
+    const runtimeMapName = packagePk3
+      ? safeMapName
+      : quickPlayRuntimeMapName(safeMapName, bsp);
+    const previewPk3 = packagePk3
+      ? null
+      : createQuickPlayPk3(runtimeMapName, bsp, aas);
     const bspCopy = new Uint8Array(bsp.byteLength);
     bspCopy.set(bsp);
     const retainedBsp = new Uint8Array(bsp.byteLength);
@@ -2372,7 +2379,7 @@ export class UI {
     const frame = document.createElement('iframe');
     frame.className = 'game-preview-frame';
     frame.title = `ioquake3 preview of ${safeMapName}`;
-    frame.src = '/ioquake3/player.html';
+    frame.src = `/ioquake3/player.html?v=${Date.now()}`;
     frame.allow = 'autoplay; fullscreen';
 
     const actions = document.createElement('div');
@@ -2403,6 +2410,7 @@ export class UI {
         const launchMessage = {
           type: 'q3edit-player:launch',
           mapName: safeMapName,
+          runtimeMapName,
           gameDirectory: this.gamePreviewLaunch?.gameDirectory ?? 'baseq3',
           bsp: bspCopy.buffer,
           aas: aasCopy?.buffer ?? null,
@@ -2411,11 +2419,13 @@ export class UI {
           noclip,
           commands,
           packagePk3: packageCopy?.buffer ?? null,
+          previewPk3: previewPk3?.buffer ?? null,
         };
         const transfer = [
           bspCopy.buffer,
           ...(aasCopy ? [aasCopy.buffer] : []),
           ...(packageCopy ? [packageCopy.buffer] : []),
+          ...(previewPk3 ? [previewPk3.buffer] : []),
         ];
         frame.contentWindow?.postMessage(launchMessage, window.location.origin, transfer);
       } else if (message?.type === 'q3edit-player:status') {
