@@ -48,7 +48,7 @@ describe('release packaging', () => {
       mapName: 'test_map', bsp: strToU8('bsp'), aas: strToU8('aas'), entities: [world],
       assets, textures: textureAdapter(assets),
       metadata: { title: 'Test Arena', gameTypes: ['ffa', 'team'], botSupport: true, recommendedPlayers: '2-4', author: 'Mapper', description: 'Test' },
-      levelshot: strToU8('png'), files: { readme: 'read me' },
+      levelshot: strToU8('png'), files: { readme: 'read me' }, includeSourceMap: '{\n"classname" "worldspawn"\n}\n',
     };
     const first = buildReleasePackage(input);
     const second = buildReleasePackage(input);
@@ -56,6 +56,8 @@ describe('release packaging', () => {
     const files = unzipSync(first.pk3);
     expect(Object.keys(files)).toEqual([...Object.keys(files)].sort((a, b) => a.localeCompare(b)));
     expect(files['maps/test_map.bsp']).toBeTruthy();
+    expect(files['maps/test_map.aas']).toBeTruthy();
+    expect(files['maps/test_map.map']).toBeTruthy();
     expect(files['scripts/test_map.arena']).toBeTruthy();
     expect(files['textures/custom/wall.tga']).toBeTruthy();
     expect(first.report.archiveValidation.valid).toBe(true);
